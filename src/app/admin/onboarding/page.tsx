@@ -51,7 +51,7 @@ export default function AdminOnboarding() {
                 .from("courses")
                 .select("id")
                 .eq("organization_id", userData?.organization_id)
-                .eq("published_at", null, { not: true })
+                .not("published_at", "is", null)
                 .limit(1);
 
             const { data: workers } = await supabase
@@ -209,10 +209,10 @@ export default function AdminOnboarding() {
                                 {/* Icon */}
                                 <div
                                     className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${step.completed
-                                            ? "bg-green-100 text-green-600"
-                                            : index === currentStep
-                                                ? "bg-indigo-100 text-indigo-600"
-                                                : "bg-gray-100 text-gray-400"
+                                        ? "bg-green-100 text-green-600"
+                                        : index === currentStep
+                                            ? "bg-indigo-100 text-indigo-600"
+                                            : "bg-gray-100 text-gray-400"
                                         }`}
                                 >
                                     {step.completed ? (
