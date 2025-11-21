@@ -91,14 +91,84 @@ export default function TrainingPage() {
         setCurrentStep("quiz");
     };
 
-    const handleQuizPass = () => {
-        setQuizPassed(true);
-        setCurrentStep("acknowledgment");
+    const handleQuizSubmit = () => {
+        const questions = assignment.course.quiz_questions;
+
+        // Validate all questions answered
+        if (Object.keys(quizAnswers).length < questions.length) {
+            alert("Please answer all questions before submitting.");
+            return;
+        }
+
+        // Calculate score
+        let correct = 0;
+        questions.forEach((q: any) => {
+            if (quizAnswers[q.id] === q.correct_answer) {
+                correct++;
+            }
+        });
+
+        const score = Math.round((correct / questions.length) * 100);
+        setQuizScore(score);
+
+        if (score >= 80) {
+            alert(`Congratulations! You scored ${score}%. You passed the quiz!`);
+            setQuizPassed(true);
+            setCurrentStep("acknowledgment");
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+            alert(`You scored ${score}%. You need 80% to pass. Please review the lesson and try again.`);
+            setQuizAnswers({});
+        }
     };
 
     const handleAcknowledgmentComplete = async () => {
-        // This will be called from the acknowledgment component
-        router.push("/worker/dashboard");
+        if (!signature.trim()) {
+            alert("Please provide your digital signature.");
+            return;
+        }
+
+        if (!acknowledged) {
+            alert("Please acknowledge that you have completed the training.");
+            return;
+        }
+
+        setSubmitting(true);
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("Not authenticated");
+
+            // Create completion record
+            const { error: completionError } = await supabase
+                .from("course_completions")
+                .insert({
+                    assignment_id: assignmentId,
+                    worker_id: user.id,
+                    course_id: assignment.course.id,
+                    quiz_score: quizScore,
+                    attempt_number: 1,
+                    acknowledgment_signature: signature,
+                    acknowledgment_date: new Date().toISOString(),
+                });
+
+            if (completionError) throw completionError;
+
+            // Update assignment status
+            const { error: assignmentError } = await supabase
+                .from("course_assignments")
+                .update({ status: "completed" })
+                .eq("id", assignmentId);
+
+            if (assignmentError) throw assignmentError;
+
+            router.push("/worker/dashboard");
+        } catch (error) {
+            console.error("Error saving completion:", error);
+            alert("Failed to save completion. Please try again.");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     if (loading) {
@@ -202,8 +272,29 @@ export default function TrainingPage() {
             <div className="max-w-6xl mx-auto px-4 py-8">
                 {currentStep === "lesson" && (
                     <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
-                        <div className="prose max-w-none mb-8">
-                            <div dangerouslySetInnerHTML={{ __html: assignment.course.lesson_notes }} />
+                        <div className="prose prose-slate prose-lg max-w-none mb-8
+                            prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-slate-900
+                            prose-h1:!text-4xl prose-h1:!mb-8 prose-h1:!mt-0 prose-h1:pb-4 prose-h1:border-b prose-h1:border-slate-200
+                            prose-h2:!text-2xl prose-h2:!mt-12 prose-h2:!mb-6
+                            prose-h3:!text-xl prose-h3:!mt-8 prose-h3:!mb-4
+                            prose-p:text-slate-600 prose-p:leading-relaxed prose-p:mb-6
+                            prose-strong:text-slate-900 prose-strong:font-semibold
+                            prose-code:text-indigo-600 prose-code:bg-indigo-50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
+                            prose-pre:bg-slate-900 prose-pre:text-slate-50 prose-pre:rounded-xl prose-pre:p-6
+                            prose-ul:my-6 prose-ul:space-y-2
+                            prose-ol:my-6 prose-ol:space-y-2
+                            prose-li:text-slate-600
+                            prose-blockquote:border-l-indigo-500 prose-blockquote:bg-indigo-50 prose-blockquote:py-4 prose-blockquote:text-slate-700
+                            prose-table:border-collapse prose-table:w-full
+                            prose-th:bg-slate-50 prose-th:border prose-th:border-slate-200 prose-th:p-3 prose-th:text-slate-900
+                            prose-td:border prose-td:border-slate-200 prose-td:p-3 prose-td:text-slate-600
+                            prose-img:rounded-xl prose-img:shadow-lg">
+                            <ReactMarkdown
+                                remarkPlugins={[remarkMath]}
+                                rehypePlugins={[rehypeKatex]}
+                            >
+                                {assignment.course.lesson_notes}
+                            </ReactMarkdown>
                         </div>
 
                         {/* Scroll indicator - simplified for now */}
@@ -236,10 +327,17 @@ export default function TrainingPage() {
                                         {idx + 1}. {q.question_text}
                                     </p>
                                     <div className="space-y-2">
-                                        {q.options.map((option: string, optIdx: number) => (
+                                        {q.options.map((option: any, optIdx: number) => (
                                             <label key={optIdx} className="flex items-center gap-2 cursor-pointer">
-                                                <input type="radio" name={`question-${q.id}`} className="w-4 h-4" />
-                                                <span className="text-slate-700">{option}</span>
+                                                <input
+                                                    type="radio"
+                                                    name={`question-${q.id}`}
+                                                    value={option.text || option}
+                                                    checked={quizAnswers[q.id] === (option.text || option)}
+                                                    onChange={(e) => setQuizAnswers({ ...quizAnswers, [q.id]: e.target.value })}
+                                                    className="w-4 h-4"
+                                                />
+                                                <span className="text-slate-700">{option.text || option}</span>
                                             </label>
                                         ))}
                                     </div>
@@ -255,7 +353,7 @@ export default function TrainingPage() {
                                 Back to Lesson
                             </button>
                             <button
-                                onClick={handleQuizPass}
+                                onClick={handleQuizSubmit}
                                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
                             >
                                 Submit Quiz
@@ -286,7 +384,12 @@ export default function TrainingPage() {
 
                             <div>
                                 <label className="flex items-start gap-3 cursor-pointer">
-                                    <input type="checkbox" className="mt-1 w-5 h-5" required />
+                                    <input
+                                        type="checkbox"
+                                        checked={acknowledged}
+                                        onChange={(e) => setAcknowledged(e.target.checked)}
+                                        className="mt-1 w-5 h-5"
+                                    />
                                     <span className="text-sm text-slate-700">
                                         I acknowledge that I have completed this training and understand the material covered.
                                         I will apply this knowledge in my work.
@@ -301,8 +404,9 @@ export default function TrainingPage() {
                                 <input
                                     type="text"
                                     placeholder="Type your full name"
+                                    value={signature}
+                                    onChange={(e) => setSignature(e.target.value)}
                                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                                    required
                                 />
                             </div>
                         </div>
@@ -316,10 +420,20 @@ export default function TrainingPage() {
                             </button>
                             <button
                                 onClick={handleAcknowledgmentComplete}
-                                className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+                                disabled={submitting}
+                                className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                             >
-                                <CheckCircle className="w-5 h-5" />
-                                Submit Training
+                                {submitting ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        Submitting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle className="w-5 h-5" />
+                                        Submit Training
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
