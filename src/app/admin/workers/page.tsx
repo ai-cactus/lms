@@ -19,9 +19,6 @@ interface Worker {
     role: string;
     created_at: string;
     deactivated_at: string | null;
-    supervisor?: {
-        full_name: string;
-    } | null;
     assignments?: {
         total: number;
         completed: number;
@@ -76,8 +73,7 @@ export default function WorkersListPage() {
           email,
           role,
           created_at,
-          deactivated_at,
-          supervisor:supervisor_id(full_name)
+          deactivated_at
         `)
                 .eq("organization_id", userData?.organization_id)
                 .eq("role", "worker")
@@ -107,7 +103,6 @@ export default function WorkersListPage() {
 
                     return {
                         ...worker,
-                        supervisor: Array.isArray(worker.supervisor) ? worker.supervisor[0] : worker.supervisor,
                         assignments: {
                             total: total || 0,
                             completed: completed || 0,
@@ -300,7 +295,7 @@ export default function WorkersListPage() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <p className="text-sm text-slate-700">
-                                                    {worker.supervisor?.full_name || "No supervisor"}
+                                                    -
                                                 </p>
                                             </td>
                                             <td className="px-6 py-4">

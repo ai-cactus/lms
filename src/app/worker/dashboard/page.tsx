@@ -13,13 +13,11 @@ import {
     Play,
     ArrowRight,
 } from "lucide-react";
-
 interface Assignment {
     id: string;
     course_id: string;
     deadline: string;
     status: string;
-    started_at: string | null;
     course: {
         title: string;
         lesson_notes: string;
@@ -28,8 +26,7 @@ interface Assignment {
         id: string;
         completed_at: string;
         quiz_score: number;
-        status: string;
-        supervisor_confirmation?: {
+        admin_confirmation?: {
             confirmed: boolean;
             confirmed_at: string;
         };
@@ -62,15 +59,49 @@ export default function WorkerDashboardPage() {
                 return;
             }
 
-            // Get worker profile
-            const { data: workerData } = await supabase
+            // Get worker profile and check role
+            const { data: workerData, error: profileError } = await supabase
                 .from("users")
-                .select("full_name")
+                .select("full_name, role")
                 .eq("id", user.id)
                 .single();
 
-            if (workerData) {
-                setWorkerName(workerData.full_name);
+            if (profileError) {
+                console.error("Error loading user profile:", profileError);
+                throw new Error("Could not load user profile");
+            }
+
+            if (!workerData) {
+                console.error("User profile not found");
+                router.push("/login");
+                return;
+            }
+
+            // Redirect admins to their dashboard
+            if (workerData.role === "admin") {
+                console.log("Admin user accessing worker dashboard - redirecting");
+                router.push("/admin/dashboard");
+                return;
+            }
+
+            // Ensure user is actually a worker
+            if (workerData.role !== "worker") {
+                console.error("User role is not worker:", workerData.role);
+                router.push("/login");
+                return;
+            }
+
+            setWorkerName(workerData.full_name);
+
+            const { data: basicData, error: basicError } = await supabase
+                .from("course_assignments")
+                .select("id, status")
+                .eq("worker_id", user.id)
+                .limit(1);
+
+            if (basicError) {
+                console.error("Error checking basic access:", basicError);
+                throw basicError;
             }
 
             // Get active assignments
@@ -81,14 +112,16 @@ export default function WorkerDashboardPage() {
           course_id,
           deadline,
           status,
-          started_at,
           course:courses(title, lesson_notes)
         `)
                 .eq("worker_id", user.id)
                 .in("status", ["not_started", "in_progress", "overdue"])
                 .order("deadline", { ascending: true });
 
-            if (activeError) throw activeError;
+            if (activeError) {
+                console.error("Error fetching active assignments:", activeError);
+                throw activeError;
+            }
 
             // Get completed assignments with completions
             const { data: completedData, error: completedError } = await supabase
@@ -98,21 +131,22 @@ export default function WorkerDashboardPage() {
           course_id,
           deadline,
           status,
-          started_at,
           course:courses(title, lesson_notes),
           completion:course_completions(
             id,
             completed_at,
             quiz_score,
-            status,
-            supervisor_confirmation:supervisor_confirmations(confirmed, confirmed_at)
+            admin_confirmation:admin_confirmations(confirmed, confirmed_at)
           )
         `)
                 .eq("worker_id", user.id)
                 .in("status", ["pending_confirmation", "completed"])
                 .order("deadline", { ascending: false });
 
-            if (completedError) throw completedError;
+            if (completedError) {
+                console.error("Error fetching completed assignments:", completedError);
+                throw completedError;
+            }
 
             // Normalize data - convert arrays to single objects
             const normalizedActive = (activeData || []).map((a: any) => ({
@@ -140,8 +174,14 @@ export default function WorkerDashboardPage() {
                 overdue: overdueCount,
             });
             setLoading(false);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error loading dashboard:", error);
+            console.error("Error details:", {
+                message: error?.message,
+                code: error?.code,
+                details: error?.details,
+                hint: error?.hint,
+            });
             setLoading(false);
         }
     };
@@ -252,8 +292,8 @@ export default function WorkerDashboardPage() {
                         <button
                             onClick={() => setActiveTab("active")}
                             className={`pb-3 px-1 font-medium transition-colors ${activeTab === "active"
-                                    ? "text-indigo-600 border-b-2 border-indigo-600"
-                                    : "text-slate-600 hover:text-slate-900"
+                                ? "text-indigo-600 border-b-2 border-indigo-600"
+                                : "text-slate-600 hover:text-slate-900"
                                 }`}
                         >
                             Active Trainings ({assignments.length})
@@ -261,8 +301,8 @@ export default function WorkerDashboardPage() {
                         <button
                             onClick={() => setActiveTab("completed")}
                             className={`pb-3 px-1 font-medium transition-colors ${activeTab === "completed"
-                                    ? "text-indigo-600 border-b-2 border-indigo-600"
-                                    : "text-slate-600 hover:text-slate-900"
+                                ? "text-indigo-600 border-b-2 border-indigo-600"
+                                : "text-slate-600 hover:text-slate-900"
                                 }`}
                         >
                             Completed ({completedAssignments.length})
@@ -307,7 +347,7 @@ export default function WorkerDashboardPage() {
 
                                     <div className="flex items-center justify-between">
                                         <div className="text-sm text-slate-600">
-                                            {assignment.started_at ? (
+                                            {assignment.status === "in_progress" ? (
                                                 <span className="flex items-center gap-1">
                                                     <Play className="w-4 h-4" />
                                                     In Progress
@@ -320,7 +360,7 @@ export default function WorkerDashboardPage() {
                                             onClick={() => router.push(`/worker/training/${assignment.id}`)}
                                             className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
                                         >
-                                            {assignment.started_at ? "Continue" : "Start Training"}
+                                            {assignment.status === "in_progress" ? "Continue" : "Start Training"}
                                             <ArrowRight className="w-4 h-4" />
                                         </button>
                                     </div>
@@ -346,7 +386,7 @@ export default function WorkerDashboardPage() {
                                 const completion = Array.isArray(assignment.completion)
                                     ? assignment.completion[0]
                                     : assignment.completion;
-                                const isConfirmed = completion?.supervisor_confirmation?.confirmed;
+                                const isConfirmed = completion?.admin_confirmation?.confirmed;
 
                                 return (
                                     <div

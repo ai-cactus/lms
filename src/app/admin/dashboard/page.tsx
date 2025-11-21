@@ -239,20 +239,20 @@ export default function AdminDashboard() {
                     <h2 className="text-lg font-bold text-slate-900 mb-4">Quick Actions</h2>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <button
-                            onClick={() => router.push("/admin/policies/upload")}
+                            onClick={() => router.push("/admin/courses")}
                             className="p-4 border border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-left"
                         >
                             <Plus className="w-6 h-6 text-indigo-600 mb-2" />
-                            <h3 className="font-semibold text-slate-900">Upload Policy</h3>
-                            <p className="text-sm text-slate-600">Create a new training course</p>
+                            <h3 className="font-semibold text-slate-900">View Courses</h3>
+                            <p className="text-sm text-slate-600">Manage training courses</p>
                         </button>
                         <button
-                            onClick={() => router.push("/admin/workers/add")}
+                            onClick={() => router.push("/admin/workers")}
                             className="p-4 border border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-left"
                         >
                             <Users className="w-6 h-6 text-indigo-600 mb-2" />
-                            <h3 className="font-semibold text-slate-900">Add Workers</h3>
-                            <p className="text-sm text-slate-600">Invite new staff members</p>
+                            <h3 className="font-semibold text-slate-900">View Workers</h3>
+                            <p className="text-sm text-slate-600">Manage staff and assignments</p>
                         </button>
                         <button
                             onClick={() => router.push("/admin/reports")}
@@ -269,8 +269,15 @@ export default function AdminDashboard() {
     );
 }
 
-function StatCard({ title, value, icon, color }: any) {
-    const colorClasses = {
+interface StatCardProps {
+    title: string;
+    value: string | number;
+    icon: React.ReactNode;
+    color: "indigo" | "blue" | "green" | "red" | "gray";
+}
+
+function StatCard({ title, value, icon, color }: StatCardProps) {
+    const colorClasses: Record<StatCardProps["color"], string> = {
         indigo: "bg-indigo-100 text-indigo-600",
         blue: "bg-blue-100 text-blue-600",
         green: "bg-green-100 text-green-600",

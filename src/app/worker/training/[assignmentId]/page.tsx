@@ -4,13 +4,22 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle, BookOpen, ClipboardCheck, ArrowLeft, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 
 export default function TrainingPage() {
     const [currentStep, setCurrentStep] = useState<"lesson" | "quiz" | "acknowledgment">("lesson");
     const [assignment, setAssignment] = useState<any>(null);
     const [lessonViewed, setLessonViewed] = useState(false);
     const [quizPassed, setQuizPassed] = useState(false);
+    const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
+    const [quizScore, setQuizScore] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [signature, setSignature] = useState("");
+    const [acknowledged, setAcknowledged] = useState(false);
     const router = useRouter();
     const params = useParams();
     const supabase = createClient();
@@ -34,7 +43,6 @@ export default function TrainingPage() {
           id,
           course_id,
           status,
-          started_at,
           course:courses(
             id,
             title,
@@ -55,12 +63,11 @@ export default function TrainingPage() {
 
             setAssignment(data);
 
-            // Update started_at if not set
-            if (!data.started_at) {
+            // Update status to in_progress if still not_started
+            if (data.status === "not_started") {
                 await supabase
                     .from("course_assignments")
                     .update({
-                        started_at: new Date().toISOString(),
                         status: "in_progress"
                     })
                     .eq("id", assignmentId);
@@ -145,10 +152,10 @@ export default function TrainingPage() {
                         <div className="flex items-center gap-2">
                             <div
                                 className={`flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm ${currentStep === "lesson"
-                                        ? "bg-indigo-600 text-white"
-                                        : lessonViewed
-                                            ? "bg-green-600 text-white"
-                                            : "bg-gray-200 text-gray-500"
+                                    ? "bg-indigo-600 text-white"
+                                    : lessonViewed
+                                        ? "bg-green-600 text-white"
+                                        : "bg-gray-200 text-gray-500"
                                     }`}
                             >
                                 {lessonViewed ? <CheckCircle className="w-5 h-5" /> : "1"}
@@ -162,10 +169,10 @@ export default function TrainingPage() {
                         <div className="flex items-center gap-2">
                             <div
                                 className={`flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm ${currentStep === "quiz"
-                                        ? "bg-indigo-600 text-white"
-                                        : quizPassed
-                                            ? "bg-green-600 text-white"
-                                            : "bg-gray-200 text-gray-500"
+                                    ? "bg-indigo-600 text-white"
+                                    : quizPassed
+                                        ? "bg-green-600 text-white"
+                                        : "bg-gray-200 text-gray-500"
                                     }`}
                             >
                                 {quizPassed ? <CheckCircle className="w-5 h-5" /> : "2"}
@@ -179,8 +186,8 @@ export default function TrainingPage() {
                         <div className="flex items-center gap-2">
                             <div
                                 className={`flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm ${currentStep === "acknowledgment"
-                                        ? "bg-indigo-600 text-white"
-                                        : "bg-gray-200 text-gray-500"
+                                    ? "bg-indigo-600 text-white"
+                                    : "bg-gray-200 text-gray-500"
                                     }`}
                             >
                                 3

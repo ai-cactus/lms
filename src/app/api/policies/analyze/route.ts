@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import mammoth from "mammoth";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -34,16 +35,8 @@ export async function POST(request: NextRequest) {
         }
 
         const fileBuffer = await fileResponse.arrayBuffer();
-        const fileData = Buffer.from(fileBuffer).toString("base64");
 
-        // Determine MIME type
-        const mimeType = fileName.endsWith(".pdf")
-            ? "application/pdf"
-            : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-
-        // Analyze with Gemini
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
+        // Prepare prompt
         const prompt = `You are a CARF (Commission on Accreditation of Rehabilitation Facilities) compliance expert. Analyze this policy document and generate a comprehensive training course.
 
 Extract and provide:
@@ -92,15 +85,34 @@ Format your response as JSON with this structure:
   "gaps": ["Any missing or unclear CARF requirements"]
 }`;
 
-        const result = await model.generateContent([
-            {
+        let promptParts: any[] = [prompt];
+
+        if (fileName.endsWith(".pdf")) {
+            const fileData = Buffer.from(fileBuffer).toString("base64");
+            promptParts.unshift({
                 inlineData: {
                     data: fileData,
-                    mimeType: mimeType,
+                    mimeType: "application/pdf",
                 },
-            },
-            prompt,
-        ]);
+            });
+        } else if (fileName.match(/\.docx?$/)) {
+            // Extract text from DOCX
+            try {
+                const result = await mammoth.extractRawText({ buffer: Buffer.from(fileBuffer) });
+                const text = result.value;
+                promptParts.unshift(text);
+            } catch (e) {
+                console.error("Mammoth extraction error:", e);
+                throw new Error("Failed to extract text from document");
+            }
+        } else {
+            throw new Error("Unsupported file type");
+        }
+
+        // Analyze with Gemini
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const result = await model.generateContent(promptParts);
 
         const responseText = result.response.text();
 

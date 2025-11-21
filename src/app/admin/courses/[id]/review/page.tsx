@@ -112,6 +112,8 @@ export default function CourseReviewPage() {
     const handlePublish = async () => {
         setSaving(true);
         try {
+            const isRepublish = course?.published_at !== null;
+
             const { error } = await supabase
                 .from("courses")
                 .update({ published_at: new Date().toISOString() })
@@ -119,8 +121,12 @@ export default function CourseReviewPage() {
 
             if (error) throw error;
 
-            // Redirect to success page
-            router.push(`/admin/courses/${courseId}/published`);
+            // Redirect based on whether this is a republish or initial publish
+            if (isRepublish) {
+                router.push("/admin/courses?updated=true");
+            } else {
+                router.push(`/admin/courses/${courseId}/published`);
+            }
         } catch (err: any) {
             setError(err.message);
             setSaving(false);
@@ -148,8 +154,14 @@ export default function CourseReviewPage() {
             <div className="max-w-5xl mx-auto">
                 {/* Header */}
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2">Review Course Draft</h1>
-                    <p className="text-slate-600">Review and edit the AI-generated course content</p>
+                    <h1 className="text-3xl font-bold text-slate-900 mb-2">
+                        {course.published_at ? "Edit Course" : "Review Course Draft"}
+                    </h1>
+                    <p className="text-slate-600">
+                        {course.published_at
+                            ? "Edit and republish this course. Changes will be reflected in all active assignments."
+                            : "Review and edit the AI-generated course content"}
+                    </p>
                 </div>
 
                 {/* Progress Steps */}
@@ -158,10 +170,10 @@ export default function CourseReviewPage() {
                         <div key={step} className="flex items-center">
                             <div
                                 className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold ${index + 1 < currentStep
-                                        ? "bg-green-100 text-green-600"
-                                        : index + 1 === currentStep
-                                            ? "bg-indigo-600 text-white"
-                                            : "bg-gray-200 text-gray-500"
+                                    ? "bg-green-100 text-green-600"
+                                    : index + 1 === currentStep
+                                        ? "bg-indigo-600 text-white"
+                                        : "bg-gray-200 text-gray-500"
                                     }`}
                             >
                                 {index + 1 < currentStep ? <CheckCircle className="w-5 h-5" /> : index + 1}
