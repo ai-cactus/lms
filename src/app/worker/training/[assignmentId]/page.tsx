@@ -91,6 +91,11 @@ export default function TrainingPage() {
         setCurrentStep("quiz");
     };
 
+    // Scroll to top when step changes
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [currentStep]);
+
     const handleQuizSubmit = () => {
         const questions = assignment.course.quiz_questions;
 
@@ -112,13 +117,10 @@ export default function TrainingPage() {
         setQuizScore(score);
 
         if (score >= 80) {
-            alert(`Congratulations! You scored ${score}%. You passed the quiz!`);
             setQuizPassed(true);
             setCurrentStep("acknowledgment");
-            window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
             alert(`You scored ${score}%. You need 80% to pass. Please review the lesson and try again.`);
-            setQuizAnswers({});
         }
     };
 
@@ -163,9 +165,9 @@ export default function TrainingPage() {
             if (assignmentError) throw assignmentError;
 
             router.push("/worker/dashboard");
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error saving completion:", error);
-            alert("Failed to save completion. Please try again.");
+            alert(`Failed to save completion: ${error.message || error.details || "Unknown error"}`);
         } finally {
             setSubmitting(false);
         }
@@ -327,19 +329,24 @@ export default function TrainingPage() {
                                         {idx + 1}. {q.question_text}
                                     </p>
                                     <div className="space-y-2">
-                                        {q.options.map((option: any, optIdx: number) => (
-                                            <label key={optIdx} className="flex items-center gap-2 cursor-pointer">
-                                                <input
-                                                    type="radio"
-                                                    name={`question-${q.id}`}
-                                                    value={option.text || option}
-                                                    checked={quizAnswers[q.id] === (option.text || option)}
-                                                    onChange={(e) => setQuizAnswers({ ...quizAnswers, [q.id]: e.target.value })}
-                                                    className="w-4 h-4"
-                                                />
-                                                <span className="text-slate-700">{option.text || option}</span>
-                                            </label>
-                                        ))}
+                                        {Array.isArray(q.options) && q.options.map((option: any, optIdx: number) => {
+                                            const optionText = typeof option === 'object' ? option?.text || '' : option;
+                                            const optionValue = typeof option === 'object' ? option?.text || '' : option;
+
+                                            return (
+                                                <label key={optIdx} className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name={`question-${q.id}`}
+                                                        value={optionValue}
+                                                        checked={quizAnswers[q.id] === optionValue}
+                                                        onChange={(e) => setQuizAnswers({ ...quizAnswers, [q.id]: e.target.value })}
+                                                        className="w-4 h-4"
+                                                    />
+                                                    <span className="text-slate-700">{optionText}</span>
+                                                </label>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ))}
@@ -364,6 +371,16 @@ export default function TrainingPage() {
 
                 {currentStep === "acknowledgment" && (
                     <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-8 flex items-start gap-3">
+                            <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="text-lg font-semibold text-green-900">Congratulations! You passed!</h3>
+                                <p className="text-green-700">
+                                    You scored {quizScore}%. Please complete the final step below to finish this training.
+                                </p>
+                            </div>
+                        </div>
+
                         <h2 className="text-2xl font-bold text-slate-900 mb-6">Training Acknowledgment</h2>
                         <p className="text-slate-600 mb-8">
                             Please acknowledge that you have completed this training and understand the material.
