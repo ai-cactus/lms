@@ -250,6 +250,7 @@ export default function CourseReviewPage() {
                                             deadline_days: course?.deadline_days,
                                             max_attempts: course?.max_attempts,
                                             delivery_format: course?.delivery_format,
+                                            lesson_notes: lessonNotes, // Save converted content
                                             quiz_config: course?.quiz_config,
                                         })
                                         .eq("id", courseId);
