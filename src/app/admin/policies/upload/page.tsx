@@ -7,6 +7,7 @@ import { Upload, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-reac
 
 export default function PolicyUploadPage() {
     const [file, setFile] = useState<File | null>(null);
+    const [deliveryFormat, setDeliveryFormat] = useState<'pages' | 'slides'>('pages');
     const [uploading, setUploading] = useState(false);
     const [analyzing, setAnalyzing] = useState(false);
     const [error, setError] = useState("");
@@ -117,6 +118,7 @@ export default function PolicyUploadPage() {
                     policyId: policyData.id,
                     fileUrl: publicUrl,
                     fileName: file.name,
+                    deliveryFormat: deliveryFormat,
                 }),
             });
 
@@ -158,8 +160,8 @@ export default function PolicyUploadPage() {
                             onDragOver={handleDrag}
                             onDrop={handleDrop}
                             className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${dragActive
-                                    ? "border-indigo-500 bg-indigo-50"
-                                    : "border-gray-300 hover:border-indigo-400"
+                                ? "border-indigo-500 bg-indigo-50"
+                                : "border-gray-300 hover:border-indigo-400"
                                 }`}
                         >
                             <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -204,6 +206,64 @@ export default function PolicyUploadPage() {
                                     </button>
                                 )}
                             </div>
+
+                            {/* Delivery Format Selector */}
+                            {!analyzing && (
+                                <div className="mb-6">
+                                    <label className="block text-sm font-medium text-slate-700 mb-3">
+                                        Choose Delivery Format
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <label className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${deliveryFormat === 'pages'
+                                                ? 'border-indigo-600 bg-indigo-50'
+                                                : 'border-gray-200 hover:border-gray-300'
+                                            }`}>
+                                            <input
+                                                type="radio"
+                                                name="delivery_format"
+                                                value="pages"
+                                                checked={deliveryFormat === 'pages'}
+                                                onChange={() => setDeliveryFormat('pages')}
+                                                className="sr-only"
+                                            />
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${deliveryFormat === 'pages' ? 'border-indigo-600' : 'border-gray-300'
+                                                    }`}>
+                                                    {deliveryFormat === 'pages' && (
+                                                        <div className="w-2 h-2 rounded-full bg-indigo-600" />
+                                                    )}
+                                                </div>
+                                                <h4 className="font-semibold text-slate-900">Pages View</h4>
+                                            </div>
+                                            <p className="text-xs text-slate-600">Continuous scrolling text</p>
+                                        </label>
+
+                                        <label className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${deliveryFormat === 'slides'
+                                                ? 'border-indigo-600 bg-indigo-50'
+                                                : 'border-gray-200 hover:border-gray-300'
+                                            }`}>
+                                            <input
+                                                type="radio"
+                                                name="delivery_format"
+                                                value="slides"
+                                                checked={deliveryFormat === 'slides'}
+                                                onChange={() => setDeliveryFormat('slides')}
+                                                className="sr-only"
+                                            />
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${deliveryFormat === 'slides' ? 'border-indigo-600' : 'border-gray-300'
+                                                    }`}>
+                                                    {deliveryFormat === 'slides' && (
+                                                        <div className="w-2 h-2 rounded-full bg-indigo-600" />
+                                                    )}
+                                                </div>
+                                                <h4 className="font-semibold text-slate-900">Slides View</h4>
+                                            </div>
+                                            <p className="text-xs text-slate-600">Interactive presentation format</p>
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
 
                             {error && (
                                 <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">

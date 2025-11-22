@@ -7,7 +7,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(request: NextRequest) {
     try {
-        const { policyId, fileUrl, fileName } = await request.json();
+        const { policyId, fileUrl, fileName, deliveryFormat = 'pages' } = await request.json();
 
         // Verify authentication
         const supabase = await createClient();
@@ -37,7 +37,35 @@ export async function POST(request: NextRequest) {
         const fileBuffer = await fileResponse.arrayBuffer();
 
         // Prepare prompt
+        const formatInstructions = deliveryFormat === 'slides'
+            ? `
+**DELIVERY FORMAT: SLIDES**
+- Structure the lesson notes with clear slide breaks
+- Add a horizontal rule (---) after EACH major section (after Introduction, after each Key Concept, after Procedures, etc.)
+- Keep each slide focused and concise (200-400 words max per slide)
+- Each slide should cover ONE main concept or topic
+- Use this structure:
+  # Course Title
+  Brief introduction (2-3 sentences)
+  ---
+  ## Section 1: [Topic]
+  Content for this slide
+  ---
+  ## Section 2: [Next Topic]
+  Content for this slide
+  ---
+  (Continue with more slides)
+`
+            : `
+**DELIVERY FORMAT: PAGES**
+- Structure the lesson notes as continuous flowing text
+- Use horizontal rules (---) sparingly, only between major topic shifts
+- Content can flow naturally across sections without strict breaks
+`;
+
         const prompt = `You are a CARF (Commission on Accreditation of Rehabilitation Facilities) compliance expert. Analyze this policy document and generate a comprehensive training course.
+
+${formatInstructions}
 
 Extract and provide:
 
@@ -135,6 +163,7 @@ Format your response as JSON with this structure:
                 title: analysisResult.title,
                 objectives: analysisResult.objectives,
                 lesson_notes: analysisResult.lesson_notes,
+                delivery_format: deliveryFormat,
                 carf_standards: analysisResult.carf_standards || [],
                 pass_mark: 80,
                 attempts_allowed: 2,
