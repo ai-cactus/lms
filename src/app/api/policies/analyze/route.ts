@@ -14,8 +14,21 @@ export async function POST(request: NextRequest) {
         const { data: { user }, error: authError } = await supabase.auth.getUser();
 
         if (authError || !user) {
+            console.error("Auth error in policy analysis:", authError);
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
+
+        console.log("Policy analysis - User authenticated:", user.id);
+        console.log("Policy analysis - Looking for policy ID:", policyId);
+
+        // Get user's organization and role for debugging
+        const { data: userData, error: userError } = await supabase
+            .from("users")
+            .select("organization_id, role")
+            .eq("id", user.id)
+            .single();
+
+        console.log("Policy analysis - User data:", userData, "Error:", userError);
 
         // Get policy from database
         const { data: policy, error: policyError } = await supabase
@@ -24,8 +37,19 @@ export async function POST(request: NextRequest) {
             .eq("id", policyId)
             .single();
 
+        console.log("Policy analysis - Policy lookup result:", {
+            found: !!policy,
+            error: policyError,
+            policyOrgId: policy?.organization_id,
+            userOrgId: userData?.organization_id
+        });
+
         if (policyError || !policy) {
-            return NextResponse.json({ error: "Policy not found" }, { status: 404 });
+            console.error("Policy not found error:", policyError);
+            return NextResponse.json({
+                error: `Policy not found. This may be an RLS permission issue. User: ${user.id}, Policy: ${policyId}`,
+                details: policyError?.message
+            }, { status: 404 });
         }
 
         // Fetch the file content
@@ -84,6 +108,12 @@ Extract and provide:
    - Correct answer (index 0-3)
    - Explanation
 
+CRITICAL: You MUST return valid JSON. Ensure all strings are properly escaped:
+- Escape double quotes as \\"
+- Escape backslashes as \\\\
+- Escape newlines as \\n
+- Do NOT include any text outside the JSON object
+
 Format your response as JSON with this structure:
 {
   "title": "Course Title",
@@ -137,22 +167,45 @@ Format your response as JSON with this structure:
             throw new Error("Unsupported file type");
         }
 
-        // Analyze with Gemini
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        // Analyze with Gemini using JSON mode
+        const model = genAI.getGenerativeModel({
+            model: "gemini-2.5-flash",
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        });
 
         const result = await model.generateContent(promptParts);
 
         const responseText = result.response.text();
 
-        // Extract JSON from response (handle markdown code blocks)
-        let jsonText = responseText;
-        if (responseText.includes("```json")) {
-            jsonText = responseText.split("```json")[1].split("```")[0].trim();
-        } else if (responseText.includes("```")) {
-            jsonText = responseText.split("```")[1].split("```")[0].trim();
+        // With JSON mode, the response should be clean JSON (no markdown wrappers)
+        // But we'll still handle edge cases
+        let jsonText = responseText.trim();
+
+        // Remove markdown code blocks if present (shouldn't happen with JSON mode)
+        if (jsonText.startsWith("```json")) {
+            jsonText = jsonText.split("```json")[1].split("```")[0].trim();
+        } else if (jsonText.startsWith("```")) {
+            jsonText = jsonText.split("```")[1].split("```")[0].trim();
         }
 
-        const analysisResult = JSON.parse(jsonText);
+        // Parse JSON with better error handling
+        let analysisResult;
+        try {
+            analysisResult = JSON.parse(jsonText);
+        } catch (parseError: any) {
+            console.error("JSON Parse Error:", parseError.message);
+            console.error("Failed JSON text (first 1000 chars):", jsonText.substring(0, 1000));
+
+            // Log the area around the error
+            const errorPos = parseInt(parseError.message.match(/\d+/)?.[0] || "0");
+            if (errorPos > 0) {
+                console.error("Context around error:", jsonText.substring(Math.max(0, errorPos - 200), errorPos + 200));
+            }
+
+            throw new Error(`AI generated invalid JSON. Error at position ${errorPos}: ${parseError.message}. This may indicate the PDF has complex formatting. Please try a simpler document.`);
+        }
 
         // Create course draft
         const { data: course, error: courseError } = await supabase

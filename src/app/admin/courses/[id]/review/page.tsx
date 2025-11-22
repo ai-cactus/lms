@@ -37,7 +37,14 @@ export default function CourseReviewPage() {
             if (courseError) throw courseError;
 
             setCourse(courseData);
-            setObjectives(courseData.objectives || []);
+
+            // Ensure objectives have IDs (AI might not generate them)
+            const objectivesWithIds = (courseData.objectives || []).map((obj: any, index: number) => ({
+                ...obj,
+                id: obj.id || `obj-${Date.now()}-${index}`
+            }));
+
+            setObjectives(objectivesWithIds);
             setLessonNotes(courseData.lesson_notes || "");
 
             // Load quiz questions
@@ -461,41 +468,7 @@ function CourseConfiguration({ course, setCourse, lessonNotes, setLessonNotes, q
                     </div>
                 </div>
 
-                {/* Delivery Format */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-3">
-                        Delivery Format
-                    </label>
-                    <div className="flex gap-4">
-                        <label className={`flex-1 p-4 border rounded-lg cursor-pointer transition-colors ${course.delivery_format === 'pages' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'}`}>
-                            <input
-                                type="radio"
-                                name="delivery_format"
-                                value="pages"
-                                checked={course.delivery_format === 'pages' || !course.delivery_format}
-                                onChange={() => handleDeliveryFormatChange("pages")}
-                                className="sr-only"
-                            />
-                            <div className="font-medium text-slate-900 mb-1">Pages View</div>
-                            <div className="text-sm text-slate-500">Continuous scrolling text (Standard)</div>
-                        </label>
-                        <label className={`flex-1 p-4 border rounded-lg cursor-pointer transition-colors ${course.delivery_format === 'slides' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'}`}>
-                            <input
-                                type="radio"
-                                name="delivery_format"
-                                value="slides"
-                                checked={course.delivery_format === 'slides'}
-                                onChange={() => handleDeliveryFormatChange("slides")}
-                                className="sr-only"
-                            />
-                            <div className="font-medium text-slate-900 mb-1">Slides View</div>
-                            <div className="text-sm text-slate-500">Content split into slide-like chunks</div>
-                        </label>
-                    </div>
-                    <p className="text-sm text-slate-500 mt-2">
-                        Slides View presents content one screen at a time. Pages View is continuous text.
-                    </p>
-                </div>
+
 
                 {/* Quiz Configuration */}
                 <div className="p-4 bg-slate-50 rounded-lg">
