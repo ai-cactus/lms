@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle, AlertCircle, Plus, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
 import type { Course, CourseObjective, CARFStandard } from "@/types/database";
+import { convertToSlides, convertToPages } from "@/lib/format-converter";
 
 export default function CourseReviewPage() {
     const [course, setCourse] = useState<Course | null>(null);
@@ -233,6 +234,8 @@ export default function CourseReviewPage() {
                         <CourseConfiguration
                             course={course}
                             setCourse={setCourse}
+                            lessonNotes={lessonNotes}
+                            setLessonNotes={setLessonNotes}
                             quizQuestions={quizQuestions}
                             onNext={async () => {
                                 setSaving(true);
