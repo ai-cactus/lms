@@ -19,6 +19,7 @@ export interface User {
     email: string;
     full_name: string;
     role: UserRole;
+    worker_category?: string;
     supervisor_id?: string;
     deactivated_at?: string;
     created_at: string;
@@ -37,6 +38,12 @@ export interface Policy {
     updated_at: string;
 }
 
+export interface QuizConfig {
+    questions_per_attempt: number;
+    feedback_timing: 'end' | 'immediate';
+    question_order: 'random' | 'fixed';
+}
+
 export interface Course {
     id: string;
     policy_id?: string;
@@ -47,6 +54,17 @@ export interface Course {
     pass_mark: number;
     attempts_allowed: number;
     carf_standards?: CARFStandard[];
+
+    // New fields
+    course_type?: 'policy' | 'standard' | 'external';
+    policy_version?: string;
+    provider_name?: string;
+    reference_id?: string;
+    deadline_days?: number;
+    max_attempts?: number;
+    delivery_format?: 'pages' | 'slides';
+    quiz_config?: QuizConfig;
+
     created_at: string;
     published_at?: string;
     updated_at: string;
@@ -72,12 +90,35 @@ export interface QuizQuestion {
     question_type: 'multiple_choice' | 'true_false' | 'short_answer';
     options: QuizOption[];
     correct_answer: string;
+    objective_id?: string;
     created_at: string;
 }
 
 export interface QuizOption {
     id: string;
     text: string;
+}
+
+export interface QuizAttempt {
+    id: string;
+    worker_id: string;
+    course_id: string;
+    assignment_id?: string;
+    score: number;
+    passed: boolean;
+    attempt_number: number;
+    started_at: string;
+    completed_at: string;
+    created_at: string;
+}
+
+export interface QuizAnswer {
+    id: string;
+    attempt_id: string;
+    question_id: string;
+    selected_option_text: string;
+    is_correct: boolean;
+    created_at: string;
 }
 
 export interface CourseAssignment {

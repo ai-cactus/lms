@@ -217,13 +217,70 @@ export const CARF_COURSE_MAPPING: Record<string, Record<WorkerRole, CARFCourse[]
     },
 };
 
+export const CATEGORIES = [
+    "Direct Care Staff",
+    "Peer Support",
+    "Nurse",
+    "Clinical Supervisor",
+    "Admin / Back Office",
+    "Executive / Leadership"
+] as const;
+
+export type WorkerCategory = typeof CATEGORIES[number];
+
+export const CATEGORY_SPECIFIC_COURSES: Record<string, CARFCourse[]> = {
+    "Nurse": [
+        {
+            id: "medication-administration",
+            title: "Medication Administration & Safety",
+            carfStandard: "1.H.10",
+            required: true,
+            description: "Safe handling and administration of medications"
+        },
+        {
+            id: "nursing-assessment",
+            title: "Nursing Assessment Standards",
+            carfStandard: "2.D.2",
+            required: true,
+            description: "Comprehensive nursing assessments"
+        }
+    ],
+    "Clinical Supervisor": [
+        {
+            id: "clinical-supervision",
+            title: "Clinical Supervision Best Practices",
+            carfStandard: "2.B.2",
+            required: true,
+            description: "Effective supervision of clinical staff"
+        }
+    ],
+    "Executive / Leadership": [
+        {
+            id: "strategic-planning",
+            title: "Strategic Planning & Governance",
+            carfStandard: "1.A.1",
+            required: true,
+            description: "Organizational leadership standards"
+        }
+    ]
+};
+
 export function getSuggestedCourses(
     role: WorkerRole,
-    programType: string
+    programType: string,
+    category?: string
 ): CARFCourse[] {
     const programMapping = CARF_COURSE_MAPPING[programType];
-    if (!programMapping) {
-        return CARF_COURSE_MAPPING["Behavioral Health"][role] || [];
+    let courses = programMapping ? (programMapping[role] || []) : (CARF_COURSE_MAPPING["Behavioral Health"][role] || []);
+
+    if (category && CATEGORY_SPECIFIC_COURSES[category]) {
+        // Merge and deduplicate by ID
+        const categoryCourses = CATEGORY_SPECIFIC_COURSES[category];
+        const existingIds = new Set(courses.map(c => c.id));
+
+        const newCourses = categoryCourses.filter(c => !existingIds.has(c.id));
+        courses = [...courses, ...newCourses];
     }
-    return programMapping[role] || [];
+
+    return courses;
 }

@@ -166,7 +166,7 @@ export default function CourseReviewPage() {
 
                 {/* Progress Steps */}
                 <div className="mb-8 flex items-center justify-between">
-                    {["Objectives", "Lesson Notes", "Quiz Questions", "Publish"].map((step, index) => (
+                    {["Objectives", "Lesson Notes", "Quiz Questions", "Configuration", "Publish"].map((step, index) => (
                         <div key={step} className="flex items-center">
                             <div
                                 className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold ${index + 1 < currentStep
@@ -182,7 +182,7 @@ export default function CourseReviewPage() {
                                 }`}>
                                 {step}
                             </span>
-                            {index < 3 && (
+                            {index < 4 && (
                                 <div className={`w-16 h-0.5 mx-4 ${index + 1 < currentStep ? "bg-green-600" : "bg-gray-300"
                                     }`} />
                             )}
@@ -222,6 +222,7 @@ export default function CourseReviewPage() {
                         <QuizQuestionsReview
                             questions={quizQuestions}
                             setQuestions={setQuizQuestions}
+                            objectives={objectives}
                             onNext={handleSaveQuizQuestions}
                             onBack={() => setCurrentStep(2)}
                             saving={saving}
@@ -229,16 +230,317 @@ export default function CourseReviewPage() {
                     )}
 
                     {currentStep === 4 && (
+                        <CourseConfiguration
+                            course={course}
+                            setCourse={setCourse}
+                            quizQuestions={quizQuestions}
+                            onNext={async () => {
+                                setSaving(true);
+                                try {
+                                    const { error } = await supabase
+                                        .from("courses")
+                                        .update({
+                                            course_type: course?.course_type,
+                                            policy_version: course?.policy_version,
+                                            provider_name: course?.provider_name,
+                                            reference_id: course?.reference_id,
+                                            deadline_days: course?.deadline_days,
+                                            max_attempts: course?.max_attempts,
+                                            delivery_format: course?.delivery_format,
+                                            quiz_config: course?.quiz_config,
+                                        })
+                                        .eq("id", courseId);
+                                    if (error) throw error;
+                                    setCurrentStep(5);
+                                } catch (err: any) {
+                                    setError(err.message);
+                                } finally {
+                                    setSaving(false);
+                                }
+                            }}
+                            onBack={() => setCurrentStep(3)}
+                            saving={saving}
+                        />
+                    )}
+
+                    {currentStep === 5 && (
                         <PublishConfirmation
                             course={course}
                             objectives={objectives}
                             questionCount={quizQuestions.length}
                             onPublish={handlePublish}
-                            onBack={() => setCurrentStep(3)}
+                            onBack={() => setCurrentStep(4)}
                             saving={saving}
                         />
                     )}
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// Course Configuration Component
+function CourseConfiguration({ course, setCourse, quizQuestions, onNext, onBack, saving }: any) {
+    const updateCourse = (field: string, value: any) => {
+        setCourse({ ...course, [field]: value });
+    };
+
+    const updateQuizConfig = (field: string, value: any) => {
+        setCourse({
+            ...course,
+            quiz_config: { ...course.quiz_config, [field]: value }
+        });
+    };
+
+    return (
+        <div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Course Configuration</h2>
+            <p className="text-slate-600 mb-6">
+                Configure settings for course delivery, deadlines, and quiz behavior.
+            </p>
+
+            <div className="space-y-6 mb-8">
+                {/* Course Type */}
+                <div className="p-4 border border-gray-200 rounded-lg">
+                    <h3 className="font-semibold text-slate-900 mb-3">Course Type</h3>
+                    <div className="space-y-2">
+                        {[
+                            { id: "policy", label: "Policy-Derived Course", desc: "Generated from uploaded policy" },
+                            { id: "standard", label: "Standard Training", desc: "General compliance or skills training" },
+                            { id: "external", label: "External / Imported", desc: "Uploaded SCORM/PDF or external vendor" },
+                        ].map((type) => (
+                            <label key={type.id} className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-slate-50">
+                                <input
+                                    type="radio"
+                                    name="course_type"
+                                    checked={course.course_type === type.id}
+                                    onChange={() => updateCourse("course_type", type.id)}
+                                    className="mt-1"
+                                />
+                                <div>
+                                    <div className="font-medium text-slate-900">{type.label}</div>
+                                    <div className="text-sm text-slate-500">{type.desc}</div>
+                                </div>
+                            </label>
+                        ))}
+                    </div>
+                    <p className="text-sm text-slate-500 mt-3">
+                        Course type helps us group trainings correctly for CARF reports and learning analytics.
+                    </p>
+                </div>
+
+                {/* Conditional Fields Based on Course Type */}
+                {course.course_type === 'policy' && (
+                    <div className="p-4 border border-gray-200 rounded-lg">
+                        <h3 className="font-semibold text-slate-900 mb-3">Policy Information</h3>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                Policy Version
+                            </label>
+                            <input
+                                type="text"
+                                value={course.policy_version || ""}
+                                onChange={(e) => updateCourse("policy_version", e.target.value)}
+                                placeholder="e.g., v2.1, 2024-Q1"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {course.course_type === 'external' && (
+                    <div className="p-4 border border-gray-200 rounded-lg">
+                        <h3 className="font-semibold text-slate-900 mb-3">External Course Details</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Provider Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={course.provider_name || ""}
+                                    onChange={(e) => updateCourse("provider_name", e.target.value)}
+                                    placeholder="e.g., RELIAS, SafetySkills"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Reference ID / Link
+                                </label>
+                                <input
+                                    type="text"
+                                    value={course.reference_id || ""}
+                                    onChange={(e) => updateCourse("reference_id", e.target.value)}
+                                    placeholder="Course ID or URL"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Deadlines & Retakes */}
+                <div className="grid grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                            Deadline (Days after assignment)
+                        </label>
+                        <select
+                            value={course.deadline_days && ![7, 14, 30, 60, 90].includes(course.deadline_days) ? 'custom' : course.deadline_days || 14}
+                            onChange={(e) => {
+                                if (e.target.value === 'custom') {
+                                    updateCourse("deadline_days", 45); // Default custom value
+                                } else {
+                                    updateCourse("deadline_days", parseInt(e.target.value));
+                                }
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                            <option value={7}>7 days</option>
+                            <option value={14}>14 days (Default)</option>
+                            <option value={30}>30 days</option>
+                            <option value={60}>60 days</option>
+                            <option value={90}>90 days</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                        {course.deadline_days && ![7, 14, 30, 60, 90].includes(course.deadline_days) && (
+                            <div className="mt-2">
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={365}
+                                    value={course.deadline_days}
+                                    onChange={(e) => updateCourse("deadline_days", parseInt(e.target.value))}
+                                    placeholder="Enter number of days"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Enter custom number of days (1-365)</p>
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                            Max Attempts
+                        </label>
+                        <select
+                            value={course.max_attempts || 2}
+                            onChange={(e) => updateCourse("max_attempts", parseInt(e.target.value))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                            <option value={1}>1 Attempt</option>
+                            <option value={2}>2 Attempts (Default)</option>
+                            <option value={3}>3 Attempts</option>
+                            <option value={5}>5 Attempts</option>
+                            <option value={999}>Unlimited</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Delivery Format */}
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-3">
+                        Delivery Format
+                    </label>
+                    <div className="flex gap-4">
+                        <label className={`flex-1 p-4 border rounded-lg cursor-pointer transition-colors ${course.delivery_format === 'pages' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'}`}>
+                            <input
+                                type="radio"
+                                name="delivery_format"
+                                value="pages"
+                                checked={course.delivery_format === 'pages' || !course.delivery_format}
+                                onChange={() => updateCourse("delivery_format", "pages")}
+                                className="sr-only"
+                            />
+                            <div className="font-medium text-slate-900 mb-1">Pages View</div>
+                            <div className="text-sm text-slate-500">Continuous scrolling text (Standard)</div>
+                        </label>
+                        <label className={`flex-1 p-4 border rounded-lg cursor-pointer transition-colors ${course.delivery_format === 'slides' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'}`}>
+                            <input
+                                type="radio"
+                                name="delivery_format"
+                                value="slides"
+                                checked={course.delivery_format === 'slides'}
+                                onChange={() => updateCourse("delivery_format", "slides")}
+                                className="sr-only"
+                            />
+                            <div className="font-medium text-slate-900 mb-1">Slides View</div>
+                            <div className="text-sm text-slate-500">Content split into slide-like chunks</div>
+                        </label>
+                    </div>
+                    <p className="text-sm text-slate-500 mt-2">
+                        Slides View presents content one screen at a time. Pages View is continuous text.
+                    </p>
+                </div>
+
+                {/* Quiz Configuration */}
+                <div className="p-4 bg-slate-50 rounded-lg">
+                    <h3 className="font-semibold text-slate-900 mb-3">Quiz Settings</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                Questions per Attempt
+                            </label>
+                            <input
+                                type="number"
+                                min={3}
+                                max={20}
+                                value={course.quiz_config?.questions_per_attempt || 5}
+                                onChange={(e) => updateQuizConfig("questions_per_attempt", parseInt(e.target.value))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                            {course.quiz_config?.questions_per_attempt > quizQuestions.length && (
+                                <p className="text-sm text-red-600 mt-1">
+                                    You have {quizQuestions.length} question{quizQuestions.length !== 1 ? 's' : ''} in the bank. Reduce number of questions per attempt or add more questions.
+                                </p>
+                            )}
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                Feedback Timing
+                            </label>
+                            <select
+                                value={course.quiz_config?.feedback_timing || "end"}
+                                onChange={(e) => updateQuizConfig("feedback_timing", e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                            >
+                                <option value="end">At end of quiz</option>
+                                <option value="immediate">After each question</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                Question Order
+                            </label>
+                            <select
+                                value={course.quiz_config?.question_order || "randomized"}
+                                onChange={(e) => updateQuizConfig("question_order", e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                            >
+                                <option value="randomized">Randomized (Default)</option>
+                                <option value="fixed">Fixed Order</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex gap-3">
+                <button
+                    onClick={onBack}
+                    className="px-6 py-3 border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+                >
+                    <ArrowLeft className="w-5 h-5" />
+                    Back
+                </button>
+                <button
+                    onClick={onNext}
+                    disabled={saving}
+                    className="flex-1 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                    {saving ? "Saving..." : "Next: Review & Publish"}
+                    <ArrowRight className="w-5 h-5" />
+                </button>
             </div>
         </div>
     );
@@ -365,7 +667,7 @@ function LessonNotesReview({ lessonNotes, setLessonNotes, onNext, onBack, saving
 }
 
 // Quiz Questions Review Component
-function QuizQuestionsReview({ questions, setQuestions, onNext, onBack, saving }: any) {
+function QuizQuestionsReview({ questions, setQuestions, objectives, onNext, onBack, saving }: any) {
     const addQuestion = () => {
         setQuestions([
             ...questions,
@@ -380,6 +682,7 @@ function QuizQuestionsReview({ questions, setQuestions, onNext, onBack, saving }
                     { id: "opt-3", text: "" },
                 ],
                 correct_answer: "",
+                objective_id: "",
             },
         ]);
     };
@@ -412,7 +715,7 @@ function QuizQuestionsReview({ questions, setQuestions, onNext, onBack, saving }
         <div>
             <h2 className="text-2xl font-bold text-slate-900 mb-2">Review Quiz Questions</h2>
             <p className="text-slate-600 mb-6">
-                Edit quiz questions. Minimum 3 questions required.
+                Edit quiz questions. Minimum 3 questions required. Map each question to a learning objective.
             </p>
 
             <div className="space-y-6 mb-6">
@@ -428,6 +731,24 @@ function QuizQuestionsReview({ questions, setQuestions, onNext, onBack, saving }
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                             )}
+                        </div>
+
+                        <div className="mb-3">
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                Learning Objective
+                            </label>
+                            <select
+                                value={q.objective_id || ""}
+                                onChange={(e) => updateQuestion(qIndex, "objective_id", e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                            >
+                                <option value="">Select an objective...</option>
+                                {objectives?.map((obj: any) => (
+                                    <option key={obj.id} value={obj.id}>
+                                        {obj.text.length > 100 ? obj.text.substring(0, 100) + "..." : obj.text}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         <input

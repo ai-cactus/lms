@@ -11,6 +11,7 @@ import {
     AlertCircle,
     Edit,
     Eye,
+    Trash2,
 } from "lucide-react";
 
 interface Course {
@@ -272,6 +273,25 @@ function CoursesListContent() {
                                                     >
                                                         <Edit className="w-4 h-4" />
                                                         Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (window.confirm("Are you sure you want to delete this course? This action cannot be undone.")) {
+                                                                const { deleteCourse } = await import("@/app/actions/course");
+                                                                const result = await deleteCourse(course.id);
+                                                                if (result.success) {
+                                                                    // Refresh the list locally or wait for revalidate
+                                                                    loadCourses();
+                                                                    // Optional: Show success toast
+                                                                } else {
+                                                                    alert(result.error);
+                                                                }
+                                                            }
+                                                        }}
+                                                        className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1 ml-2"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                        Delete
                                                     </button>
                                                 </div>
                                             </td>

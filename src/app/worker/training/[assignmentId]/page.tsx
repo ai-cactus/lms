@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { CheckCircle, BookOpen, ClipboardCheck, ArrowLeft, X } from "lucide-react";
+import { CheckCircle, BookOpen, ClipboardCheck, ArrowLeft, X, ChevronRight, ChevronLeft, GraduationCap } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -20,10 +20,17 @@ export default function TrainingPage() {
     const [submitting, setSubmitting] = useState(false);
     const [signature, setSignature] = useState("");
     const [acknowledged, setAcknowledged] = useState(false);
+
+    // Slides View State
+    const [slides, setSlides] = useState<string[]>([]);
+    const [currentSlide, setCurrentSlide] = useState(0);
+    const [isSlideView, setIsSlideView] = useState(false);
+
     const router = useRouter();
     const params = useParams();
     const supabase = createClient();
     const assignmentId = params.assignmentId as string;
+    const contentRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         loadAssignment();
@@ -47,6 +54,7 @@ export default function TrainingPage() {
             id,
             title,
             lesson_notes,
+            delivery_format,
             quiz_questions(
               id,
               question_text,
@@ -62,6 +70,18 @@ export default function TrainingPage() {
             if (error) throw error;
 
             setAssignment(data);
+
+            // Initialize Slides if applicable
+            // Handle course as single object (Supabase returns it as array in types but single object in reality)
+            const course = Array.isArray(data.course) ? data.course[0] : data.course;
+            if (course?.delivery_format === 'slides' && course?.lesson_notes) {
+                // Split by horizontal rule '---'
+                const rawSlides = course.lesson_notes.split(/^---$/m).map((s: string) => s.trim()).filter(Boolean);
+                if (rawSlides.length > 0) {
+                    setSlides(rawSlides);
+                    setIsSlideView(true);
+                }
+            }
 
             // Update status to in_progress if still not_started
             if (data.status === "not_started") {
@@ -91,12 +111,26 @@ export default function TrainingPage() {
         setCurrentStep("quiz");
     };
 
+    const nextSlide = () => {
+        if (currentSlide < slides.length - 1) {
+            setCurrentSlide(curr => curr + 1);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
+
+    const prevSlide = () => {
+        if (currentSlide > 0) {
+            setCurrentSlide(curr => curr - 1);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
+
     // Scroll to top when step changes
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [currentStep]);
 
-    const handleQuizSubmit = () => {
+    const handleQuizSubmit = async () => {
         const questions = assignment.course.quiz_questions;
 
         // Validate all questions answered
@@ -105,18 +139,46 @@ export default function TrainingPage() {
             return;
         }
 
-        // Calculate score
+        // Calculate score and build answers array
         let correct = 0;
-        questions.forEach((q: any) => {
-            if (quizAnswers[q.id] === q.correct_answer) {
-                correct++;
-            }
+        const answersData = questions.map((q: any) => {
+            const isCorrect = quizAnswers[q.id] === q.correct_answer;
+            if (isCorrect) correct++;
+
+            return {
+                questionId: q.id,
+                questionText: q.question_text,
+                selectedOption: quizAnswers[q.id],
+                correctAnswer: q.correct_answer,
+                isCorrect
+            };
         });
 
         const score = Math.round((correct / questions.length) * 100);
         setQuizScore(score);
 
-        if (score >= 80) {
+        const passed = score >= 80;
+
+        // Save quiz attempt to database
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { saveQuizAttempt } = await import("@/app/actions/quiz");
+                await saveQuizAttempt({
+                    workerId: user.id,
+                    courseId: assignment.course.id,
+                    assignmentId: assignmentId,
+                    score,
+                    passed,
+                    answers: answersData
+                });
+            }
+        } catch (err) {
+            console.error("Failed to save quiz attempt:", err);
+            // Continue even if logging fails
+        }
+
+        if (passed) {
             setQuizPassed(true);
             setCurrentStep("acknowledgment");
         } else {
@@ -176,7 +238,7 @@ export default function TrainingPage() {
     if (loading) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="text-slate-600">Loading training...</div>
+                <div className="text-slate-600 animate-pulse">Loading training content...</div>
             </div>
         );
     }
@@ -198,260 +260,322 @@ export default function TrainingPage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-slate-50 font-sans">
             {/* Header */}
-            <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-                <div className="max-w-6xl mx-auto px-4 py-4">
-                    <div className="flex items-center justify-between mb-4">
+            <div className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
+                <div className="max-w-5xl mx-auto px-4 py-3">
+                    <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={handleExit}
-                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-slate-700"
                                 title="Exit training"
                             >
-                                <X className="w-5 h-5 text-slate-600" />
+                                <X className="w-5 h-5" />
                             </button>
                             <div>
-                                <h1 className="text-xl font-bold text-slate-900">{assignment.course.title}</h1>
-                                <p className="text-sm text-slate-600">Complete all steps to finish this training</p>
+                                <h1 className="text-lg font-bold text-slate-900 leading-tight">{assignment.course.title}</h1>
+                                <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                                    <span className="flex items-center gap-1">
+                                        <BookOpen className="w-3 h-3" />
+                                        {isSlideView ? "Interactive Slides" : "Standard Reading"}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Progress Steps */}
-                    <div className="flex items-center gap-4">
-                        {/* Step 1: Lesson */}
-                        <div className="flex items-center gap-2">
+                        {/* Progress Steps */}
+                        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
+                            {/* Step 1: Lesson */}
                             <div
-                                className={`flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm ${currentStep === "lesson"
-                                    ? "bg-indigo-600 text-white"
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${currentStep === "lesson"
+                                    ? "bg-white text-indigo-600 shadow-sm"
                                     : lessonViewed
-                                        ? "bg-green-600 text-white"
-                                        : "bg-gray-200 text-gray-500"
+                                        ? "text-green-600"
+                                        : "text-slate-500"
                                     }`}
                             >
-                                {lessonViewed ? <CheckCircle className="w-5 h-5" /> : "1"}
+                                {lessonViewed ? <CheckCircle className="w-4 h-4" /> : <span>1</span>}
+                                <span className="hidden sm:inline">Lesson</span>
                             </div>
-                            <span className="text-sm font-medium text-slate-700">Lesson</span>
-                        </div>
 
-                        <div className="flex-1 h-0.5 bg-gray-300" />
-
-                        {/* Step 2: Quiz */}
-                        <div className="flex items-center gap-2">
+                            {/* Step 2: Quiz */}
                             <div
-                                className={`flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm ${currentStep === "quiz"
-                                    ? "bg-indigo-600 text-white"
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${currentStep === "quiz"
+                                    ? "bg-white text-indigo-600 shadow-sm"
                                     : quizPassed
-                                        ? "bg-green-600 text-white"
-                                        : "bg-gray-200 text-gray-500"
+                                        ? "text-green-600"
+                                        : "text-slate-500"
                                     }`}
                             >
-                                {quizPassed ? <CheckCircle className="w-5 h-5" /> : "2"}
+                                {quizPassed ? <CheckCircle className="w-4 h-4" /> : <span>2</span>}
+                                <span className="hidden sm:inline">Quiz</span>
                             </div>
-                            <span className="text-sm font-medium text-slate-700">Quiz</span>
-                        </div>
 
-                        <div className="flex-1 h-0.5 bg-gray-300" />
-
-                        {/* Step 3: Acknowledgment */}
-                        <div className="flex items-center gap-2">
+                            {/* Step 3: Acknowledgment */}
                             <div
-                                className={`flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm ${currentStep === "acknowledgment"
-                                    ? "bg-indigo-600 text-white"
-                                    : "bg-gray-200 text-gray-500"
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${currentStep === "acknowledgment"
+                                    ? "bg-white text-indigo-600 shadow-sm"
+                                    : "text-slate-500"
                                     }`}
                             >
-                                3
+                                <span>3</span>
+                                <span className="hidden sm:inline">Finish</span>
                             </div>
-                            <span className="text-sm font-medium text-slate-700">Acknowledgment</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Content */}
-            <div className="max-w-6xl mx-auto px-4 py-8">
+            {/* Content Area */}
+            <div className="max-w-4xl mx-auto px-4 py-8">
                 {currentStep === "lesson" && (
-                    <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
-                        <div className="prose prose-slate prose-lg max-w-none mb-8
-                            prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-slate-900
-                            prose-h1:!text-4xl prose-h1:!mb-8 prose-h1:!mt-0 prose-h1:pb-4 prose-h1:border-b prose-h1:border-slate-200
-                            prose-h2:!text-2xl prose-h2:!mt-12 prose-h2:!mb-6
-                            prose-h3:!text-xl prose-h3:!mt-8 prose-h3:!mb-4
-                            prose-p:text-slate-600 prose-p:leading-relaxed prose-p:mb-6
-                            prose-strong:text-slate-900 prose-strong:font-semibold
-                            prose-code:text-indigo-600 prose-code:bg-indigo-50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
-                            prose-pre:bg-slate-900 prose-pre:text-slate-50 prose-pre:rounded-xl prose-pre:p-6
-                            prose-ul:my-6 prose-ul:space-y-2
-                            prose-ol:my-6 prose-ol:space-y-2
-                            prose-li:text-slate-600
-                            prose-blockquote:border-l-indigo-500 prose-blockquote:bg-indigo-50 prose-blockquote:py-4 prose-blockquote:text-slate-700
-                            prose-table:border-collapse prose-table:w-full
-                            prose-th:bg-slate-50 prose-th:border prose-th:border-slate-200 prose-th:p-3 prose-th:text-slate-900
-                            prose-td:border prose-td:border-slate-200 prose-td:p-3 prose-td:text-slate-600
-                            prose-img:rounded-xl prose-img:shadow-lg">
-                            <ReactMarkdown
-                                remarkPlugins={[remarkMath]}
-                                rehypePlugins={[rehypeKatex]}
-                            >
-                                {assignment.course.lesson_notes}
-                            </ReactMarkdown>
-                        </div>
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {isSlideView ? (
+                            /* SLIDES VIEW */
+                            <div className="flex flex-col gap-6">
+                                {/* Progress Bar */}
+                                <div className="w-full bg-gray-200 rounded-full h-2 mb-2 overflow-hidden">
+                                    <div
+                                        className="bg-indigo-600 h-2 rounded-full transition-all duration-300 ease-out"
+                                        style={{ width: `${((currentSlide + 1) / slides.length) * 100}%` }}
+                                    />
+                                </div>
+                                <div className="text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                                    Slide {currentSlide + 1} of {slides.length}
+                                </div>
 
-                        {/* Scroll indicator - simplified for now */}
-                        <div className="border-t border-gray-200 pt-6">
-                            <p className="text-sm text-slate-600 mb-4">
-                                Please review all the lesson content above before proceeding to the quiz.
-                            </p>
-                            <button
-                                onClick={handleLessonComplete}
-                                className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
-                            >
-                                I&apos;ve Reviewed the Lesson - Continue to Quiz
-                            </button>
-                        </div>
+                                {/* Slide Card */}
+                                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 md:p-12 min-h-[60vh] flex flex-col justify-center relative overflow-hidden">
+                                    {/* Decorative background element */}
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full -translate-y-1/2 translate-x-1/2 opacity-50 blur-3xl pointer-events-none" />
+
+                                    <div className="prose prose-lg md:prose-xl max-w-none prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-700 prose-li:text-slate-700 relative z-10">
+                                        <ReactMarkdown
+                                            remarkPlugins={[remarkMath]}
+                                            rehypePlugins={[rehypeKatex]}
+                                        >
+                                            {slides[currentSlide]}
+                                        </ReactMarkdown>
+                                    </div>
+                                </div>
+
+                                {/* Navigation Controls */}
+                                <div className="flex items-center justify-between gap-4 sticky bottom-6 z-20">
+                                    <button
+                                        onClick={prevSlide}
+                                        disabled={currentSlide === 0}
+                                        className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all
+                                            disabled:opacity-0 disabled:pointer-events-none
+                                            bg-white text-slate-700 shadow-md hover:shadow-lg hover:bg-gray-50 border border-gray-200"
+                                    >
+                                        <ChevronLeft className="w-5 h-5" />
+                                        Previous
+                                    </button>
+
+                                    {currentSlide === slides.length - 1 ? (
+                                        <button
+                                            onClick={handleLessonComplete}
+                                            className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                                        >
+                                            Complete Lesson
+                                            <CheckCircle className="w-5 h-5" />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={nextSlide}
+                                            className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                                        >
+                                            Next Slide
+                                            <ChevronRight className="w-5 h-5" />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            /* STANDARD READER VIEW */
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 md:p-12 max-w-[65ch] mx-auto">
+                                <div className="prose prose-lg prose-slate max-w-none
+                                    prose-headings:font-display prose-headings:font-bold prose-headings:tracking-tight
+                                    prose-h1:text-4xl prose-h1:mb-8 prose-h1:pb-4 prose-h1:border-b prose-h1:border-slate-100
+                                    prose-p:leading-relaxed prose-p:text-slate-600
+                                    prose-strong:text-slate-900 prose-strong:font-semibold
+                                    prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50/50 prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:rounded-r-lg prose-blockquote:not-italic
+                                    prose-code:text-indigo-600 prose-code:bg-indigo-50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none
+                                    prose-img:rounded-xl prose-img:shadow-md">
+                                    <ReactMarkdown
+                                        remarkPlugins={[remarkMath]}
+                                        rehypePlugins={[rehypeKatex]}
+                                    >
+                                        {assignment.course.lesson_notes}
+                                    </ReactMarkdown>
+                                </div>
+
+                                <div className="mt-12 pt-8 border-t border-gray-100 flex justify-center">
+                                    <button
+                                        onClick={handleLessonComplete}
+                                        className="px-8 py-4 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                                    >
+                                        <CheckCircle className="w-5 h-5" />
+                                        I&apos;ve Completed the Reading
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {currentStep === "quiz" && (
-                    <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
-                        <h2 className="text-2xl font-bold text-slate-900 mb-6">Knowledge Check</h2>
-                        <p className="text-slate-600 mb-8">
-                            Answer the following questions to demonstrate your understanding. You need 80% to pass.
-                        </p>
+                    <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+                            <div className="bg-indigo-600 px-8 py-6 text-white">
+                                <h2 className="text-2xl font-bold flex items-center gap-2">
+                                    <GraduationCap className="w-8 h-8" />
+                                    Knowledge Check
+                                </h2>
+                                <p className="text-indigo-100 mt-2 opacity-90">
+                                    Answer the following questions to demonstrate your understanding. Pass mark is 80%.
+                                </p>
+                            </div>
 
-                        {/* Quiz component will go here - simplified for now */}
-                        <div className="space-y-6">
-                            {assignment.course.quiz_questions?.map((q: any, idx: number) => (
-                                <div key={q.id} className="border border-gray-200 rounded-lg p-4">
-                                    <p className="font-medium text-slate-900 mb-3">
-                                        {idx + 1}. {q.question_text}
-                                    </p>
-                                    <div className="space-y-2">
-                                        {Array.isArray(q.options) && q.options.map((option: any, optIdx: number) => {
-                                            const optionText = typeof option === 'object' ? option?.text || '' : option;
-                                            const optionValue = typeof option === 'object' ? option?.text || '' : option;
+                            <div className="p-8">
+                                <div className="space-y-8">
+                                    {assignment.course.quiz_questions?.map((q: any, idx: number) => (
+                                        <div key={q.id} className="p-6 bg-slate-50 rounded-xl border border-slate-200 hover:border-indigo-200 transition-colors">
+                                            <p className="font-semibold text-lg text-slate-900 mb-4 flex gap-3">
+                                                <span className="flex-shrink-0 w-8 h-8 bg-white border border-slate-200 rounded-full flex items-center justify-center text-sm text-slate-500 shadow-sm">
+                                                    {idx + 1}
+                                                </span>
+                                                {q.question_text}
+                                            </p>
+                                            <div className="space-y-3 pl-11">
+                                                {Array.isArray(q.options) && q.options.map((option: any, optIdx: number) => {
+                                                    const optionText = typeof option === 'object' ? option?.text || '' : option;
+                                                    const optionValue = typeof option === 'object' ? option?.text || '' : option;
+                                                    const isSelected = quizAnswers[q.id] === optionValue;
 
-                                            return (
-                                                <label key={optIdx} className="flex items-center gap-2 cursor-pointer">
-                                                    <input
-                                                        type="radio"
-                                                        name={`question-${q.id}`}
-                                                        value={optionValue}
-                                                        checked={quizAnswers[q.id] === optionValue}
-                                                        onChange={(e) => setQuizAnswers({ ...quizAnswers, [q.id]: e.target.value })}
-                                                        className="w-4 h-4"
-                                                    />
-                                                    <span className="text-slate-700">{optionText}</span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
+                                                    return (
+                                                        <label
+                                                            key={optIdx}
+                                                            className={`flex items-center gap-3 p-4 rounded-lg cursor-pointer border transition-all ${isSelected
+                                                                ? "bg-indigo-50 border-indigo-500 shadow-sm"
+                                                                : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                                                                }`}
+                                                        >
+                                                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${isSelected ? "border-indigo-600 bg-indigo-600" : "border-gray-300 bg-white"
+                                                                }`}>
+                                                                {isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                            </div>
+                                                            <input
+                                                                type="radio"
+                                                                name={`question-${q.id}`}
+                                                                value={optionValue}
+                                                                checked={isSelected}
+                                                                onChange={(e) => setQuizAnswers({ ...quizAnswers, [q.id]: e.target.value })}
+                                                                className="hidden"
+                                                            />
+                                                            <span className={`text-base ${isSelected ? "text-indigo-900 font-medium" : "text-slate-700"}`}>
+                                                                {optionText}
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
 
-                        <div className="mt-8 flex gap-4">
-                            <button
-                                onClick={() => setCurrentStep("lesson")}
-                                className="px-6 py-3 border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-                            >
-                                Back to Lesson
-                            </button>
-                            <button
-                                onClick={handleQuizSubmit}
-                                className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
-                            >
-                                Submit Quiz
-                            </button>
+                                <div className="mt-10 flex gap-4 pt-6 border-t border-gray-100">
+                                    <button
+                                        onClick={() => setCurrentStep("lesson")}
+                                        className="px-6 py-3 border border-gray-300 text-slate-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                                    >
+                                        Back to Lesson
+                                    </button>
+                                    <button
+                                        onClick={handleQuizSubmit}
+                                        className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                                    >
+                                        Submit Quiz
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
 
                 {currentStep === "acknowledgment" && (
-                    <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-8 flex items-start gap-3">
-                            <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
-                            <div>
-                                <h3 className="text-lg font-semibold text-green-900">Congratulations! You passed!</h3>
-                                <p className="text-green-700">
-                                    You scored {quizScore}%. Please complete the final step below to finish this training.
-                                </p>
-                            </div>
-                        </div>
-
-                        <h2 className="text-2xl font-bold text-slate-900 mb-6">Training Acknowledgment</h2>
-                        <p className="text-slate-600 mb-8">
-                            Please acknowledge that you have completed this training and understand the material.
-                        </p>
-
-                        <div className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    Your Name
-                                </label>
-                                <input
-                                    type="text"
-                                    readOnly
-                                    value="Worker Name"
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                                />
+                    <div className="max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8 md:p-10 text-center">
+                            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <CheckCircle className="w-10 h-10 text-green-600" />
                             </div>
 
-                            <div>
-                                <label className="flex items-start gap-3 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={acknowledged}
-                                        onChange={(e) => setAcknowledged(e.target.checked)}
-                                        className="mt-1 w-5 h-5"
-                                    />
-                                    <span className="text-sm text-slate-700">
-                                        I acknowledge that I have completed this training and understand the material covered.
-                                        I will apply this knowledge in my work.
-                                    </span>
-                                </label>
+                            <h3 className="text-3xl font-bold text-slate-900 mb-2">Congratulations!</h3>
+                            <p className="text-lg text-slate-600 mb-8">
+                                You passed with a score of <span className="font-bold text-green-600">{quizScore}%</span>
+                            </p>
+
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-left mb-8">
+                                <h4 className="font-semibold text-slate-900 mb-4">Final Step: Acknowledgment</h4>
+                                <div className="space-y-6">
+                                    <label className="flex items-start gap-3 cursor-pointer group">
+                                        <div className="mt-1 relative">
+                                            <input
+                                                type="checkbox"
+                                                checked={acknowledged}
+                                                onChange={(e) => setAcknowledged(e.target.checked)}
+                                                className="peer sr-only"
+                                            />
+                                            <div className="w-5 h-5 border-2 border-gray-300 rounded peer-checked:bg-indigo-600 peer-checked:border-indigo-600 transition-colors" />
+                                            <CheckCircle className="w-3.5 h-3.5 text-white absolute top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
+                                        </div>
+                                        <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors leading-relaxed">
+                                            I acknowledge that I have completed this training and understand the material covered.
+                                            I will apply this knowledge in my work to the best of my ability.
+                                        </span>
+                                    </label>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                                            Digital Signature (Type your full name)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g., John Doe"
+                                            value={signature}
+                                            onChange={(e) => setSignature(e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    Digital Signature (Type your full name)
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="Type your full name"
-                                    value={signature}
-                                    onChange={(e) => setSignature(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                                />
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => setCurrentStep("quiz")}
+                                    className="px-6 py-3 border border-gray-300 text-slate-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    onClick={handleAcknowledgmentComplete}
+                                    disabled={submitting}
+                                    className="flex-1 px-6 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-200"
+                                >
+                                    {submitting ? (
+                                        <>
+                                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                            Submitting...
+                                        </>
+                                    ) : (
+                                        <>
+                                            Complete Training
+                                            <CheckCircle className="w-5 h-5" />
+                                        </>
+                                    )}
+                                </button>
                             </div>
-                        </div>
-
-                        <div className="mt-8 flex gap-4">
-                            <button
-                                onClick={() => setCurrentStep("quiz")}
-                                className="px-6 py-3 border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-                            >
-                                Back to Quiz
-                            </button>
-                            <button
-                                onClick={handleAcknowledgmentComplete}
-                                disabled={submitting}
-                                className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                            >
-                                {submitting ? (
-                                    <>
-                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                        Submitting...
-                                    </>
-                                ) : (
-                                    <>
-                                        <CheckCircle className="w-5 h-5" />
-                                        Submit Training
-                                    </>
-                                )}
-                            </button>
                         </div>
                     </div>
                 )}

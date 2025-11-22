@@ -3,6 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { updateWorker } from "@/app/actions/worker";
+import { ROLES, CATEGORIES, type WorkerRole, type WorkerCategory } from "@/lib/carf-courses";
+import AssessmentHistoryTab from "@/components/AssessmentHistoryTab";
+import LearningNeedsTab from "@/components/LearningNeedsTab";
 import {
     ArrowLeft,
     Mail,
@@ -12,7 +16,12 @@ import {
     BookOpen,
     Plus,
     X,
-    Loader2
+    Loader2,
+    User,
+    ClipboardList,
+    BrainCircuit,
+    Pencil,
+    Save
 } from "lucide-react";
 
 interface Worker {
@@ -20,6 +29,10 @@ interface Worker {
     full_name: string;
     email: string;
     role: string;
+    job_title: string;
+    worker_category: string;
+    supervisor_id: string | null;
+    status: string;
     created_at: string;
     deactivated_at: string | null;
 }
@@ -48,6 +61,20 @@ export default function WorkerDetailsPage() {
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedCourseId, setSelectedCourseId] = useState("");
     const [dueDate, setDueDate] = useState("");
+    const [activeTab, setActiveTab] = useState<"overview" | "history" | "needs">("overview");
+
+    // Edit Modal State
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editFormData, setEditFormData] = useState({
+        fullName: "",
+        email: "",
+        role: "",
+        category: "",
+        supervisorId: "",
+        status: "active"
+    });
+    const [supervisors, setSupervisors] = useState<any[]>([]);
+    const [saving, setSaving] = useState(false);
 
     const router = useRouter();
     const params = useParams();
@@ -112,6 +139,16 @@ export default function WorkerDetailsPage() {
             const available = (coursesData || []).filter(c => !assignedCourseIds.includes(c.id));
             setAvailableCourses(available);
 
+            // Get supervisors for edit modal
+            const { data: supervisorData } = await supabase
+                .from("users")
+                .select("id, full_name")
+                .eq("organization_id", workerData.organization_id)
+                .eq("role", "supervisor")
+                .is("deactivated_at", null);
+
+            setSupervisors(supervisorData || []);
+
             setLoading(false);
         } catch (error) {
             console.error("Error loading worker data:", error);
@@ -145,6 +182,49 @@ export default function WorkerDetailsPage() {
             alert("Failed to assign course");
         } finally {
             setAssigning(false);
+        }
+    };
+
+    const handleEditClick = () => {
+        if (!worker) return;
+        setEditFormData({
+            fullName: worker.full_name,
+            email: worker.email,
+            role: worker.job_title || worker.role, // Fallback to role if job_title is empty
+            category: worker.worker_category || "",
+            supervisorId: worker.supervisor_id || "",
+            status: worker.status || "active"
+        });
+        setShowEditModal(true);
+    };
+
+    const handleUpdateWorker = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSaving(true);
+
+        try {
+            const formData = new FormData();
+            formData.append("workerId", workerId);
+            formData.append("fullName", editFormData.fullName);
+            formData.append("email", editFormData.email);
+            formData.append("role", editFormData.role);
+            formData.append("category", editFormData.category);
+            formData.append("supervisorId", editFormData.supervisorId);
+            formData.append("status", editFormData.status);
+
+            const result = await updateWorker({}, formData);
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            await loadWorkerData();
+            setShowEditModal(false);
+        } catch (error) {
+            console.error("Error updating worker:", error);
+            alert("Failed to update worker profile");
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -194,6 +274,13 @@ export default function WorkerDetailsPage() {
                             </div>
                         </div>
                         <button
+                            onClick={handleEditClick}
+                            className="px-4 py-2 bg-white border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2 mr-2"
+                        >
+                            <Pencil className="w-4 h-4" />
+                            Edit Profile
+                        </button>
+                        <button
                             onClick={() => setShowAssignModal(true)}
                             className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
                         >
@@ -228,47 +315,108 @@ export default function WorkerDetailsPage() {
                     </div>
                 </div>
 
-                {/* Assignments List */}
+                {/* Tabbed Content */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-200">
-                        <h2 className="text-lg font-semibold text-slate-900">Course Assignments</h2>
-                    </div>
-                    <div className="divide-y divide-gray-200">
-                        {assignments.length === 0 ? (
-                            <div className="p-8 text-center text-slate-500">
-                                No courses assigned yet.
-                            </div>
-                        ) : (
-                            assignments.map((assignment) => (
-                                <div key={assignment.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                                    <div>
-                                        <h3 className="font-medium text-slate-900 mb-1">{assignment.courses.title}</h3>
-                                        <div className="flex items-center gap-4 text-sm text-slate-500">
-                                            <span>Due: {new Date(assignment.deadline).toLocaleDateString()}</span>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        {assignment.status === "completed" && (
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                <CheckCircle className="w-3 h-3" />
-                                                Completed
-                                            </span>
-                                        )}
-                                        {assignment.status === "overdue" && (
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                                <AlertCircle className="w-3 h-3" />
-                                                Overdue
-                                            </span>
-                                        )}
-                                        {assignment.status === "pending" && (
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                                <Clock className="w-3 h-3" />
-                                                In Progress
-                                            </span>
-                                        )}
-                                    </div>
+                    {/* Tab Navigation */}
+                    <div className="border-b border-gray-200">
+                        <nav className="flex -mb-px">
+                            <button
+                                onClick={() => setActiveTab("overview")}
+                                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "overview"
+                                    ? "border-indigo-600 text-indigo-600"
+                                    : "border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300"
+                                    }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <User className="w-4 h-4" />
+                                    Overview
                                 </div>
-                            ))
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("history")}
+                                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "history"
+                                    ? "border-indigo-600 text-indigo-600"
+                                    : "border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300"
+                                    }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <ClipboardList className="w-4 h-4" />
+                                    Assessment History
+                                </div>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("needs")}
+                                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "needs"
+                                    ? "border-indigo-600 text-indigo-600"
+                                    : "border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300"
+                                    }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <BrainCircuit className="w-4 h-4" />
+                                    Learning Needs
+                                </div>
+                            </button>
+                        </nav>
+                    </div>
+
+                    {/* Tab Content */}
+                    <div className="p-6">
+                        {activeTab === "overview" && (
+                            <div>
+                                <h2 className="text-lg font-semibold text-slate-900 mb-4">Course Assignments</h2>
+                                <div className="divide-y divide-gray-200">
+                                    {assignments.length === 0 ? (
+                                        <div className="p-8 text-center text-slate-500">
+                                            No courses assigned yet.
+                                        </div>
+                                    ) : (
+                                        assignments.map((assignment) => (
+                                            <div key={assignment.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                                                <div>
+                                                    <h3 className="font-medium text-slate-900 mb-1">{assignment.courses.title}</h3>
+                                                    <div className="flex items-center gap-4 text-sm text-slate-500">
+                                                        <span>Due: {new Date(assignment.deadline).toLocaleDateString()}</span>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    {assignment.status === "completed" && (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                            <CheckCircle className="w-3 h-3" />
+                                                            Completed
+                                                        </span>
+                                                    )}
+                                                    {assignment.status === "overdue" && (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                            <AlertCircle className="w-3 h-3" />
+                                                            Overdue
+                                                        </span>
+                                                    )}
+                                                    {assignment.status === "pending" && (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                            <Calendar className="w-3 h-3" />
+                                                            In Progress
+                                                        </span>
+                                                    )}
+                                                    {assignment.status === "not_started" && (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                            <Calendar className="w-3 h-3" />
+                                                            Not Started
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === "history" && (
+                            <AssessmentHistoryTab workerId={workerId} />
+                        )}
+
+                        {activeTab === "needs" && (
+                            <LearningNeedsTab workerId={workerId} />
                         )}
                     </div>
                 </div>
@@ -343,26 +491,149 @@ export default function WorkerDetailsPage() {
                     </div>
                 </div>
             )}
-        </div>
-    );
-}
 
-function Clock({ className }: { className?: string }) {
-    return (
-        <svg
-            className={className}
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        >
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-        </svg>
+            {/* Edit Worker Modal */}
+            {showEditModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-xl font-bold text-slate-900">Edit Worker Profile</h2>
+                            <button
+                                onClick={() => setShowEditModal(false)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleUpdateWorker} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Full Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editFormData.fullName}
+                                    onChange={(e) => setEditFormData({ ...editFormData, fullName: e.target.value })}
+                                    required
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Email
+                                </label>
+                                <input
+                                    type="email"
+                                    value={editFormData.email}
+                                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                                    required
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Role / Job Title
+                                </label>
+                                <select
+                                    value={editFormData.role}
+                                    onChange={(e) => setEditFormData({ ...editFormData, role: e.target.value })}
+                                    required
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="">Select a role...</option>
+                                    {ROLES.map((role) => (
+                                        <option key={role} value={role}>
+                                            {role}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Worker Category
+                                </label>
+                                <select
+                                    value={editFormData.category}
+                                    onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                                    required
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="">Select a category...</option>
+                                    {CATEGORIES.map((cat) => (
+                                        <option key={cat} value={cat}>
+                                            {cat}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Supervisor
+                                </label>
+                                <select
+                                    value={editFormData.supervisorId}
+                                    onChange={(e) => setEditFormData({ ...editFormData, supervisorId: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="">No supervisor assigned</option>
+                                    {supervisors.map((sup) => (
+                                        <option key={sup.id} value={sup.id}>
+                                            {sup.full_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Status
+                                </label>
+                                <select
+                                    value={editFormData.status}
+                                    onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                </select>
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditModal(false)}
+                                    className="flex-1 py-2 border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    {saving ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save className="w-4 h-4" />
+                                            Save Changes
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+        </div>
     );
 }

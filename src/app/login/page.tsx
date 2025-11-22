@@ -19,12 +19,33 @@ export default function LoginPage() {
         setError("");
 
         try {
+            // Import auth actions
+            const { logLoginAttempt, checkAccountLockout } = await import("@/app/actions/auth");
+
+            // Check if account is locked
+            const lockoutTime = await checkAccountLockout(email);
+            if (lockoutTime) {
+                const minutesRemaining = Math.ceil((lockoutTime.getTime() - Date.now()) / 60000);
+                setError(`Account temporarily locked due to multiple failed login attempts. Please try again in ${minutesRemaining} minute${minutesRemaining !== 1 ? 's' : ''}.`);
+                setLoading(false);
+                return;
+            }
+
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             });
 
-            if (error) throw error;
+            if (error) {
+                // Log failed attempt
+                await logLoginAttempt({
+                    email,
+                    success: false,
+                    errorMessage: error.message,
+                    userAgent: navigator.userAgent
+                });
+                throw error;
+            }
 
             // Get user role from users table
             const { data: userData, error: userError } = await supabase
@@ -34,6 +55,14 @@ export default function LoginPage() {
                 .single();
 
             if (userError) throw userError;
+
+            // Log successful attempt
+            await logLoginAttempt({
+                email,
+                success: true,
+                userId: data.user.id,
+                userAgent: navigator.userAgent
+            });
 
             // Redirect based on role
             if (userData.role === "admin") {
@@ -118,10 +147,7 @@ export default function LoginPage() {
                 </div>
 
                 <p className="text-center text-sm text-slate-500 mt-6">
-                    Don&apos;t have an account?{" "}
-                    <a href="/signup" className="text-indigo-600 hover:text-indigo-700 font-medium">
-                        Sign up
-                    </a>
+                    Need an account? Contact your administrator.
                 </p>
             </div>
         </div>

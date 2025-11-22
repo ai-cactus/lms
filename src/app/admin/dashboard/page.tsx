@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import OrgPerformanceOverview from "@/components/OrgPerformanceOverview";
 import {
     BookOpen,
     Users,
@@ -11,7 +12,8 @@ import {
     Clock,
     CheckCircle,
     Plus,
-    Bell
+    Bell,
+    Settings
 } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -22,6 +24,7 @@ export default function AdminDashboard() {
         pendingConfirmations: 0,
         complianceRate: 0,
     });
+    const [organizationId, setOrganizationId] = useState<string>("");
     const [loading, setLoading] = useState(true);
     const router = useRouter();
     const supabase = createClient();
@@ -46,6 +49,8 @@ export default function AdminDashboard() {
                 .single();
 
             if (!userData) return;
+
+            setOrganizationId(userData.organization_id);
 
             // Get total published courses
             const { count: coursesCount } = await supabase
@@ -232,6 +237,11 @@ export default function AdminDashboard() {
                             </div>
                         )}
                     </div>
+
+                    {/* Performance Overview - Spans full width on mobile, half on large screens if we had 4 items, but here we can make it span full width or just sit in the grid */}
+                    <div className="lg:col-span-2">
+                        {organizationId && <OrgPerformanceOverview organizationId={organizationId} />}
+                    </div>
                 </div>
 
                 {/* Quick Actions */}
@@ -261,6 +271,14 @@ export default function AdminDashboard() {
                             <BookOpen className="w-6 h-6 text-indigo-600 mb-2" />
                             <h3 className="font-semibold text-slate-900">Export Reports</h3>
                             <p className="text-sm text-slate-600">Download accreditation pack</p>
+                        </button>
+                        <button
+                            onClick={() => router.push("/admin/settings")}
+                            className="p-4 border border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-left"
+                        >
+                            <Settings className="w-6 h-6 text-indigo-600 mb-2" />
+                            <h3 className="font-semibold text-slate-900">Settings</h3>
+                            <p className="text-sm text-slate-600">Manage notifications</p>
                         </button>
                     </div>
                 </div>

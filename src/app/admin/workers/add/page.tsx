@@ -11,6 +11,7 @@ export default function AddWorkerPage() {
         fullName: "",
         email: "",
         role: "" as WorkerRole | "",
+        category: "",
         supervisorId: "",
     });
     const [suggestedCourses, setSuggestedCourses] = useState<CARFCourse[]>([]);
@@ -28,9 +29,16 @@ export default function AddWorkerPage() {
         loadInitialData();
     }, []);
 
+    const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
+    const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
     useEffect(() => {
         if (formData.role && programType) {
-            const suggested = getSuggestedCourses(formData.role as WorkerRole, programType);
+            const suggested = getSuggestedCourses(
+                formData.role as WorkerRole,
+                programType,
+                formData.category // Pass category
+            );
             setSuggestedCourses(suggested);
 
             // Auto-select required courses
@@ -38,8 +46,30 @@ export default function AddWorkerPage() {
                 suggested.filter((c) => c.required).map((c) => c.id)
             );
             setSelectedCourses(requiredIds);
+
+            // Fetch AI Suggestions
+            fetchAiSuggestions(formData.role, programType, formData.category);
         }
-    }, [formData.role, programType]);
+    }, [formData.role, formData.category, programType]);
+
+    const fetchAiSuggestions = async (role: string, program: string, category: string) => {
+        setLoadingSuggestions(true);
+        try {
+            const response = await fetch("/api/generate-suggestions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ role, programType: program, category }),
+            });
+            const data = await response.json();
+            if (data.suggestions) {
+                setAiSuggestions(data.suggestions);
+            }
+        } catch (error) {
+            console.error("Failed to fetch AI suggestions:", error);
+        } finally {
+            setLoadingSuggestions(false);
+        }
+    };
 
     const loadInitialData = async () => {
         try {
@@ -87,8 +117,12 @@ export default function AddWorkerPage() {
         e.preventDefault();
         if (step === 1) {
             // Validate step 1
-            if (!formData.fullName || !formData.email || !formData.role) {
-                setError("Please fill in all required fields");
+            if (!formData.fullName || !formData.email || !formData.role || !formData.category) {
+                if (!formData.category) {
+                    setError("Please select a worker category. This ensures the right trainings are auto-assigned.");
+                } else {
+                    setError("Please fill in all required fields");
+                }
                 return;
             }
             setError("");
@@ -96,7 +130,7 @@ export default function AddWorkerPage() {
             return;
         }
 
-        // Step 2: Create worker
+        // Step 2: Create worker via Server Action
         setLoading(true);
         setError("");
 
@@ -110,55 +144,47 @@ export default function AddWorkerPage() {
                 .eq("id", user.id)
                 .single();
 
-            // Create auth user for worker
-            const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-                email: formData.email,
-                email_confirm: true,
-                user_metadata: {
-                    full_name: formData.fullName,
-                },
+            // Prepare FormData for Server Action
+            const submitData = new FormData();
+            submitData.append("email", formData.email);
+            submitData.append("fullName", formData.fullName);
+            submitData.append("role", formData.role);
+            submitData.append("category", formData.category);
+            submitData.append("supervisorId", formData.supervisorId);
+            submitData.append("organizationId", userData?.organization_id || "");
+
+            // Separate selected courses into CARF courses (need verification) and direct UUIDs
+            const carfCourses: CARFCourse[] = [];
+            const directCourseIds: string[] = [];
+
+            selectedCourses.forEach(id => {
+                const suggested = suggestedCourses.find(sc => sc.id === id);
+                if (suggested) {
+                    carfCourses.push(suggested);
+                } else {
+                    // Check if it's an AI suggestion (which might not be in suggestedCourses)
+                    // Actually, AI suggestions are just text recommendations for now, 
+                    // unless we map them to real courses. 
+                    // For this implementation, we'll treat them as "to be created" or map if existing found.
+                    directCourseIds.push(id);
+                }
             });
 
-            if (authError) throw authError;
+            submitData.append("carfCourses", JSON.stringify(carfCourses));
+            submitData.append("directCourseIds", JSON.stringify(directCourseIds));
 
-            // Create user profile
-            const { data: workerData, error: workerError } = await supabase
-                .from("users")
-                .insert({
-                    id: authData.user.id,
-                    organization_id: userData?.organization_id,
-                    email: formData.email,
-                    full_name: formData.fullName,
-                    role: "worker",
-                    supervisor_id: formData.supervisorId || null,
-                })
-                .select()
-                .single();
+            // Call Server Action
+            const { createWorker } = await import("@/app/actions/worker");
+            const result = await createWorker({}, submitData);
 
-            if (workerError) throw workerError;
-
-            // Assign selected courses
-            if (selectedCourses.size > 0) {
-                const assignments = Array.from(selectedCourses).map((courseId) => ({
-                    course_id: courseId,
-                    worker_id: workerData.id,
-                    assigned_by: user.id,
-                    deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // 14 days
-                    status: "not_started",
-                }));
-
-                const { error: assignError } = await supabase
-                    .from("course_assignments")
-                    .insert(assignments);
-
-                if (assignError) throw assignError;
+            if (result.error) {
+                throw new Error(result.error);
             }
-
-            // TODO: Send welcome email via Resend
 
             // Redirect to success or workers list
             router.push("/admin/workers?added=true");
         } catch (err: any) {
+            console.error("Error creating worker:", err);
             setError(err.message || "Failed to create worker");
             setLoading(false);
         }
@@ -261,25 +287,41 @@ export default function AddWorkerPage() {
                                 </p>
                             </div>
 
+                            <select
+                                id="role"
+                                value={formData.role}
+                                onChange={(e) => setFormData({ ...formData, role: e.target.value as WorkerRole })}
+                                required
+                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white appearance-none"
+                            >
+                                <option value="">Select a role...</option>
+                                {ROLES.map((role) => (
+                                    <option key={role} value={role}>
+                                        {role}
+                                    </option>
+                                ))}
+                            </select>
+
                             <div>
-                                <label htmlFor="role" className="block text-sm font-medium text-slate-700 mb-1">
-                                    Role <span className="text-red-500">*</span>
+                                <label htmlFor="category" className="block text-sm font-medium text-slate-700 mb-1">
+                                    Worker Category <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
                                     <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                                     <select
-                                        id="role"
-                                        value={formData.role}
-                                        onChange={(e) => setFormData({ ...formData, role: e.target.value as WorkerRole })}
+                                        id="category"
+                                        value={formData.category}
+                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                                         required
                                         className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white appearance-none"
                                     >
-                                        <option value="">Select a role...</option>
-                                        {ROLES.map((role) => (
-                                            <option key={role} value={role}>
-                                                {role}
-                                            </option>
-                                        ))}
+                                        <option value="">Select a category...</option>
+                                        <option value="Direct Care Staff">Direct Care Staff</option>
+                                        <option value="Peer Support">Peer Support</option>
+                                        <option value="Nurse">Nurse</option>
+                                        <option value="Clinical Supervisor">Clinical Supervisor</option>
+                                        <option value="Admin / Back Office">Admin / Back Office</option>
+                                        <option value="Executive / Leadership">Executive / Leadership</option>
                                     </select>
                                 </div>
                             </div>
@@ -334,8 +376,8 @@ export default function AddWorkerPage() {
                                             <div
                                                 key={course.id}
                                                 className={`p-4 border-2 rounded-lg transition-colors cursor-pointer ${isSelected
-                                                        ? "border-indigo-500 bg-indigo-50"
-                                                        : "border-gray-200 hover:border-gray-300"
+                                                    ? "border-indigo-500 bg-indigo-50"
+                                                    : "border-gray-200 hover:border-gray-300"
                                                     } ${course.required ? "opacity-100" : ""}`}
                                                 onClick={() => toggleCourse(matchingCourse?.id || course.id, course.required)}
                                             >
@@ -375,6 +417,69 @@ export default function AddWorkerPage() {
                                 </div>
                             )}
 
+                            {/* AI Suggestions Section */}
+                            {loadingSuggestions ? (
+                                <div className="p-4 border border-indigo-100 bg-indigo-50 rounded-lg mb-6 flex items-center gap-3">
+                                    <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                                    <span className="text-sm text-indigo-700">AI is analyzing CARF standards for additional recommendations...</span>
+                                </div>
+                            ) : aiSuggestions.length > 0 && (
+                                <div className="mb-6">
+                                    <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-bold rounded-full uppercase tracking-wide">AI Recommended</span>
+                                        Additional Suggestions
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {aiSuggestions.map((suggestion, idx) => {
+                                            // Check if we have a matching course for this suggestion
+                                            const matchingCourse = availableCourses.find((c) =>
+                                                c.title.toLowerCase().includes(suggestion.title.toLowerCase())
+                                            );
+                                            const isSelected = matchingCourse ? selectedCourses.has(matchingCourse.id) : false;
+
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    className={`p-4 border rounded-lg transition-colors ${matchingCourse
+                                                        ? "cursor-pointer hover:border-indigo-300 border-gray-200"
+                                                        : "border-gray-200 bg-gray-50 opacity-75"
+                                                        } ${isSelected ? "border-indigo-500 bg-indigo-50" : ""}`}
+                                                    onClick={() => matchingCourse && toggleCourse(matchingCourse.id, false)}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="flex-shrink-0 mt-1">
+                                                            {matchingCourse ? (
+                                                                isSelected ? (
+                                                                    <CheckCircle className="w-5 h-5 text-indigo-600" />
+                                                                ) : (
+                                                                    <div className="w-5 h-5 border-2 border-gray-300 rounded" />
+                                                                )
+                                                            ) : (
+                                                                <div className="w-5 h-5 flex items-center justify-center">
+                                                                    <span className="text-xs text-slate-400">•</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-medium text-slate-900">{suggestion.title}</h4>
+                                                            <p className="text-sm text-slate-600 mt-1">{suggestion.description}</p>
+                                                            <div className="flex items-center gap-2 mt-2">
+                                                                <span className="text-xs text-slate-500">Standard: {suggestion.carfStandard}</span>
+                                                                {!matchingCourse && (
+                                                                    <span className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
+                                                                        Not in library
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Additional Courses */}
                             {availableCourses.length > 0 && (
                                 <div className="mt-8">
@@ -390,8 +495,8 @@ export default function AddWorkerPage() {
                                                     <div
                                                         key={course.id}
                                                         className={`p-3 border rounded-lg cursor-pointer transition-colors ${isSelected
-                                                                ? "border-indigo-500 bg-indigo-50"
-                                                                : "border-gray-200 hover:border-gray-300"
+                                                            ? "border-indigo-500 bg-indigo-50"
+                                                            : "border-gray-200 hover:border-gray-300"
                                                             }`}
                                                         onClick={() => toggleCourse(course.id, false)}
                                                     >
@@ -428,9 +533,10 @@ export default function AddWorkerPage() {
                                 </button>
                             </div>
                         </div>
-                    )}
-                </form>
-            </div>
-        </div>
+                    )
+                    }
+                </form >
+            </div >
+        </div >
     );
 }
