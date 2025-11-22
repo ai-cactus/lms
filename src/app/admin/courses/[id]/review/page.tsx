@@ -283,7 +283,7 @@ export default function CourseReviewPage() {
 }
 
 // Course Configuration Component
-function CourseConfiguration({ course, setCourse, quizQuestions, onNext, onBack, saving }: any) {
+function CourseConfiguration({ course, setCourse, lessonNotes, setLessonNotes, quizQuestions, onNext, onBack, saving }: any) {
     const updateCourse = (field: string, value: any) => {
         setCourse({ ...course, [field]: value });
     };
@@ -293,6 +293,26 @@ function CourseConfiguration({ course, setCourse, quizQuestions, onNext, onBack,
             ...course,
             quiz_config: { ...course.quiz_config, [field]: value }
         });
+    };
+
+    // Handle delivery format change with automatic content conversion
+    const handleDeliveryFormatChange = (newFormat: 'pages' | 'slides') => {
+        const currentFormat = course.delivery_format || 'pages';
+
+        // Only convert if format is actually changing
+        if (currentFormat !== newFormat && lessonNotes) {
+            if (newFormat === 'slides') {
+                // Convert to slides format
+                const convertedContent = convertToSlides(lessonNotes);
+                setLessonNotes(convertedContent);
+            } else {
+                // Convert back to pages format
+                const convertedContent = convertToPages(lessonNotes);
+                setLessonNotes(convertedContent);
+            }
+        }
+
+        updateCourse("delivery_format", newFormat);
     };
 
     return (
@@ -452,7 +472,7 @@ function CourseConfiguration({ course, setCourse, quizQuestions, onNext, onBack,
                                 name="delivery_format"
                                 value="pages"
                                 checked={course.delivery_format === 'pages' || !course.delivery_format}
-                                onChange={() => updateCourse("delivery_format", "pages")}
+                                onChange={() => handleDeliveryFormatChange("pages")}
                                 className="sr-only"
                             />
                             <div className="font-medium text-slate-900 mb-1">Pages View</div>
@@ -464,7 +484,7 @@ function CourseConfiguration({ course, setCourse, quizQuestions, onNext, onBack,
                                 name="delivery_format"
                                 value="slides"
                                 checked={course.delivery_format === 'slides'}
-                                onChange={() => updateCourse("delivery_format", "slides")}
+                                onChange={() => handleDeliveryFormatChange("slides")}
                                 className="sr-only"
                             />
                             <div className="font-medium text-slate-900 mb-1">Slides View</div>
