@@ -1,11 +1,15 @@
 "use client";
 
-import { Bell, ChevronDown } from "lucide-react";
+import { Bell, ChevronDown, Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export function Header() {
+interface HeaderProps {
+    onOpenMobileMenu: () => void;
+}
+
+export function Header({ onOpenMobileMenu }: HeaderProps) {
     const pathname = usePathname();
     const [userName, setUserName] = useState("Loading...");
     const [userInitials, setUserInitials] = useState("--");
@@ -55,21 +59,37 @@ export function Header() {
     };
 
     return (
-        <header className="bg-white h-16 px-8 flex items-center justify-between sticky top-0 z-20 border-b border-gray-100">
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-                <span>Home</span>
-                <span>/</span>
-                <span className="text-slate-900 font-medium">{getTitle()}</span>
-            </div>
-
-            <div className="flex items-center gap-6">
-                <button className="relative text-slate-400 hover:text-slate-600 transition-colors">
-                    <Bell className="w-6 h-6" />
-                    {/* Remove notification badge or make it dynamic */}
+        <header className="bg-white h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-20 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+                {/* Hamburger menu button - shows on mobile, hides on desktop */}
+                <button
+                    onClick={onOpenMobileMenu}
+                    className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    aria-label="Open menu"
+                >
+                    <Menu className="w-6 h-6 text-slate-600" />
                 </button>
 
-                <div className="flex items-center gap-3 pl-6 border-l border-gray-200">
-                    <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
+                {/* Breadcrumb */}
+                <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
+                    <span>Home</span>
+                    <span>/</span>
+                    <span className="text-slate-900 font-medium">{getTitle()}</span>
+                </div>
+
+                {/* Mobile title */}
+                <div className="sm:hidden">
+                    <span className="text-lg font-semibold text-slate-900">{getTitle()}</span>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-3 sm:gap-6">
+                <button className="relative text-slate-400 hover:text-slate-600 transition-colors p-2">
+                    <Bell className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+
+                <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6 border-l border-gray-200">
+                    <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs sm:text-sm">
                         {userInitials}
                     </div>
                     <div className="hidden md:block">
