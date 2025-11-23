@@ -19,17 +19,25 @@ export default function LoginPage() {
         setError("");
 
         try {
-            // Import auth actions
-            const { logLoginAttempt, checkAccountLockout } = await import("@/app/actions/auth");
+            let isLocked = false;
 
-            // Check if account is locked
-            const lockoutTime = await checkAccountLockout(email);
-            if (lockoutTime) {
-                const minutesRemaining = Math.ceil((lockoutTime.getTime() - Date.now()) / 60000);
-                setError(`Account temporarily locked due to multiple failed login attempts. Please try again in ${minutesRemaining} minute${minutesRemaining !== 1 ? 's' : ''}.`);
-                setLoading(false);
-                return;
+            // Try to check lockout, but don't fail login if this doesn't work
+            try {
+                const { checkAccountLockout } = await import("@/app/actions/auth");
+                const lockoutTime = await checkAccountLockout(email);
+                if (lockoutTime) {
+                    const minutesRemaining = Math.ceil((lockoutTime.getTime() - Date.now()) / 60000);
+                    setError(`Account temporarily locked due to multiple failed login attempts. Please try again in ${minutesRemaining} minute${minutesRemaining !== 1 ? 's' : ''}.`);
+                    setLoading(false);
+                    isLocked = true;
+                    return;
+                }
+            } catch (lockoutError) {
+                console.warn("Could not check account lockout:", lockoutError);
+                // Continue with login even if lockout check fails
             }
+
+            if (isLocked) return;
 
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
@@ -37,13 +45,18 @@ export default function LoginPage() {
             });
 
             if (error) {
-                // Log failed attempt
-                await logLoginAttempt({
-                    email,
-                    success: false,
-                    errorMessage: error.message,
-                    userAgent: navigator.userAgent
-                });
+                // Try to log failed attempt, but don't block if it fails
+                try {
+                    const { logLoginAttempt } = await import("@/app/actions/auth");
+                    await logLoginAttempt({
+                        email,
+                        success: false,
+                        errorMessage: error.message,
+                        userAgent: navigator.userAgent
+                    });
+                } catch (logError) {
+                    console.warn("Could not log failed login attempt:", logError);
+                }
                 throw error;
             }
 
@@ -56,13 +69,18 @@ export default function LoginPage() {
 
             if (userError) throw userError;
 
-            // Log successful attempt
-            await logLoginAttempt({
-                email,
-                success: true,
-                userId: data.user.id,
-                userAgent: navigator.userAgent
-            });
+            // Try to log successful attempt, but don't block if it fails
+            try {
+                const { logLoginAttempt } = await import("@/app/actions/auth");
+                await logLoginAttempt({
+                    email,
+                    success: true,
+                    userId: data.user.id,
+                    userAgent: navigator.userAgent
+                });
+            } catch (logError) {
+                console.warn("Could not log successful login attempt:", logError);
+            }
 
             // Redirect based on role
             if (userData.role === "admin") {
