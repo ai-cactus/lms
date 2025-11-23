@@ -46,6 +46,18 @@ function WorkersListContent() {
         loadWorkers();
     }, []);
 
+    // Close dropdowns when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (!target.closest('[id^="dropdown-"]') && !target.closest('button')) {
+                document.querySelectorAll('[id^="dropdown-"]').forEach(d => d.classList.add('hidden'));
+            }
+        };
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, []);
+
     useEffect(() => {
         filterWorkers();
     }, [workers, searchQuery, roleFilter, statusFilter]);
@@ -259,19 +271,19 @@ function WorkersListContent() {
                         <table className="w-full">
                             <thead className="bg-slate-50 border-b border-gray-200">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Worker
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                                    <th className="hidden md:table-cell px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Supervisor
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Courses
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Status
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Actions
                                     </th>
                                 </tr>
@@ -287,19 +299,19 @@ function WorkersListContent() {
                                 ) : (
                                     filteredWorkers.map((worker) => (
                                         <tr key={worker.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-4">
                                                 <div>
-                                                    <p className="font-medium text-slate-900">{worker.full_name}</p>
-                                                    <p className="text-sm text-slate-500">{worker.email}</p>
+                                                    <p className="font-medium text-slate-900 text-sm sm:text-base">{worker.full_name}</p>
+                                                    <p className="text-xs sm:text-sm text-slate-500">{worker.email}</p>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="hidden md:table-cell px-6 py-4">
                                                 <p className="text-sm text-slate-700">
                                                     -
                                                 </p>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-4 text-sm">
+                                            <td className="px-3 sm:px-6 py-4">
+                                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-sm">
                                                     <div className="flex items-center gap-1">
                                                         <CheckCircle className="w-4 h-4 text-green-600" />
                                                         <span className="text-slate-700">
@@ -309,47 +321,90 @@ function WorkersListContent() {
                                                     {((worker.assignments?.overdue || 0) > 0) && (
                                                         <div className="flex items-center gap-1">
                                                             <AlertCircle className="w-4 h-4 text-red-600" />
-                                                            <span className="text-red-600">{worker.assignments?.overdue} overdue</span>
+                                                            <span className="text-red-600 text-xs sm:text-sm">{worker.assignments?.overdue} overdue</span>
                                                         </div>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-4">
                                                 {worker.deactivated_at ? (
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">
                                                         <UserX className="w-3 h-3" />
-                                                        Inactive
+                                                        <span className="hidden sm:inline">Inactive</span>
                                                     </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
                                                         <CheckCircle className="w-3 h-3" />
-                                                        Active
+                                                        <span className="hidden sm:inline">Active</span>
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-4">
                                                 <div className="flex items-center gap-2">
+                                                    {/* View button - always visible */}
                                                     <button
                                                         onClick={() => router.push(`/admin/workers/${worker.id}`)}
-                                                        className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                                                        className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-700 font-medium"
                                                     >
                                                         View
                                                     </button>
-                                                    {worker.deactivated_at ? (
+
+                                                    {/* Three-dot menu - only for deactivate/reactivate */}
+                                                    <div className="relative">
                                                         <button
-                                                            onClick={() => handleReactivate(worker.id)}
-                                                            className="text-sm text-green-600 hover:text-green-700 font-medium"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const workerId = worker.id;
+                                                                const dropdown = document.getElementById(`dropdown-${workerId}`);
+                                                                if (dropdown) {
+                                                                    const isHidden = dropdown.classList.contains('hidden');
+                                                                    // Close all other dropdowns
+                                                                    document.querySelectorAll('[id^="dropdown-"]').forEach(d => d.classList.add('hidden'));
+                                                                    // Toggle this dropdown
+                                                                    if (isHidden) {
+                                                                        dropdown.classList.remove('hidden');
+                                                                    } else {
+                                                                        dropdown.classList.add('hidden');
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className="p-1 hover:bg-gray-100 rounded transition-colors"
                                                         >
-                                                            Reactivate
+                                                            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+                                                                <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                                                                <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+                                                            </svg>
                                                         </button>
-                                                    ) : (
-                                                        <button
-                                                            onClick={() => handleDeactivate(worker.id)}
-                                                            className="text-sm text-red-600 hover:text-red-700 font-medium"
+                                                        {/* Dropdown menu */}
+                                                        <div
+                                                            id={`dropdown-${worker.id}`}
+                                                            className="hidden absolute right-0 bottom-full mb-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10"
+                                                            onClick={(e) => e.stopPropagation()}
                                                         >
-                                                            Deactivate
-                                                        </button>
-                                                    )}
+                                                            {worker.deactivated_at ? (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        document.getElementById(`dropdown-${worker.id}`)?.classList.add('hidden');
+                                                                        handleReactivate(worker.id);
+                                                                    }}
+                                                                    className="w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-green-50 transition-colors"
+                                                                >
+                                                                    Reactivate
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        document.getElementById(`dropdown-${worker.id}`)?.classList.add('hidden');
+                                                                        handleDeactivate(worker.id);
+                                                                    }}
+                                                                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                                                >
+                                                                    Deactivate
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>

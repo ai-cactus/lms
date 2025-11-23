@@ -110,6 +110,15 @@ export default function TrainingPage() {
         }
     };
 
+    // Helper function to safely get question text
+    const getQuestionText = (questionText: any): string => {
+        if (typeof questionText === 'string') return questionText;
+        if (questionText && typeof questionText === 'object' && 'text' in questionText) {
+            return questionText.text;
+        }
+        return '';
+    };
+
     const handleQuizSubmit = async () => {
         const questions = assignment.course.quiz_questions;
 
@@ -125,7 +134,7 @@ export default function TrainingPage() {
 
             return {
                 questionId: q.id,
-                questionText: q.question_text,
+                questionText: getQuestionText(q.question_text),
                 selectedOption: quizAnswers[q.id],
                 correctAnswer: q.correct_answer,
                 isCorrect
@@ -287,7 +296,7 @@ export default function TrainingPage() {
                                 <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[400px]">
                                     <div className="mb-8">
                                         <p className="font-medium text-slate-900 text-lg mb-6">
-                                            {currentQuestionIndex + 1}. {currentQuestion.question_text}
+                                            {currentQuestionIndex + 1}. {getQuestionText(currentQuestion.question_text)}
                                         </p>
 
                                         {currentQuestion.question_type === 'short_answer' ? (
@@ -303,13 +312,13 @@ export default function TrainingPage() {
                                                     <label
                                                         key={idx}
                                                         className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${quizAnswers[currentQuestion.id] === option
-                                                                ? "border-indigo-600 bg-indigo-50"
-                                                                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                                                            ? "border-indigo-600 bg-indigo-50"
+                                                            : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                                                             }`}
                                                     >
                                                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${quizAnswers[currentQuestion.id] === option
-                                                                ? "border-indigo-600"
-                                                                : "border-gray-300"
+                                                            ? "border-indigo-600"
+                                                            : "border-gray-300"
                                                             }`}>
                                                             {quizAnswers[currentQuestion.id] === option && (
                                                                 <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full" />
@@ -499,7 +508,7 @@ export default function TrainingPage() {
                                                     <div key={q.id} className="border-b border-gray-100 pb-8 last:border-0">
                                                         <p className="font-bold text-slate-900 mb-4 flex gap-2">
                                                             <span>{idx + 1}.</span>
-                                                            {q.question_text}
+                                                            {getQuestionText(q.question_text)}
                                                         </p>
 
                                                         <div className="space-y-3 mb-4">
@@ -507,10 +516,10 @@ export default function TrainingPage() {
                                                                 <div
                                                                     key={optIdx}
                                                                     className={`p-4 rounded-lg border ${q.correct_answer === option
-                                                                            ? "bg-green-50 border-green-200"
-                                                                            : quizAnswers[q.id] === option
-                                                                                ? "bg-red-50 border-red-200"
-                                                                                : "bg-white border-gray-100"
+                                                                        ? "bg-green-50 border-green-200"
+                                                                        : quizAnswers[q.id] === option
+                                                                            ? "bg-red-50 border-red-200"
+                                                                            : "bg-white border-gray-100"
                                                                         }`}
                                                                 >
                                                                     <div className="flex items-center justify-between">

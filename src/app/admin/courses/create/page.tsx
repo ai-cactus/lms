@@ -1,11 +1,13 @@
 "use client";
 
 import { WizardContainer } from "@/components/wizard/wizard-container";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CourseData } from "@/types/course";
 
 export default function CreateCoursePage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const policyId = searchParams.get("policyId");
 
     const handleClose = () => {
         router.push("/admin/training-center");
@@ -21,6 +23,7 @@ export default function CreateCoursePage() {
         <WizardContainer
             onClose={handleClose}
             onComplete={handleComplete}
+            initialPolicyId={policyId || undefined}
         />
     );
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Hexagon } from "@phosphor-icons/react";
+import { createClient } from "@/lib/supabase/client";
 import { Step1Category } from "./step-1-category";
 import { Step2Upload } from "./step-2-upload";
 import { Step3Details } from "./step-3-details";
@@ -14,40 +15,31 @@ import { CourseData, QuizConfig } from "@/types/course";
 interface WizardContainerProps {
     onClose: () => void;
     onComplete: (courseData: CourseData, files: File[]) => void;
+    initialPolicyId?: string;
 }
 
-export function WizardContainer({ onClose, onComplete }: WizardContainerProps) {
+export function WizardContainer({ onClose, onComplete, initialPolicyId }: WizardContainerProps) {
     const [step, setStep] = useState(1);
     const [courseData, setCourseData] = useState<CourseData>({});
     const [files, setFiles] = useState<File[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const supabase = createClient();
 
     const totalSteps = 7;
     const progress = (step / totalSteps) * 100;
 
-    const handleNext = () => {
-        if (step < totalSteps) {
-            setStep(step + 1);
-        } else {
-            // Final Step - Complete
-            onComplete(courseData, files);
+    useEffect(() => {
+        if (initialPolicyId) {
+            loadPolicy(initialPolicyId);
         }
-    };
+    }, [initialPolicyId]);
 
-    const handleBack = () => {
-        if (step > 1) {
-            setStep(step - 1);
-        }
-    };
-
-    const handleFilesSelected = async (selectedFiles: File[]) => {
-        setFiles(selectedFiles);
+    const performAnalysis = async (filesToAnalyze: File[]) => {
         setIsAnalyzing(true);
-
         try {
             // 1. Read files
             const fileContents = await Promise.all(
-                selectedFiles.map(async (file) => {
+                filesToAnalyze.map(async (file) => {
                     return new Promise<{ name: string; type: string; data: string }>((resolve, reject) => {
                         const reader = new FileReader();
                         reader.onload = () => {
@@ -74,11 +66,74 @@ export function WizardContainer({ onClose, onComplete }: WizardContainerProps) {
 
             const { metadata } = await res.json();
             setCourseData((prev) => ({ ...prev, ...metadata }));
-            setStep(3);
+            return true;
         } catch (error) {
             console.error("Error analyzing files:", error);
             alert("Failed to analyze documents. Please try again.");
+            return false;
         } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    const handleNext = () => {
+        if (step < totalSteps) {
+            setStep(step + 1);
+        } else {
+            // Final Step - Complete
+            onComplete(courseData, files);
+        }
+    };
+
+    const handleBack = () => {
+        if (step > 1) {
+            setStep(step - 1);
+        }
+    };
+
+    const handleFilesSelected = async (selectedFiles: File[]) => {
+        setFiles(selectedFiles);
+        const success = await performAnalysis(selectedFiles);
+        if (success) {
+            setStep(3);
+        }
+    };
+
+    const loadPolicy = async (policyId: string) => {
+        try {
+            setIsAnalyzing(true);
+
+            // 1. Fetch policy details
+            const { data: policy, error } = await supabase
+                .from("policies")
+                .select("*")
+                .eq("id", policyId)
+                .single();
+
+            if (error || !policy) throw new Error("Policy not found");
+
+            // Set default title immediately, but let user choose category
+            setCourseData(prev => ({
+                ...prev,
+                title: policy.title
+            }));
+
+            // Start at Step 1 (Category) as requested
+            setStep(1);
+
+            // 2. Fetch file content
+            const response = await fetch(policy.file_url);
+            const blob = await response.blob();
+            const file = new File([blob], policy.file_name, { type: blob.type });
+
+            // Update files state so it shows in Step 2
+            setFiles([file]);
+
+            // 3. Trigger analysis in background (don't auto-advance)
+            await performAnalysis([file]);
+
+        } catch (error) {
+            console.error("Error loading policy:", error);
             setIsAnalyzing(false);
         }
     };
