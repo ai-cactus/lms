@@ -62,14 +62,17 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
                 body: JSON.stringify({ files: fileContents }),
             });
 
-            if (!res.ok) throw new Error("Analysis failed");
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                throw new Error(errorData.error || `Analysis failed with status ${res.status}`);
+            }
 
             const { metadata } = await res.json();
             setCourseData((prev) => ({ ...prev, ...metadata }));
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error analyzing files:", error);
-            alert("Failed to analyze documents. Please try again.");
+            alert(error.message || "Failed to analyze documents. Please try again.");
             return false;
         } finally {
             setIsAnalyzing(false);

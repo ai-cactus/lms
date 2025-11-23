@@ -19,11 +19,19 @@ export async function POST(req: NextRequest) {
                 return `--- DOCUMENT: ${file.name} ---\n${text}\n--- END DOCUMENT ---\n`;
             } catch (e) {
                 console.error(`Failed to process file ${file.name}:`, e);
-                return `--- DOCUMENT: ${file.name} (FAILED TO READ) ---\n\n--- END DOCUMENT ---\n`;
+                return null;
             }
         }));
 
-        const fullText = processedFiles.join("\n");
+        const validDocs = processedFiles.filter(doc => doc !== null) as string[];
+
+        if (validDocs.length === 0) {
+            return NextResponse.json({
+                error: "No valid text could be extracted from the provided files. Please upload .docx or text files."
+            }, { status: 400 });
+        }
+
+        const fullText = validDocs.join("\n");
 
         // 2. Analyze and extract metadata
         const prompt = `

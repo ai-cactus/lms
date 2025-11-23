@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import mammoth from 'mammoth';
 
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'processed-files');
 
@@ -55,20 +56,27 @@ export async function extractTextFromFile(file: { name: string; type: string; da
     let text = "";
 
     // 3. Process based on type
-    // Note: For PDFs and images, we'll attempt to read as text
-    // This works for text-based PDFs but not scanned/image PDFs
-    if (file.type === 'application/pdf') {
-        console.warn(`PDF file detected. Attempting to read as text (works only for text-based PDFs, not scanned images).`);
-        text = buffer.toString('utf-8');
-    } else if (file.type.startsWith('image/')) {
-        console.warn(`Image file detected. Cannot perform OCR. Attempting to read as text (likely to fail).`);
-        text = buffer.toString('utf-8');
-    } else if (file.type === 'text/plain' || file.type === 'application/json' || file.type === 'text/markdown' || file.type === '') {
-        text = buffer.toString('utf-8');
-    } else {
-        // Try as text for unknown types
-        console.warn(`Unknown file type ${file.type}, attempting to read as text.`);
-        text = buffer.toString('utf-8');
+    try {
+        if (file.type === 'application/pdf') {
+            console.warn(`PDF file detected. Skipping text extraction as no PDF parser is configured.`);
+            return `[PDF File: ${file.name} - Content extraction not supported yet]`;
+        } else if (file.name.endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            console.log("Extracting text from DOCX using mammoth...");
+            const result = await mammoth.extractRawText({ buffer });
+            text = result.value;
+            if (result.messages.length > 0) {
+                console.log("Mammoth messages:", result.messages);
+            }
+        } else if (file.type.startsWith('image/')) {
+            console.warn(`Image file detected. Skipping text extraction.`);
+            return `[Image File: ${file.name} - Content extraction not supported]`;
+        } else {
+            // Default to plain text
+            text = buffer.toString('utf-8');
+        }
+    } catch (error) {
+        console.error(`Error extracting text from ${file.name}:`, error);
+        throw new Error(`Failed to extract text from ${file.name}`);
     }
 
     // 4. Save to Cache
