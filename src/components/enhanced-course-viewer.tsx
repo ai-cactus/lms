@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle, ArrowDown } from "lucide-react";
+import { CheckCircle, ArrowLeft, ArrowRight, Lightbulb, Eye } from "@phosphor-icons/react";
+import ReactMarkdown from "react-markdown";
 
 interface EnhancedCourseViewerProps {
     lessonContent: string;
@@ -9,124 +10,210 @@ interface EnhancedCourseViewerProps {
     onComplete: () => void;
 }
 
+interface Section {
+    id: string;
+    title: string;
+    level: number;
+}
+
 export default function EnhancedCourseViewer({
     lessonContent,
     courseTitle,
     onComplete,
 }: EnhancedCourseViewerProps) {
-    const [scrolledToBottom, setScrolledToBottom] = useState(false);
+    const [sections, setSections] = useState<Section[]>([]);
+    const [activeSection, setActiveSection] = useState<string>("");
     const [scrollProgress, setScrollProgress] = useState(0);
+    const [completedSections, setCompletedSections] = useState<number>(0);
     const contentRef = useRef<HTMLDivElement>(null);
-    const bottomMarkerRef = useRef<HTMLDivElement>(null);
 
+    // Extract sections from content on mount
     useEffect(() => {
-        const contentElement = contentRef.current;
-        if (!contentElement) return;
+        const extractedSections: Section[] = [];
+        const lines = lessonContent.split("\n");
 
-        const handleScroll = () => {
-            const scrollTop = contentElement.scrollTop;
-            const scrollHeight = contentElement.scrollHeight;
-            const clientHeight = contentElement.clientHeight;
-
-            // Calculate scroll progress
-            const progress = (scrollTop / (scrollHeight - clientHeight)) * 100;
-            setScrollProgress(Math.min(progress, 100));
-
-            // Check if scrolled to bottom (with small threshold)
-            const threshold = 50; // pixels from bottom
-            const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold;
-
-            if (isAtBottom && !scrolledToBottom) {
-                setScrolledToBottom(true);
+        lines.forEach((line, index) => {
+            // Match markdown headers (# Header or ## Header)
+            const headerMatch = line.match(/^(#{1,3})\s+(.+)$/);
+            if (headerMatch) {
+                const level = headerMatch[1].length;
+                const title = headerMatch[2].trim();
+                extractedSections.push({
+                    id: `section-${index}`,
+                    title,
+                    level,
+                });
             }
+        });
+
+        setSections(extractedSections);
+    }, [lessonContent]);
+
+    // Track scroll progress
+    useEffect(() => {
+        const handleScroll = () => {
+            if (!contentRef.current) return;
+
+            const { scrollTop, scrollHeight, clientHeight } = contentRef.current;
+            const progress = (scrollTop / (scrollHeight - clientHeight)) * 100;
+            setScrollProgress(Math.min(Math.max(progress, 0), 100));
+
+            // Calculate completed sections (mock calculation)
+            const completed = Math.floor((progress / 100) * sections.length);
+            setCompletedSections(Math.min(completed, sections.length));
         };
 
-        contentElement.addEventListener("scroll", handleScroll);
+        const contentElement = contentRef.current;
+        if (contentElement) {
+            contentElement.addEventListener("scroll", handleScroll);
+            handleScroll(); // Initial call
+        }
 
-        // Initial check in case content is short enough to not need scrolling
-        handleScroll();
+        return () => contentElement?.removeEventListener("scroll", handleScroll);
+    }, [sections.length]);
 
-        return () => contentElement.removeEventListener("scroll", handleScroll);
-    }, [scrolledToBottom]);
+    const scrollToSection = (sectionId: string) => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "start" });
+            setActiveSection(sectionId);
+        }
+    };
 
-    // Alternative: Use IntersectionObserver for bottom detection
-    useEffect(() => {
-        const bottomMarker = bottomMarkerRef.current;
-        if (!bottomMarker) return;
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting && !scrolledToBottom) {
-                        setScrolledToBottom(true);
-                    }
-                });
-            },
-            { threshold: 1.0 }
-        );
-
-        observer.observe(bottomMarker);
-
-        return () => observer.disconnect();
-    }, [scrolledToBottom]);
+    // Add IDs to headers in the markdown content
+    const processedContent = lessonContent.split("\n").map((line, index) => {
+        const headerMatch = line.match(/^(#{1,3})\s+(.+)$/);
+        if (headerMatch) {
+            return `<div id="section-${index}">${line}</div>`;
+        }
+        return line;
+    }).join("\n");
 
     return (
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-            {/* Progress Bar */}
-            <div className="h-1 bg-gray-200">
-                <div
-                    className="h-full bg-indigo-600 transition-all duration-300"
-                    style={{ width: `${scrollProgress}%` }}
-                />
-            </div>
-
-            {/* Content Area */}
-            <div
-                ref={contentRef}
-                className="p-8 max-h-[600px] overflow-y-auto prose max-w-none"
-            >
-                <div dangerouslySetInnerHTML={{ __html: lessonContent }} />
-
-                {/* Bottom marker for IntersectionObserver */}
-                <div ref={bottomMarkerRef} className="h-1" />
-            </div>
-
-            {/* Footer */}
-            <div className="border-t border-gray-200 p-6 bg-slate-50">
-                {!scrolledToBottom ? (
-                    <div className="text-center">
-                        <div className="flex items-center justify-center gap-2 text-slate-600 mb-3">
-                            <ArrowDown className="w-5 h-5 animate-bounce" />
-                            <p className="text-sm font-medium">
-                                Please scroll to the bottom to review all content
+        <div className="flex flex-col h-screen bg-slate-50">
+            {/* Header */}
+            <div className="bg-white border-b border-gray-200 px-8 py-5">
+                <div className="max-w-7xl mx-auto flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
+                            CARF Policy
+                        </span>
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-900">{courseTitle}</h1>
+                            <p className="text-sm text-slate-500 mt-0.5">
+                                {completedSections} of {sections.length || 16} Completed
                             </p>
-                        </div>
-                        <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
-                            <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-indigo-600 transition-all duration-300"
-                                    style={{ width: `${scrollProgress}%` }}
-                                />
-                            </div>
-                            <span>{Math.round(scrollProgress)}%</span>
                         </div>
                     </div>
-                ) : (
-                    <div className="text-center">
-                        <div className="flex items-center justify-center gap-2 text-green-600 mb-4">
-                            <CheckCircle className="w-5 h-5" />
-                            <p className="text-sm font-medium">
-                                You&apos;ve reviewed all the content!
-                            </p>
-                        </div>
+                    <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition-colors">
+                        <Eye className="w-4 h-4" />
+                        View as Slides
+                    </button>
+                </div>
+            </div>
+
+            <div className="flex-1 flex overflow-hidden">
+                {/* Main Content */}
+                <div
+                    ref={contentRef}
+                    className="flex-1 overflow-y-auto px-8 py-8"
+                >
+                    <div className="max-w-4xl mx-auto">
+                        <article className="prose prose-lg max-w-none
+                            prose-headings:font-bold prose-headings:text-slate-900
+                            prose-h1:text-3xl prose-h1:mb-6
+                            prose-h2:text-2xl prose-h2:mb-4 prose-h2:mt-8
+                            prose-h3:text-xl prose-h3:mb-3 prose-h3:mt-6
+                            prose-p:text-slate-700 prose-p:leading-relaxed
+                            prose-li:text-slate-700
+                            prose-strong:text-slate-900
+                            prose-a:text-indigo-600 prose-a:no-underline hover:prose-a:underline">
+
+                            <ReactMarkdown
+                                components={{
+                                    blockquote: ({ children }) => (
+                                        <div className="flex gap-3 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-r-lg my-6 not-prose">
+                                            <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" weight="fill" />
+                                            <div className="text-sm text-slate-700 leading-relaxed">
+                                                {children}
+                                            </div>
+                                        </div>
+                                    ),
+                                }}
+                            >
+                                {processedContent}
+                            </ReactMarkdown>
+                        </article>
+                    </div>
+                </div>
+
+                {/* Sidebar - Table of Contents */}
+                <aside className="w-80 bg-white border-l border-gray-200 overflow-y-auto p-6">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">
+                        Table of Content
+                    </h3>
+                    <nav className="space-y-1">
+                        {sections.length > 0 ? (
+                            sections.map((section, index) => (
+                                <button
+                                    key={section.id}
+                                    onClick={() => scrollToSection(section.id)}
+                                    className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${activeSection === section.id
+                                            ? "bg-indigo-50 text-indigo-700 font-medium"
+                                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                        } ${section.level === 2 ? "pl-6" : section.level === 3 ? "pl-9" : ""}`}
+                                >
+                                    {section.title}
+                                </button>
+                            ))
+                        ) : (
+                            <>
+                                <a href="#benefits" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                    Benefits of remote worksop
+                                </a>
+                                <a href="#challenges" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                    Challenges for remote workshops
+                                </a>
+                                <a href="#successful" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                    What goes into a successful remote work...
+                                </a>
+                                <a href="#best-practices" className="block px-3 py-2 text-sm text-indigo-700 bg-indigo-50 font-medium rounded-lg">
+                                    Best practices for a remote workshop
+                                </a>
+                                <a href="#mistakes" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                    Common remote workshop mistakes
+                                </a>
+                                <a href="#tools" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                    Tools needed for remote workshops
+                                </a>
+                            </>
+                        )}
+                    </nav>
+                </aside>
+            </div>
+
+            {/* Bottom Navigation */}
+            <div className="bg-white border-t border-gray-200 px-8 py-4">
+                <div className="max-w-7xl mx-auto flex items-center justify-between">
+                    <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors">
+                        <ArrowLeft className="w-4 h-4" />
+                        Previous
+                    </button>
+
+                    {scrollProgress >= 80 && (
                         <button
                             onClick={onComplete}
-                            className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+                            className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
                         >
-                            Continue to Quiz
+                            Complete & Continue to Quiz
                         </button>
-                    </div>
-                )}
+                    )}
+
+                    <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-700 hover:bg-slate-800 rounded-lg transition-colors">
+                        Next
+                        <ArrowRight className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
         </div>
     );

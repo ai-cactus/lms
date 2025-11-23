@@ -1,6 +1,7 @@
 "use client";
 
 import { CourseData } from "@/types/course";
+import { CaretDown } from "@phosphor-icons/react";
 
 interface Step3DetailsProps {
     data: CourseData;
@@ -20,116 +21,186 @@ export function Step3Details({ data, onChange }: Step3DetailsProps) {
 
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-2xl font-bold text-slate-900 mb-2 text-center">Course Details</h2>
-            <p className="text-slate-500 mb-8 text-center text-sm">Review the details generated from your documents.</p>
+            <div className="text-center mb-12">
+                <h2 className="text-3xl font-bold text-slate-900 mb-4">Course Details</h2>
+                <p className="text-slate-500 max-w-2xl mx-auto text-base">
+                    Start by uploading the policy or compliance document you want to turn into a course. This will help you analyze and generate lessons and quizzes automatically.
+                </p>
+            </div>
 
-            <div className="space-y-6 max-w-3xl mx-auto">
+            <div className="space-y-8 max-w-4xl mx-auto">
                 {/* Title */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Course Title</label>
-                    <input
-                        type="text"
-                        value={data.title || ""}
-                        onChange={(e) => handleChange("title", e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                    />
+                <div className="grid grid-cols-12 gap-8 items-center">
+                    <label className="col-span-3 text-sm font-medium text-slate-500">Course Title</label>
+                    <div className="col-span-9">
+                        <input
+                            type="text"
+                            value={data.title || ""}
+                            onChange={(e) => handleChange("title", e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-slate-900"
+                        />
+                    </div>
                 </div>
 
                 {/* Description */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Short Description</label>
-                    <textarea
-                        rows={3}
-                        value={data.description || ""}
-                        onChange={(e) => handleChange("description", e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                    />
+                <div className="grid grid-cols-12 gap-8 items-start">
+                    <label className="col-span-3 text-sm font-medium text-slate-500 pt-3">Short Description</label>
+                    <div className="col-span-9">
+                        <textarea
+                            rows={5}
+                            value={data.description || ""}
+                            onChange={(e) => handleChange("description", e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 resize-none"
+                        />
+                    </div>
                 </div>
 
-                {/* Grid for selects */}
-                <div className="grid grid-cols-2 gap-6">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                {/* Category */}
+                <div className="grid grid-cols-12 gap-8 items-center">
+                    <label className="col-span-3 text-sm font-medium text-slate-500">Category</label>
+                    <div className="col-span-9 relative">
                         <select
                             value={data.category || ""}
                             onChange={(e) => handleChange("category", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white"
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
                         >
                             <option value="Healthcare Compliance">Healthcare Compliance</option>
                             <option value="Cybersecurity and Technology">Cybersecurity and Technology</option>
                             <option value="HR & Ethics">HR & Ethics</option>
                             <option value="Medical Equipment">Medical Equipment</option>
                         </select>
+                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Difficulty Level</label>
+                </div>
+
+                {/* Difficulty Level */}
+                <div className="grid grid-cols-12 gap-8 items-center">
+                    <label className="col-span-3 text-sm font-medium text-slate-500">Difficulty Level</label>
+                    <div className="col-span-9 relative">
                         <select
                             value={data.difficulty || "Moderate"}
                             onChange={(e) => handleChange("difficulty", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white"
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
                         >
                             <option>Beginner</option>
                             <option>Moderate</option>
                             <option>Advanced</option>
                         </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Estimated Duration</label>
-                        <select
-                            value={data.duration || "< 45 mins"}
-                            onChange={(e) => handleChange("duration", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white"
-                        >
-                            <option>&lt; 30 mins</option>
-                            <option>&lt; 45 mins</option>
-                            <option>&lt; 1 hour</option>
-                            <option>1-2 hours</option>
-                            <option>2+ hours</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Content Type</label>
-                        <select
-                            value={data.contentType || "Text"}
-                            onChange={(e) => handleChange("contentType", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white"
-                        >
-                            <option>Text</option>
-                            <option>Video</option>
-                            <option>Slides</option>
-                        </select>
+                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                     </div>
                 </div>
 
+                {/* Estimated Duration */}
+                <div className="grid grid-cols-12 gap-8 items-center">
+                    <label className="col-span-3 text-sm font-medium text-slate-500">Estimated Duration</label>
+                    <div className="col-span-9 relative">
+                        <select
+                            value={data.duration || "~60 mins"}
+                            onChange={(e) => handleChange("duration", e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
+                        >
+                            <option>~30 mins</option>
+                            <option>~45 mins</option>
+                            <option>~60 mins</option>
+                            <option>1-2 hours</option>
+                            <option>2+ hours</option>
+                        </select>
+                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    </div>
+                </div>
+
+                {/* Content Type */}
+                <div className="grid grid-cols-12 gap-8 items-center">
+                    <label className="col-span-3 text-sm font-medium text-slate-500">Content Type</label>
+                    <div className="col-span-9 relative">
+                        <select
+                            value={data.contentType || "Notes"}
+                            onChange={(e) => handleChange("contentType", e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
+                        >
+                            <option>Notes</option>
+                            <option>Video</option>
+                            <option>Slides</option>
+                        </select>
+                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    </div>
+                </div>
+
+                {/* No of Notes / Slides */}
+                <div className="grid grid-cols-12 gap-8 items-center">
+                    <label className="col-span-3 text-sm font-medium text-slate-500">No of Notes / Slides</label>
+                    <div className="col-span-9 relative">
+                        <select
+                            value="5"
+                            onChange={() => { }}
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
+                        >
+                            <option>5</option>
+                            <option>10</option>
+                            <option>15</option>
+                        </select>
+                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    </div>
+                </div>
+
+                {/* Deadline to Complete Course */}
+                <div className="grid grid-cols-12 gap-8 items-center">
+                    <label className="col-span-3 text-sm font-medium text-slate-500">Deadline to Complete Course</label>
+                    <div className="col-span-9 relative">
+                        <select
+                            value="30 days"
+                            onChange={() => { }}
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
+                        >
+                            <option>30 days</option>
+                            <option>60 days</option>
+                            <option>90 days</option>
+                        </select>
+                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    </div>
+                </div>
+
+                <div className="border-t border-gray-100 my-8"></div>
+
                 {/* Learning Objectives */}
-                <div>
-                    <label className="block text-sm font-bold text-slate-900 mb-2 mt-6">Learning Objectives</label>
-                    <div className="space-y-2">
+                <div className="grid grid-cols-12 gap-8 items-start">
+                    <div className="col-span-12">
+                        <h3 className="text-lg font-bold text-slate-900 mb-6">Learning Objectives</h3>
+                    </div>
+                    <label className="col-span-3 text-sm font-medium text-slate-500 pt-3">Objectives</label>
+                    <div className="col-span-9 space-y-4">
                         {(data.objectives || ["", "", ""]).map((obj: string, idx: number) => (
-                            <div key={idx} className="flex items-center border border-gray-200 rounded-md px-3 py-2 bg-slate-50">
-                                <span className="text-slate-400 mr-3">{idx + 1}.</span>
+                            <div key={idx} className="flex items-center border border-gray-200 rounded-lg px-4 py-3 bg-white">
+                                <span className="text-slate-500 mr-4 font-medium">{idx + 1}.</span>
                                 <input
                                     type="text"
                                     value={obj}
                                     onChange={(e) => handleObjectiveChange(idx, e.target.value)}
-                                    className="bg-transparent w-full outline-none text-sm text-slate-700"
+                                    className="bg-transparent w-full outline-none text-slate-900"
                                 />
                             </div>
                         ))}
                     </div>
                 </div>
 
+                <div className="border-t border-gray-100 my-8"></div>
+
                 {/* Compliance Mapping */}
-                <div>
-                    <label className="block text-sm font-bold text-slate-900 mb-2">Compliance Mapping</label>
-                    <div className="bg-slate-100 rounded-lg p-3 text-sm text-slate-600 border border-slate-200">
-                        <input
-                            type="text"
-                            value={data.complianceMapping || ""}
-                            onChange={(e) => handleChange("complianceMapping", e.target.value)}
-                            className="bg-transparent w-full outline-none"
-                            placeholder="e.g. Standard 1.5.4.a - Privacy of Health Information"
-                        />
+                <div className="grid grid-cols-12 gap-8 items-start">
+                    <div className="col-span-12">
+                        <h3 className="text-lg font-bold text-slate-900 mb-6">Compliance Mapping</h3>
+                    </div>
+                    <label className="col-span-3 text-sm font-medium text-slate-500 pt-3">CARF Section</label>
+                    <div className="col-span-9">
+                        <div className="bg-gray-200 rounded-lg px-4 py-3 text-slate-600 border border-transparent">
+                            <input
+                                type="text"
+                                value={data.complianceMapping || "Standard 1.J.5.a.-b."}
+                                onChange={(e) => handleChange("complianceMapping", e.target.value)}
+                                className="bg-transparent w-full outline-none text-slate-600 placeholder-slate-500"
+                                placeholder="e.g. Standard 1.J.5.a.-b."
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

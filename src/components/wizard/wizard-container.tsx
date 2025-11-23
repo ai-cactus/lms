@@ -6,6 +6,9 @@ import { Step1Category } from "./step-1-category";
 import { Step2Upload } from "./step-2-upload";
 import { Step3Details } from "./step-3-details";
 import { Step4Quiz } from "./step-4-quiz";
+import { Step5ReviewContent } from "./step-5-review-content";
+import { Step6ReviewQuiz } from "./step-6-review-quiz";
+import { Step7Finalize } from "./step-7-finalize";
 import { CourseData, QuizConfig } from "@/types/course";
 
 interface WizardContainerProps {
@@ -19,7 +22,7 @@ export function WizardContainer({ onClose, onComplete }: WizardContainerProps) {
     const [files, setFiles] = useState<File[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-    const totalSteps = 4;
+    const totalSteps = 7;
     const progress = (step / totalSteps) * 100;
 
     const handleNext = () => {
@@ -115,7 +118,7 @@ export function WizardContainer({ onClose, onComplete }: WizardContainerProps) {
 
             {/* Main Content */}
             <div className="flex-1 overflow-y-auto bg-white py-12 px-6">
-                <div className="max-w-4xl mx-auto">
+                <div className="max-w-6xl mx-auto h-full">
                     {step === 1 && (
                         <Step1Category
                             value={courseData.category || ""}
@@ -142,28 +145,50 @@ export function WizardContainer({ onClose, onComplete }: WizardContainerProps) {
                             onChange={(config: QuizConfig) => setCourseData({ ...courseData, quizConfig: config })}
                         />
                     )}
+                    {step === 5 && (
+                        <Step5ReviewContent
+                            data={courseData}
+                            onNext={handleNext}
+                            onBack={handleBack}
+                        />
+                    )}
+                    {step === 6 && (
+                        <Step6ReviewQuiz
+                            data={courseData.quizConfig || {}}
+                            onNext={handleNext}
+                            onBack={handleBack}
+                        />
+                    )}
+                    {step === 7 && (
+                        <Step7Finalize
+                            onPublish={() => onComplete(courseData, files)}
+                            onBack={handleBack}
+                        />
+                    )}
                 </div>
             </div>
 
-            {/* Footer Navigation */}
-            <div className="border-t border-gray-200 p-6 bg-white">
-                <div className="max-w-3xl mx-auto flex justify-between">
-                    <button
-                        onClick={handleBack}
-                        disabled={step === 1}
-                        className="px-6 py-2 rounded-lg border border-gray-300 text-slate-700 font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        Back
-                    </button>
-                    <button
-                        onClick={handleNext}
-                        disabled={!canProceed()}
-                        className="px-8 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {step === totalSteps ? "Generate Course" : "Next"}
-                    </button>
+            {/* Footer Navigation - Hide for Step 5, 6, 7 as they have their own nav or specific layout */}
+            {step < 5 && (
+                <div className="border-t border-gray-200 p-6 bg-white">
+                    <div className="max-w-3xl mx-auto flex justify-between">
+                        <button
+                            onClick={handleBack}
+                            disabled={step === 1}
+                            className="px-6 py-2 rounded-lg border border-gray-300 text-slate-700 font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Back
+                        </button>
+                        <button
+                            onClick={handleNext}
+                            disabled={!canProceed()}
+                            className="px-8 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Next
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
