@@ -1,10 +1,11 @@
 "use client";
 
+import { Suspense } from "react";
 import { WizardContainer } from "@/components/wizard/wizard-container";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CourseData } from "@/types/course";
 
-export default function CreateCoursePage() {
+function CreateCourseContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const policyId = searchParams.get("policyId");
@@ -25,5 +26,13 @@ export default function CreateCoursePage() {
             onComplete={handleComplete}
             initialPolicyId={policyId || undefined}
         />
+    );
+}
+
+export default function CreateCoursePage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <CreateCourseContent />
+        </Suspense>
     );
 }

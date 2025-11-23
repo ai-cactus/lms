@@ -76,7 +76,13 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
         }
     };
 
-    const handleNext = () => {
+    const handleNext = async () => {
+        if (step === 2) {
+            // On Step 2, analyze the files before proceeding
+            const success = await performAnalysis(files);
+            if (!success) return;
+        }
+
         if (step < totalSteps) {
             setStep(step + 1);
         } else {
@@ -93,10 +99,7 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
 
     const handleFilesSelected = async (selectedFiles: File[]) => {
         setFiles(selectedFiles);
-        const success = await performAnalysis(selectedFiles);
-        if (success) {
-            setStep(3);
-        }
+        // Don't auto-advance or analyze here anymore, let the user click Next
     };
 
     const loadPolicy = async (policyId: string) => {
@@ -129,11 +132,12 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
             // Update files state so it shows in Step 2
             setFiles([file]);
 
-            // 3. Trigger analysis in background (don't auto-advance)
-            await performAnalysis([file]);
+            // Note: We do NOT trigger analysis here. 
+            // The user will click "Next" on Step 2 to trigger it.
 
         } catch (error) {
             console.error("Error loading policy:", error);
+        } finally {
             setIsAnalyzing(false);
         }
     };
