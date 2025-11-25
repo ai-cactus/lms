@@ -58,18 +58,13 @@ export function Step3Details({ data, onChange }: Step3DetailsProps) {
                 {/* Category */}
                 <div className="grid grid-cols-12 gap-8 items-center">
                     <label className="col-span-3 text-sm font-medium text-slate-500">Category</label>
-                    <div className="col-span-9 relative">
-                        <select
+                    <div className="col-span-9">
+                        <input
+                            type="text"
                             value={data.category || ""}
-                            onChange={(e) => handleChange("category", e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
-                        >
-                            <option value="Healthcare Compliance">Healthcare Compliance</option>
-                            <option value="Cybersecurity and Technology">Cybersecurity and Technology</option>
-                            <option value="HR & Ethics">HR & Ethics</option>
-                            <option value="Medical Equipment">Medical Equipment</option>
-                        </select>
-                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                            readOnly
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-gray-50 text-slate-500 cursor-not-allowed outline-none"
+                        />
                     </div>
                 </div>
 
@@ -126,22 +121,6 @@ export function Step3Details({ data, onChange }: Step3DetailsProps) {
                     </div>
                 </div>
 
-                {/* No of Notes / Slides */}
-                <div className="grid grid-cols-12 gap-8 items-center">
-                    <label className="col-span-3 text-sm font-medium text-slate-500">No of Notes / Slides</label>
-                    <div className="col-span-9 relative">
-                        <select
-                            value="5"
-                            onChange={() => { }}
-                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
-                        >
-                            <option>5</option>
-                            <option>10</option>
-                            <option>15</option>
-                        </select>
-                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-                </div>
 
                 {/* Deadline to Complete Course */}
                 <div className="grid grid-cols-12 gap-8 items-center">

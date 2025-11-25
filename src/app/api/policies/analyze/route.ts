@@ -63,22 +63,48 @@ export async function POST(request: NextRequest) {
         // Prepare prompt
         const formatInstructions = deliveryFormat === 'slides'
             ? `
-**DELIVERY FORMAT: SLIDES**
-- Structure the lesson notes with clear slide breaks
-- Add a horizontal rule (---) after EACH major section (after Introduction, after each Key Concept, after Procedures, etc.)
-- Keep each slide focused and concise (200-400 words max per slide)
-- Each slide should cover ONE main concept or topic
-- Use this structure:
-  # Course Title
-  Brief introduction (2-3 sentences)
-  ---
-  ## Section 1: [Topic]
-  Content for this slide
-  ---
-  ## Section 2: [Next Topic]
-  Content for this slide
-  ---
-  (Continue with more slides)
+**DELIVERY FORMAT: SLIDES - CRITICAL REQUIREMENTS**
+
+**CHARACTER LIMIT PER SLIDE**: 
+- MAXIMUM 1000 characters per slide (excluding the module title heading)
+- Count characters, not words - this ensures consistent sizing
+- Each slide must display WITHOUT scrolling on any device
+
+**CONTENT QUALITY - NO LAZY SUMMARIES**:
+- Provide DETAILED, COMPREHENSIVE explanations
+- Use analogies, examples, and real-world scenarios
+- Explain concepts thoroughly - don't over-summarize
+- If a topic needs more than 1000 characters, split it into multiple parts:
+  * ## Module X: Topic Name - Part 1
+  * ## Module X: Topic Name - Part 2
+  * ## Module X: Topic Name - Part 3 (etc.)
+
+**TEACHING APPROACH**:
+- Teach like an expert instructor, not a bullet-point generator
+- Use analogies to make complex concepts relatable
+- Provide examples for every major concept
+- Include "why it matters" explanations
+- Make content engaging and educational
+
+**STRUCTURE**:
+- Add horizontal rule (---) after EVERY module
+- Use proper markdown formatting (bold, lists, etc.)
+- Break long explanations into paragraphs for readability
+
+**EXAMPLE**:
+# Course Title
+Brief course introduction (2-3 sentences).
+---
+## Module 1: Introduction to [Topic]
+This module provides a comprehensive overview of [topic]. Think of it like [analogy]. When you [real-world example], you're essentially [explanation]. This matters because [why it's important]. The key principles include [details with examples]. By understanding this foundation, you'll be equipped to [benefit].
+---
+## Module 2: [Concept] - Part 1
+[First 1000 characters of detailed explanation with examples and analogies]
+---
+## Module 2: [Concept] - Part 2
+[Continuation with remaining details, completing the concept thoroughly]
+---
+(Continue with more modules as needed)
 `
             : `
 **DELIVERY FORMAT: PAGES**
@@ -169,7 +195,7 @@ Format your response as JSON with this structure:
 
         // Analyze with Gemini using JSON mode
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
+            model: "gemini-2.5-flash-lite",
             generationConfig: {
                 responseMimeType: "application/json"
             }

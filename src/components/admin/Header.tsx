@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, ChevronDown, Menu } from "lucide-react";
+import { Bell, Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 
 interface HeaderProps {
     onOpenMobileMenu: () => void;
@@ -50,7 +51,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
         if (pathname?.includes('/admin/dashboard')) return 'Dashboard';
         if (pathname?.includes('/admin/training-center')) return 'Training Center';
         if (pathname?.includes('/admin/courses')) return 'Courses';
-        if (pathname?.includes('/admin/workers')) return 'Staff Details';
+        if (pathname?.includes('/admin/staff')) return 'Staff Details';
         if (pathname?.includes('/admin/documents')) return 'Documents';
         if (pathname?.includes('/admin/policies')) return 'Policies';
         if (pathname?.includes('/admin/settings')) return 'Settings';
@@ -89,15 +90,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
                 </button>
 
                 <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6 border-l border-gray-200">
-                    <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs sm:text-sm">
-                        {userInitials}
-                    </div>
-                    <div className="hidden md:block">
-                        <div className="flex items-center gap-2 cursor-pointer">
-                            <p className="font-medium text-slate-700 text-sm">{userName}</p>
-                            <ChevronDown className="w-4 h-4 text-slate-400" />
-                        </div>
-                    </div>
+                    <UserProfileDropdown userName={userName} userInitials={userInitials} />
                 </div>
             </div>
         </header>

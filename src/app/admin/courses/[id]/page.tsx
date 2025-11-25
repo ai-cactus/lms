@@ -1,193 +1,381 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, use } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import {
+    ArrowLeft,
+    Users,
+    TrendingUp,
     Clock,
-    Award,
-    CheckCircle,
-    BookOpen,
-    Calendar,
-    BarChart,
     FileText,
-    MessageSquare,
-    Star
+    Eye,
+    UserPlus,
+    Download,
+    CheckCircle,
+    Search,
 } from "lucide-react";
+import CoursePreviewModal from "@/components/courses/CoursePreviewModal";
+import AssignUsersModal from "@/components/courses/AssignUsersModal";
 
-export default function CourseDetailsPage({ params }: { params: { id: string } }) {
-    const [activeTab, setActiveTab] = useState("about");
+interface CourseDetails {
+    id: string;
+    title: string;
+    lesson_notes: string;
+    pass_mark: number;
+    published_at: string;
+    objectives?: {
+        items?: string[];
+        difficulty?: string;
+    };
+    policy?: {
+        title: string;
+        file_name: string;
+    };
+}
 
-    // Mock data based on the mockup
-    const course = {
-        title: "Health & Safety Practices",
-        description: "Mandatory annual training aligned with CARF 1.H 4. a-b",
-        author: "John Doe Organization Policy",
-        status: "Active",
-        duration: "10 min read",
-        passMark: "80%",
-        overview: `This course ensures all personnel understand and apply CARF-aligned safety principles in daily operations. It covers essential workplace safety measures, emergency response protocols, and staff responsibilities in maintaining a safe therapeutic environment.
-        
-Designed to meet CARF Standards 1.H.4.a-b, this training is a mandatory annual requirement for all staff`,
-        learningOutcomes: [
-            "Recognize workplace hazards and apply preventive strategies.",
-            "Respond effectively to emergencies and safety incidents.",
-            "Comply with CARF and organizational safety standards.",
-            "Understand staff responsibilities for safety and reporting."
-        ],
-        content: [
-            "Benefits of remote worksop",
-            "Challenges for remote workshops",
-            "What goes into a successful remote work...",
-            "Best practices for a remote workshop",
-            "Common remote workshop mistakes",
-            "Tools needed for remote workshops"
-        ],
-        metadata: {
-            skillLevel: "Beginner",
-            duration: "30 mins",
-            lastUpdated: "March 21, 2025"
+interface StaffPerformance {
+    id: string;
+    worker_id: string;
+    worker_name: string;
+    worker_role?: string;
+    score: number | null;
+    status: string;
+    completion_id: string | null;
+}
+
+export default function CourseDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = use(params);
+    const router = useRouter();
+    const supabase = createClient();
+
+    const [course, setCourse] = useState<CourseDetails | null>(null);
+    const [staffPerformance, setStaffPerformance] = useState<StaffPerformance[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [showPreview, setShowPreview] = useState(false);
+    const [showAssign, setShowAssign] = useState(false);
+    const [stats, setStats] = useState({
+        totalLearners: 0,
+        completionRate: 0,
+        averageScore: 0,
+        averageDuration: 0,
+    });
+
+    useEffect(() => {
+        loadCourseData();
+    }, [id]);
+
+    const loadCourseData = async () => {
+        try {
+            const { data: courseData, error: courseError } = await supabase
+                .from("courses")
+                .select(`
+                    id,
+                    title,
+                    lesson_notes,
+                    pass_mark,
+                    published_at,
+                    objectives,
+                    policy:policies(title, file_name)
+                `)
+                .eq("id", id)
+                .single();
+
+            if (courseError) throw courseError;
+            setCourse(courseData as any);
+
+            const { data: assignments } = await supabase
+                .from("course_assignments")
+                .select(`
+                    id,
+                    worker_id,
+                    status,
+                    users!course_assignments_worker_id_fkey(full_name, role)
+                `)
+                .eq("course_id", id);
+
+            const { data: completions } = await supabase
+                .from("course_completions")
+                .select("worker_id, quiz_score, id")
+                .eq("course_id", id);
+
+            const staffData: StaffPerformance[] = (assignments || []).map((assignment: any) => {
+                const completion = completions?.find((c) => c.worker_id === assignment.worker_id);
+                return {
+                    id: assignment.id,
+                    worker_id: assignment.worker_id,
+                    worker_name: assignment.users?.full_name || "Unknown",
+                    worker_role: assignment.users?.role,
+                    score: completion?.quiz_score || null,
+                    status: assignment.status,
+                    completion_id: completion?.id || null,
+                };
+            });
+
+            setStaffPerformance(staffData);
+
+            const totalLearners = staffData.length;
+            const completed = staffData.filter((s) => s.status === "completed").length;
+            const completionRate = totalLearners > 0 ? Math.round((completed / totalLearners) * 100) : 0;
+
+            const scores = staffData.filter((s) => s.score !== null).map((s) => s.score as number);
+            const averageScore = scores.length > 0
+                ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+                : 0;
+
+            const wordCount = courseData.lesson_notes.split(/\s+/).length;
+            const averageDuration = Math.ceil(wordCount / 200);
+
+            setStats({ totalLearners, completionRate, averageScore, averageDuration });
+            setLoading(false);
+        } catch (error) {
+            console.error("Error loading course data:", error);
+            setLoading(false);
         }
     };
 
-    return (
-        <div className="max-w-7xl mx-auto">
-            {/* Header Section */}
-            <div className="bg-slate-900 text-white -mx-8 -mt-8 px-8 py-12 mb-8">
-                <div className="max-w-5xl">
-                    <div className="text-sm text-slate-400 mb-4">
-                        Training Center / Create Course / <span className="text-white">Course details</span>
-                    </div>
+    const filteredStaff = searchQuery
+        ? staffPerformance.filter((s) =>
+            s.worker_name.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+        : staffPerformance;
 
-                    <h1 className="text-4xl font-bold mb-2">{course.title}</h1>
-                    <p className="text-lg text-slate-300 mb-6">{course.description}</p>
+    const getPreviewData = () => {
+        if (!course) return { title: "", description: "", objectives: [], tableOfContents: [] };
 
-                    <p className="text-sm text-slate-400 mb-8">By {course.author}</p>
+        let description = "";
+        const objectives: string[] = [];
+        const tableOfContents: string[] = [];
 
-                    <div className="flex items-center gap-6 mb-8 border-b border-slate-700 pb-8">
-                        <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-medium flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                            {course.status}
-                        </span>
+        const descMatch = course.lesson_notes.match(/## Course Description\n([\s\S]*?)(?=\n##|$)/);
+        if (descMatch) description = descMatch[1].trim();
 
-                        <div className="flex items-center gap-2 text-slate-300">
-                            <Clock className="w-5 h-5" />
-                            <span>{course.duration}</span>
-                        </div>
+        const objectivesMatch = course.lesson_notes.match(/## What You'll Learn\n\n([\s\S]*?)(?=\n##|$)/);
+        if (objectivesMatch) {
+            const lines = objectivesMatch[1].split('\n');
+            lines.forEach(line => {
+                const match = line.match(/^\d+\.\s+(.+)$/);
+                if (match) objectives.push(match[1]);
+            });
+        }
 
-                        <div className="flex items-center gap-2 text-slate-300">
-                            <Award className="w-5 h-5" />
-                            <span>Pass mark: {course.passMark}</span>
-                        </div>
-                    </div>
+        const headings = course.lesson_notes.split('\n').filter(line => {
+            if (!line.startsWith('#')) return false;
+            const heading = line.replace(/^#+\s*/, '');
+            return !heading.match(/^(Course Description|What You'll Learn|Learning Objectives)/i);
+        });
+        headings.forEach(h => tableOfContents.push(h.replace(/^#+\s*/, '')));
 
-                    <button className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
-                        View Course
-                    </button>
-                </div>
+        return { title: course.title, description, objectives, tableOfContents };
+    };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             </div>
+        );
+    }
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Main Content */}
-                <div className="lg:col-span-2">
-                    {/* Tabs */}
-                    <div className="flex border-b border-gray-200 mb-8">
-                        <button
-                            onClick={() => setActiveTab("about")}
-                            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "about"
-                                    ? "border-blue-600 text-blue-600"
-                                    : "border-transparent text-slate-500 hover:text-slate-700"
-                                }`}
-                        >
-                            About
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("ratings")}
-                            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "ratings"
-                                    ? "border-blue-600 text-blue-600"
-                                    : "border-transparent text-slate-500 hover:text-slate-700"
-                                }`}
-                        >
-                            Course Ratings
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("discussions")}
-                            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "discussions"
-                                    ? "border-blue-600 text-blue-600"
-                                    : "border-transparent text-slate-500 hover:text-slate-700"
-                                }`}
-                        >
-                            Discussions
-                        </button>
-                    </div>
+    if (!course) return <div className="p-8 text-center">Course not found</div>;
 
-                    {/* Tab Content */}
-                    {activeTab === "about" && (
-                        <div className="space-y-8">
-                            <section>
-                                <h2 className="text-2xl font-bold text-slate-900 mb-4">Course Overview</h2>
-                                <div className="text-slate-600 leading-relaxed whitespace-pre-line">
-                                    {course.overview}
-                                </div>
-                            </section>
+    return (
+        <div className="min-h-screen bg-slate-50 p-8">
+            <CoursePreviewModal
+                isOpen={showPreview}
+                onClose={() => setShowPreview(false)}
+                courseData={getPreviewData()}
+            />
+            <AssignUsersModal
+                isOpen={showAssign}
+                onClose={() => setShowAssign(false)}
+                courseId={id}
+                onAssignmentComplete={() => loadCourseData()}
+            />
 
-                            <section>
-                                <h2 className="text-xl font-bold text-slate-900 mb-4">What You'll Learn</h2>
-                                <ul className="space-y-3">
-                                    {course.learningOutcomes.map((outcome, index) => (
-                                        <li key={index} className="flex items-start gap-3 text-slate-600">
-                                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0"></span>
-                                            {outcome}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </section>
+            <div className="max-w-7xl mx-auto">
+                <button
+                    onClick={() => router.push("/admin/courses")}
+                    className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6"
+                >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Go Back</span>
+                    <span className="text-slate-400">/</span>
+                    <span className="text-slate-400">Course</span>
+                    <span className="text-slate-400">/</span>
+                    <span>Course Details</span>
+                </button>
+
+                <div className="mb-8">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h1 className="text-3xl font-bold text-slate-900 mb-2">{course.title}</h1>
+                            <div className="flex items-center gap-3">
+                                <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
+                                    Active
+                                </span>
+                                {course.policy && (
+                                    <span className="text-sm text-slate-600">
+                                        Linked Policy Document: <span className="font-medium">{course.policy.file_name}</span>
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                    )}
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setShowPreview(true)}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                            >
+                                <Eye className="w-4 h-4" />
+                                Preview
+                            </button>
+                            <button
+                                onClick={() => setShowAssign(true)}
+                                className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2"
+                            >
+                                <UserPlus className="w-4 h-4" />
+                                Assign
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Sidebar */}
-                <div className="space-y-6">
-                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                        <h3 className="text-lg font-bold text-slate-900 mb-4">Course Content</h3>
-                        <div className="space-y-3">
-                            {course.content.map((item, index) => (
-                                <div key={index} className={`text-sm ${index === 1 ? 'text-blue-600 font-medium' : 'text-slate-600'}`}>
-                                    {item}
-                                </div>
-                            ))}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div className="bg-blue-50 rounded-xl p-6 border border-blue-100">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
+                                <Users className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-blue-700 mb-1">Total Learners</p>
+                                <p className="text-2xl font-bold text-blue-900">{stats.totalLearners}</p>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-slate-600">
-                                    <BarChart className="w-4 h-4" />
-                                    <span className="text-sm">Skill Level</span>
-                                </div>
-                                <span className="text-sm font-medium text-slate-900">{course.metadata.skillLevel}</span>
+                    <div className="bg-green-50 rounded-xl p-6 border border-green-100">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+                                <TrendingUp className="w-6 h-6 text-white" />
                             </div>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-slate-600">
-                                    <Clock className="w-4 h-4" />
-                                    <span className="text-sm">Duration</span>
-                                </div>
-                                <span className="text-sm font-medium text-slate-900">{course.metadata.duration}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-slate-600">
-                                    <Calendar className="w-4 h-4" />
-                                    <span className="text-sm">Last Updated</span>
-                                </div>
-                                <span className="text-sm font-medium text-slate-900">{course.metadata.lastUpdated}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-slate-600">
-                                    <Calendar className="w-4 h-4" />
-                                    <span className="text-sm">Last Updated</span>
-                                </div>
-                                <span className="text-sm font-medium text-slate-900">{course.metadata.lastUpdated}</span>
+                            <div>
+                                <p className="text-sm text-green-700 mb-1">Completion Rate</p>
+                                <p className="text-2xl font-bold text-green-900">{stats.completionRate}%</p>
                             </div>
                         </div>
+                    </div>
+
+                    <div className="bg-red-50 rounded-xl p-6 border border-red-100">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center">
+                                <FileText className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-red-700 mb-1">Average Score</p>
+                                <p className="text-2xl font-bold text-red-900">{stats.averageScore}%</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-yellow-50 rounded-xl p-6 border border-yellow-100">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-yellow-600 rounded-lg flex items-center justify-center">
+                                <Clock className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-yellow-700 mb-1">Average Duration</p>
+                                <p className="text-2xl font-bold text-yellow-900">{stats.averageDuration} mins</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+                    <div className="p-6 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-bold text-slate-900">Staff Performance</h2>
+                            <div className="flex items-center gap-4">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder="Search for staff..."
+                                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                                    />
+                                </div>
+                                <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm">
+                                    <Download className="w-4 h-4" />
+                                    Export
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-slate-50 border-b border-gray-200">
+                                <tr>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Staff Name</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Score</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Quiz Result</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {filteredStaff.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-600">No staff assignments found</td>
+                                    </tr>
+                                ) : (
+                                    filteredStaff.map((staff) => (
+                                        <tr key={staff.id} className="hover:bg-slate-50">
+                                            <td className="px-6 py-4">
+                                                <div>
+                                                    <p className="font-medium text-slate-900">{staff.worker_name}</p>
+                                                    {staff.worker_role && <p className="text-sm text-slate-500">{staff.worker_role}</p>}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-sm text-slate-700">
+                                                    {staff.score !== null ? `${staff.score}%` : "-"}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {staff.status === "completed" ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                                        <CheckCircle className="w-3 h-3" />
+                                                        Passed
+                                                    </span>
+                                                ) : staff.status === "in_progress" ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                                                        In Progress
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">
+                                                        Not Started
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {staff.completion_id ? (
+                                                    <button
+                                                        onClick={() => router.push(`/admin/courses/${id}/quiz-results/${staff.completion_id}`)}
+                                                        className="px-3 py-1 bg-indigo-600 text-white rounded text-sm font-medium hover:bg-indigo-700 transition-colors"
+                                                    >
+                                                        View
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-sm text-slate-400">-</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

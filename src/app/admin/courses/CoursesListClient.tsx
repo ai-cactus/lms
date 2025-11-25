@@ -9,8 +9,6 @@ import {
     Search,
     CheckCircle,
     AlertCircle,
-    Edit,
-    Eye,
     Trash2,
 } from "lucide-react";
 
@@ -203,20 +201,20 @@ function CoursesListContent() {
                         <table className="w-full">
                             <thead className="bg-slate-50 border-b border-gray-200">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                        Course Title
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600  uppercase tracking-wider">
+                                        Course Name
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                        Policy
+                                        Assigned Staff
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                        Assignments
+                                        Completion %
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                        Status
+                                        Date Created
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                        Actions
+                                        Action
                                     </th>
                                 </tr>
                             </thead>
@@ -229,74 +227,65 @@ function CoursesListContent() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    filteredCourses.map((course) => (
-                                        <tr key={course.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <div>
-                                                    <p className="font-medium text-slate-900">{course.title}</p>
-                                                    <p className="text-sm text-slate-500">
-                                                        Updated {new Date(course.updated_at).toLocaleDateString()}
-                                                    </p>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <p className="text-sm text-slate-700">
-                                                    {course.policy?.title || "-"}
-                                                </p>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                                    <span className="text-slate-700">
-                                                        {course.stats?.completedAssignments || 0}/{course.stats?.totalAssignments || 0}
+                                    filteredCourses.map((course) => {
+                                        const completionRate = course.stats?.totalAssignments
+                                            ? Math.round((course.stats.completedAssignments / course.stats.totalAssignments) * 100)
+                                            : 0;
+
+                                        return (
+                                            <tr
+                                                key={course.id}
+                                                className="hover:bg-slate-50 transition-colors cursor-pointer"
+                                                onClick={() => router.push(`/admin/courses/${course.id}`)}
+                                            >
+                                                <td className="px-6 py-4">
+                                                    <div>
+                                                        <p className="font-medium text-slate-900">{course.title}</p>
+                                                        {course.policy?.title && (
+                                                            <p className="text-sm text-slate-500">{course.policy.title}</p>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-sm text-slate-700">
+                                                        {course.stats?.totalAssignments || 0}
                                                     </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                {course.published_at ? (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
-                                                        <CheckCircle className="w-3 h-3" />
-                                                        Published
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-sm text-slate-700">{completionRate}%</span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-sm text-slate-700">
+                                                        {new Date(course.created_at).toLocaleDateString('en-US', {
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            year: 'numeric'
+                                                        })}
                                                     </span>
-                                                ) : (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">
-                                                        <AlertCircle className="w-3 h-3" />
-                                                        Draft
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
+                                                </td>
+                                                <td className="px-6 py-4">
                                                     <button
-                                                        onClick={() => router.push(`/admin/courses/${course.id}/review`)}
-                                                        className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
-                                                    >
-                                                        <Edit className="w-4 h-4" />
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={async () => {
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation(); // Prevent row click
                                                             if (window.confirm("Are you sure you want to delete this course? This action cannot be undone.")) {
                                                                 const { deleteCourse } = await import("@/app/actions/course");
                                                                 const result = await deleteCourse(course.id);
                                                                 if (result.success) {
-                                                                    // Refresh the list locally or wait for revalidate
                                                                     loadCourses();
-                                                                    // Optional: Show success toast
                                                                 } else {
                                                                     alert(result.error);
                                                                 }
                                                             }
                                                         }}
-                                                        className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1 ml-2"
+                                                        className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                         Delete
                                                     </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>

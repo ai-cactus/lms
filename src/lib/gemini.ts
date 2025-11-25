@@ -6,5 +6,5 @@ export const getGeminiModel = () => {
         throw new Error("No Gemini API Key provided");
     }
     const genAI = new GoogleGenerativeAI(key);
-    return genAI.getGenerativeModel({ model: "gemini-2.0-flash-001" });
+    return genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 };

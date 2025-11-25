@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Hexagon } from "@phosphor-icons/react";
 import { createClient } from "@/lib/supabase/client";
+import { useFetchWithRetry } from "@/hooks/use-fetch-with-retry";
+import { useNotification } from "@/contexts/notification-context";
 import { Step1Category } from "./step-1-category";
 import { Step2Upload } from "./step-2-upload";
 import { Step3Details } from "./step-3-details";
@@ -10,29 +12,50 @@ import { Step4Quiz } from "./step-4-quiz";
 import { Step5ReviewContent } from "./step-5-review-content";
 import { Step6ReviewQuiz } from "./step-6-review-quiz";
 import { Step7Finalize } from "./step-7-finalize";
+import { CourseCreationProgress } from "./course-creation-progress";
 import { CourseData, QuizConfig } from "@/types/course";
 
 interface WizardContainerProps {
     onClose: () => void;
-    onComplete: (courseData: CourseData, files: File[]) => void;
-    initialPolicyId?: string;
+    onComplete: (courseData: CourseData, files: File[], publishOptions?: {
+        deadline?: { dueDate: string; dueTime: string };
+        assignType: string;
+        selectedRoles?: string[];
+        emails?: string[];
+    }) => void;
+    initialPolicyIds?: string[];
 }
 
-export function WizardContainer({ onClose, onComplete, initialPolicyId }: WizardContainerProps) {
+export function WizardContainer({ onClose, onComplete, initialPolicyIds }: WizardContainerProps) {
     const [step, setStep] = useState(1);
     const [courseData, setCourseData] = useState<CourseData>({});
     const [files, setFiles] = useState<File[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isGeneratingCourse, setIsGeneratingCourse] = useState(false);
+    const [showProgressScreen, setShowProgressScreen] = useState(false);
     const supabase = createClient();
+    const { fetchJson } = useFetchWithRetry();
+    const { showNotification } = useNotification();
 
     const totalSteps = 7;
     const progress = (step / totalSteps) * 100;
 
     useEffect(() => {
-        if (initialPolicyId) {
-            loadPolicy(initialPolicyId);
+        if (initialPolicyIds && initialPolicyIds.length > 0) {
+            loadPolicies(initialPolicyIds);
         }
-    }, [initialPolicyId]);
+    }, [initialPolicyIds]);
+
+    const handleQuestionsChange = useCallback((questions: any[]) => {
+        setCourseData((prev) => {
+            // Avoid infinite loop by checking if questions actually changed (deep comparison is expensive, 
+            // but we can check length or just rely on the stable callback to stop the effect loop)
+            // With stable callback, the child's useEffect [onQuestionsChange] won't fire again.
+            return { ...prev, questions };
+        });
+    }, []);
+
+    // ... (keep performAnalysis and generateCourseContent as is)
 
     const performAnalysis = async (filesToAnalyze: File[]) => {
         setIsAnalyzing(true);
@@ -55,27 +78,68 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
                 })
             );
 
-            // 2. Analyze documents
-            const res = await fetch("/api/analyze-documents", {
+            // 2. Analyze documents with automatic retry
+            const { metadata } = await fetchJson("/api/analyze-documents", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ files: fileContents }),
             });
 
-            if (!res.ok) {
-                const errorData = await res.json().catch(() => ({}));
-                throw new Error(errorData.error || `Analysis failed with status ${res.status}`);
-            }
-
-            const { metadata } = await res.json();
-            setCourseData((prev) => ({ ...prev, ...metadata }));
+            // Preserve the user-selected category from Step 1
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { category, ...restMetadata } = metadata;
+            setCourseData((prev) => ({ ...prev, ...restMetadata }));
             return true;
         } catch (error: any) {
             console.error("Error analyzing files:", error);
-            alert(error.message || "Failed to analyze documents. Please try again.");
+            showNotification("error", error.message || "Failed to analyze documents. Please try again.");
             return false;
         } finally {
             setIsAnalyzing(false);
+        }
+    };
+
+    const generateCourseContent = async () => {
+        setIsGeneratingCourse(true);
+        try {
+            // Read files
+            const fileContents = await Promise.all(
+                files.map(async (file) => {
+                    const text = await file.text();
+                    return {
+                        name: file.name,
+                        type: file.type,
+                        content: text,
+                    };
+                })
+            );
+
+            // Generate course content with automatic retry
+            const { content } = await fetchJson("/api/generate-course", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    files: fileContents,
+                    courseMetadata: {
+                        title: courseData.title,
+                        description: courseData.description,
+                        objectives: courseData.objectives,
+                        category: courseData.category,
+                        difficulty: courseData.difficulty,
+                        duration: courseData.duration,
+                        complianceMapping: courseData.complianceMapping,
+                    },
+                }),
+            });
+
+            setCourseData((prev) => ({ ...prev, generatedContent: content }));
+            return true;
+        } catch (error: any) {
+            console.error("Error generating course content:", error);
+            showNotification("error", error.message || "Failed to generate course content. Please try again.");
+            return false;
+        } finally {
+            setIsGeneratingCourse(false);
         }
     };
 
@@ -84,6 +148,20 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
             // On Step 2, analyze the files before proceeding
             const success = await performAnalysis(files);
             if (!success) return;
+        }
+
+        if (step === 4) {
+            // On Step 4, show progress screen and generate course content
+            if (!courseData.generatedContent) {
+                setShowProgressScreen(true);
+                const success = await generateCourseContent();
+                if (!success) {
+                    setShowProgressScreen(false);
+                    return;
+                }
+                // Progress screen will auto-close and move to next step
+                return;
+            }
         }
 
         if (step < totalSteps) {
@@ -105,41 +183,42 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
         // Don't auto-advance or analyze here anymore, let the user click Next
     };
 
-    const loadPolicy = async (policyId: string) => {
+    const loadPolicies = async (policyIds: string[]) => {
         try {
             setIsAnalyzing(true);
 
-            // 1. Fetch policy details
-            const { data: policy, error } = await supabase
+            // 1. Fetch policies details
+            const { data: policies, error } = await supabase
                 .from("policies")
                 .select("*")
-                .eq("id", policyId)
-                .single();
+                .in("id", policyIds);
 
-            if (error || !policy) throw new Error("Policy not found");
+            if (error || !policies || policies.length === 0) throw new Error("Policies not found");
 
-            // Set default title immediately, but let user choose category
+            // Set default title from the first policy, but let user choose category
             setCourseData(prev => ({
                 ...prev,
-                title: policy.title
+                title: policies[0].title + (policies.length > 1 ? " (and others)" : "")
             }));
 
             // Start at Step 1 (Category) as requested
             setStep(1);
 
-            // 2. Fetch file content
-            const response = await fetch(policy.file_url);
-            const blob = await response.blob();
-            const file = new File([blob], policy.file_name, { type: blob.type });
+            // 2. Fetch file contents
+            const loadedFiles = await Promise.all(policies.map(async (policy) => {
+                const response = await fetch(policy.file_url);
+                const blob = await response.blob();
+                return new File([blob], policy.file_name, { type: blob.type });
+            }));
 
             // Update files state so it shows in Step 2
-            setFiles([file]);
+            setFiles(loadedFiles);
 
             // Note: We do NOT trigger analysis here. 
             // The user will click "Next" on Step 2 to trigger it.
 
         } catch (error) {
-            console.error("Error loading policy:", error);
+            console.error("Error loading policies:", error);
         } finally {
             setIsAnalyzing(false);
         }
@@ -152,6 +231,20 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
         if (step === 3) return !!courseData.title;
         return true;
     };
+
+    // Show progress screen during course generation
+    if (showProgressScreen) {
+        return (
+            <CourseCreationProgress
+                onComplete={() => {
+                    setShowProgressScreen(false);
+                    setStep(5); // Move to review content step
+                }}
+            />
+        );
+    }
+
+
 
     return (
         <div className="fixed inset-0 bg-white z-50 flex flex-col">
@@ -204,6 +297,7 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
                     {step === 4 && (
                         <Step4Quiz
                             data={courseData.quizConfig || {}}
+                            courseTitle={courseData.title || ""}
                             onChange={(config: QuizConfig) => setCourseData({ ...courseData, quizConfig: config })}
                         />
                     )}
@@ -212,6 +306,7 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
                             data={courseData}
                             onNext={handleNext}
                             onBack={handleBack}
+                            isGenerating={isGeneratingCourse}
                         />
                     )}
                     {step === 6 && (
@@ -219,11 +314,13 @@ export function WizardContainer({ onClose, onComplete, initialPolicyId }: Wizard
                             data={courseData.quizConfig || {}}
                             onNext={handleNext}
                             onBack={handleBack}
+                            courseContent={courseData.generatedContent}
+                            onQuestionsChange={handleQuestionsChange}
                         />
                     )}
                     {step === 7 && (
                         <Step7Finalize
-                            onPublish={() => onComplete(courseData, files)}
+                            onPublish={(data) => onComplete(courseData, files, data)}
                             onBack={handleBack}
                         />
                     )}

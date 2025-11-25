@@ -107,20 +107,34 @@ export function Sidebar({ isMobileMenuOpen, onCloseMobileMenu }: SidebarProps) {
                         </div>
                         <div className="space-y-1">
                             {/* Training Center Dropdown Button */}
-                            <button
-                                onClick={() => setIsTrainingCenterOpen(!isTrainingCenterOpen)}
-                                className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors ${isActive('/admin/training-center') || isActive('/admin/courses') || isActive('/admin/workers')
-                                    ? 'text-blue-600 bg-blue-50'
-                                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                                    }`}
-                            >
-                                <div className="flex items-center">
+                            {/* Training Center Dropdown Button */}
+                            <div className={`w-full flex items-center justify-between text-sm font-medium rounded-lg transition-colors ${isActive('/admin/training-center') || isActive('/admin/courses') || isActive('/admin/staff')
+                                ? 'text-blue-600 bg-blue-50'
+                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                }`}>
+                                <Link
+                                    href="/admin/training-center"
+                                    onClick={() => {
+                                        setIsTrainingCenterOpen(true);
+                                        onCloseMobileMenu();
+                                    }}
+                                    className="flex items-center flex-1 px-3 py-2"
+                                >
                                     <Lightbulb className="w-5 h-5 mr-3" />
                                     Training Center
-                                </div>
-                                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isTrainingCenterOpen ? 'rotate-0' : '-rotate-90'
-                                    }`} />
-                            </button>
+                                </Link>
+                                <button
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setIsTrainingCenterOpen(!isTrainingCenterOpen);
+                                    }}
+                                    className="p-2 mr-1 hover:bg-black/5 rounded-md transition-colors"
+                                >
+                                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isTrainingCenterOpen ? 'rotate-0' : '-rotate-90'
+                                        }`} />
+                                </button>
+                            </div>
 
                             {/* Nested items - Courses and Staff Details */}
                             {isTrainingCenterOpen && (
@@ -137,8 +151,8 @@ export function Sidebar({ isMobileMenuOpen, onCloseMobileMenu }: SidebarProps) {
                                         Courses
                                     </Link>
                                     <Link
-                                        href="/admin/workers"
-                                        className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${isActive('/admin/workers')
+                                        href="/admin/staff"
+                                        className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${isActive('/admin/staff')
                                             ? 'text-blue-600 bg-blue-50'
                                             : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                                             }`}

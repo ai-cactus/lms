@@ -1,291 +1,378 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import {
-    BookOpen,
-    Users,
-    CheckCircle,
-} from "lucide-react";
-import { PerformanceChart, CoverageChart } from "@/components/admin/DashboardCharts";
+import { CloudUpload, FileText, HelpCircle, CheckCircle, Loader2, XCircle, Trash2 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+// Dynamically import DocumentPreview to avoid SSR issues with PDF.js
+const DocumentPreview = dynamic(() => import("@/components/DocumentPreview"), {
+    ssr: false,
+});
+
+interface FileUploadState {
+    id: string; // Temporary ID for list management
+    file: File;
+    progress: number;
+    status: 'pending' | 'uploading' | 'completed' | 'error';
+    error?: string;
+    policyId?: string;
+    publicUrl?: string;
+}
 
 export default function AdminDashboard() {
-    const [stats, setStats] = useState({
-        totalCourses: 0,
-        totalWorkers: 0,
-        averageGrade: 0,
-        coverageData: {
-            completed: 0,
-            inProgress: 0,
-            notStarted: 0,
-        },
-        performanceData: [] as number[],
-    });
-    const [loading, setLoading] = useState(true);
+    const [files, setFiles] = useState<FileUploadState[]>([]);
+    const [dragActive, setDragActive] = useState(false);
+    const [globalError, setGlobalError] = useState("");
+    const [showPreview, setShowPreview] = useState(false);
     const router = useRouter();
     const supabase = createClient();
 
-    useEffect(() => {
-        loadDashboardStats();
+    const handleDrag = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setDragActive(true);
+        } else if (e.type === "dragleave") {
+            setDragActive(false);
+        }
     }, []);
 
-    const loadDashboardStats = async () => {
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFilesSelect(e.dataTransfer.files);
+        }
+    }, []);
+
+    const handleFilesSelect = async (selectedFiles: FileList | File[]) => {
+        const fileArray = Array.from(selectedFiles);
+        const validTypes = [
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/msword",
+        ];
+
+        // Filter valid files
+        const newFiles: FileUploadState[] = fileArray
+            .filter(file => {
+                const isValidType = validTypes.includes(file.type);
+                const isValidSize = file.size <= 100 * 1024 * 1024;
+                return isValidType && isValidSize;
+            })
+            .map(file => ({
+                id: Math.random().toString(36).substring(7),
+                file,
+                progress: 0,
+                status: 'pending'
+            }));
+
+        if (newFiles.length === 0) {
+            setGlobalError("Please upload valid PDF or DOCX files (max 100MB)");
+            return;
+        }
+
+        setFiles(prev => [...prev, ...newFiles]);
+        setGlobalError("");
+
+        // Trigger upload for the new files
+        await uploadFiles(newFiles);
+    };
+
+    const updateFileState = (id: string, updates: Partial<FileUploadState>) => {
+        setFiles(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+    };
+
+    const uploadFiles = async (filesToUpload: FileUploadState[]) => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                router.push("/login");
-                return;
-            }
+            if (!user) throw new Error("Not authenticated");
 
-            // Get user's organization
             const { data: userData } = await supabase
                 .from("users")
                 .select("organization_id")
                 .eq("id", user.id)
                 .single();
 
-            if (!userData) return;
+            if (!userData) throw new Error("User data not found");
 
-            // Get total published courses
-            const { count: coursesCount } = await supabase
-                .from("courses")
-                .select("*", { count: "exact", head: true })
-                .eq("organization_id", userData.organization_id)
-                .not("published_at", "is", null);
-
-            // Get total workers
-            const { count: workersCount } = await supabase
-                .from("users")
-                .select("*", { count: "exact", head: true })
-                .eq("organization_id", userData.organization_id)
-                .eq("role", "worker")
-                .is("deactivated_at", null);
-
-            // Get all worker IDs in the organization for filtering
-            const { data: workers } = await supabase
-                .from("users")
-                .select("id")
-                .eq("organization_id", userData.organization_id)
-                .eq("role", "worker");
-
-            const workerIds = workers?.map(w => w.id) || [];
-
-            // Calculate real average grade from quiz attempts
-            let averageGrade = 0;
-            if (workerIds.length > 0) {
-                const { data: quizAttempts } = await supabase
-                    .from("quiz_attempts")
-                    .select("score")
-                    .eq("passed", true)
-                    .in("worker_id", workerIds);
-
-                if (quizAttempts && quizAttempts.length > 0) {
-                    const totalScore = quizAttempts.reduce((sum, attempt) => sum + Number(attempt.score), 0);
-                    averageGrade = Math.round(totalScore / quizAttempts.length);
-                }
+            // Process files sequentially to avoid overwhelming the client/network
+            for (const fileState of filesToUpload) {
+                await uploadSingleFile(fileState, userData.organization_id);
             }
 
-            // Calculate training coverage percentages
-            let completedCount = 0;
-            let inProgressCount = 0;
-            let notStartedCount = 0;
-            let totalAssignments = 0;
-
-            if (workerIds.length > 0) {
-                const { data: assignments } = await supabase
-                    .from("course_assignments")
-                    .select("status")
-                    .in("worker_id", workerIds);
-
-                if (assignments && assignments.length > 0) {
-                    totalAssignments = assignments.length;
-                    completedCount = assignments.filter(a => a.status === "completed").length;
-                    inProgressCount = assignments.filter(a => a.status === "in_progress").length;
-                    notStartedCount = assignments.filter(a => a.status === "not_started").length;
-                }
-            }
-
-            const completedPercentage = totalAssignments > 0 ? Math.round((completedCount / totalAssignments) * 100) : 0;
-            const inProgressPercentage = totalAssignments > 0 ? Math.round((inProgressCount / totalAssignments) * 100) : 0;
-            const notStartedPercentage = totalAssignments > 0 ? Math.round((notStartedCount / totalAssignments) * 100) : 0;
-
-            // Get monthly performance data for the last 12 months
-            const twelveMonthsAgo = new Date();
-            twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-
-            // Group scores by month
-            const monthlyScores = new Array(12).fill(0);
-            const monthlyCounts = new Array(12).fill(0);
-
-            if (workerIds.length > 0) {
-                const { data: monthlyAttempts } = await supabase
-                    .from("quiz_attempts")
-                    .select("score, completed_at")
-                    .gte("completed_at", twelveMonthsAgo.toISOString())
-                    .in("worker_id", workerIds);
-
-                if (monthlyAttempts) {
-                    monthlyAttempts.forEach(attempt => {
-                        const date = new Date(attempt.completed_at);
-                        const monthsAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24 * 30));
-                        const monthIndex = 11 - Math.min(monthsAgo, 11);
-                        if (monthIndex >= 0 && monthIndex < 12) {
-                            monthlyScores[monthIndex] += Number(attempt.score);
-                            monthlyCounts[monthIndex]++;
-                        }
-                    });
-                }
-            }
-
-            const performanceData = monthlyScores.map((total, index) =>
-                monthlyCounts[index] > 0 ? Math.round(total / monthlyCounts[index]) : 0
-            );
-
-            setStats({
-                totalCourses: coursesCount || 0,
-                totalWorkers: workersCount || 0,
-                averageGrade,
-                coverageData: {
-                    completed: completedPercentage,
-                    inProgress: inProgressPercentage,
-                    notStarted: notStartedPercentage,
-                },
-                performanceData,
-            });
-
-            setLoading(false);
-        } catch (error) {
-            console.error("Error loading dashboard stats:", error);
-            setLoading(false);
+        } catch (err: any) {
+            console.error("Global upload error:", err);
+            setGlobalError(err.message || "Failed to initiate upload");
         }
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="text-slate-600">Loading dashboard...</div>
-            </div>
-        );
-    }
+    const uploadSingleFile = async (fileState: FileUploadState, orgId: string) => {
+        updateFileState(fileState.id, { status: 'uploading', progress: 0 });
+
+        try {
+            // Simulate progress interval
+            const progressInterval = setInterval(() => {
+                setFiles(prev => {
+                    const currentFile = prev.find(f => f.id === fileState.id);
+                    if (currentFile && currentFile.status === 'uploading' && currentFile.progress < 90) {
+                        return prev.map(f => f.id === fileState.id ? { ...f, progress: f.progress + 10 } : f);
+                    }
+                    return prev;
+                });
+            }, 200);
+
+            const fileName = `${Date.now()}-${fileState.file.name}`;
+
+            // Upload to Supabase
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from("policies")
+                .upload(`${orgId}/${fileName}`, fileState.file);
+
+            clearInterval(progressInterval);
+
+            if (uploadError) throw uploadError;
+
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from("policies")
+                .getPublicUrl(uploadData.path);
+
+            // Create DB record
+            const { data: policyData, error: policyError } = await supabase
+                .from("policies")
+                .insert({
+                    organization_id: orgId,
+                    title: fileState.file.name.replace(/\.(pdf|docx?)$/i, ""),
+                    file_url: publicUrl,
+                    file_name: fileState.file.name,
+                    status: "draft",
+                })
+                .select()
+                .single();
+
+            if (policyError) throw policyError;
+
+            updateFileState(fileState.id, {
+                status: 'completed',
+                progress: 100,
+                policyId: policyData.id,
+                publicUrl: publicUrl
+            });
+
+        } catch (err: any) {
+            console.error(`Error uploading ${fileState.file.name}:`, err);
+            updateFileState(fileState.id, {
+                status: 'error',
+                progress: 0,
+                error: err.message || "Upload failed"
+            });
+        }
+    };
+
+    const handleRemoveFile = (id: string) => {
+        setFiles(prev => prev.filter(f => f.id !== id));
+    };
+
+    const handleCancel = () => {
+        router.push("/admin/documents");
+    };
+
+    const handlePreview = () => {
+        setShowPreview(true);
+    };
+
+    const handleAnalyze = () => {
+        setShowPreview(false);
+        const completedFiles = files.filter(f => f.status === 'completed' && f.policyId);
+        if (completedFiles.length > 0) {
+            const policyIds = completedFiles.map(f => f.policyId).join(',');
+            router.push(`/admin/courses/create?policyIds=${policyIds}`);
+        }
+    };
+
+    // Get the last successfully uploaded file for preview
+    const lastUploadedFile = [...files].reverse().find(f => f.status === 'completed');
+    const isUploading = files.some(f => f.status === 'uploading');
+    const hasCompletedFiles = files.some(f => f.status === 'completed');
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-                    <p className="text-slate-500 mt-1">Here is an overview of your courses</p>
+        <div className="min-h-[calc(100vh-4rem)] bg-slate-50 flex items-center justify-center py-12 px-4">
+            <div className="w-full max-w-5xl bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                {/* Main Content Area */}
+                <div className="p-12 md:p-16">
+                    {/* Header */}
+                    <div className="text-center mb-12">
+                        <h1 className="text-4xl md:text-5xl font-bold text-[#4F46E5] mb-4 tracking-tight">
+                            Upload Your Policy
+                        </h1>
+                        <p className="text-slate-500 text-lg">
+                            Upload your documents here to get started! Accepted formats include PDF and DOCX.
+                        </p>
+                    </div>
+
+                    {/* Upload Zone */}
+                    <div className="max-w-3xl mx-auto">
+                        {files.length === 0 ? (
+                            <div
+                                className="border-2 border-dashed rounded-3xl py-20 px-8 text-center border-slate-200 bg-slate-50/20 cursor-not-allowed"
+                            >
+                                {/* Icon */}
+                                <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6 opacity-50">
+                                    <CloudUpload className="w-10 h-10 text-[#4F46E5]" strokeWidth={1.5} />
+                                </div>
+
+                                <h3 className="text-xl font-bold text-slate-900 mb-2 opacity-50">
+                                    Drag & drop your files here
+                                </h3>
+                                <p className="text-slate-400 mb-8 opacity-50">
+                                    file type: PDF, DOCX (max. 100MB)
+                                </p>
+
+                                <div className="flex flex-col items-center gap-4">
+                                    <span className="text-slate-400 text-sm opacity-50">or</span>
+
+                                    <input
+                                        type="file"
+                                        accept=".pdf,.doc,.docx"
+                                        multiple
+                                        className="hidden"
+                                        id="file-upload"
+                                        disabled
+                                    />
+                                    <label
+                                        htmlFor="file-upload"
+                                        className="px-10 py-3.5 bg-[#4F46E5] text-white rounded-xl font-semibold text-sm tracking-wide shadow-lg shadow-indigo-200 opacity-50 cursor-not-allowed"
+                                    >
+                                        SELECT FILES
+                                    </label>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Uploaded Files List */
+                            <div className="space-y-4">
+                                {/* Add More Files Button */}
+                                <div className="flex justify-end mb-4">
+                                    <input
+                                        type="file"
+                                        accept=".pdf,.doc,.docx"
+                                        multiple
+                                        className="hidden"
+                                        id="add-more-files"
+                                        disabled
+                                    />
+                                    <label
+                                        htmlFor="add-more-files"
+                                        className="text-sm font-medium text-[#4F46E5] flex items-center gap-2 opacity-50 cursor-not-allowed"
+                                    >
+                                        <CloudUpload className="w-4 h-4" />
+                                        Add more files
+                                    </label>
+                                </div>
+
+                                {files.map((fileState) => (
+                                    <div key={fileState.id} className="bg-slate-50 rounded-2xl p-6 border border-slate-100 relative group opacity-75">
+                                        <div className="flex items-center gap-6">
+                                            {/* Icon based on status */}
+                                            <div className={`w-12 h-12 rounded-xl shadow-sm flex items-center justify-center flex-shrink-0 ${fileState.status === 'error' ? 'bg-red-50' : 'bg-white'
+                                                }`}>
+                                                {fileState.status === 'uploading' ? (
+                                                    <Loader2 className="w-6 h-6 text-[#4F46E5] animate-spin" />
+                                                ) : fileState.status === 'completed' ? (
+                                                    <CheckCircle className="w-6 h-6 text-green-500" />
+                                                ) : fileState.status === 'error' ? (
+                                                    <XCircle className="w-6 h-6 text-red-500" />
+                                                ) : (
+                                                    <FileText className="w-6 h-6 text-[#4F46E5]" />
+                                                )}
+                                            </div>
+
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <h3 className="font-semibold text-slate-900 text-base truncate pr-4">
+                                                        {fileState.file.name}
+                                                    </h3>
+                                                    <span className="text-slate-500 text-xs whitespace-nowrap">
+                                                        {(fileState.file.size / 1024 / 1024).toFixed(1)} MB
+                                                    </span>
+                                                </div>
+
+                                                {/* Progress Bar */}
+                                                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full transition-all duration-300 ease-out ${fileState.status === 'error' ? 'bg-red-500' :
+                                                            fileState.status === 'completed' ? 'bg-green-500' :
+                                                                'bg-[#4F46E5]'
+                                                            }`}
+                                                        style={{ width: `${fileState.progress}%` }}
+                                                    />
+                                                </div>
+
+                                                {fileState.error && (
+                                                    <p className="text-red-500 text-xs mt-1">{fileState.error}</p>
+                                                )}
+                                            </div>
+
+                                            {/* Delete Action */}
+                                            <button
+                                                disabled
+                                                className="p-2 text-slate-400 cursor-not-allowed opacity-50"
+                                                title="Remove file"
+                                            >
+                                                <Trash2 className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {globalError && (
+                                    <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg text-center">
+                                        {globalError}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
-                <button
-                    onClick={() => router.push("/admin/courses/create")}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
-                >
-                    <span className="text-xl">+</span>
-                    Create Course
-                </button>
-            </div>
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatCard
-                    title="Total Courses"
-                    value={stats.totalCourses}
-                    icon={<BookOpen className="w-8 h-8 text-white" />}
-                    bgColor="bg-emerald-100"
-                    iconBgColor="bg-emerald-500"
-                    textColor="text-slate-900"
-                />
-                <StatCard
-                    title="Total Staff Assigned"
-                    value={stats.totalWorkers}
-                    icon={<Users className="w-8 h-8 text-white" />}
-                    bgColor="bg-indigo-100"
-                    iconBgColor="bg-indigo-700"
-                    textColor="text-slate-900"
-                />
-                <StatCard
-                    title="Average Grade"
-                    value={`${stats.averageGrade}%`}
-                    icon={<CheckCircle className="w-8 h-8 text-white" />}
-                    bgColor="bg-red-100"
-                    iconBgColor="bg-red-600"
-                    textColor="text-slate-900"
-                />
-            </div>
+                {/* Footer Actions */}
+                <div className="px-12 py-8 bg-white border-t border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-slate-400 cursor-default">
+                        <HelpCircle className="w-5 h-5" />
+                        <span className="text-sm font-medium">Help Center</span>
+                    </div>
 
-            {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Performance Chart */}
-                <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-bold text-slate-900">Performance of Learners</h2>
-                        <button className="px-3 py-1 text-xs font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200">
-                            Monthly
+                    <div className="flex items-center gap-4">
+                        <button
+                            disabled
+                            className="px-8 py-3 text-slate-400 font-semibold bg-slate-50 rounded-xl cursor-not-allowed"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            disabled
+                            className="px-8 py-3 bg-slate-100 text-slate-400 rounded-xl font-semibold cursor-not-allowed opacity-50"
+                        >
+                            Preview
                         </button>
                     </div>
-                    <div className="h-[300px]">
-                        <PerformanceChart data={stats.performanceData} />
-                    </div>
-                    <div className="mt-4">
-                        <p className="text-xs text-slate-500 -rotate-90 absolute left-8 top-1/2 origin-left">Scores (%)</p>
-                    </div>
-                </div>
-
-                {/* Training Coverage Chart */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-                    <h2 className="text-lg font-bold text-slate-900 mb-6">Training Coverage</h2>
-                    <div className="h-[200px] flex items-center justify-center mb-6">
-                        <CoverageChart data={stats.coverageData} />
-                    </div>
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-indigo-200"></span>
-                                <span className="text-slate-500">% of staff who have completed required courses</span>
-                            </div>
-                            <span className="font-bold text-slate-900">{stats.coverageData.completed}%</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
-                                <span className="text-slate-500">% of staff currently enrolled (in progress)</span>
-                            </div>
-                            <span className="font-bold text-slate-900">{stats.coverageData.inProgress}%</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                                <span className="text-slate-500">% of staff yet to begin any course</span>
-                            </div>
-                            <span className="font-bold text-slate-900">{stats.coverageData.notStarted}%</span>
-                        </div>
-                    </div>
                 </div>
             </div>
+
+            {/* Document Preview Modal - Shows the last uploaded file for now */}
+
+            {showPreview && lastUploadedFile && lastUploadedFile.publicUrl && (
+                <DocumentPreview
+                    fileUrl={lastUploadedFile.publicUrl}
+                    fileName={lastUploadedFile.file.name}
+                    onClose={() => setShowPreview(false)}
+                    onAnalyze={handleAnalyze}
+                />
+            )}
         </div>
     );
 }
-
-interface StatCardProps {
-    title: string;
-    value: string | number;
-    icon: React.ReactNode;
-    bgColor: string;
-    iconBgColor: string;
-    textColor: string;
-}
-
-function StatCard({ title, value, icon, bgColor, iconBgColor, textColor }: StatCardProps) {
-    return (
-        <div className={`${bgColor} rounded-2xl p-6 flex flex-col justify-between h-40`}>
-            <div className={`w-12 h-12 ${iconBgColor} rounded-xl flex items-center justify-center mb-4`}>
-                {icon}
-            </div>
-            <div>
-                <h3 className="text-sm font-medium text-slate-600 mb-1">{title}</h3>
-                <p className={`text-3xl font-bold ${textColor}`}>{value}</p>
-            </div>
-        </div>
-    );
-}
-

@@ -3,7 +3,7 @@ import { getGeminiModel } from "@/lib/gemini";
 
 export async function POST(req: NextRequest) {
     try {
-        const { courseContent } = await req.json();
+        const { courseContent, numQuestions = 15, difficulty = 'Moderate' } = await req.json();
 
         if (!courseContent) {
             return NextResponse.json({ error: "No course content provided" }, { status: 400 });
@@ -12,21 +12,29 @@ export async function POST(req: NextRequest) {
         const model = getGeminiModel();
 
         const prompt = `
-      Based on the following course content, generate a quiz with exactly 20 questions.
-      
-      The output must be a valid JSON array of objects.
-      Each object must have the following structure:
-      {
-        "id": "string (unique)",
-        "text": "Question text",
-        "options": ["Option A", "Option B", "Option C", "Option D"],
-        "correctAnswer": number (0-3 index of the correct option)
-      }
-      
-      Do not include any markdown formatting (like \`\`\`json) in the response, just the raw JSON array.
-      
-      Course Content:
-      ${courseContent}
+Based on the following course content, generate a quiz with exactly ${numQuestions} multiple-choice questions.
+Difficulty level: ${difficulty}
+
+CRITICAL REQUIREMENTS:
+- ALL questions must be multiple-choice format ONLY
+- Each question must have exactly 4 answer options
+- Each question must have exactly 1 correct answer
+- Questions should test understanding of key concepts from the course
+- Make questions clear and unambiguous
+
+The output must be a valid JSON array of objects.
+Each object must have the following structure:
+{
+  "id": "q1" (unique id: q1, q2, q3, etc.),
+  "text": "Clear question text here?",
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "correctAnswer": 0 (index 0-3 of the correct option)
+}
+
+IMPORTANT: Return ONLY the JSON array. Do not include any markdown formatting or code blocks.
+
+Course Content:
+${courseContent}
     `;
 
         const result = await model.generateContent(prompt);

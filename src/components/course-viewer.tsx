@@ -6,7 +6,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { motion, useScroll, useSpring } from "framer-motion";
-import { ChevronRight, BookOpen, CheckCircle } from "lucide-react";
+import { ChevronRight, BookOpen, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CourseViewerProps {
@@ -17,6 +17,7 @@ interface CourseViewerProps {
 export function CourseViewer({ content, onComplete }: CourseViewerProps) {
     const [activeSection, setActiveSection] = useState<string>("");
     const [readSections, setReadSections] = useState<Set<string>>(new Set());
+    const [showAllModules, setShowAllModules] = useState(false);
     const contentRef = useRef<HTMLDivElement>(null);
     const { scrollYProgress } = useScroll({
         target: contentRef,
@@ -79,75 +80,101 @@ export function CourseViewer({ content, onComplete }: CourseViewerProps) {
         }
     };
 
+    // Filter outline for display (show first 7 by default)
+    const visibleOutline = showAllModules ? outline : outline.slice(0, 7);
+    const remainingCount = outline.length - 7;
+
     return (
         <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900">
             {/* Sidebar */}
-            <div className="w-80 flex-shrink-0 border-r border-gray-200 bg-white p-6 overflow-y-auto hidden lg:block">
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 rounded-lg bg-indigo-50">
-                        <BookOpen className="w-5 h-5 text-indigo-600" />
+            <div className="w-80 flex-shrink-0 bg-slate-50 p-6 hidden lg:block">
+                <div className="sticky top-6 bg-white border border-gray-200 rounded-lg shadow-sm p-6 max-h-[calc(100vh-3rem)] flex flex-col">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 rounded-lg bg-indigo-50">
+                            <BookOpen className="w-5 h-5 text-indigo-600" />
+                        </div>
+                        <h2 className="font-bold text-lg text-slate-900">Course Outline</h2>
                     </div>
-                    <h2 className="font-bold text-lg text-slate-900">Course Outline</h2>
-                </div>
 
-                {/* Progress Indicator */}
-                <div className="mb-8 p-4 rounded-lg bg-slate-50 border border-slate-200">
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-slate-500">Progress</span>
-                        <span className="text-sm font-bold text-indigo-600">
-                            {Math.round((readSections.size / outline.length) * 100)}%
-                        </span>
+                    {/* Progress Indicator */}
+                    <div className="mb-8 p-4 rounded-lg bg-slate-50 border border-slate-200">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-slate-500">Progress</span>
+                            <span className="text-sm font-bold text-indigo-600">
+                                {Math.round((readSections.size / outline.length) * 100)}%
+                            </span>
+                        </div>
+                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <motion.div
+                                className="h-full bg-indigo-600"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(readSections.size / outline.length) * 100}%` }}
+                                transition={{ duration: 0.5 }}
+                            />
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">
+                            {readSections.size} of {outline.length} sections completed
+                        </p>
                     </div>
-                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                        <motion.div
-                            className="h-full bg-indigo-600"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(readSections.size / outline.length) * 100}%` }}
-                            transition={{ duration: 0.5 }}
-                        />
-                    </div>
-                    <p className="text-xs text-slate-500 mt-2">
-                        {readSections.size} of {outline.length} sections completed
-                    </p>
-                </div>
 
-                <nav className="space-y-1">
-                    {outline.map((item, index) => (
-                        <button
-                            key={index}
-                            onClick={() => scrollToSection(item.id)}
-                            className={cn(
-                                "w-full text-left px-4 py-3 rounded-lg transition-colors duration-200 flex items-center gap-3",
-                                activeSection === item.id
-                                    ? "bg-indigo-50 text-indigo-700 font-semibold"
-                                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100",
-                                // H1 - Largest, no indent
-                                item.level === 1 && "text-base font-bold",
-                                // H2 - Medium, slight indent
-                                item.level === 2 && "text-sm pl-6 font-medium",
-                                // H3 - Smaller, more indent
-                                item.level === 3 && "text-xs pl-10"
-                            )}
-                        >
-                            {readSections.has(item.id) ? (
-                                <CheckCircle className={cn(
-                                    "text-green-500 flex-shrink-0",
-                                    item.level === 1 && "w-5 h-5",
-                                    item.level === 2 && "w-4 h-4",
-                                    item.level === 3 && "w-3.5 h-3.5"
-                                )} />
-                            ) : (
-                                <div className={cn(
-                                    "rounded-full border-2 border-slate-300 flex-shrink-0",
-                                    item.level === 1 && "w-5 h-5",
-                                    item.level === 2 && "w-4 h-4",
-                                    item.level === 3 && "w-3.5 h-3.5"
-                                )} />
-                            )}
-                            <span className="truncate leading-tight">{item.title}</span>
-                        </button>
-                    ))}
-                </nav>
+                    <nav className="space-y-1 overflow-y-auto flex-1 -mr-2 pr-2 scrollbar-thin">
+                        {visibleOutline.map((item, index) => (
+                            <button
+                                key={index}
+                                onClick={() => scrollToSection(item.id)}
+                                className={cn(
+                                    "w-full text-left px-4 py-3 rounded-lg transition-colors duration-200 flex items-center gap-3",
+                                    activeSection === item.id
+                                        ? "bg-indigo-50 text-indigo-700 font-semibold"
+                                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-100",
+                                    // H1 - Largest, no indent
+                                    item.level === 1 && "text-base font-bold",
+                                    // H2 - Medium, slight indent
+                                    item.level === 2 && "text-sm pl-6 font-medium",
+                                    // H3 - Smaller, more indent
+                                    item.level === 3 && "text-xs pl-10"
+                                )}
+                            >
+                                {readSections.has(item.id) ? (
+                                    <CheckCircle className={cn(
+                                        "text-green-500 flex-shrink-0",
+                                        item.level === 1 && "w-5 h-5",
+                                        item.level === 2 && "w-4 h-4",
+                                        item.level === 3 && "w-3.5 h-3.5"
+                                    )} />
+                                ) : (
+                                    <div className={cn(
+                                        "rounded-full border-2 border-slate-300 flex-shrink-0",
+                                        item.level === 1 && "w-5 h-5",
+                                        item.level === 2 && "w-4 h-4",
+                                        item.level === 3 && "w-3.5 h-3.5"
+                                    )} />
+                                )}
+                                <span className="truncate leading-tight">{item.title}</span>
+                            </button>
+                        ))}
+
+                        {/* Show More/Less Button */}
+                        {outline.length > 7 && (
+                            <button
+                                onClick={() => setShowAllModules(!showAllModules)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 mt-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition-colors"
+                            >
+                                {showAllModules ? (
+                                    <>
+                                        <ChevronUp className="w-4 h-4" />
+                                        Show Less
+                                    </>
+                                ) : (
+                                    <>
+                                        <ChevronDown className="w-4 h-4" />
+                                        Show {remainingCount} more module{remainingCount > 1 ? 's' : ''}
+                                    </>
+                                )}
+                            </button>
+                        )}
+                    </nav>
+                </div>
             </div>
 
             {/* Main Content */}

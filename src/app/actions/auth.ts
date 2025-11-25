@@ -129,3 +129,16 @@ export async function updatePassword(newPassword: string): Promise<{ success: bo
         return { success: false, error: err.message || 'An unexpected error occurred' }
     }
 }
+
+/**
+ * Sign out the current user and redirect to login page
+ */
+export async function signOut() {
+    'use server'
+
+    const supabase = await createClient()
+    await supabase.auth.signOut()
+
+    // Redirect is handled by middleware after signOut
+    return { success: true }
+}

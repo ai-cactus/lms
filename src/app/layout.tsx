@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/react";
+import { NetworkProvider } from "@/contexts/network-context";
+import { NotificationProvider } from "@/contexts/notification-context";
+import { NetworkStatus } from "@/components/network-status";
 import "./globals.css";
 
 const inter = Inter({
@@ -22,9 +25,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} font-sans antialiased bg-slate-50 text-slate-900`}>
-        {children}
-        <SpeedInsights />
-        <Analytics />
+        <NetworkProvider>
+          <NotificationProvider>
+            <NetworkStatus />
+            {children}
+            <SpeedInsights />
+            <Analytics />
+          </NotificationProvider>
+        </NetworkProvider>
       </body>
     </html>
   );

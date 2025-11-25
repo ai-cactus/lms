@@ -3,15 +3,15 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Upload, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { CloudUpload, FileText } from "lucide-react";
 
 export default function PolicyUploadPage() {
     const [file, setFile] = useState<File | null>(null);
-    const [deliveryFormat, setDeliveryFormat] = useState<'pages' | 'slides'>('pages');
-    const [uploading, setUploading] = useState(false);
-    const [analyzing, setAnalyzing] = useState(false);
-    const [error, setError] = useState("");
     const [dragActive, setDragActive] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [error, setError] = useState("");
+    const [uploadedFileId, setUploadedFileId] = useState<string | null>(null);
     const router = useRouter();
     const supabase = createClient();
 
@@ -35,7 +35,7 @@ export default function PolicyUploadPage() {
         }
     }, []);
 
-    const handleFileSelect = (selectedFile: File) => {
+    const handleFileSelect = async (selectedFile: File) => {
         // Validate file type
         const validTypes = [
             "application/pdf",
@@ -48,20 +48,22 @@ export default function PolicyUploadPage() {
             return;
         }
 
-        // Validate file size (10MB max)
-        if (selectedFile.size > 10 * 1024 * 1024) {
-            setError("File size must be under 10MB");
+        // Validate file size (100MB max)
+        if (selectedFile.size > 100 * 1024 * 1024) {
+            setError("File size must be under 100MB");
             return;
         }
 
         setFile(selectedFile);
         setError("");
+
+        // Auto-upload the file
+        await uploadFile(selectedFile);
     };
 
-    const handleUpload = async () => {
-        if (!file) return;
-
+    const uploadFile = async (fileToUpload: File) => {
         setUploading(true);
+        setUploadProgress(0);
         setError("");
 
         try {
@@ -78,27 +80,34 @@ export default function PolicyUploadPage() {
 
             if (!userData) throw new Error("User data not found");
 
+            // Simulate progress
+            setUploadProgress(30);
+
             // Upload file to Supabase Storage
-            const fileName = `${Date.now()}-${file.name}`;
+            const fileName = `${Date.now()}-${fileToUpload.name}`;
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from("policies")
-                .upload(`${userData.organization_id}/${fileName}`, file);
+                .upload(`${userData.organization_id}/${fileName}`, fileToUpload);
 
             if (uploadError) throw uploadError;
+
+            setUploadProgress(60);
 
             // Get public URL
             const { data: { publicUrl } } = supabase.storage
                 .from("policies")
                 .getPublicUrl(uploadData.path);
 
+            setUploadProgress(80);
+
             // Create policy record
             const { data: policyData, error: policyError } = await supabase
                 .from("policies")
                 .insert({
                     organization_id: userData.organization_id,
-                    title: file.name.replace(/\.(pdf|docx?)$/i, ""),
+                    title: fileToUpload.name.replace(/\.(pdf|docx?)$/i, ""),
                     file_url: publicUrl,
-                    file_name: file.name,
+                    file_name: fileToUpload.name,
                     status: "draft",
                 })
                 .select()
@@ -106,218 +115,136 @@ export default function PolicyUploadPage() {
 
             if (policyError) throw policyError;
 
-            // Start AI analysis
+            setUploadProgress(100);
+            setUploadedFileId(policyData.id);
             setUploading(false);
-            setAnalyzing(true);
-
-            // Call AI analysis API
-            const response = await fetch("/api/policies/analyze", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    policyId: policyData.id,
-                    fileUrl: publicUrl,
-                    fileName: file.name,
-                    deliveryFormat: deliveryFormat,
-                }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || "Analysis failed");
-            }
-
-            const { courseId } = await response.json();
-
-            // Redirect to course review
-            router.push(`/admin/courses/${courseId}/review`);
         } catch (err: any) {
             console.error("Upload error:", err);
             setError(err.message || "Failed to upload policy");
             setUploading(false);
-            setAnalyzing(false);
+            setUploadProgress(0);
+        }
+    };
+
+    const handleViewWorkspace = () => {
+        if (uploadedFileId) {
+            router.push(`/admin/courses/create?policyId=${uploadedFileId}`);
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 py-12 px-4">
-            <div className="max-w-2xl mx-auto">
+        <div className="space-y-6">
+            {/* Upload Card with Blue Border */}
+            <div className="bg-white rounded-xl border-2 border-blue-500 p-8">
                 {/* Header */}
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2">Upload Policy Document</h1>
+                    <h1 className="text-3xl font-bold text-blue-600 mb-2">Upload Your Policy</h1>
                     <p className="text-slate-600">
-                        Upload a policy document to automatically generate a CARF-compliant training course
+                        Upload your document here to get started! Accepted formats include PDF and DOCX.
                     </p>
                 </div>
 
-                {/* Upload Card */}
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
-                    {!file ? (
-                        /* Drag & Drop Zone */
-                        <div
-                            onDragEnter={handleDrag}
-                            onDragLeave={handleDrag}
-                            onDragOver={handleDrag}
-                            onDrop={handleDrop}
-                            className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${dragActive
-                                ? "border-indigo-500 bg-indigo-50"
-                                : "border-gray-300 hover:border-indigo-400"
-                                }`}
-                        >
-                            <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                            <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                                Drop your policy file here
-                            </h3>
-                            <p className="text-sm text-slate-600 mb-4">or click to browse</p>
-                            <input
-                                type="file"
-                                accept=".pdf,.doc,.docx"
-                                onChange={(e) => e.target.files && handleFileSelect(e.target.files[0])}
-                                className="hidden"
-                                id="file-upload"
-                            />
-                            <label
-                                htmlFor="file-upload"
-                                className="inline-block px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 cursor-pointer transition-colors"
-                            >
-                                Choose File
-                            </label>
-                            <p className="text-xs text-slate-500 mt-4">
-                                Supported formats: PDF, DOCX (Max 10MB)
-                            </p>
+                {/* Drag & Drop Zone */}
+                <div
+                    onDragEnter={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDragOver={handleDrag}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-xl py-20 px-16 text-center transition-colors ${dragActive
+                            ? "border-blue-400 bg-blue-50"
+                            : "border-gray-300"
+                        }`}
+                >
+                    {/* Cloud Upload Icon */}
+                    <div className="flex justify-center mb-6">
+                        <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center">
+                            <CloudUpload className="w-12 h-12 text-slate-400" strokeWidth={1.5} />
                         </div>
-                    ) : (
-                        /* File Selected */
-                        <div>
-                            <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-lg mb-6">
-                                <FileText className="w-8 h-8 text-indigo-600" />
-                                <div className="flex-1">
-                                    <p className="font-medium text-slate-900">{file.name}</p>
-                                    <p className="text-sm text-slate-500">
-                                        {(file.size / 1024 / 1024).toFixed(2)} MB
-                                    </p>
-                                </div>
-                                {!uploading && !analyzing && (
-                                    <button
-                                        onClick={() => setFile(null)}
-                                        className="text-sm text-slate-600 hover:text-slate-900"
-                                    >
-                                        Remove
-                                    </button>
-                                )}
-                            </div>
+                    </div>
 
-                            {/* Delivery Format Selector */}
-                            {!analyzing && (
-                                <div className="mb-6">
-                                    <label className="block text-sm font-medium text-slate-700 mb-3">
-                                        Choose Delivery Format
-                                    </label>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <label className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${deliveryFormat === 'pages'
-                                                ? 'border-indigo-600 bg-indigo-50'
-                                                : 'border-gray-200 hover:border-gray-300'
-                                            }`}>
-                                            <input
-                                                type="radio"
-                                                name="delivery_format"
-                                                value="pages"
-                                                checked={deliveryFormat === 'pages'}
-                                                onChange={() => setDeliveryFormat('pages')}
-                                                className="sr-only"
-                                            />
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${deliveryFormat === 'pages' ? 'border-indigo-600' : 'border-gray-300'
-                                                    }`}>
-                                                    {deliveryFormat === 'pages' && (
-                                                        <div className="w-2 h-2 rounded-full bg-indigo-600" />
-                                                    )}
-                                                </div>
-                                                <h4 className="font-semibold text-slate-900">Pages View</h4>
-                                            </div>
-                                            <p className="text-xs text-slate-600">Continuous scrolling text</p>
-                                        </label>
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">
+                        Drag & drop your files here
+                    </h3>
+                    <p className="text-sm text-slate-400 mb-1">
+                        file type: PDF, DOCX (max. 100MB)
+                    </p>
+                    <p className="text-sm text-slate-400 mb-6">or</p>
 
-                                        <label className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${deliveryFormat === 'slides'
-                                                ? 'border-indigo-600 bg-indigo-50'
-                                                : 'border-gray-200 hover:border-gray-300'
-                                            }`}>
-                                            <input
-                                                type="radio"
-                                                name="delivery_format"
-                                                value="slides"
-                                                checked={deliveryFormat === 'slides'}
-                                                onChange={() => setDeliveryFormat('slides')}
-                                                className="sr-only"
-                                            />
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${deliveryFormat === 'slides' ? 'border-indigo-600' : 'border-gray-300'
-                                                    }`}>
-                                                    {deliveryFormat === 'slides' && (
-                                                        <div className="w-2 h-2 rounded-full bg-indigo-600" />
-                                                    )}
-                                                </div>
-                                                <h4 className="font-semibold text-slate-900">Slides View</h4>
-                                            </div>
-                                            <p className="text-xs text-slate-600">Interactive presentation format</p>
-                                        </label>
-                                    </div>
-                                </div>
-                            )}
+                    {/* Select File Button */}
+                    <input
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        onChange={(e) => e.target.files && handleFileSelect(e.target.files[0])}
+                        className="hidden"
+                        id="file-upload"
+                        disabled={uploading}
+                    />
+                    <label
+                        htmlFor="file-upload"
+                        className={`inline-block px-10 py-3 rounded-lg font-semibold text-sm uppercase tracking-wide transition-colors ${uploading
+                                ? "bg-slate-300 text-slate-500 cursor-not-allowed"
+                                : "bg-slate-400 text-white hover:bg-slate-500 cursor-pointer"
+                            }`}
+                    >
+                        SELECT FILE
+                    </label>
 
-                            {error && (
-                                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                                    <p className="text-sm text-red-700">{error}</p>
-                                </div>
-                            )}
-
-                            {analyzing ? (
-                                /* Analyzing State */
-                                <div className="text-center py-8">
-                                    <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto mb-4" />
-                                    <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                                        Analyzing with AI...
-                                    </h3>
-                                    <p className="text-sm text-slate-600">
-                                        This may take up to 60 seconds. We&apos;re extracting content, identifying
-                                        objectives, and mapping to CARF standards.
-                                    </p>
-                                </div>
-                            ) : (
-                                /* Upload Button */
-                                <button
-                                    onClick={handleUpload}
-                                    disabled={uploading}
-                                    className="w-full py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                                >
-                                    {uploading ? (
-                                        <>
-                                            <Loader2 className="w-5 h-5 animate-spin" />
-                                            Uploading...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Upload className="w-5 h-5" />
-                                            Upload Policy
-                                        </>
-                                    )}
-                                </button>
-                            )}
+                    {/* Error Message */}
+                    {error && (
+                        <div className="mt-6 p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <p className="text-sm text-red-700">{error}</p>
                         </div>
                     )}
                 </div>
 
-                {/* Info Section */}
-                <div className="mt-8 p-6 bg-blue-50 border border-blue-200 rounded-xl">
-                    <h3 className="font-semibold text-blue-900 mb-2">What happens next?</h3>
-                    <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
-                        <li>AI analyzes your policy document</li>
-                        <li>Generates course objectives mapped to CARF standards</li>
-                        <li>Creates lesson notes and quiz questions</li>
-                        <li>You review and approve the course draft</li>
-                    </ol>
-                </div>
+                {/* Uploaded File Display with Progress */}
+                {file && (
+                    <div className="mt-8 pt-6 border-t-2 border-dashed border-blue-400">
+                        <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-lg">
+                            <div className="flex items-center gap-4 flex-1">
+                                {/* PDF Icon */}
+                                <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <FileText className="w-6 h-6 text-red-600" />
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="font-semibold text-slate-900 truncate">
+                                            {file.name}
+                                        </p>
+                                        <span className="text-sm text-slate-500 ml-4">
+                                            {(file.size / 1024 / 1024).toFixed(1)} MB
+                                        </span>
+                                    </div>
+
+                                    {/* Progress Bar */}
+                                    {uploading && (
+                                        <div className="w-full bg-slate-200 rounded-full h-2">
+                                            <div
+                                                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                                style={{ width: `${uploadProgress}%` }}
+                                            ></div>
+                                        </div>
+                                    )}
+
+                                    {!uploading && uploadProgress === 100 && (
+                                        <div className="w-full bg-blue-600 rounded-full h-2"></div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* View Workspace Button */}
+                            {uploadProgress === 100 && !uploading && (
+                                <button
+                                    onClick={handleViewWorkspace}
+                                    className="px-6 py-2 bg-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-300 transition-colors whitespace-nowrap"
+                                >
+                                    View Workspace
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

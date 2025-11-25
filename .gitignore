@@ -9,6 +9,7 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.cache
 
 # testing
 /coverage
@@ -35,6 +36,7 @@ yarn-error.log*
 .env.production.local
 .env.test.local
 .env.development.local
+
 # vercel
 .vercel
 

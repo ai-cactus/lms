@@ -1,0 +1,244 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { X, Search, CheckCircle } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+
+interface AssignUsersModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    courseId: string;
+    onAssignmentComplete: () => void;
+}
+
+interface User {
+    id: string;
+    full_name: string;
+    email: string;
+    role: string;
+    isAssigned: boolean;
+}
+
+export default function AssignUsersModal({ isOpen, onClose, courseId, onAssignmentComplete }: AssignUsersModalProps) {
+    const [users, setUsers] = useState<User[]>([]);
+    const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+    const [searchQuery, setSearchQuery] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const supabase = createClient();
+
+    useEffect(() => {
+        if (isOpen) {
+            loadUsers();
+        }
+    }, [isOpen, courseId]);
+
+    const loadUsers = async () => {
+        setLoading(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data: userData } = await supabase
+                .from("users")
+                .select("organization_id")
+                .eq("id", user.id)
+                .single();
+
+            // Get all users in organization, excluding admins
+            const { data: orgUsers } = await supabase
+                .from("users")
+                .select("id, full_name, email, role")
+                .eq("organization_id", userData?.organization_id)
+                .neq("role", "admin");  // Exclude admin users
+
+            // Get existing assignments for this course
+            const { data: assignments } = await supabase
+                .from("course_assignments")
+                .select("worker_id")
+                .eq("course_id", courseId);
+
+            const assignedUserIds = new Set(assignments?.map(a => a.worker_id) || []);
+
+            const usersWithStatus = (orgUsers || []).map(u => ({
+                ...u,
+                isAssigned: assignedUserIds.has(u.id),
+            }));
+
+            setUsers(usersWithStatus);
+        } catch (error) {
+            console.error("Error loading users:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleToggleUser = (userId: string) => {
+        const newSelected = new Set(selectedUsers);
+        if (newSelected.has(userId)) {
+            newSelected.delete(userId);
+        } else {
+            newSelected.add(userId);
+        }
+        setSelectedUsers(newSelected);
+    };
+
+    const handleAssign = async () => {
+        if (selectedUsers.size === 0) return;
+
+        setSaving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            // Calculate deadline (30 days from now)
+            const deadline = new Date();
+            deadline.setDate(deadline.getDate() + 30);
+
+            const assignments = Array.from(selectedUsers).map(userId => ({
+                course_id: courseId,
+                worker_id: userId,
+                assigned_by: user.id,
+                status: "not_started",
+                assigned_at: new Date().toISOString(),
+                deadline: deadline.toISOString(),
+            }));
+
+            const { error } = await supabase
+                .from("course_assignments")
+                .insert(assignments);
+
+            if (error) throw error;
+
+            onAssignmentComplete();
+            onClose();
+        } catch (error) {
+            console.error("Error creating assignments:", error);
+            alert("Failed to assign users. Please try again.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const filteredUsers = searchQuery
+        ? users.filter(u =>
+            u.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            u.email.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+        : users;
+
+    const unassignedUsers = filteredUsers.filter(u => !u.isAssigned);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+            {/* Backdrop */}
+            <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={onClose}></div>
+
+            {/* Modal */}
+            <div className="flex min-h-full items-center justify-center p-4">
+                <div className="relative bg-white rounded-xl shadow-2xl max-w-2xl w-full">
+                    {/* Header */}
+                    <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                        <h2 className="text-2xl font-bold text-slate-900">Assign Users to Course</h2>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                        >
+                            <X className="w-5 h-5 text-slate-600" />
+                        </button>
+                    </div>
+
+                    {/* Content */}
+                    <div className="px-6 py-6">
+                        {/* Search */}
+                        <div className="mb-4">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search users by name or email..."
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        {/* User List */}
+                        <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                            {loading ? (
+                                <div className="p-8 text-center text-slate-600">Loading users...</div>
+                            ) : unassignedUsers.length === 0 ? (
+                                <div className="p-8 text-center text-slate-600">
+                                    {searchQuery ? "No users found matching your search" : "All users are already assigned to this course"}
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-gray-200">
+                                    {unassignedUsers.map(user => (
+                                        <label
+                                            key={user.id}
+                                            className="flex items-center gap-4 p-4 hover:bg-slate-50 cursor-pointer transition-colors"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedUsers.has(user.id)}
+                                                onChange={() => handleToggleUser(user.id)}
+                                                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                                            />
+                                            <div className="flex-1">
+                                                <p className="font-medium text-slate-900">{user.full_name}</p>
+                                                <p className="text-sm text-slate-500">{user.email}</p>
+                                            </div>
+                                            <span className="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded">
+                                                {user.role}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Selected Count */}
+                        {selectedUsers.size > 0 && (
+                            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                <p className="text-sm text-indigo-800">
+                                    <span className="font-semibold">{selectedUsers.size}</span> user{selectedUsers.size !== 1 ? "s" : ""} selected
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition-colors"
+                            disabled={saving}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleAssign}
+                            disabled={selectedUsers.size === 0 || saving}
+                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {saving ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    Assigning...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle className="w-4 h-4" />
+                                    Assign Users
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}

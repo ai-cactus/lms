@@ -4,6 +4,7 @@ import { Bell, CaretDown, UserCircle } from "@phosphor-icons/react";
 import { Menu } from "lucide-react";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 
 interface WorkerHeaderProps {
     onOpenMobileMenu: () => void;
@@ -11,6 +12,7 @@ interface WorkerHeaderProps {
 
 export function WorkerHeader({ onOpenMobileMenu }: WorkerHeaderProps) {
     const [userName, setUserName] = useState("Worker");
+    const [userInitials, setUserInitials] = useState("W");
     const supabase = createClient();
 
     useEffect(() => {
@@ -24,6 +26,12 @@ export function WorkerHeader({ onOpenMobileMenu }: WorkerHeaderProps) {
                     .single();
                 if (data?.full_name) {
                     setUserName(data.full_name);
+                    // Generate initials from full name
+                    const names = data.full_name.split(" ");
+                    const initials = names.length >= 2
+                        ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
+                        : names[0].substring(0, 2).toUpperCase();
+                    setUserInitials(initials);
                 }
             }
         };
@@ -51,13 +59,7 @@ export function WorkerHeader({ onOpenMobileMenu }: WorkerHeaderProps) {
                     <Bell className="text-xl sm:text-2xl" />
                 </button>
                 <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6 border-l border-gray-200">
-                    <div className="flex items-center gap-2 sm:gap-3 bg-gray-50 hover:bg-gray-100 px-2 sm:px-3 py-1.5 rounded-full cursor-pointer transition-colors">
-                        <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                            <UserCircle className="text-xl sm:text-2xl" weight="fill" />
-                        </div>
-                        <span className="text-xs sm:text-sm font-medium text-slate-700 hidden sm:inline">{userName}</span>
-                        <CaretDown className="text-slate-400 hidden sm:block" size={14} />
-                    </div>
+                    <UserProfileDropdown userName={userName} userInitials={userInitials} />
                 </div>
             </div>
         </header>

@@ -19,6 +19,10 @@ interface Worker {
     role: string;
     created_at: string;
     deactivated_at: string | null;
+    supervisor?: {
+        id: string;
+        full_name: string;
+    } | null;
     assignments?: {
         total: number;
         completed: number;
@@ -85,7 +89,11 @@ function WorkersListContent() {
           email,
           role,
           created_at,
-          deactivated_at
+          deactivated_at,
+          supervisor:users!supervisor_id(
+            id,
+            full_name
+          )
         `)
                 .eq("organization_id", userData?.organization_id)
                 .eq("role", "worker")
@@ -113,8 +121,14 @@ function WorkersListContent() {
                         .eq("worker_id", worker.id)
                         .eq("status", "overdue");
 
+                    // Normalize supervisor data (Supabase returns it as an array or null)
+                    const supervisor = Array.isArray(worker.supervisor)
+                        ? worker.supervisor[0]
+                        : worker.supervisor;
+
                     return {
                         ...worker,
+                        supervisor,
                         assignments: {
                             total: total || 0,
                             completed: completed || 0,
@@ -307,7 +321,9 @@ function WorkersListContent() {
                                             </td>
                                             <td className="hidden md:table-cell px-6 py-4">
                                                 <p className="text-sm text-slate-700">
-                                                    -
+                                                    {worker.supervisor?.full_name || (
+                                                        <span className="text-slate-400 italic">No supervisor</span>
+                                                    )}
                                                 </p>
                                             </td>
                                             <td className="px-3 sm:px-6 py-4">

@@ -70,14 +70,37 @@ export default function WorkerDashboardPage() {
 
     const getCourseIcon = (title: string) => {
         const lowerTitle = title.toLowerCase();
-        if (lowerTitle.includes("hipaa")) return <ShieldCheck className="w-10 h-10 text-indigo-600" weight="fill" />;
-        if (lowerTitle.includes("safety") || lowerTitle.includes("first aid")) return <FirstAid className="w-10 h-10 text-red-600" weight="fill" />;
+
+        // HIPAA and Privacy
+        if (lowerTitle.includes("hipaa") || lowerTitle.includes("privacy")) {
+            return <ShieldCheck className="w-10 h-10 text-indigo-600" weight="fill" />;
+        }
+
+        // Safety, First Aid, Emergency
+        if (lowerTitle.includes("safety") || lowerTitle.includes("first aid") || lowerTitle.includes("emergency") || lowerTitle.includes("cpr")) {
+            return <FirstAid className="w-10 h-10 text-red-600" weight="fill" />;
+        }
+
+        // Compliance, Ethics, Policy, Regulatory
+        if (lowerTitle.includes("compliance") || lowerTitle.includes("ethics") || lowerTitle.includes("policy") || lowerTitle.includes("regulatory")) {
+            return <ShieldCheck className="w-10 h-10 text-green-600" weight="fill" />;
+        }
+
+        // Default: Book icon for general training
         return <BookOpen className="w-10 h-10 text-blue-600" weight="fill" />;
     };
 
     const getDescription = (objectives: any) => {
         if (Array.isArray(objectives) && objectives.length > 0) {
-            return objectives[0]?.text || "Continue your training progress with this course.";
+            // Try to get the first objective with meaningful text
+            const meaningfulObjective = objectives.find(obj => obj?.text && obj.text.length > 20);
+            if (meaningfulObjective) {
+                return meaningfulObjective.text;
+            }
+            // Fallback to first objective if exists
+            if (objectives[0]?.text) {
+                return objectives[0].text;
+            }
         }
         return "Continue your training progress with this course.";
     };

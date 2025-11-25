@@ -33,12 +33,18 @@ export async function POST(req: NextRequest) {
 
         const fullText = validDocs.join("\n");
 
+        // Truncate text to avoid hitting token limits (approx 50k chars is ~12k tokens, usually sufficient for metadata)
+        const MAX_CHARS = 50000;
+        const truncatedText = fullText.length > MAX_CHARS
+            ? fullText.substring(0, MAX_CHARS) + "\n...[Text truncated for analysis]..."
+            : fullText;
+
         // 2. Analyze and extract metadata
         const prompt = `
 You are an expert instructional designer. Analyze the following documents and extract structured metadata for creating a training course.
 
 DOCUMENTS:
-${fullText}
+${truncatedText}
 
 Please provide a JSON response with the following structure:
 {
@@ -74,6 +80,15 @@ IMPORTANT: Return ONLY valid JSON, no markdown formatting or code blocks.
         return NextResponse.json({ metadata });
     } catch (error: any) {
         console.error("Error analyzing documents:", error);
+
+        // Handle 429 specifically
+        if (error.message?.includes("429") || error.status === 429) {
+            return NextResponse.json(
+                { error: "AI Service is busy. Please try again in a minute." },
+                { status: 429 }
+            );
+        }
+
         return NextResponse.json(
             { error: error.message || "Failed to analyze documents" },
             { status: 500 }

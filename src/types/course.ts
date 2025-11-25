@@ -18,4 +18,6 @@ export interface CourseData {
     targetAudience?: string;
     prerequisites?: string;
     complianceMapping?: string;
+    generatedContent?: string; // AI-generated markdown course content
+    questions?: any[]; // Array of quiz questions
 }

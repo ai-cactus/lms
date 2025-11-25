@@ -11,7 +11,12 @@ import {
 } from "lucide-react";
 
 interface Step7FinalizeProps {
-    onPublish: () => void;
+    onPublish: (data: {
+        deadline?: { dueDate: string; dueTime: string };
+        assignType: string;
+        selectedRoles?: string[];
+        emails?: string[];
+    }) => void;
     onBack: () => void;
 }
 
@@ -23,6 +28,10 @@ export function Step7Finalize({ onPublish, onBack }: Step7FinalizeProps) {
     const [calendarEnabled, setCalendarEnabled] = useState(true);
     const [emailEnabled, setEmailEnabled] = useState(false);
     const [emailInput, setEmailInput] = useState("");
+
+    // Date and Time State
+    const [dueDate, setDueDate] = useState("");
+    const [dueTime, setDueTime] = useState("");
 
     // Mock roles based on mockup
     const roles = [
@@ -57,6 +66,42 @@ export function Step7Finalize({ onPublish, onBack }: Step7FinalizeProps) {
         } else {
             setSelectedRoles([...selectedRoles, role]);
         }
+    };
+
+    const handleAddToCalendar = () => {
+        if (!dueDate || !dueTime) {
+            alert("Please set a due date and time first.");
+            return;
+        }
+
+        // Create date object from inputs
+        const start = new Date(`${dueDate}T${dueTime}`);
+        const end = new Date(start.getTime() + 60 * 60 * 1000); // 1 hour duration
+
+        // Format dates for ICS (YYYYMMDDTHHmmSSZ)
+        const formatDate = (date: Date) => {
+            return date.toISOString().replace(/-|:|\.\d+/g, "");
+        };
+
+        const icsContent = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "BEGIN:VEVENT",
+            `DTSTART:${formatDate(start)}`,
+            `DTEND:${formatDate(end)}`,
+            "SUMMARY:Course Completion Deadline",
+            "DESCRIPTION:Deadline to complete the assigned course.",
+            "END:VEVENT",
+            "END:VCALENDAR"
+        ].join("\n");
+
+        const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+        const link = document.createElement("a");
+        link.href = window.URL.createObjectURL(blob);
+        link.setAttribute("download", "course-deadline.ics");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -114,8 +159,8 @@ export function Step7Finalize({ onPublish, onBack }: Step7FinalizeProps) {
                                 <label key={role} className="flex items-center gap-3 cursor-pointer group">
                                     <div
                                         className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedRoles.includes(role)
-                                                ? 'bg-indigo-600 border-indigo-600'
-                                                : 'border-gray-300 group-hover:border-indigo-400'
+                                            ? 'bg-indigo-600 border-indigo-600'
+                                            : 'border-gray-300 group-hover:border-indigo-400'
                                             }`}
                                         onClick={(e) => {
                                             e.preventDefault();
@@ -152,17 +197,19 @@ export function Step7Finalize({ onPublish, onBack }: Step7FinalizeProps) {
                                 <div className="flex-1 flex items-center gap-3 border-b border-gray-200 pb-2">
                                     <Calendar className="w-5 h-5 text-slate-400" />
                                     <input
-                                        type="text"
-                                        placeholder="Due date"
-                                        className="flex-1 bg-transparent focus:outline-none text-sm"
+                                        type="date"
+                                        value={dueDate}
+                                        onChange={(e) => setDueDate(e.target.value)}
+                                        className="flex-1 bg-transparent focus:outline-none text-sm font-medium text-slate-700"
                                     />
                                 </div>
                                 <div className="flex-1 flex items-center gap-3 border-b border-gray-200 pb-2">
                                     <Clock className="w-5 h-5 text-slate-400" />
                                     <input
-                                        type="text"
-                                        placeholder="Due time"
-                                        className="flex-1 bg-transparent focus:outline-none text-sm"
+                                        type="time"
+                                        value={dueTime}
+                                        onChange={(e) => setDueTime(e.target.value)}
+                                        className="flex-1 bg-transparent focus:outline-none text-sm font-medium text-slate-700"
                                     />
                                 </div>
                             </div>
@@ -197,9 +244,19 @@ export function Step7Finalize({ onPublish, onBack }: Step7FinalizeProps) {
                                 }`} />
                         </button>
                     </div>
-                    <p className="text-xs text-slate-500 max-w-md">
-                        Make the most of your Uxcel learning experience with practical design & product-related tips.
+                    <p className="text-xs text-slate-500 max-w-md mb-4">
+                        Add a calendar event for the course deadline.
                     </p>
+
+                    {calendarEnabled && (
+                        <button
+                            onClick={handleAddToCalendar}
+                            className="flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors"
+                        >
+                            <Calendar className="w-4 h-4" />
+                            Download Calendar Invite (.ics)
+                        </button>
+                    )}
                 </div>
 
                 {/* Send Email Notifications */}
@@ -230,7 +287,18 @@ export function Step7Finalize({ onPublish, onBack }: Step7FinalizeProps) {
                     Back
                 </button>
                 <button
-                    onClick={onPublish}
+                    onClick={() => {
+                        if (deadlineEnabled && (!dueDate || !dueTime)) {
+                            alert("Please set a due date and time before publishing.");
+                            return;
+                        }
+                        onPublish({
+                            deadline: deadlineEnabled ? { dueDate, dueTime } : undefined,
+                            assignType,
+                            selectedRoles: assignType === "Specific staff roles" ? selectedRoles : undefined,
+                            emails: assignType === "Individuals" ? emailInput.split(",").map(e => e.trim()) : undefined
+                        });
+                    }}
                     className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-colors"
                 >
                     Publish Course

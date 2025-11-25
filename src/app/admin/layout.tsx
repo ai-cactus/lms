@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { Header } from "@/components/admin/Header";
 
@@ -10,6 +11,14 @@ export default function AdminLayout({
     children: React.ReactNode;
 }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const pathname = usePathname();
+
+    // Hide sidebar and header for course creation wizard
+    const isWizardPage = pathname?.startsWith("/admin/courses/create");
+
+    if (isWizardPage) {
+        return <>{children}</>;
+    }
 
     return (
         <div className="min-h-screen bg-slate-50">

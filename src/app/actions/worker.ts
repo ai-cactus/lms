@@ -100,13 +100,24 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
         }
 
         if (finalCourseIds.length > 0) {
-            const assignments = finalCourseIds.map((courseId: string) => ({
-                course_id: courseId,
-                worker_id: newUserId,
-                assigned_by: currentUser.id,
-                deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // 14 days default
-                status: 'not_started'
-            }))
+            // Fetch course details to get deadline_days for each course
+            const { data: courseDetails } = await adminSupabase
+                .from('courses')
+                .select('id, deadline_days')
+                .in('id', finalCourseIds);
+
+            const assignments = finalCourseIds.map((courseId: string) => {
+                const course = courseDetails?.find(c => c.id === courseId);
+                const daysToAdd = course?.deadline_days || 14; // Default to 14 days if not specified
+
+                return {
+                    course_id: courseId,
+                    worker_id: newUserId,
+                    assigned_by: currentUser.id,
+                    deadline: new Date(Date.now() + daysToAdd * 24 * 60 * 60 * 1000).toISOString(),
+                    status: 'not_started'
+                };
+            });
 
             const { error: assignError } = await adminSupabase
                 .from('course_assignments')

@@ -105,101 +105,123 @@ ${courseMetadata.complianceMapping ? `- Compliance Mapping: ${courseMetadata.com
         }
 
         const prompt = `
-You are an expert instructional designer and subject matter expert.
+You are an expert instructional designer and master educator with exceptional teaching skills.
 I have processed the following documents (provided as summaries or full text below).
 
 ${metadataSection}
 
-Your task is to create a comprehensive, professionally-formatted course based ONLY on this content.
+Your task is to create a DETAILED, COMPREHENSIVE, ENGAGING course based on this content.
 ${courseMetadata ? 'IMPORTANT: Use the provided course metadata (title, objectives, etc.) to structure your course.' : ''}
 
-CRITICAL FORMATTING REQUIREMENTS:
+CRITICAL REQUIREMENTS:
 
-1. **Structure**:
+1. **CHARACTER LIMIT PER MODULE**: 
+   - MAXIMUM 1000 characters per module (excluding the H2 heading itself)
+   - Count every character in the module content
+   - If a concept needs more space, create multiple parts:
+     * ## Module 5: Advanced Concepts - Part 1
+     * ## Module 5: Advanced Concepts - Part 2
+     * etc.
+
+2. **CONTENT QUALITY - DETAILED & COMPREHENSIVE**:
+   - Provide RICH, DETAILED explanations - DO NOT over-summarize
+   - Use analogies to make concepts relatable and memorable
+   - Include real-world examples for every major concept
+   - Explain the "why" behind concepts, not just the "what"
+   - Teach thoroughly - imagine you're explaining to someone new to the topic
+   - NO lazy bullet-point summaries without context
+
+3. **TEACHING APPROACH**:
+   - Write like an expert instructor giving a lecture
+   - Use relatable analogies: "Think of it like..." or "It's similar to..."
+   - Provide concrete examples: "For instance..." or "Consider this scenario..."
+   - Explain implications: "This matters because..." or "The impact is..."
+   - Make connections to prior knowledge when relevant
+   - Engage the learner with clear, conversational explanations
+
+4. **STRUCTURE**:
    - Course Title (H1 - use single #)${courseMetadata ? ` - USE: "${courseMetadata.title}"` : ''}
    - Brief Course Description (2-3 sentences)${courseMetadata ? ` - USE: "${courseMetadata.description}"` : ''}
    - Horizontal rule (---) after description
    - Module 1: [Title] (H2 - use ##)
+   - Add horizontal rule (---) after EVERY module
    - Module 2: [Title] (H2)
-   - Continue with additional modules as needed
+   - Continue with as many modules as needed
+   - Split long concepts into Part 1, Part 2, etc.
 
-2. **Within Each Module**:
-   - Use H3 (###) for Key Concepts/Subtopics
-   - Use **bold** for important terms and definitions
-   - Use bullet points (-) for lists
-   - Use numbered lists (1., 2., 3.) for sequential steps
-   - Add horizontal rules (---) between major modules
+5. **WITHIN EACH MODULE** (remember: max 1000 chars):
+   - Start with a clear introduction to the concept
+   - Use **bold** for key terms when first introduced
+   - Use bullet points for lists, but include context/explanation
+   - Use numbered lists for sequential steps with explanations
+   - Use paragraphs for rich explanations (3-5 sentences each)
+   - Include specific examples in italics when helpful
+   - End with why it matters or how it applies
 
-3. **Mathematical Content**:
-   - Use LaTeX for ALL mathematical expressions
+6. **MATHEMATICAL CONTENT** (if applicable):
+   - Use LaTeX for mathematical expressions
    - Inline math: $x^2 + y^2 = z^2$
    - Block equations: $$\\\\lim_{x \\\\to \\\\infty} f(x) = L$$
-   - ALWAYS escape backslashes in LaTeX (use \\\\ instead of \\)
+   - ALWAYS escape backslashes (use \\\\ instead of \\)
+   - Explain equations in plain language
 
-4. **Code Examples** (if applicable):
-   - Use fenced code blocks with language tags
-   \`\`\`python
-   def example():
-       return "formatted code"
-   \`\`\`
+7. **FORMATTING FOR READABILITY**:
+   - Blank lines between paragraphs
+   - Blank lines before and after headings
+   - Blank lines before and after lists
+   - Use > **Note**: for important callouts
+   - Horizontal rule (---) after every module
+   ${courseMetadata?.objectives ? `- Address these learning objectives:\n${courseMetadata.objectives.map((obj: string, i: number) => `     ${i + 1}. ${obj}`).join('\n')}` : ''}
 
-5. **Tables** (when comparing concepts):
-   | Concept | Description | Example |
-   |---------|-------------|---------|
-   | Item 1  | Details     | Demo    |
+8. **PACING & SPLITTING CONTENT**:
+   - If explaining a complex topic, don't cram it into one module
+   - Create "Part 1, Part 2, Part 3" modules to cover it thoroughly
+   - Each part should be under 1000 characters but rich with detail
+   - Better to have 30 detailed modules than 10 rushed ones
 
-6. **Spacing and Readability**:
-   - Add blank lines between paragraphs
-   - Add blank lines before and after headings
-   - Add blank lines before and after lists
-   - Add blank lines before and after code blocks
-   - Use proper paragraph breaks (don't create walls of text)
+EXAMPLE STRUCTURE (notice detailed explanations within character limit):
 
-7. **Content Quality**:
-   - Make explanations clear and educational
-   - Include practical examples where appropriate
-   - Use analogies to explain complex concepts
-   - Add visual structure with blockquotes for important notes:
-     > **Note**: Important information here
-   ${courseMetadata?.objectives ? `- Ensure the course addresses these learning objectives:\n${courseMetadata.objectives.map((obj: string, i: number) => `     ${i + 1}. ${obj}`).join('\n')}` : ''}
+# Introduction to Behavioral Health Compliance
 
-8. **Summary Section**:
-   - End with a summary using checkmarks (✓) for key takeaways
-
-EXAMPLE STRUCTURE:
-# Course Title
-
-Brief description of what students will learn.
+This course provides comprehensive training on behavioral health policies and procedures. You'll learn critical compliance requirements, documentation standards, and best practices for delivering quality care.
 
 ---
 
-## Module 1: Introduction
+## Module 1: Understanding Policy Frameworks
 
-### Key Concept 1
-Explanation with **bold terms** and proper spacing.
+A **policy framework** is the foundation that guides all organizational decisions and actions. Think of it like a building's blueprint – it provides the structure and guidelines for everything built upon it. In behavioral health, this framework ensures consistent, ethical, and compliant care delivery.
 
-Mathematical example: $f(x) = x^2$
-
-### Key Concept 2
-More content with lists:
-- Point 1
-- Point 2
-- Point 3
+Independent Health's policy framework serves three key purposes: establishing standards, protecting patients, and ensuring regulatory compliance. When providers understand this framework, they can make informed decisions that align with organizational values and legal requirements.
 
 ---
 
-## Module 2: Advanced Topics
+## Module 2: The Role of Documentation - Part 1
 
-Content here...
+Documentation is the backbone of quality healthcare delivery. It serves as both a communication tool and a legal record. Imagine documentation as a detailed map of a patient's journey through treatment – without it, continuity of care becomes impossible.
+
+Every session note, assessment, and treatment plan contributes to this comprehensive record. These documents communicate your clinical reasoning to other providers, justify medical necessity to payers, and demonstrate compliance with regulations.
+
+---
+
+## Module 2: The Role of Documentation - Part 2  
+
+Beyond communication, documentation protects both patients and providers. It creates an audit trail for quality assurance and legal defense. When done correctly, your documentation tells the story of why specific interventions were chosen and how the patient responded.
+
+Key elements include: date and time, presenting problems, interventions used, patient response, and next steps. Each element serves a specific purpose in creating a complete clinical picture.
 
 ---
 
 ## Summary
 
-✓ Key takeaway 1
-✓ Key takeaway 2
+✓ You can identify the purpose and structure of policy frameworks
+✓ You understand comprehensive documentation requirements and their importance  
+✓ You can explain why detailed record-keeping protects patients and providers
 
 NOW CREATE THE COURSE FROM THIS CONTENT:
+- Use MAXIMUM 1000 characters per module (excluding heading)
+- Provide DETAILED, RICH explanations with analogies
+- Split complex topics into Part 1, Part 2, etc. as needed
+- NO over-summarization - teach thoroughly
 
 ${contextForGeneration}
     `;

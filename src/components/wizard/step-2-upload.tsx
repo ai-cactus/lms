@@ -87,7 +87,11 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing }: St
                                 )}
                                 <div>
                                     <p className="text-sm font-bold text-slate-900">{file.name}</p>
-                                    <p className="text-xs text-slate-500">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
+                                    <p className="text-xs text-slate-500">
+                                        {file.size < 1024 * 1024
+                                            ? `${(file.size / 1024).toFixed(1)} KB`
+                                            : `${(file.size / 1024 / 1024).toFixed(1)} MB`}
+                                    </p>
                                 </div>
                             </div>
                             <button
