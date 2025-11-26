@@ -113,11 +113,12 @@ function CreateCourseContent() {
 
             // 5. Handle Assignments
             if (publishOptions?.assignType === "All Personnel") {
-                // Fetch all users in the organization
+                // Fetch all users in the organization, excluding admins
                 const { data: orgUsers, error: usersError } = await supabase
                     .from("users")
                     .select("id")
-                    .eq("organization_id", userData.organization_id);
+                    .eq("organization_id", userData.organization_id)
+                    .neq("role", "admin");  // Exclude admin users
 
                 if (usersError) {
                     console.error("Error fetching users for assignment:", usersError);

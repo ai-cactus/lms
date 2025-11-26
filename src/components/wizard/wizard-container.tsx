@@ -33,6 +33,7 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isGeneratingCourse, setIsGeneratingCourse] = useState(false);
     const [showProgressScreen, setShowProgressScreen] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
     const supabase = createClient();
     const { fetchJson } = useFetchWithRetry();
     const { showNotification } = useNotification();
@@ -48,17 +49,13 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
 
     const handleQuestionsChange = useCallback((questions: any[]) => {
         setCourseData((prev) => {
-            // Avoid infinite loop by checking if questions actually changed (deep comparison is expensive, 
-            // but we can check length or just rely on the stable callback to stop the effect loop)
-            // With stable callback, the child's useEffect [onQuestionsChange] won't fire again.
             return { ...prev, questions };
         });
     }, []);
 
-    // ... (keep performAnalysis and generateCourseContent as is)
-
     const performAnalysis = async (filesToAnalyze: File[]) => {
         setIsAnalyzing(true);
+        setUploadProgress(10); // Started reading
         try {
             // 1. Read files
             const fileContents = await Promise.all(
@@ -78,12 +75,28 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
                 })
             );
 
+            setUploadProgress(40); // Files read, starting upload/analysis
+
+            // Simulate progress for better UX since we can't track fetch upload easily
+            const progressInterval = setInterval(() => {
+                setUploadProgress(prev => {
+                    if (prev >= 90) {
+                        clearInterval(progressInterval);
+                        return 90;
+                    }
+                    return prev + 5;
+                });
+            }, 500);
+
             // 2. Analyze documents with automatic retry
             const { metadata } = await fetchJson("/api/analyze-documents", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ files: fileContents }),
             });
+
+            clearInterval(progressInterval);
+            setUploadProgress(100);
 
             // Preserve the user-selected category from Step 1
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -93,6 +106,7 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
         } catch (error: any) {
             console.error("Error analyzing files:", error);
             showNotification("error", error.message || "Failed to analyze documents. Please try again.");
+            setUploadProgress(0);
             return false;
         } finally {
             setIsAnalyzing(false);
@@ -145,9 +159,9 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
 
     const handleNext = async () => {
         if (step === 2) {
-            // On Step 2, analyze the files before proceeding
-            const success = await performAnalysis(files);
-            if (!success) return;
+            // Analysis is now done automatically. 
+            // If still analyzing, we shouldn't be here because button is disabled.
+            // Just proceed.
         }
 
         if (step === 4) {
@@ -180,7 +194,11 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
 
     const handleFilesSelected = async (selectedFiles: File[]) => {
         setFiles(selectedFiles);
-        // Don't auto-advance or analyze here anymore, let the user click Next
+        if (selectedFiles.length > 0) {
+            await performAnalysis(selectedFiles);
+        } else {
+            setUploadProgress(0);
+        }
     };
 
     const loadPolicies = async (policyIds: string[]) => {
@@ -227,28 +245,16 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
     // Validation for Next button
     const canProceed = () => {
         if (step === 1) return !!courseData.category;
-        if (step === 2) return files.length > 0 && !isAnalyzing;
+        if (step === 2) return files.length > 0 && !isAnalyzing && uploadProgress === 100;
         if (step === 3) return !!courseData.title;
         return true;
     };
 
-    // Show progress screen during course generation
-    if (showProgressScreen) {
-        return (
-            <CourseCreationProgress
-                onComplete={() => {
-                    setShowProgressScreen(false);
-                    setStep(5); // Move to review content step
-                }}
-            />
-        );
-    }
-
-
+    // ... (render logic)
 
     return (
         <div className="fixed inset-0 bg-white z-50 flex flex-col">
-            {/* Wizard Header */}
+            {/* ... (header and progress bar) */}
             <div className="border-b border-gray-200 px-8 py-4 flex items-center justify-between bg-white">
                 <div className="flex items-center gap-8">
                     <div className="flex items-center gap-2 text-indigo-600">
@@ -283,9 +289,10 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
                     {step === 2 && (
                         <Step2Upload
                             files={files}
-                            onFilesChange={setFiles}
-                            onAnalyze={() => handleFilesSelected(files)}
+                            onFilesChange={handleFilesSelected}
+                            onAnalyze={() => { }} // No longer needed as manual trigger
                             isAnalyzing={isAnalyzing}
+                            uploadProgress={uploadProgress}
                         />
                     )}
                     {step === 3 && (

@@ -14,9 +14,11 @@ import {
     Download,
     CheckCircle,
     Search,
+    Trash2,
 } from "lucide-react";
 import CoursePreviewModal from "@/components/courses/CoursePreviewModal";
 import AssignUsersModal from "@/components/courses/AssignUsersModal";
+import DeleteConfirmationModal from "@/components/courses/DeleteConfirmationModal";
 
 interface CourseDetails {
     id: string;
@@ -55,6 +57,8 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
     const [loading, setLoading] = useState(true);
     const [showPreview, setShowPreview] = useState(false);
     const [showAssign, setShowAssign] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [stats, setStats] = useState({
         totalLearners: 0,
         completionRate: 0,
@@ -68,6 +72,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
 
     const loadCourseData = async () => {
         try {
+            // Fetch course details
             const { data: courseData, error: courseError } = await supabase
                 .from("courses")
                 .select(`
@@ -85,6 +90,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
             if (courseError) throw courseError;
             setCourse(courseData as any);
 
+            // Fetch assignments with user details
             const { data: assignments } = await supabase
                 .from("course_assignments")
                 .select(`
@@ -95,11 +101,13 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                 `)
                 .eq("course_id", id);
 
+            // Fetch completions for scores
             const { data: completions } = await supabase
                 .from("course_completions")
                 .select("worker_id, quiz_score, id")
                 .eq("course_id", id);
 
+            // Combine data
             const staffData: StaffPerformance[] = (assignments || []).map((assignment: any) => {
                 const completion = completions?.find((c) => c.worker_id === assignment.worker_id);
                 return {
@@ -115,6 +123,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
 
             setStaffPerformance(staffData);
 
+            // Calculate stats
             const totalLearners = staffData.length;
             const completed = staffData.filter((s) => s.status === "completed").length;
             const completionRate = totalLearners > 0 ? Math.round((completed / totalLearners) * 100) : 0;
@@ -124,7 +133,8 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                 ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
                 : 0;
 
-            const wordCount = courseData.lesson_notes.split(/\s+/).length;
+            // Estimate duration based on word count (avg reading speed 200 wpm)
+            const wordCount = courseData.lesson_notes ? courseData.lesson_notes.split(/\s+/).length : 0;
             const averageDuration = Math.ceil(wordCount / 200);
 
             setStats({ totalLearners, completionRate, averageScore, averageDuration });
@@ -142,32 +152,30 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
         : staffPerformance;
 
     const getPreviewData = () => {
-        if (!course) return { title: "", description: "", objectives: [], tableOfContents: [] };
+        if (!course) return { title: "", content: "" };
+        return {
+            title: course.title,
+            content: course.lesson_notes
+        };
+    };
 
-        let description = "";
-        const objectives: string[] = [];
-        const tableOfContents: string[] = [];
-
-        const descMatch = course.lesson_notes.match(/## Course Description\n([\s\S]*?)(?=\n##|$)/);
-        if (descMatch) description = descMatch[1].trim();
-
-        const objectivesMatch = course.lesson_notes.match(/## What You'll Learn\n\n([\s\S]*?)(?=\n##|$)/);
-        if (objectivesMatch) {
-            const lines = objectivesMatch[1].split('\n');
-            lines.forEach(line => {
-                const match = line.match(/^\d+\.\s+(.+)$/);
-                if (match) objectives.push(match[1]);
-            });
+    const handleDeleteCourse = async () => {
+        if (!course) return;
+        setIsDeleting(true);
+        try {
+            const { deleteCourse } = await import("@/app/actions/course");
+            const result = await deleteCourse(course.id);
+            if (result.success) {
+                router.push("/admin/courses");
+            } else {
+                alert(result.error);
+                setIsDeleting(false);
+            }
+        } catch (error) {
+            console.error("Error deleting course:", error);
+            alert("Failed to delete course");
+            setIsDeleting(false);
         }
-
-        const headings = course.lesson_notes.split('\n').filter(line => {
-            if (!line.startsWith('#')) return false;
-            const heading = line.replace(/^#+\s*/, '');
-            return !heading.match(/^(Course Description|What You'll Learn|Learning Objectives)/i);
-        });
-        headings.forEach(h => tableOfContents.push(h.replace(/^#+\s*/, '')));
-
-        return { title: course.title, description, objectives, tableOfContents };
     };
 
     if (loading) {
@@ -192,6 +200,13 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                 onClose={() => setShowAssign(false)}
                 courseId={id}
                 onAssignmentComplete={() => loadCourseData()}
+            />
+            <DeleteConfirmationModal
+                isOpen={showDeleteModal}
+                onClose={() => setShowDeleteModal(false)}
+                onConfirm={handleDeleteCourse}
+                courseTitle={course.title}
+                isDeleting={isDeleting}
             />
 
             <div className="max-w-7xl mx-auto">
@@ -236,6 +251,13 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                             >
                                 <UserPlus className="w-4 h-4" />
                                 Assign
+                            </button>
+                            <button
+                                onClick={() => setShowDeleteModal(true)}
+                                className="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors flex items-center gap-2"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Delete
                             </button>
                         </div>
                     </div>

@@ -8,9 +8,10 @@ interface Step2UploadProps {
     onFilesChange: (files: File[]) => void;
     onAnalyze: () => void;
     isAnalyzing: boolean;
+    uploadProgress?: number;
 }
 
-export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing }: Step2UploadProps) {
+export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uploadProgress = 0 }: Step2UploadProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,10 +54,10 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing }: St
             </div>
 
             <div
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => !isAnalyzing && fileInputRef.current?.click()}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={handleDrop}
-                className="border-2 border-dashed border-gray-200 rounded-xl p-16 bg-white hover:bg-slate-50 transition-colors cursor-pointer mb-8"
+                onDrop={!isAnalyzing ? handleDrop : (e) => e.preventDefault()}
+                className={`border-2 border-dashed border-gray-200 rounded-xl p-16 bg-white transition-colors mb-8 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50 cursor-pointer'}`}
             >
                 <div className="w-16 h-16 bg-gray-500 text-white rounded-lg flex items-center justify-center mx-auto mb-6">
                     <CloudArrowUp size={32} weight="fill" />
@@ -72,8 +73,27 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing }: St
                     className="hidden"
                     multiple
                     accept=".pdf,.doc,.docx,.txt,.md"
+                    disabled={isAnalyzing}
                 />
             </div>
+
+            {isAnalyzing && (
+                <div className="mb-8 text-left">
+                    <div className="flex justify-between text-sm mb-2">
+                        <span className="font-medium text-slate-700">Analyzing documents...</span>
+                        <span className="text-slate-500">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div
+                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                            style={{ width: `${uploadProgress}%` }}
+                        ></div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2">
+                        Please wait while we process your files. This may take a moment.
+                    </p>
+                </div>
+            )}
 
             {files.length > 0 && (
                 <div className="text-left space-y-3 mb-8">
@@ -97,9 +117,10 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing }: St
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    removeFile(idx);
+                                    if (!isAnalyzing) removeFile(idx);
                                 }}
-                                className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                                disabled={isAnalyzing}
+                                className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Trash size={20} weight="fill" />
                             </button>

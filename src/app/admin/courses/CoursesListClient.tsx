@@ -9,8 +9,9 @@ import {
     Search,
     CheckCircle,
     AlertCircle,
-    Trash2,
+    UserPlus,
 } from "lucide-react";
+import AssignUsersModal from "@/components/courses/AssignUsersModal";
 
 interface Course {
     id: string;
@@ -34,6 +35,8 @@ function CoursesListContent() {
     const [statusFilter, setStatusFilter] = useState("all");
     const [loading, setLoading] = useState(true);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [assignModalOpen, setAssignModalOpen] = useState(false);
+    const [selectedCourseForAssign, setSelectedCourseForAssign] = useState<string | null>(null);
     const router = useRouter();
     const searchParams = useSearchParams();
     const supabase = createClient();
@@ -133,6 +136,22 @@ function CoursesListContent() {
         setFilteredCourses(filtered);
     };
 
+    const handleOpenAssignModal = (courseId: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        setSelectedCourseForAssign(courseId);
+        setAssignModalOpen(true);
+    };
+
+    const handleCloseAssignModal = () => {
+        setAssignModalOpen(false);
+        setSelectedCourseForAssign(null);
+    };
+
+    const handleAssignmentComplete = () => {
+        loadCourses(); // Refresh the course list to update assignment counts
+        handleCloseAssignModal();
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -151,7 +170,7 @@ function CoursesListContent() {
                         <p className="text-slate-600">View and manage your training courses</p>
                     </div>
                     <button
-                        onClick={() => router.push("/admin/policies/upload")}
+                        onClick={() => router.push("/admin/courses/create")}
                         className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
                     >
                         <Plus className="w-5 h-5" />
@@ -265,22 +284,11 @@ function CoursesListContent() {
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <button
-                                                        onClick={async (e) => {
-                                                            e.stopPropagation(); // Prevent row click
-                                                            if (window.confirm("Are you sure you want to delete this course? This action cannot be undone.")) {
-                                                                const { deleteCourse } = await import("@/app/actions/course");
-                                                                const result = await deleteCourse(course.id);
-                                                                if (result.success) {
-                                                                    loadCourses();
-                                                                } else {
-                                                                    alert(result.error);
-                                                                }
-                                                            }
-                                                        }}
-                                                        className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
+                                                        onClick={(e) => handleOpenAssignModal(course.id, e)}
+                                                        className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
-                                                        Delete
+                                                        <UserPlus className="w-4 h-4" />
+                                                        Assign Workers
                                                     </button>
                                                 </td>
                                             </tr>
@@ -326,6 +334,16 @@ function CoursesListContent() {
                         </div>
                     </div>
                 </div>
+
+                {/* Assign Users Modal */}
+                {assignModalOpen && selectedCourseForAssign && (
+                    <AssignUsersModal
+                        isOpen={assignModalOpen}
+                        onClose={handleCloseAssignModal}
+                        courseId={selectedCourseForAssign}
+                        onAssignmentComplete={handleAssignmentComplete}
+                    />
+                )}
             </div>
         </div>
     );

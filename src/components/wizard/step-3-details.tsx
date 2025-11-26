@@ -85,59 +85,7 @@ export function Step3Details({ data, onChange }: Step3DetailsProps) {
                     </div>
                 </div>
 
-                {/* Estimated Duration */}
-                <div className="grid grid-cols-12 gap-8 items-center">
-                    <label className="col-span-3 text-sm font-medium text-slate-500">Estimated Duration</label>
-                    <div className="col-span-9 relative">
-                        <select
-                            value={data.duration || "~60 mins"}
-                            onChange={(e) => handleChange("duration", e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
-                        >
-                            <option>~30 mins</option>
-                            <option>~45 mins</option>
-                            <option>~60 mins</option>
-                            <option>1-2 hours</option>
-                            <option>2+ hours</option>
-                        </select>
-                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-                </div>
 
-                {/* Content Type */}
-                <div className="grid grid-cols-12 gap-8 items-center">
-                    <label className="col-span-3 text-sm font-medium text-slate-500">Content Type</label>
-                    <div className="col-span-9 relative">
-                        <select
-                            value={data.contentType || "Notes"}
-                            onChange={(e) => handleChange("contentType", e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
-                        >
-                            <option>Notes</option>
-                            <option>Video</option>
-                            <option>Slides</option>
-                        </select>
-                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-                </div>
-
-
-                {/* Deadline to Complete Course */}
-                <div className="grid grid-cols-12 gap-8 items-center">
-                    <label className="col-span-3 text-sm font-medium text-slate-500">Deadline to Complete Course</label>
-                    <div className="col-span-9 relative">
-                        <select
-                            value="30 days"
-                            onChange={() => { }}
-                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
-                        >
-                            <option>30 days</option>
-                            <option>60 days</option>
-                            <option>90 days</option>
-                        </select>
-                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-                </div>
 
                 <div className="border-t border-gray-100 my-8"></div>
 

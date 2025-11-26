@@ -46,6 +46,20 @@ export default function TrainingCenterPage() {
         fetchTrainingData();
     }, []);
 
+    // Refetch data when page becomes visible (e.g., when navigating back to dashboard)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (!document.hidden && !loading) {
+                fetchTrainingData();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [loading]);
+
     const fetchTrainingData = async () => {
         try {
             // Get current user
@@ -92,11 +106,12 @@ export default function TrainingCenterPage() {
             const courseIds = allCourses?.map(c => c.id) || [];
 
             if (courseIds.length > 0) {
-                // Fetch total workers in organization
+                // Fetch total workers in organization (excluding admins)
                 const { count: totalWorkers } = await supabase
                     .from("users")
                     .select("*", { count: "exact", head: true })
-                    .eq("organization_id", orgId);
+                    .eq("organization_id", orgId)
+                    .neq("role", "admin");  // Exclude admin users from worker count
 
                 // Fetch all assignments for these courses (for Coverage Chart & Stats)
                 const { data: allAssignments } = await supabase

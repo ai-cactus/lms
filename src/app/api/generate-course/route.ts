@@ -104,14 +104,64 @@ ${courseMetadata.complianceMapping ? `- Compliance Mapping: ${courseMetadata.com
 `;
         }
 
+        // Difficulty-specific instructions
+        let difficultyInstructions = "";
+        if (courseMetadata?.difficulty) {
+            switch (courseMetadata.difficulty) {
+                case "Beginner":
+                    difficultyInstructions = `
+**DIFFICULTY LEVEL: BEGINNER - Keep it Simple and Accessible**
+- Use plain, everyday language that anyone can understand
+- Avoid jargon and technical terms; when you must use them, explain them immediately
+- Use simple analogies from daily life (e.g., "like checking your email" or "similar to a recipe")
+- Break concepts into small, digestible pieces
+- Provide step-by-step instructions with clear examples
+- Focus on practical "how-to" rather than theoretical depth
+- Use encouraging, supportive tone
+- Example: Instead of "implement authentication protocols", say "set up the login process"
+`;
+                    break;
+                case "Moderate":
+                    difficultyInstructions = `
+**DIFFICULTY LEVEL: MODERATE - Strike a Balance Between Accessible and Technical**
+- Use professional terminology but explain technical terms when first introduced
+- Provide both conceptual understanding AND practical application
+- Include some industry-standard terminology with context
+- Use analogies that relate to professional scenarios
+- Explain the "why" behind processes and decisions
+- Assume basic familiarity with the field but don't assume expertise
+- Balance simplicity with accuracy
+- Example: "Authentication protocols verify user identity through credential validation"
+`;
+                    break;
+                case "Advanced":
+                    difficultyInstructions = `
+**DIFFICULTY LEVEL: ADVANCED - Detailed, Technical, and Research-Level**
+- Use precise technical terminology without oversimplification
+- Provide in-depth theoretical foundations and underlying principles
+- Include technical specifications, standards, and best practices
+- Reference industry frameworks, compliance requirements, and research findings
+- Explain complex mechanisms, edge cases, and implementation details
+- Assume professional expertise; dive into nuanced topics
+- Use technical analogies that demonstrate deep understanding
+- Include "why it matters" from compliance, security, and operational perspectives
+- Provide detailed examples with multiple scenarios and considerations
+- Example: "Implement OAuth 2.0 authorization flows with PKCE extensions for enhanced security in mobile applications, considering token lifecycle management and refresh strategies"
+`;
+                    break;
+            }
+        }
+
         const prompt = `
 You are an expert instructional designer and master educator with exceptional teaching skills.
 I have processed the following documents (provided as summaries or full text below).
 
 ${metadataSection}
 
+${difficultyInstructions}
+
 Your task is to create a DETAILED, COMPREHENSIVE, ENGAGING course based on this content.
-${courseMetadata ? 'IMPORTANT: Use the provided course metadata (title, objectives, etc.) to structure your course.' : ''}
+${courseMetadata ? 'IMPORTANT: Use the provided course metadata (title, objectives, etc.) to structure your course. CRITICAL: Adjust the complexity and depth based on the difficulty level specified above.' : ''}
 
 CRITICAL REQUIREMENTS:
 
