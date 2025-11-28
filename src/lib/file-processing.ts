@@ -72,11 +72,20 @@ export async function extractTextFromFile(file: { name: string; type: string; da
     try {
         if (file.type === 'application/pdf') {
             console.log("Extracting text from PDF using pdf-parse...");
-            // Use require to avoid ESM/CommonJS issues with pdf-parse
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const pdf = require('pdf-parse');
-            const data = await pdf(buffer);
-            text = data.text;
+            try {
+                // Use require to avoid ESM/CommonJS issues with pdf-parse
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const pdf = require('pdf-parse');
+                console.log(`Buffer size: ${buffer.length} bytes`);
+                const data = await pdf(buffer);
+                console.log(`PDF Info: ${JSON.stringify(data.info)}`);
+                console.log(`PDF Metadata: ${JSON.stringify(data.metadata)}`);
+                console.log(`Extracted text length: ${data.text?.length}`);
+                text = data.text;
+            } catch (pdfError) {
+                console.error("Error inside pdf-parse:", pdfError);
+                throw pdfError;
+            }
         } else if (file.name.endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
             console.log("Extracting text from DOCX using mammoth...");
             const result = await mammoth.extractRawText({ buffer });
