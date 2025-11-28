@@ -4,14 +4,21 @@ import crypto from 'crypto';
 import mammoth from 'mammoth';
 
 
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'processed-files');
+import os from 'os';
 
+const CACHE_DIR = path.join(os.tmpdir(), 'lms-processed-files');
+
+// Ensure cache directory exists
 // Ensure cache directory exists
 async function ensureCacheDir() {
     try {
         await fs.access(CACHE_DIR);
     } catch {
-        await fs.mkdir(CACHE_DIR, { recursive: true });
+        try {
+            await fs.mkdir(CACHE_DIR, { recursive: true });
+        } catch (error) {
+            console.warn('Failed to create cache directory:', error);
+        }
     }
 }
 
@@ -32,10 +39,15 @@ async function getCachedText(key: string): Promise<string | null> {
 }
 
 // Save text to cache
+// Save text to cache
 async function setCachedText(key: string, text: string): Promise<void> {
-    await ensureCacheDir();
-    const filePath = path.join(CACHE_DIR, `${key}.txt`);
-    await fs.writeFile(filePath, text, 'utf-8');
+    try {
+        await ensureCacheDir();
+        const filePath = path.join(CACHE_DIR, `${key}.txt`);
+        await fs.writeFile(filePath, text, 'utf-8');
+    } catch (error) {
+        console.warn('Failed to write to cache:', error);
+    }
 }
 
 export async function extractTextFromFile(file: { name: string; type: string; data: string }): Promise<string> {
