@@ -1,7 +1,7 @@
 import mammoth from 'mammoth';
 
 // We use a CDN for the worker to avoid build/bundling issues with Next.js
-const PDFJS_WORKER_SRC = `https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs`;
+const PDFJS_WORKER_SRC = `https://unpkg.com/pdfjs-dist@5.4.296/build/pdf.worker.min.mjs`;
 
 export async function extractTextFromPdf(file: File): Promise<string> {
     try {
