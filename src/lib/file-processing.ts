@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import mammoth from 'mammoth';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'processed-files');
 
@@ -58,8 +59,21 @@ export async function extractTextFromFile(file: { name: string; type: string; da
     // 3. Process based on type
     try {
         if (file.type === 'application/pdf') {
-            console.warn(`PDF file detected. Skipping text extraction as no PDF parser is configured.`);
-            return `[PDF File: ${file.name} - Content extraction not supported yet]`;
+            console.log("Extracting text from PDF using pdfjs-dist...");
+            const uint8Array = new Uint8Array(buffer);
+            const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+            const doc = await loadingTask.promise;
+
+            let fullText = "";
+            for (let i = 1; i <= doc.numPages; i++) {
+                const page = await doc.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items
+                    .map((item: any) => item.str)
+                    .join(" ");
+                fullText += pageText + "\n";
+            }
+            text = fullText;
         } else if (file.name.endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
             console.log("Extracting text from DOCX using mammoth...");
             const result = await mammoth.extractRawText({ buffer });
