@@ -83,7 +83,7 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
         // Use dynamic import for ESM module
         // @ts-ignore
         const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
-        const pdfjs = pdfjsModule.default || pdfjsModule;
+        const pdfjs = (pdfjsModule as any).default || pdfjsModule;
 
         // Load the document
         // Note: pdfjs-dist expects Uint8Array, Buffer is compatible
