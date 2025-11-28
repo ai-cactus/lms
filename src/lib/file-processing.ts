@@ -59,28 +59,12 @@ export async function extractTextFromFile(file: { name: string; type: string; da
     // 3. Process based on type
     try {
         if (file.type === 'application/pdf') {
-            console.log("Extracting text from PDF using pdfjs-dist...");
-            // Dynamic import to avoid top-level issues and reduce initial bundle load
-            const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-
-            const uint8Array = new Uint8Array(buffer);
-            const loadingTask = pdfjsLib.getDocument({
-                data: uint8Array,
-                // Disable worker for Node.js environment to avoid worker loading issues
-                disableFontFace: true,
-            });
-            const doc = await loadingTask.promise;
-
-            let fullText = "";
-            for (let i = 1; i <= doc.numPages; i++) {
-                const page = await doc.getPage(i);
-                const textContent = await page.getTextContent();
-                const pageText = textContent.items
-                    .map((item: any) => item.str)
-                    .join(" ");
-                fullText += pageText + "\n";
-            }
-            text = fullText;
+            console.log("Extracting text from PDF using pdf-parse...");
+            // Use require to avoid ESM/CommonJS issues with pdf-parse
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const pdf = require('pdf-parse');
+            const data = await pdf(buffer);
+            text = data.text;
         } else if (file.name.endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
             console.log("Extracting text from DOCX using mammoth...");
             const result = await mammoth.extractRawText({ buffer });

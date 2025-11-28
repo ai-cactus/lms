@@ -26,8 +26,14 @@ export async function POST(req: NextRequest) {
         const validDocs = processedFiles.filter(doc => doc !== null) as string[];
 
         if (validDocs.length === 0) {
+            // Collect specific errors if available
+            const errorMessages = processedFiles
+                .filter(doc => doc === null)
+                .map((_, idx) => `File ${files[idx].name} failed to process`)
+                .join("; ");
+
             return NextResponse.json({
-                error: "No valid text could be extracted from the provided files. Please upload .docx or text files."
+                error: `No valid text could be extracted. ${errorMessages || "Please upload .docx, .pdf or text files."}`
             }, { status: 400 });
         }
 
