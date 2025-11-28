@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import mammoth from 'mammoth';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+
 
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'processed-files');
 
@@ -60,8 +60,15 @@ export async function extractTextFromFile(file: { name: string; type: string; da
     try {
         if (file.type === 'application/pdf') {
             console.log("Extracting text from PDF using pdfjs-dist...");
+            // Dynamic import to avoid top-level issues and reduce initial bundle load
+            const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
             const uint8Array = new Uint8Array(buffer);
-            const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+            const loadingTask = pdfjsLib.getDocument({
+                data: uint8Array,
+                // Disable worker for Node.js environment to avoid worker loading issues
+                disableFontFace: true,
+            });
             const doc = await loadingTask.promise;
 
             let fullText = "";
