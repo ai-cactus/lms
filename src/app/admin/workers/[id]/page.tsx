@@ -364,49 +364,83 @@ export default function WorkerDetailsPage() {
                         {activeTab === "overview" && (
                             <div>
                                 <h2 className="text-lg font-semibold text-slate-900 mb-4">Course Assignments</h2>
-                                <div className="divide-y divide-gray-200">
-                                    {assignments.length === 0 ? (
-                                        <div className="p-8 text-center text-slate-500">
-                                            No courses assigned yet.
-                                        </div>
-                                    ) : (
-                                        assignments.map((assignment) => (
-                                            <div key={assignment.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                                                <div>
-                                                    <h3 className="font-medium text-slate-900 mb-1">{assignment.courses.title}</h3>
-                                                    <div className="flex items-center gap-4 text-sm text-slate-500">
-                                                        <span>Due: {new Date(assignment.deadline).toLocaleDateString()}</span>
+                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                    <div className="divide-y divide-gray-100">
+                                        {assignments.length === 0 ? (
+                                            <div className="p-8 text-center text-slate-500">
+                                                No courses assigned yet.
+                                            </div>
+                                        ) : (
+                                            assignments.map((assignment) => (
+                                                <div key={assignment.id} className="p-6 hover:bg-slate-50 transition-colors">
+                                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-start justify-between mb-2">
+                                                                <h3 className="text-lg font-bold text-slate-900">
+                                                                    {assignment.courses.title}
+                                                                </h3>
+                                                            </div>
+
+                                                            <div className="flex flex-wrap items-center gap-4 text-sm">
+                                                                {/* Status Tags */}
+                                                                {(() => {
+                                                                    switch (assignment.status) {
+                                                                        case "completed":
+                                                                            return (
+                                                                                <div className="flex gap-2">
+                                                                                    <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex items-center gap-1">
+                                                                                        <CheckCircle className="w-3 h-3" />
+                                                                                        Completed
+                                                                                    </span>
+                                                                                    <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex items-center gap-1">
+                                                                                        <CheckCircle className="w-3 h-3" />
+                                                                                        Passed
+                                                                                    </span>
+                                                                                </div>
+                                                                            );
+                                                                        case "failed":
+                                                                            return (
+                                                                                <div className="flex gap-2">
+                                                                                    <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex items-center gap-1">
+                                                                                        <CheckCircle className="w-3 h-3" />
+                                                                                        Completed
+                                                                                    </span>
+                                                                                    <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium flex items-center gap-1">
+                                                                                        <AlertCircle className="w-3 h-3" />
+                                                                                        Failed
+                                                                                    </span>
+                                                                                </div>
+                                                                            );
+                                                                        case "in_progress":
+                                                                            return (
+                                                                                <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium flex items-center gap-1">
+                                                                                    <Calendar className="w-3 h-3" />
+                                                                                    In Progress
+                                                                                </span>
+                                                                            );
+                                                                        case "overdue":
+                                                                            return (
+                                                                                <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium flex items-center gap-1">
+                                                                                    <AlertCircle className="w-3 h-3" />
+                                                                                    Overdue
+                                                                                </span>
+                                                                            );
+                                                                        default: // not_started
+                                                                            return (
+                                                                                <span className="px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-700 text-xs font-medium flex items-center gap-1">
+                                                                                    <BookOpen className="w-3 h-3" />
+                                                                                    Not yet started
+                                                                                </span>
+                                                                            );
+                                                                    }
+                                                                })()}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    {assignment.status === "completed" && (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                            <CheckCircle className="w-3 h-3" />
-                                                            Completed
-                                                        </span>
-                                                    )}
-                                                    {assignment.status === "overdue" && (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                                            <AlertCircle className="w-3 h-3" />
-                                                            Overdue
-                                                        </span>
-                                                    )}
-                                                    {assignment.status === "pending" && (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                                            <Calendar className="w-3 h-3" />
-                                                            In Progress
-                                                        </span>
-                                                    )}
-                                                    {assignment.status === "not_started" && (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                            <Calendar className="w-3 h-3" />
-                                                            Not Started
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
+                                            ))
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}

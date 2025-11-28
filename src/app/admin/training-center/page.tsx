@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { OnboardingModal } from "@/components/training-center/onboarding-modal";
 import { StatsCards } from "@/components/training-center/stats-cards";
-import { PerformanceChart } from "@/components/training-center/performance-chart";
-import { CoverageChart } from "@/components/training-center/coverage-chart";
 import { CoursesTable } from "@/components/training-center/courses-table";
 import Link from "next/link";
 import { Plus } from "lucide-react";
@@ -34,12 +32,6 @@ export default function TrainingCenterPage() {
         averageGrade: 0,
     });
     const [courses, setCourses] = useState<Course[]>([]);
-    const [performanceData, setPerformanceData] = useState<number[]>(new Array(12).fill(0));
-    const [coverageData, setCoverageData] = useState({
-        completed: 0,
-        enrolled: 0,
-        notStarted: 0,
-    });
     const supabase = createClient();
 
     useEffect(() => {
@@ -95,74 +87,6 @@ export default function TrainingCenterPage() {
             if (!count || count === 0) {
                 setLoading(false);
                 return;
-            }
-
-            // Fetch all courses for this org
-            const { data: allCourses } = await supabase
-                .from("courses")
-                .select("id")
-                .eq("organization_id", orgId);
-
-            const courseIds = allCourses?.map(c => c.id) || [];
-
-            if (courseIds.length > 0) {
-                // Fetch total workers in organization (excluding admins)
-                const { count: totalWorkers } = await supabase
-                    .from("users")
-                    .select("*", { count: "exact", head: true })
-                    .eq("organization_id", orgId)
-                    .neq("role", "admin");  // Exclude admin users from worker count
-
-                // Fetch all assignments for these courses (for Coverage Chart & Stats)
-                const { data: allAssignments } = await supabase
-                    .from("course_assignments")
-                    .select("worker_id, status")
-                    .in("course_id", courseIds);
-
-                // Fetch all completions for these courses (for Performance Chart)
-                const { data: allCompletions } = await supabase
-                    .from("course_completions")
-                    .select("quiz_score, completed_at, worker_id")
-                    .in("course_id", courseIds);
-
-                // Calculate Coverage Data based on unique workers
-                if (totalWorkers && totalWorkers > 0) {
-                    // Count unique workers with assignments
-                    const uniqueWorkersWithAssignments = new Set(
-                        allAssignments?.map(a => a.worker_id) || []
-                    ).size;
-
-                    // Count unique workers who completed courses
-                    const uniqueWorkersCompleted = new Set(
-                        allCompletions?.map(c => c.worker_id) || []
-                    ).size;
-
-                    // Workers yet to begin = total workers - workers with assignments
-                    const workersNotStarted = totalWorkers - uniqueWorkersWithAssignments;
-
-                    setCoverageData({
-                        completed: Math.round((uniqueWorkersCompleted / totalWorkers) * 100),
-                        enrolled: Math.round((uniqueWorkersWithAssignments / totalWorkers) * 100),
-                        notStarted: Math.round((workersNotStarted / totalWorkers) * 100),
-                    });
-                }
-
-                // Calculate Performance Data (Monthly Average Scores)
-                const monthlyScores: { [key: number]: number[] } = {};
-                allCompletions?.forEach(c => {
-                    const date = new Date(c.completed_at);
-                    const month = date.getMonth(); // 0-11
-                    if (!monthlyScores[month]) monthlyScores[month] = [];
-                    monthlyScores[month].push(c.quiz_score);
-                });
-
-                const newPerformanceData = new Array(12).fill(0).map((_, index) => {
-                    const scores = monthlyScores[index];
-                    if (!scores || scores.length === 0) return 0;
-                    const sum = scores.reduce((a, b) => a + b, 0);
-                    return Math.round(sum / scores.length);
-                });
-                setPerformanceData(newPerformanceData);
             }
 
             // Fetch recent courses for the table
@@ -286,12 +210,6 @@ export default function TrainingCenterPage() {
 
             {/* Stats Cards */}
             <StatsCards stats={stats} />
-
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                <PerformanceChart data={performanceData} />
-                <CoverageChart data={coverageData} />
-            </div>
 
             {/* Courses Table */}
             <CoursesTable courses={courses} />

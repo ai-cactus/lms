@@ -4,13 +4,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
-    Play,
-    XCircle,
     BookOpen,
-    ShieldCheck,
-    FirstAid,
-    Warning
-} from "@phosphor-icons/react";
+    CheckCircle,
+    Clock,
+    ArrowRight,
+    XCircle,
+    AlertCircle
+} from "lucide-react";
 
 interface Assignment {
     id: string;
@@ -20,6 +20,7 @@ interface Assignment {
     course: {
         title: string;
     };
+    // completed_at removed as it doesn't exist
 }
 
 export default function WorkerCoursesPage() {
@@ -40,116 +41,206 @@ export default function WorkerCoursesPage() {
                 return;
             }
 
-            // Get active assignments
+            // Get active assignments (including failed ones so they can see results)
             const { data: activeData, error: activeError } = await supabase
                 .from("course_assignments")
                 .select(`
-          id,
-          course_id,
-          deadline,
-          status,
-          courses(title)
-        `)
+                  id,
+                  course_id,
+                  deadline,
+                  status,
+                  courses(title)
+                `)
                 .eq("worker_id", user.id)
-                .in("status", ["not_started", "in_progress", "overdue"])
+                .in("status", ["not_started", "in_progress", "overdue", "failed"])
                 .order("deadline", { ascending: true });
 
             if (activeError) throw activeError;
 
-            // Normalize data
-            const normalizedActive = (activeData || []).map((a: any) => ({
-                ...a,
-                course: Array.isArray(a.courses) ? a.courses[0] : a.courses,
+            // Get completed assignments
+            const { data: completedData, error: completedError } = await supabase
+                .from("course_assignments")
+                .select(`
+                  id,
+                  course_id,
+                  status,
+                  courses(title),
+                  deadline
+                `)
+                .eq("worker_id", user.id)
+                .eq("status", "completed")
+                .order("deadline", { ascending: false }); // Fallback to deadline for sorting
+
+            if (completedError) throw completedError;
+
+            // Normalize and merge data
+            const normalizedActive = (activeData || []).map((item: any) => ({
+                ...item,
+                course: Array.isArray(item.courses) ? item.courses[0] : item.courses
             }));
 
-            setAssignments(normalizedActive);
-            setLoading(false);
+            const normalizedCompleted = (completedData || []).map((item: any) => ({
+                ...item,
+                course: Array.isArray(item.courses) ? item.courses[0] : item.courses
+            }));
+
+            setAssignments([...normalizedActive, ...normalizedCompleted]);
         } catch (error) {
             console.error("Error loading courses:", error);
+        } finally {
             setLoading(false);
         }
     };
 
-    const handleReject = async (assignmentId: string, courseTitle: string) => {
-        if (confirm(`Are you sure you want to reject "${courseTitle}"? This will notify the administrator.`)) {
-            // TODO: Implement actual rejection logic and admin notification
-            alert(`Course "${courseTitle}" has been rejected. The administrator has been notified.`);
-
-            // Optimistically remove from list for now
-            setAssignments(prev => prev.filter(a => a.id !== assignmentId));
+    const getStatusTags = (status: string) => {
+        switch (status) {
+            case "completed":
+                return (
+                    <div className="flex gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            Completed
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            Passed
+                        </span>
+                    </div>
+                );
+            case "failed":
+                return (
+                    <div className="flex gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            Completed
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium flex items-center gap-1">
+                            <XCircle className="w-3 h-3" />
+                            Failed
+                        </span>
+                    </div>
+                );
+            case "in_progress":
+                return (
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        In Progress
+                    </span>
+                );
+            case "overdue":
+                return (
+                    <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Overdue
+                    </span>
+                );
+            default: // not_started
+                return (
+                    <span className="px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-700 text-xs font-medium flex items-center gap-1">
+                        <BookOpen className="w-3 h-3" />
+                        Not yet started
+                    </span>
+                );
         }
     };
 
-    const getCourseIcon = (title: string) => {
-        const lowerTitle = title.toLowerCase();
-        if (lowerTitle.includes("hipaa")) return <ShieldCheck className="w-8 h-8 text-indigo-600" />;
-        if (lowerTitle.includes("safety") || lowerTitle.includes("first aid")) return <FirstAid className="w-8 h-8 text-red-600" />;
-        return <BookOpen className="w-8 h-8 text-blue-600" />;
+    const renderActionButton = (assignment: Assignment) => {
+        const { status, id } = assignment;
+
+        if (status === "completed" || status === "failed") {
+            return (
+                <button
+                    onClick={() => router.push(`/worker/quiz/${id}?view=results`)}
+                    className="px-4 py-2 bg-white border border-gray-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                    View Results
+                </button>
+            );
+        }
+
+        if (status === "in_progress" || status === "overdue") {
+            return (
+                <button
+                    onClick={() => router.push(`/worker/courses/${id}`)}
+                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                >
+                    Continue
+                    <ArrowRight className="w-4 h-4" />
+                </button>
+            );
+        }
+
+        // not_started
+        return (
+            <button
+                onClick={() => router.push(`/worker/courses/${id}`)}
+                className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
+            >
+                Start Course
+                <ArrowRight className="w-4 h-4" />
+            </button>
+        );
     };
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="text-slate-600">Loading your courses...</div>
+            <div className="p-8 flex items-center justify-center">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
 
     return (
-        <div className="p-8 max-w-6xl mx-auto">
-            <h1 className="text-2xl font-bold text-slate-900 mb-8">Assigned Courses</h1>
+        <div className="p-8 max-w-5xl mx-auto">
+            <div className="mb-8">
+                <h1 className="text-2xl font-bold text-slate-900 mb-2">My Courses</h1>
+                <p className="text-slate-600">Manage and track your assigned training courses.</p>
+            </div>
 
-            <div className="space-y-4">
-                {assignments.length === 0 ? (
-                    <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                        <BookOpen className="w-16 h-16 mx-auto mb-4 text-slate-300" />
-                        <h3 className="text-lg font-medium text-slate-900 mb-2">No courses assigned</h3>
-                        <p className="text-slate-500">You're all caught up! Check back later for new assignments.</p>
-                    </div>
-                ) : (
-                    assignments.map((assignment) => (
-                        <div
-                            key={assignment.id}
-                            className="bg-white rounded-xl border border-gray-200 p-6 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow"
-                        >
-                            <div className="flex items-center gap-6">
-                                <div className="w-16 h-16 rounded-lg bg-gray-50 flex items-center justify-center border border-gray-100">
-                                    {getCourseIcon(assignment.course.title)}
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-semibold text-slate-900 mb-1">
-                                        {assignment.course.title}
-                                    </h3>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="divide-y divide-gray-100">
+                    {assignments.length === 0 ? (
+                        <div className="p-12 text-center text-slate-500">
+                            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <BookOpen className="w-8 h-8 text-gray-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-slate-900 mb-1">No courses assigned</h3>
+                            <p>You don't have any courses assigned to you yet.</p>
+                        </div>
+                    ) : (
+                        assignments.map((assignment) => (
+                            <div key={assignment.id} className="p-6 hover:bg-slate-50 transition-colors">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div className="flex-1">
+                                        <div className="flex items-start justify-between mb-2">
+                                            <h3 className="text-lg font-bold text-slate-900">
+                                                {assignment.course?.title || "Untitled Course"}
+                                            </h3>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-4 text-sm mb-3">
+                                            {getStatusTags(assignment.status)}
+
+                                            {assignment.deadline && (
+                                                <span className="text-slate-500 flex items-center gap-1">
+                                                    <Clock className="w-4 h-4" />
+                                                    {assignment.status === 'completed' || assignment.status === 'failed'
+                                                        ? `Finished ${new Date(assignment.deadline).toLocaleDateString()}`
+                                                        : `Due ${new Date(assignment.deadline).toLocaleDateString()}`
+                                                    }
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
                                     <div className="flex items-center gap-3">
-                                        {assignment.status === "in_progress" && (
-                                            <span className="text-xs text-indigo-600 font-medium flex items-center gap-1">
-                                                <Play size={12} weight="fill" />
-                                                In Progress
-                                            </span>
-                                        )}
+                                        {renderActionButton(assignment)}
                                     </div>
                                 </div>
                             </div>
-
-                            <div className="flex items-center gap-4">
-                                <button
-                                    onClick={() => router.push(`/worker/courses/${assignment.course_id}`)}
-                                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
-                                >
-                                    {assignment.status === "in_progress" ? "Continue" : "Start Course"}
-                                </button>
-                                {assignment.status === "not_started" && (
-                                    <button
-                                        onClick={() => handleReject(assignment.id, assignment.course.title)}
-                                        className="px-6 py-2.5 border border-red-200 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors"
-                                    >
-                                        Reject
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ))
-                )}
+                        ))
+                    )}
+                </div>
             </div>
         </div>
     );

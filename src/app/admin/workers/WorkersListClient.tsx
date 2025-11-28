@@ -280,7 +280,7 @@ function WorkersListContent() {
                 </div>
 
                 {/* Workers Table */}
-                <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-xl shadow-lg border border-gray-200">
                     <div className="overflow-x-auto">
                         <table className="w-full">
                             <thead className="bg-slate-50 border-b border-gray-200">
@@ -395,7 +395,7 @@ function WorkersListContent() {
                                                         {/* Dropdown menu */}
                                                         <div
                                                             id={`dropdown-${worker.id}`}
-                                                            className="hidden absolute right-0 bottom-full mb-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10"
+                                                            className="hidden absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50"
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
                                                             {worker.deactivated_at ? (

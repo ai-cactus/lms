@@ -28,7 +28,8 @@ Each object must have the following structure:
   "id": "q1" (unique id: q1, q2, q3, etc.),
   "text": "Clear question text here?",
   "options": ["Option A", "Option B", "Option C", "Option D"],
-  "correctAnswer": 0 (index 0-3 of the correct option)
+  "correctAnswer": 0 (index 0-3 of the correct option),
+  "explanation": "A concise explanation of why the correct answer is right and others are wrong."
 }
 
 IMPORTANT: Return ONLY the JSON array. Do not include any markdown formatting or code blocks.

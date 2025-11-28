@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Search, UserPlus } from "lucide-react";
+import { Search, UserPlus, Upload, Trash2, MoreVertical } from "lucide-react";
 import InviteStaffModal from "@/components/staff/InviteStaffModal";
+import ImportWorkersModal from "@/components/staff/ImportWorkersModal";
 
 interface StaffMember {
     id: string;
@@ -23,6 +24,11 @@ export default function StaffDetailsPage() {
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
     const [showInviteModal, setShowInviteModal] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [organizationId, setOrganizationId] = useState("");
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [workerToDelete, setWorkerToDelete] = useState<StaffMember | null>(null);
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const itemsPerPage = 10;
 
     useEffect(() => {
@@ -48,10 +54,32 @@ export default function StaffDetailsPage() {
                 .order("created_at", { ascending: false });
 
             setStaff(staffData || []);
+            setOrganizationId(userData?.organization_id || "");
             setLoading(false);
         } catch (error) {
             console.error("Error loading staff:", error);
             setLoading(false);
+        }
+    };
+
+    const handleDeleteWorker = async () => {
+        if (!workerToDelete) return;
+
+        try {
+            const { error } = await supabase
+                .from("users")
+                .delete()
+                .eq("id", workerToDelete.id);
+
+            if (error) throw error;
+
+            // Refresh staff list
+            loadStaff();
+            setShowDeleteModal(false);
+            setWorkerToDelete(null);
+        } catch (error) {
+            console.error("Error deleting worker:", error);
+            alert("Failed to delete worker. Please try again.");
         }
     };
 
@@ -99,6 +127,12 @@ export default function StaffDetailsPage() {
                 onClose={() => setShowInviteModal(false)}
                 onInviteComplete={() => loadStaff()}
             />
+            <ImportWorkersModal
+                isOpen={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                onImportComplete={() => loadStaff()}
+                organizationId={organizationId}
+            />
 
             <div className="max-w-7xl mx-auto">
                 <div className="mb-8">
@@ -106,7 +140,7 @@ export default function StaffDetailsPage() {
                     <p className="text-slate-600">Here is an overview of your staff details</p>
                 </div>
 
-                <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-xl shadow-lg border border-gray-200">
                     <div className="p-6 border-b border-gray-200">
                         <div className="flex items-center justify-between">
                             <div className="relative flex-1 max-w-md">
@@ -122,13 +156,22 @@ export default function StaffDetailsPage() {
                                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                                 />
                             </div>
-                            <button
-                                onClick={() => setShowInviteModal(true)}
-                                className="ml-4 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
-                            >
-                                <UserPlus className="w-4 h-4" />
-                                Assign
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => setShowImportModal(true)}
+                                    className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2"
+                                >
+                                    <Upload className="w-4 h-4" />
+                                    Import Workers
+                                </button>
+                                <button
+                                    onClick={() => setShowInviteModal(true)}
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                                >
+                                    <UserPlus className="w-4 h-4" />
+                                    Add Staff
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -178,14 +221,43 @@ export default function StaffDetailsPage() {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                    }}
-                                                    className="text-slate-400 hover:text-slate-600"
-                                                >
-                                                    ⋮
-                                                </button>
+                                                <div className="relative">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenMenuId(openMenuId === member.id ? null : member.id);
+                                                        }}
+                                                        className="text-slate-400 hover:text-slate-600 p-2"
+                                                    >
+                                                        <MoreVertical className="w-5 h-5" />
+                                                    </button>
+
+                                                    {openMenuId === member.id && (
+                                                        <>
+                                                            <div
+                                                                className="fixed inset-0 z-10"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setOpenMenuId(null);
+                                                                }}
+                                                            ></div>
+                                                            <div className="absolute right-0 bottom-full mb-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setWorkerToDelete(member);
+                                                                        setShowDeleteModal(true);
+                                                                        setOpenMenuId(null);
+                                                                    }}
+                                                                    className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-lg transition-colors"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                    Remove Worker
+                                                                </button>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -225,8 +297,8 @@ export default function StaffDetailsPage() {
                                             key={i}
                                             onClick={() => setCurrentPage(pageNum)}
                                             className={`px-3 py-1 border rounded ${currentPage === pageNum
-                                                    ? "bg-indigo-600 text-white border-indigo-600"
-                                                    : "border-gray-300 hover:bg-slate-50"
+                                                ? "bg-indigo-600 text-white border-indigo-600"
+                                                : "border-gray-300 hover:bg-slate-50"
                                                 }`}
                                         >
                                             {pageNum}
@@ -245,6 +317,40 @@ export default function StaffDetailsPage() {
                     )}
                 </div>
             </div>
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                                <Trash2 className="w-6 h-6 text-red-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900">Remove Worker</h3>
+                        </div>
+                        <p className="text-slate-600 mb-6">
+                            Do you really want to remove <span className="font-semibold">{workerToDelete?.full_name}</span>? This action cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowDeleteModal(false);
+                                    setWorkerToDelete(null);
+                                }}
+                                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeleteWorker}
+                                className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+                            >
+                                Remove Worker
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

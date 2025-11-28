@@ -139,7 +139,7 @@ export default function WorkerDashboardPage() {
                     {inProgressCourses.map((course) => (
                         <div
                             key={course.id}
-                            onClick={() => router.push(`/worker/courses/${course.course_id}`)}
+                            onClick={() => router.push(`/worker/courses/${course.id}`)}
                             className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-xl hover:border-indigo-200 transition-all cursor-pointer group"
                         >
                             <div className="flex items-start gap-4 mb-4">

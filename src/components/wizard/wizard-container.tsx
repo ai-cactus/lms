@@ -34,6 +34,7 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
     const [isGeneratingCourse, setIsGeneratingCourse] = useState(false);
     const [showProgressScreen, setShowProgressScreen] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
+    const [isPublishing, setIsPublishing] = useState(false); // Added state
     const supabase = createClient();
     const { fetchJson } = useFetchWithRetry();
     const { showNotification } = useNotification();
@@ -250,11 +251,32 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
         return true;
     };
 
-    // ... (render logic)
+    // Show progress screen during course generation
+    if (showProgressScreen) {
+        return (
+            <CourseCreationProgress
+                onComplete={() => {
+                    setShowProgressScreen(false);
+                    setStep(5); // Move to review content step
+                }}
+            />
+        );
+    }
+
+    const handlePublish = async (data: any) => {
+        if (isPublishing) return;
+        setIsPublishing(true);
+        try {
+            await onComplete(courseData, files, data);
+        } catch (error) {
+            console.error("Publishing failed:", error);
+            setIsPublishing(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-white z-50 flex flex-col">
-            {/* ... (header and progress bar) */}
+            {/* Wizard Header */}
             <div className="border-b border-gray-200 px-8 py-4 flex items-center justify-between bg-white">
                 <div className="flex items-center gap-8">
                     <div className="flex items-center gap-2 text-indigo-600">
@@ -327,8 +349,9 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
                     )}
                     {step === 7 && (
                         <Step7Finalize
-                            onPublish={(data) => onComplete(courseData, files, data)}
+                            onPublish={handlePublish}
                             onBack={handleBack}
+                            isPublishing={isPublishing}
                         />
                     )}
                 </div>

@@ -44,6 +44,7 @@ interface StaffPerformance {
     score: number | null;
     status: string;
     completion_id: string | null;
+    progress: number;
 }
 
 export default function CourseDetailsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -61,7 +62,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
     const [isDeleting, setIsDeleting] = useState(false);
     const [stats, setStats] = useState({
         totalLearners: 0,
-        completionRate: 0,
+
         averageScore: 0,
         averageDuration: 0,
     });
@@ -97,6 +98,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                     id,
                     worker_id,
                     status,
+                    progress_percentage,
                     users!course_assignments_worker_id_fkey(full_name, role)
                 `)
                 .eq("course_id", id);
@@ -107,17 +109,31 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                 .select("worker_id, quiz_score, id")
                 .eq("course_id", id);
 
+            // Fetch quiz attempts as fallback for scores
+            const { data: attempts } = await supabase
+                .from("quiz_attempts")
+                .select("worker_id, score, id")
+                .eq("course_id", id)
+                .order("completed_at", { ascending: false });
+
             // Combine data
             const staffData: StaffPerformance[] = (assignments || []).map((assignment: any) => {
                 const completion = completions?.find((c) => c.worker_id === assignment.worker_id);
+                // Find latest attempt for this worker
+                const attempt = attempts?.find((a) => a.worker_id === assignment.worker_id);
+
+                // Use completion score if available, otherwise fallback to attempt score
+                const score = completion?.quiz_score ?? attempt?.score ?? null;
+
                 return {
                     id: assignment.id,
                     worker_id: assignment.worker_id,
                     worker_name: assignment.users?.full_name || "Unknown",
                     worker_role: assignment.users?.role,
-                    score: completion?.quiz_score || null,
+                    score: score,
                     status: assignment.status,
                     completion_id: completion?.id || null,
+                    progress: assignment.progress_percentage || 0,
                 };
             });
 
@@ -125,8 +141,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
 
             // Calculate stats
             const totalLearners = staffData.length;
-            const completed = staffData.filter((s) => s.status === "completed").length;
-            const completionRate = totalLearners > 0 ? Math.round((completed / totalLearners) * 100) : 0;
+
 
             const scores = staffData.filter((s) => s.score !== null).map((s) => s.score as number);
             const averageScore = scores.length > 0
@@ -137,7 +152,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
             const wordCount = courseData.lesson_notes ? courseData.lesson_notes.split(/\s+/).length : 0;
             const averageDuration = Math.ceil(wordCount / 200);
 
-            setStats({ totalLearners, completionRate, averageScore, averageDuration });
+            setStats({ totalLearners, averageScore, averageDuration });
             setLoading(false);
         } catch (error) {
             console.error("Error loading course data:", error);
@@ -263,7 +278,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     <div className="bg-blue-50 rounded-xl p-6 border border-blue-100">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -272,18 +287,6 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                             <div>
                                 <p className="text-sm text-blue-700 mb-1">Total Learners</p>
                                 <p className="text-2xl font-bold text-blue-900">{stats.totalLearners}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-green-50 rounded-xl p-6 border border-green-100">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
-                                <TrendingUp className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-green-700 mb-1">Completion Rate</p>
-                                <p className="text-2xl font-bold text-green-900">{stats.completionRate}%</p>
                             </div>
                         </div>
                     </div>
@@ -343,7 +346,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Staff Name</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Score</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Quiz Result</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Remark</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
@@ -366,13 +369,14 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">
-                                                {staff.status === "completed" ? (
+                                                {staff.status === "completed" || staff.status === "failed" ? (
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
                                                         <CheckCircle className="w-3 h-3" />
-                                                        Passed
+                                                        Completed
                                                     </span>
                                                 ) : staff.status === "in_progress" ? (
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                                                        <Clock className="w-3 h-3" />
                                                         In Progress
                                                     </span>
                                                 ) : (
@@ -383,12 +387,27 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                             </td>
                                             <td className="px-6 py-4">
                                                 {staff.completion_id ? (
-                                                    <button
-                                                        onClick={() => router.push(`/admin/courses/${id}/quiz-results/${staff.completion_id}`)}
-                                                        className="px-3 py-1 bg-indigo-600 text-white rounded text-sm font-medium hover:bg-indigo-700 transition-colors"
-                                                    >
-                                                        View
-                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        {staff.score !== null && staff.score >= (course?.pass_mark || 80) ? (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                                                Passed
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
+                                                                Failed
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            onClick={() => router.push(`/admin/courses/${id}/quiz-results/${staff.completion_id}`)}
+                                                            className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+                                                        >
+                                                            View
+                                                        </button>
+                                                    </div>
+                                                ) : staff.status === 'failed' ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
+                                                        Failed
+                                                    </span>
                                                 ) : (
                                                     <span className="text-sm text-slate-400">-</span>
                                                 )}
@@ -401,6 +420,6 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

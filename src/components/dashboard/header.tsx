@@ -1,9 +1,12 @@
 "use client";
+"use client";
 
-import { Bell, UserCircle } from "@phosphor-icons/react";
+import { UserCircle } from "@phosphor-icons/react";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 export function Header() {
     const [userName, setUserName] = useState("Loading...");
@@ -36,12 +39,7 @@ export function Header() {
     return (
         <header className="bg-white h-16 px-8 flex items-center justify-end sticky top-0 z-20">
             <div className="flex items-center gap-6">
-                <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
-                    <Bell className="text-2xl" />
-                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">
-                        4
-                    </span>
-                </button>
+                <NotificationBell />
                 <div className="flex items-center gap-3 pl-6 border-l border-gray-200">
                     <UserProfileDropdown userName={userName} userInitials={userInitials} />
                 </div>

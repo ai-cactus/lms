@@ -98,7 +98,8 @@ function CreateCourseContent() {
                     question_text: q.text,
                     options: q.options,
                     correct_answer: q.options[q.correctAnswer],
-                    question_type: "multiple_choice"
+                    question_type: "multiple_choice",
+                    explanation: q.explanation
                 }));
 
                 const { error: quizError } = await supabase
