@@ -15,7 +15,14 @@ export async function POST(req: NextRequest) {
         // 1. Process files (Extract text)
         const processedFiles = await Promise.all(files.map(async (file: any) => {
             try {
-                const text = await extractTextFromFile(file);
+                let text = "";
+                // If content is already extracted (client-side), use it
+                if (file.content) {
+                    text = file.content;
+                } else {
+                    // Fallback to server-side extraction
+                    text = await extractTextFromFile(file);
+                }
                 return `--- DOCUMENT: ${file.name} ---\n${text}\n--- END DOCUMENT ---\n`;
             } catch (e) {
                 console.error(`Failed to process file ${file.name}:`, e);

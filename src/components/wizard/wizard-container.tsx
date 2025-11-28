@@ -58,25 +58,17 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
         setIsAnalyzing(true);
         setUploadProgress(10); // Started reading
         try {
-            // 1. Read files
+            // 1. Process files client-side (Extract text)
+            // Dynamic import to avoid SSR issues with the client-side processing
+            const { processFileClientSide } = await import("@/lib/client-file-processing");
+
             const fileContents = await Promise.all(
                 filesToAnalyze.map(async (file) => {
-                    return new Promise<{ name: string; type: string; data: string }>((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            resolve({
-                                name: file.name,
-                                type: file.type,
-                                data: reader.result as string,
-                            });
-                        };
-                        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
-                        reader.readAsDataURL(file);
-                    });
+                    return await processFileClientSide(file);
                 })
             );
 
-            setUploadProgress(40); // Files read, starting upload/analysis
+            setUploadProgress(40); // Files processed, starting upload/analysis
 
             // Simulate progress for better UX since we can't track fetch upload easily
             const progressInterval = setInterval(() => {
@@ -90,6 +82,7 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
             }, 500);
 
             // 2. Analyze documents with automatic retry
+            // We send the extracted content directly
             const { metadata } = await fetchJson("/api/analyze-documents", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
