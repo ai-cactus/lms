@@ -226,9 +226,7 @@ function CoursesListContent() {
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Assigned Staff
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                        Completion %
-                                    </th>
+
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Date Created
                                     </th>
@@ -240,16 +238,14 @@ function CoursesListContent() {
                             <tbody className="divide-y divide-gray-200">
                                 {filteredCourses.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-slate-600">
+                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-600">
                                             <BookOpen className="w-12 h-12 mx-auto mb-3 text-slate-400" />
                                             <p>No courses found</p>
                                         </td>
                                     </tr>
                                 ) : (
                                     filteredCourses.map((course) => {
-                                        const completionRate = course.stats?.totalAssignments
-                                            ? Math.round((course.stats.completedAssignments / course.stats.totalAssignments) * 100)
-                                            : 0;
+
 
                                         return (
                                             <tr
@@ -269,9 +265,6 @@ function CoursesListContent() {
                                                     <span className="text-sm text-slate-700">
                                                         {course.stats?.totalAssignments || 0}
                                                     </span>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="text-sm text-slate-700">{completionRate}%</span>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className="text-sm text-slate-700">

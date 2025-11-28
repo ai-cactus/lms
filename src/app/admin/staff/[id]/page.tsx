@@ -363,7 +363,7 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
                                         const passed = completion && completion.quiz_score >= passMark;
                                         // Check if failed (either status is failed OR completion exists but score < passMark)
                                         const failed = assignment.status === 'failed' || (completion && !passed);
-                                        const completed = assignment.status === 'completed' || failed;
+
 
                                         return (
                                             <tr key={assignment.id} className="hover:bg-slate-50">
@@ -379,13 +379,17 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    {completed ? (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                            Completed
+                                                    {assignment.status === 'not_started' ? (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                            Not Yet Started
                                                         </span>
-                                                    ) : (
+                                                    ) : assignment.status === 'in_progress' ? (
                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                                             In Progress
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                            Completed
                                                         </span>
                                                     )}
                                                 </td>

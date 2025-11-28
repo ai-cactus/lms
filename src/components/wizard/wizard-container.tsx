@@ -344,6 +344,7 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds }: Wizar
                             onNext={handleNext}
                             onBack={handleBack}
                             courseContent={courseData.generatedContent}
+                            courseDifficulty={courseData.difficulty}
                             onQuestionsChange={handleQuestionsChange}
                         />
                     )}

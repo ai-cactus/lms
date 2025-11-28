@@ -4,7 +4,7 @@ import { BookOpen, Users, CheckCircle } from "@phosphor-icons/react";
 
 export function StatsCards() {
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             {/* Card 1 */}
             <div className="bg-green-50 rounded-xl p-6 border border-green-100 shadow-sm">
                 <div className="bg-green-500 text-white w-10 h-10 rounded-lg flex items-center justify-center mb-4 shadow-green-200 shadow-md">
@@ -12,15 +12,6 @@ export function StatsCards() {
                 </div>
                 <div className="text-sm text-green-700 font-medium mb-1">Total Courses</div>
                 <div className="text-3xl font-bold text-green-900">15</div>
-            </div>
-
-            {/* Card 2 */}
-            <div className="bg-indigo-50 rounded-xl p-6 border border-indigo-100 shadow-sm">
-                <div className="bg-indigo-600 text-white w-10 h-10 rounded-lg flex items-center justify-center mb-4 shadow-indigo-200 shadow-md">
-                    <Users className="text-xl" weight="fill" />
-                </div>
-                <div className="text-sm text-indigo-700 font-medium mb-1">Total Staff Assigned</div>
-                <div className="text-3xl font-bold text-indigo-900">220</div>
             </div>
 
             {/* Card 3 */}

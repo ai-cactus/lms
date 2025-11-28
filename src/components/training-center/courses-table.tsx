@@ -45,9 +45,6 @@ export function CoursesTable({ courses }: CoursesTableProps) {
                                 Assigned Staff
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                                Completion %
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                                 Date Created
                             </th>
                             <th className="px-6 py-3"></th>
@@ -56,7 +53,7 @@ export function CoursesTable({ courses }: CoursesTableProps) {
                     <tbody className="divide-y divide-gray-200">
                         {courses.length === 0 ? (
                             <tr>
-                                <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                                <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
                                     No courses found. Create your first course to get started!
                                 </td>
                             </tr>
@@ -77,17 +74,6 @@ export function CoursesTable({ courses }: CoursesTableProps) {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-slate-700">{course.assignedStaff}</td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex-1 bg-slate-100 rounded-full h-2 max-w-[100px]">
-                                                <div
-                                                    className="bg-blue-600 h-2 rounded-full"
-                                                    style={{ width: `${course.completion}%` }}
-                                                ></div>
-                                            </div>
-                                            <span className="text-sm font-medium text-slate-700">{course.completion}%</span>
-                                        </div>
-                                    </td>
                                     <td className="px-6 py-4 text-slate-700">{course.dateCreated}</td>
                                     <td className="px-6 py-4">
                                         <Link

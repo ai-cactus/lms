@@ -28,6 +28,20 @@ export function Step4Quiz({ data, courseTitle, onChange }: Step4QuizProps) {
         handleChange("passMark", `${next}%`);
     };
 
+    const handleNumQuestionsChange = (increment: boolean) => {
+        const current = data.numQuestions || 15;
+        let next = increment ? current + 1 : current - 1;
+        if (next < 1) next = 1;
+        handleChange("numQuestions", next);
+    };
+
+    const handleAttemptsChange = (increment: boolean) => {
+        const current = data.attempts || 2;
+        let next = increment ? current + 1 : current - 1;
+        if (next < 1) next = 1;
+        handleChange("attempts", next);
+    };
+
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center mb-12">
@@ -62,50 +76,28 @@ export function Step4Quiz({ data, courseTitle, onChange }: Step4QuizProps) {
                     <div className="col-span-9 relative">
                         <input
                             type="number"
-                            value={data.numQuestions || 15}
-                            onChange={(e) => handleChange("numQuestions", parseInt(e.target.value))}
+                            value={data.numQuestions || ""}
+                            onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                handleChange("numQuestions", isNaN(val) ? 0 : val);
+                            }}
+                            placeholder="15"
                             className="w-full border border-gray-200 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 appearance-none"
                         />
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 pointer-events-none text-slate-400">
-                            <CaretUp size={10} weight="fill" />
-                            <CaretDown size={10} weight="fill" />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 text-slate-400 cursor-pointer z-10">
+                            <div onClick={() => handleNumQuestionsChange(true)} className="hover:text-blue-600">
+                                <CaretUp size={12} weight="fill" />
+                            </div>
+                            <div onClick={() => handleNumQuestionsChange(false)} className="hover:text-blue-600">
+                                <CaretDown size={12} weight="fill" />
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Difficulty */}
-                <div className="grid grid-cols-12 gap-8 items-center">
-                    <label className="col-span-3 text-sm font-medium text-slate-500">Difficulty:</label>
-                    <div className="col-span-9 relative">
-                        <select
-                            value={data.difficulty || "Moderate"}
-                            onChange={(e) => handleChange("difficulty", e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
-                        >
-                            <option>Beginner</option>
-                            <option>Moderate</option>
-                            <option>Advanced</option>
-                        </select>
-                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-                </div>
 
-                {/* Estimated Duration */}
-                <div className="grid grid-cols-12 gap-8 items-center">
-                    <label className="col-span-3 text-sm font-medium text-slate-500">Estimated Duration</label>
-                    <div className="col-span-9 relative">
-                        <select
-                            value="~15 mins"
-                            onChange={() => { }}
-                            className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white appearance-none text-slate-900 cursor-pointer"
-                        >
-                            <option>~15 mins</option>
-                            <option>~30 mins</option>
-                            <option>~45 mins</option>
-                        </select>
-                        <CaretDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-                </div>
+
+
 
                 {/* Pass Mark */}
                 <div className="grid grid-cols-12 gap-8 items-center">
@@ -134,13 +126,21 @@ export function Step4Quiz({ data, courseTitle, onChange }: Step4QuizProps) {
                     <div className="col-span-9 relative">
                         <input
                             type="number"
-                            value={data.attempts || 2}
-                            onChange={(e) => handleChange("attempts", parseInt(e.target.value))}
+                            value={data.attempts || ""}
+                            onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                handleChange("attempts", isNaN(val) ? 0 : val);
+                            }}
+                            placeholder="2"
                             className="w-full border border-gray-200 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 appearance-none"
                         />
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 pointer-events-none text-slate-400">
-                            <CaretUp size={10} weight="fill" />
-                            <CaretDown size={10} weight="fill" />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 text-slate-400 cursor-pointer z-10">
+                            <div onClick={() => handleAttemptsChange(true)} className="hover:text-blue-600">
+                                <CaretUp size={12} weight="fill" />
+                            </div>
+                            <div onClick={() => handleAttemptsChange(false)} className="hover:text-blue-600">
+                                <CaretDown size={12} weight="fill" />
+                            </div>
                         </div>
                     </div>
                 </div>

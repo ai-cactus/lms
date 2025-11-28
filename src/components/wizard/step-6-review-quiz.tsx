@@ -9,6 +9,7 @@ interface Step6ReviewQuizProps {
     onNext: () => void;
     onBack: () => void;
     courseContent?: string;
+    courseDifficulty?: string;
     onQuestionsChange: (questions: QuizQuestion[]) => void;
 }
 
@@ -20,7 +21,7 @@ interface QuizQuestion {
     isCustom?: boolean;
 }
 
-export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, onQuestionsChange }: Step6ReviewQuizProps) {
+export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, courseDifficulty, onQuestionsChange }: Step6ReviewQuizProps) {
     const [questions, setQuestions] = useState<QuizQuestion[]>([]);
     const [customQuestions, setCustomQuestions] = useState<QuizQuestion[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -57,7 +58,7 @@ export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, onQuestio
                 body: JSON.stringify({
                     courseContent,
                     numQuestions: data.numQuestions || 15,
-                    difficulty: data.difficulty || 'Moderate'
+                    difficulty: courseDifficulty || data.difficulty || 'Moderate'
                 }),
             });
 
