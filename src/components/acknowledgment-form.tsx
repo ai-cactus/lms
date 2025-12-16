@@ -106,7 +106,7 @@ export default function AcknowledgmentForm({
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Course Info */}
-                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                <div className="bg-white rounded-lg p-4 border border-slate-200">
                     <h3 className="font-semibold text-slate-900 mb-2">Training Completed</h3>
                     <p className="text-sm text-slate-700">{courseTitle}</p>
                     <p className="text-xs text-slate-500 mt-1">

@@ -180,7 +180,7 @@ export function Step5ReviewContent({ data, onNext, onBack, isGenerating }: Step5
         const isTitleSlide = currentSlideContent.includes('##') && currentSlideContent.split('\n').filter(line => line.trim()).length < 5;
 
         return (
-            <div className="fixed inset-0 bg-slate-50 z-50 flex flex-col">
+            <div className="fixed inset-0 bg-white z-50 flex flex-col">
                 {/* Header */}
                 <div className="bg-white border-b border-gray-200 px-8 py-4">
                     <div className="flex items-center justify-between max-w-7xl mx-auto">

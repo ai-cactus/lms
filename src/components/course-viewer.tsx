@@ -85,9 +85,9 @@ export function CourseViewer({ content, onComplete }: CourseViewerProps) {
     const remainingCount = outline.length - 7;
 
     return (
-        <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900">
+        <div className="flex h-screen overflow-hidden bg-white text-slate-900">
             {/* Sidebar */}
-            <div className="w-80 flex-shrink-0 bg-slate-50 p-6 hidden lg:block">
+            <div className="w-80 flex-shrink-0 bg-white p-6 hidden lg:block">
                 <div className="sticky top-6 bg-white border border-gray-200 rounded-lg shadow-sm p-6 max-h-[calc(100vh-3rem)] flex flex-col">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-2 rounded-lg bg-indigo-50">
@@ -97,7 +97,7 @@ export function CourseViewer({ content, onComplete }: CourseViewerProps) {
                     </div>
 
                     {/* Progress Indicator */}
-                    <div className="mb-8 p-4 rounded-lg bg-slate-50 border border-slate-200">
+                    <div className="mb-8 p-4 rounded-lg bg-white border border-slate-200">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-sm text-slate-500">Progress</span>
                             <span className="text-sm font-bold text-indigo-600">
@@ -203,7 +203,7 @@ export function CourseViewer({ content, onComplete }: CourseViewerProps) {
                         prose-li:text-slate-600
                         prose-blockquote:border-l-indigo-500 prose-blockquote:bg-indigo-50 prose-blockquote:py-4 prose-blockquote:text-slate-700
                         prose-table:border-collapse prose-table:w-full
-                        prose-th:bg-slate-50 prose-th:border prose-th:border-slate-200 prose-th:p-3 prose-th:text-slate-900
+                        prose-th:bg-white prose-th:border prose-th:border-slate-200 prose-th:p-3 prose-th:text-slate-900
                         prose-td:border prose-td:border-slate-200 prose-td:p-3 prose-td:text-slate-600
                         prose-img:rounded-xl prose-img:shadow-lg"
                     >

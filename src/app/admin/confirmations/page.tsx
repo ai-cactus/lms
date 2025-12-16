@@ -225,14 +225,14 @@ export default function PendingConfirmationsPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Loading pending confirmations...</div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 py-8 px-4">
+        <div className="min-h-screen bg-white py-8 px-4">
             <div className="max-w-6xl mx-auto">
                 {/* Header */}
                 <div className="mb-6">
@@ -379,7 +379,7 @@ export default function PendingConfirmationsPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="bg-slate-50 rounded-lg p-3 mb-4">
+                                            <div className="bg-white rounded-lg p-3 mb-4">
                                                 <p className="text-xs text-slate-600 mb-1">Digital Signature:</p>
                                                 <p className="text-sm font-serif text-slate-900">
                                                     {completion.acknowledgment_signature}

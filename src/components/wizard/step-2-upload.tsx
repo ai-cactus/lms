@@ -57,7 +57,7 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
                 onClick={() => !isAnalyzing && fileInputRef.current?.click()}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={!isAnalyzing ? handleDrop : (e) => e.preventDefault()}
-                className={`border-2 border-dashed border-gray-200 rounded-xl p-16 bg-white transition-colors mb-8 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50 cursor-pointer'}`}
+                className={`border-2 border-dashed border-gray-200 rounded-xl p-16 bg-white transition-colors mb-8 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white cursor-pointer'}`}
             >
                 <div className="w-16 h-16 bg-gray-500 text-white rounded-lg flex items-center justify-center mx-auto mb-6">
                     <CloudArrowUp size={32} weight="fill" />

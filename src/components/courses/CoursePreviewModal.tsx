@@ -193,7 +193,7 @@ export default function CoursePreviewModal({ isOpen, onClose, courseData }: Cour
         const isTitleSlide = currentSlideContent.includes('##') && currentSlideContent.split('\n').filter(line => line.trim()).length < 5;
 
         return (
-            <div className="fixed inset-0 bg-slate-50 z-[60] flex flex-col">
+            <div className="fixed inset-0 bg-white z-[60] flex flex-col">
                 {/* Header */}
                 <div className="bg-white border-b border-gray-200 px-8 py-4">
                     <div className="flex items-center justify-between max-w-7xl mx-auto">
@@ -400,7 +400,7 @@ export default function CoursePreviewModal({ isOpen, onClose, courseData }: Cour
                     {/* Content Body */}
                     <div className="flex flex-1 min-h-0">
                         {/* Main Content Area */}
-                        <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
+                        <div className="flex-1 overflow-y-auto p-8 bg-white">
                             <div className="bg-white rounded-lg shadow-sm p-8 min-h-full">
                                 <div className="prose prose-slate max-w-none">
                                     {courseData.content ? (
@@ -437,7 +437,7 @@ export default function CoursePreviewModal({ isOpen, onClose, courseData }: Cour
                                             <button
                                                 key={index}
                                                 onClick={() => scrollToHeading(heading.id)}
-                                                className={`block text-left w-full py-2 px-3 rounded-lg hover:bg-slate-50 transition-colors text-sm ${heading.level === 2
+                                                className={`block text-left w-full py-2 px-3 rounded-lg hover:bg-white transition-colors text-sm ${heading.level === 2
                                                     ? 'text-blue-600 font-medium'
                                                     : 'text-slate-600 pl-6'
                                                     }`}

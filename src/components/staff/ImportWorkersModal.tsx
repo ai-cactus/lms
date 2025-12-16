@@ -153,7 +153,7 @@ export default function ImportWorkersModal({
                                     Drag and drop your CSV file here
                                 </p>
                                 <p className="text-sm text-slate-500 mb-4">or</p>
-                                <label className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg font-medium text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors">
+                                <label className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg font-medium text-slate-700 hover:bg-white cursor-pointer transition-colors">
                                     Browse Files
                                     <input
                                         type="file"
@@ -165,7 +165,7 @@ export default function ImportWorkersModal({
                             </div>
 
                             {file && (
-                                <div className="bg-slate-50 rounded-lg p-4 flex items-center justify-between">
+                                <div className="bg-white rounded-lg p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
                                             <Upload className="w-5 h-5 text-indigo-600" />
@@ -220,7 +220,7 @@ export default function ImportWorkersModal({
                 <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3">
                     <button
                         onClick={handleClose}
-                        className="px-4 py-2 border border-gray-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors"
+                        className="px-4 py-2 border border-gray-300 rounded-lg text-slate-700 font-medium hover:bg-white transition-colors"
                     >
                         {result ? "Close" : "Cancel"}
                     </button>

@@ -15,6 +15,7 @@ import {
     CheckCircle,
     Search,
     Trash2,
+    X,
 } from "lucide-react";
 import CoursePreviewModal from "@/components/courses/CoursePreviewModal";
 import AssignUsersModal from "@/components/courses/AssignUsersModal";
@@ -62,7 +63,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
     const [isDeleting, setIsDeleting] = useState(false);
     const [stats, setStats] = useState({
         totalLearners: 0,
-
+        completionRate: 0,
         averageScore: 0,
         averageDuration: 0,
     });
@@ -141,7 +142,8 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
 
             // Calculate stats
             const totalLearners = staffData.length;
-
+            const completedCount = staffData.filter(s => s.status === 'completed').length;
+            const completionRate = totalLearners > 0 ? Math.round((completedCount / totalLearners) * 100) : 0;
 
             const scores = staffData.filter((s) => s.score !== null).map((s) => s.score as number);
             const averageScore = scores.length > 0
@@ -152,7 +154,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
             const wordCount = courseData.lesson_notes ? courseData.lesson_notes.split(/\s+/).length : 0;
             const averageDuration = Math.ceil(wordCount / 200);
 
-            setStats({ totalLearners, averageScore, averageDuration });
+            setStats({ totalLearners, completionRate, averageScore, averageDuration });
             setLoading(false);
         } catch (error) {
             console.error("Error loading course data:", error);
@@ -204,7 +206,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
     if (!course) return <div className="p-8 text-center">Course not found</div>;
 
     return (
-        <div className="min-h-screen bg-slate-50 p-8">
+        <div className="min-h-screen bg-white p-8">
             <CoursePreviewModal
                 isOpen={showPreview}
                 onClose={() => setShowPreview(false)}
@@ -254,31 +256,24 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                         </div>
                         <div className="flex items-center gap-3">
                             <button
-                                onClick={() => setShowPreview(true)}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                                onClick={() => router.push(`/admin/courses/${id}/preview`)}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
                             >
                                 <Eye className="w-4 h-4" />
                                 Preview
                             </button>
                             <button
                                 onClick={() => setShowAssign(true)}
-                                className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2"
+                                className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-white transition-colors flex items-center gap-2"
                             >
                                 <UserPlus className="w-4 h-4" />
                                 Assign
-                            </button>
-                            <button
-                                onClick={() => setShowDeleteModal(true)}
-                                className="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors flex items-center gap-2"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                                Delete
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="grid grid-cols-2 gap-6 mb-8">
                     <div className="bg-blue-50 rounded-xl p-6 border border-blue-100">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -287,6 +282,18 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                             <div>
                                 <p className="text-sm text-blue-700 mb-1">Total Learners</p>
                                 <p className="text-2xl font-bold text-blue-900">{stats.totalLearners}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-green-50 rounded-xl p-6 border border-green-100">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+                                <CheckCircle className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-green-700 mb-1">Completion Rate</p>
+                                <p className="text-2xl font-bold text-green-900">{stats.completionRate}%</p>
                             </div>
                         </div>
                     </div>
@@ -328,10 +335,10 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         placeholder="Search for staff..."
-                                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                                     />
                                 </div>
-                                <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm">
+                                <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-white transition-colors flex items-center gap-2 text-sm">
                                     <Download className="w-4 h-4" />
                                     Export
                                 </button>
@@ -341,12 +348,12 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
 
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-50 border-b border-gray-200">
+                            <thead className="bg-white border-b border-gray-200">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Staff Name</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Score</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Remark</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Quiz result</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
@@ -356,11 +363,25 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                     </tr>
                                 ) : (
                                     filteredStaff.map((staff) => (
-                                        <tr key={staff.id} className="hover:bg-slate-50">
+                                        <tr key={staff.id} className="hover:bg-white">
                                             <td className="px-6 py-4">
-                                                <div>
-                                                    <p className="font-medium text-slate-900">{staff.worker_name}</p>
-                                                    {staff.worker_role && <p className="text-sm text-slate-500">{staff.worker_role}</p>}
+                                                <div className="flex items-center gap-3">
+                                                    <svg width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <g clipPath="url(#clip0_10466_18703)">
+                                                            <path d="M19 38C29.4934 38 38 29.4934 38 19C38 8.50659 29.4934 0 19 0C8.50659 0 0 8.50659 0 19C0 29.4934 8.50659 38 19 38Z" fill="#DBE1FF"/>
+                                                            <path d="M18.9988 22.3458C22.7606 22.3458 25.8101 19.2963 25.8101 15.5345C25.8101 11.7727 22.7606 8.72314 18.9988 8.72314C15.237 8.72314 12.1875 11.7727 12.1875 15.5345C12.1875 19.2963 15.237 22.3458 18.9988 22.3458Z" fill="#7D91F2"/>
+                                                            <path d="M32.0952 32.8191C28.6925 36.0312 24.1044 37.9999 19.0563 37.9999C14.0081 37.9999 9.31968 35.9882 5.90625 32.7133C6.06279 32.3895 6.24741 32.0806 6.43263 31.7759C7.30914 30.3366 8.41509 29.0872 9.73373 28.0333C9.85562 27.9359 9.93329 27.7889 10.0851 27.7273C10.3533 27.6712 10.5493 27.4788 10.7572 27.33C11.5089 26.7899 12.3412 26.4045 13.1681 26.0054C13.2392 25.9749 13.3109 25.948 13.3826 25.92C14.7221 25.4073 16.0969 25.0201 17.5261 24.8821C18.3501 24.8027 19.1835 24.866 20.0117 24.8612C21.0853 24.9036 22.1399 25.0656 23.1694 25.3816C24.8172 25.8883 26.3426 26.6399 27.7407 27.6491C29.3963 28.8434 30.6929 30.3545 31.7188 32.1135C31.852 32.3423 31.9625 32.5879 32.0952 32.8191Z" fill="#7D91F2"/>
+                                                        </g>
+                                                        <defs>
+                                                            <clipPath id="clip0_10466_18703">
+                                                                <rect width="38" height="38" rx="19" fill="white"/>
+                                                            </clipPath>
+                                                        </defs>
+                                                    </svg>
+                                                    <div>
+                                                        <p className="font-medium text-slate-900">{staff.worker_name}</p>
+                                                        {staff.worker_role && <p className="text-sm text-slate-500">{staff.worker_role}</p>}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
@@ -369,10 +390,15 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">
-                                                {staff.status === "completed" || staff.status === "failed" ? (
+                                                {staff.status === "completed" ? (
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
                                                         <CheckCircle className="w-3 h-3" />
-                                                        Completed
+                                                        Passed
+                                                    </span>
+                                                ) : staff.status === "failed" ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
+                                                        <X className="w-3 h-3" />
+                                                        Failed
                                                     </span>
                                                 ) : staff.status === "in_progress" ? (
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
@@ -386,31 +412,16 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                                 )}
                                             </td>
                                             <td className="px-6 py-4">
-                                                {staff.completion_id ? (
-                                                    <div className="flex items-center gap-2">
-                                                        {staff.score !== null && staff.score >= (course?.pass_mark || 80) ? (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
-                                                                Passed
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
-                                                                Failed
-                                                            </span>
-                                                        )}
-                                                        <button
-                                                            onClick={() => router.push(`/admin/courses/${id}/quiz-results/${staff.completion_id}`)}
-                                                            className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
-                                                        >
-                                                            View
-                                                        </button>
-                                                    </div>
-                                                ) : staff.status === 'failed' ? (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
-                                                        Failed
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-sm text-slate-400">-</span>
-                                                )}
+                                                <button
+                                                    onClick={() => {
+                                                        if (staff.completion_id) {
+                                                            router.push(`/admin/courses/${id}/quiz-results/${staff.completion_id}`);
+                                                        }
+                                                    }}
+                                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
+                                                >
+                                                    View
+                                                </button>
                                             </td>
                                         </tr>
                                     ))

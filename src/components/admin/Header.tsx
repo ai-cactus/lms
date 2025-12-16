@@ -60,7 +60,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
     };
 
     return (
-        <header className="bg-white h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-20 border-b border-gray-100">
+        <header className="bg-white h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-20">
             <div className="flex items-center gap-3">
                 {/* Hamburger menu button - shows on mobile, hides on desktop */}
                 <button
@@ -73,9 +73,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
 
                 {/* Breadcrumb */}
                 <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
-                    <span>Home</span>
-                    <span>/</span>
-                    <span className="text-slate-900 font-medium">{getTitle()}</span>
+                    
                 </div>
 
                 {/* Mobile title */}
@@ -89,7 +87,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
                     <Bell className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
 
-                <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6 border-l border-gray-200">
+                <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6 ">
                     <UserProfileDropdown userName={userName} userInitials={userInitials} />
                 </div>
             </div>

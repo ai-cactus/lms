@@ -4,12 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
-    BookOpen,
-    CheckCircle,
-    Clock,
-    ArrowRight,
-    XCircle,
-    AlertCircle
+    BookOpen
 } from "lucide-react";
 
 interface Assignment {
@@ -33,6 +28,26 @@ export default function WorkerCoursesPage() {
         loadDashboardData();
     }, []);
 
+    const handleRejectCourse = async (assignmentId: string) => {
+        try {
+            // Since 'rejected' status doesn't exist, we'll delete the assignment
+            const { error } = await supabase
+                .from("course_assignments")
+                .delete()
+                .eq("id", assignmentId);
+
+            if (error) {
+                console.error("Error deleting course assignment:", error);
+                throw error;
+            }
+
+            // Reload the data to reflect the change
+            await loadDashboardData();
+        } catch (error) {
+            console.error("Error rejecting course:", error);
+        }
+    };
+
     const loadDashboardData = async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -52,10 +67,13 @@ export default function WorkerCoursesPage() {
                   courses(title)
                 `)
                 .eq("worker_id", user.id)
-                .in("status", ["not_started", "in_progress", "overdue", "failed"])
+                .in("status", ["not_started", "in_progress", "overdue"])
                 .order("deadline", { ascending: true });
 
-            if (activeError) throw activeError;
+            if (activeError) {
+                console.error("Error fetching active assignments:", activeError);
+                throw activeError;
+            }
 
             // Get completed assignments
             const { data: completedData, error: completedError } = await supabase
@@ -71,7 +89,10 @@ export default function WorkerCoursesPage() {
                 .eq("status", "completed")
                 .order("deadline", { ascending: false }); // Fallback to deadline for sorting
 
-            if (completedError) throw completedError;
+            if (completedError) {
+                console.error("Error fetching completed assignments:", completedError);
+                throw completedError;
+            }
 
             // Normalize and merge data
             const normalizedActive = (activeData || []).map((item: any) => ({
@@ -84,163 +105,81 @@ export default function WorkerCoursesPage() {
                 course: Array.isArray(item.courses) ? item.courses[0] : item.courses
             }));
 
+            console.log("Active assignments:", normalizedActive);
+            console.log("Completed assignments:", normalizedCompleted);
+            
             setAssignments([...normalizedActive, ...normalizedCompleted]);
         } catch (error) {
             console.error("Error loading courses:", error);
+            console.error("Error details:", JSON.stringify(error, null, 2));
         } finally {
             setLoading(false);
         }
     };
 
-    const getStatusTags = (status: string) => {
-        switch (status) {
-            case "completed":
-                return (
-                    <div className="flex gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" />
-                            Completed
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" />
-                            Passed
-                        </span>
-                    </div>
-                );
-            case "failed":
-                return (
-                    <div className="flex gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" />
-                            Completed
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium flex items-center gap-1">
-                            <XCircle className="w-3 h-3" />
-                            Failed
-                        </span>
-                    </div>
-                );
-            case "in_progress":
-                return (
-                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        In Progress
-                    </span>
-                );
-            case "overdue":
-                return (
-                    <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        Overdue
-                    </span>
-                );
-            default: // not_started
-                return (
-                    <span className="px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-700 text-xs font-medium flex items-center gap-1">
-                        <BookOpen className="w-3 h-3" />
-                        Not yet started
-                    </span>
-                );
-        }
-    };
-
-    const renderActionButton = (assignment: Assignment) => {
-        const { status, id } = assignment;
-
-        if (status === "completed" || status === "failed") {
-            return (
-                <button
-                    onClick={() => router.push(`/worker/quiz/${id}?view=results`)}
-                    className="px-4 py-2 bg-white border border-gray-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                    View Results
-                </button>
-            );
-        }
-
-        if (status === "in_progress" || status === "overdue") {
-            return (
-                <button
-                    onClick={() => router.push(`/worker/courses/${id}`)}
-                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
-                >
-                    Continue
-                    <ArrowRight className="w-4 h-4" />
-                </button>
-            );
-        }
-
-        // not_started
-        return (
-            <button
-                onClick={() => router.push(`/worker/courses/${id}`)}
-                className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
-            >
-                Start Course
-                <ArrowRight className="w-4 h-4" />
-            </button>
-        );
-    };
 
     if (loading) {
         return (
             <div className="p-8 flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-4 border-[#4758E0] border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
 
     return (
-        <div className="p-8 max-w-5xl mx-auto">
+        <div className="p-8  mx-auto">
             <div className="mb-8">
-                <h1 className="text-2xl font-bold text-slate-900 mb-2">My Courses</h1>
-                <p className="text-slate-600">Manage and track your assigned training courses.</p>
+                <h1 className="text-2xl font-bold text-slate-900 mb-2">Assigned Courses</h1>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="divide-y divide-gray-100">
-                    {assignments.length === 0 ? (
-                        <div className="p-12 text-center text-slate-500">
-                            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <BookOpen className="w-8 h-8 text-gray-400" />
-                            </div>
-                            <h3 className="text-lg font-medium text-slate-900 mb-1">No courses assigned</h3>
-                            <p>You don't have any courses assigned to you yet.</p>
+            <div style={{border: "1px solid #DFE1E6", borderRadius:'17px', boxShadow: "0 1px 2px 0 #E4E5E73D", padding: "0px 14px"}} className="space-y-4">
+                {assignments.length === 0 ? (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-slate-500">
+                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <BookOpen className="w-8 h-8 text-gray-400" />
                         </div>
-                    ) : (
-                        assignments.map((assignment) => (
-                            <div key={assignment.id} className="p-6 hover:bg-slate-50 transition-colors">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <div className="flex-1">
-                                        <div className="flex items-start justify-between mb-2">
-                                            <h3 className="text-lg font-bold text-slate-900">
+                        <h3 className="text-lg font-medium text-slate-900 mb-1">No courses assigned</h3>
+                        <p>You don't have any courses assigned to you yet.</p>
+                    </div>
+                ) : (
+                    assignments
+                        .filter(assignment => assignment.status !== "completed" && assignment.status !== "failed")
+                        .map((assignment) => (
+                            <div key={assignment.id} style={{borderBottom: "1px dotted #DFE1E6"}} className="bg-white   p-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-[#0D25FF] rounded-lg flex items-center justify-center">
+                                            <svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path fillRule="evenodd" clipRule="evenodd" d="M20.0695 2.63179e-07V6.02085V20.0695H14.0487V13.0485C14.0468 16.9264 10.9027 20.0695 7.02433 20.0695C3.1449 20.0695 0 16.9246 0 13.0452C0 9.16575 3.1449 6.02085 7.02433 6.02085C10.9027 6.02085 14.0468 9.16395 14.0487 13.0419V6.02085H7.02433H0V2.63179e-07L14.0487 0L20.0695 2.63179e-07Z" fill="white"/>
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-slate-900 mb-1">
                                                 {assignment.course?.title || "Untitled Course"}
                                             </h3>
-                                        </div>
-
-                                        <div className="flex flex-wrap items-center gap-4 text-sm mb-3">
-                                            {getStatusTags(assignment.status)}
-
-                                            {assignment.deadline && (
-                                                <span className="text-slate-500 flex items-center gap-1">
-                                                    <Clock className="w-4 h-4" />
-                                                    {assignment.status === 'completed' || assignment.status === 'failed'
-                                                        ? `Finished ${new Date(assignment.deadline).toLocaleDateString()}`
-                                                        : `Due ${new Date(assignment.deadline).toLocaleDateString()}`
-                                                    }
-                                                </span>
-                                            )}
+                                            <p className="text-sm text-slate-500">
+                                                Beginner
+                                            </p>
                                         </div>
                                     </div>
-
                                     <div className="flex items-center gap-3">
-                                        {renderActionButton(assignment)}
+                                        <button
+                                            onClick={() => router.push(`/worker/courses/${assignment.id}/details`)}
+                                            className="px-6 py-2 bg-[#4758E0] text-white text-sm font-medium rounded-lg hover:bg-[#4758E0]/90 transition-colors"
+                                        >
+                                            Start Course
+                                        </button>
+                                        <button
+                                            onClick={() => handleRejectCourse(assignment.id)}
+                                            className="px-6 py-2 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors"
+                                        >
+                                            Reject
+                                        </button>
                                     </div>
                                 </div>
                             </div>
                         ))
-                    )}
-                </div>
+                )}
             </div>
         </div>
     );

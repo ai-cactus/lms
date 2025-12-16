@@ -24,7 +24,12 @@
 }
 
 @layer base {
+  * {
+    font-family: var(--font-inter), system-ui, sans-serif;
+  }
+  
   body {
-    @apply bg-slate-50 text-slate-900;
+    @apply bg-white text-slate-900;
+    font-family: var(--font-inter), system-ui, sans-serif;
   }
 }

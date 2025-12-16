@@ -93,7 +93,7 @@ export default function DocumentPreview({ fileUrl, fileName, onClose, onAnalyze 
             <div className="flex-1 overflow-hidden flex">
                 {/* Table of Contents (optional) */}
                 {showToc && (
-                    <div className="w-64 bg-slate-50 border-r border-gray-200 p-4 overflow-y-auto">
+                    <div className="w-64 bg-white border-r border-gray-200 p-4 overflow-y-auto">
                         <button
                             onClick={() => setShowToc(false)}
                             className="mb-4 flex items-center gap-2 text-slate-600 hover:text-slate-900"
@@ -137,7 +137,7 @@ export default function DocumentPreview({ fileUrl, fileName, onClose, onAnalyze 
                 {!showToc && (
                     <button
                         onClick={() => setShowToc(true)}
-                        className="absolute left-4 top-24 bg-white border border-gray-300 rounded-lg p-2 shadow-sm hover:bg-slate-50 transition-colors"
+                        className="absolute left-4 top-24 bg-white border border-gray-300 rounded-lg p-2 shadow-sm hover:bg-white transition-colors"
                         title="Table of Contents"
                     >
                         <Menu className="w-5 h-5 text-slate-600" />

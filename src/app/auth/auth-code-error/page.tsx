@@ -10,7 +10,7 @@ export default async function AuthCodeError({
     const error = params.error || "There was an error verifying your email. The confirmation link may have expired or been used already.";
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-white flex items-center justify-center p-4">
             <div className="w-full max-w-md">
                 {/* Logo */}
                 <div className="flex items-center justify-center gap-2 mb-8">
@@ -40,7 +40,7 @@ export default async function AuthCodeError({
                         </Link>
                         <Link
                             href="/login"
-                            className="block w-full py-3 border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
+                            className="block w-full py-3 border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-white transition-colors"
                         >
                             Back to Login
                         </Link>

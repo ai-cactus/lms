@@ -293,7 +293,7 @@ export default function PendingConfirmationsWidget({
                             {confirmAction === "approve" ? "Approve Training" : "Deny Training"}
                         </h3>
 
-                        <div className="mb-4 p-4 bg-slate-50 rounded-lg">
+                        <div className="mb-4 p-4 bg-white rounded-lg">
                             <p className="text-sm text-slate-600 mb-1">Worker</p>
                             <p className="font-medium text-slate-900">{selectedCompletion.worker.full_name}</p>
                             <p className="text-sm text-slate-600 mt-2 mb-1">Course</p>

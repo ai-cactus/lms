@@ -51,7 +51,7 @@ export default function LearningNeedsTab({ workerId }: LearningNeedsTabProps) {
 
     if (needs.length === 0) {
         return (
-            <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+            <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
                 <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
                 <h3 className="text-lg font-medium text-slate-900">No Learning Needs Identified</h3>
                 <p className="text-slate-500 max-w-md mx-auto mt-1">

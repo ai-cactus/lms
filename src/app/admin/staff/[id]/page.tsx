@@ -13,6 +13,10 @@ import {
     Search,
     Download,
     User,
+    Edit3,
+    Award,
+    Zap,
+    AlertTriangle,
 } from "lucide-react";
 import AssignRetakeModal from "@/components/staff/AssignRetakeModal";
 import AssignCourseModal from "@/components/staff/AssignCourseModal";
@@ -22,6 +26,10 @@ interface StaffMember {
     full_name: string;
     email: string;
     role: string;
+    bio?: string;
+    competencies?: string[];
+    strengths?: string[];
+    weaknesses?: string[];
 }
 
 interface CourseAssignment {
@@ -52,6 +60,8 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
     const [loading, setLoading] = useState(true);
     const [showRetakeModal, setShowRetakeModal] = useState(false);
     const [showAssignModal, setShowAssignModal] = useState(false);
+    const [editingBio, setEditingBio] = useState(false);
+    const [bioText, setBioText] = useState("");
     const [stats, setStats] = useState({
         totalAssigned: 0,
         completed: 0,
@@ -60,19 +70,64 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
     });
 
     useEffect(() => {
+        console.log("Loading staff profile for ID:", id);
         loadStaffProfile();
     }, [id]);
 
     const loadStaffProfile = async () => {
         try {
-            const { data: staffData } = await supabase
+            // Debug: Check if we can access users table at all
+            const { data: allUsers, error: allUsersError } = await supabase
                 .from("users")
                 .select("id, full_name, email, role")
+                .limit(5);
+
+            console.log("All users (first 5):", allUsers);
+            console.log("All users error:", allUsersError);
+
+            // First try with all columns, fallback to basic columns if some don't exist
+            let { data: staffData, error: staffError } = await supabase
+                .from("users")
+                .select("id, full_name, email, role, bio, competencies, strengths, weaknesses")
                 .eq("id", id)
                 .single();
 
+            // If error due to missing columns, try with basic columns only
+            if (staffError && staffError.message?.includes('column')) {
+                console.log("Trying with basic columns only...");
+                const result = await supabase
+                    .from("users")
+                    .select("id, full_name, email, role")
+                    .eq("id", id)
+                    .single();
+
+                staffData = result.data ? {
+                    ...result.data,
+                    bio: null,
+                    competencies: null,
+                    strengths: null,
+                    weaknesses: null
+                } : null;
+                staffError = result.error;
+            }
+
             console.log("Staff data:", staffData);
+            console.log("Staff error:", staffError);
+
+            if (staffError) {
+                console.error("Error loading staff:", staffError);
+                setLoading(false);
+                return;
+            }
+
+            if (!staffData) {
+                console.error("No staff data found for id:", id);
+                setLoading(false);
+                return;
+            }
+
             setStaff(staffData);
+            setBioText(staffData?.bio || "");
 
             // Get all assignments for this worker
             const { data: assignmentsData, error: assignmentsError } = await supabase
@@ -209,7 +264,7 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
     if (!staff) return <div className="p-8 text-center">Staff member not found</div>;
 
     return (
-        <div className="min-h-screen bg-slate-50 p-8">
+        <div className="min-h-screen bg-white p-8">
             <AssignRetakeModal
                 isOpen={showRetakeModal}
                 onClose={() => setShowRetakeModal(false)}
@@ -224,224 +279,345 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
             />
 
             <div className="max-w-7xl mx-auto">
-                <button
-                    onClick={() => router.push("/admin/staff")}
-                    className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6"
-                >
-                    <ArrowLeft className="w-4 h-4" />
-                    <span>Go Back</span>
+                <div className="flex items-center gap-2 text-slate-600 mb-6">
+                    <button
+                        onClick={() => router.push("/admin/staff")}
+                        className="flex items-center gap-1 hover:text-slate-900"
+                    >
+                        <ArrowLeft className="w-4 h-4" />
+                        <span>Go Back</span>
+                    </button>
                     <span className="text-slate-400">/</span>
                     <span className="text-slate-400">Staff Details</span>
                     <span className="text-slate-400">/</span>
-                    <span>Staff Profile</span>
-                </button>
-
-                <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 mb-8">
-                    <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-6">
-                            <div className="w-24 h-24 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-2xl font-bold">
-                                {getInitials(staff.full_name)}
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-bold text-slate-900 mb-1">{staff.full_name}</h1>
-                                <p className="text-slate-600 flex items-center gap-2 mb-2">
-                                    <User className="w-4 h-4" />
-                                    {staff.email}
-                                </p>
-                                <span className="inline-block px-3 py-1 bg-green-100 text-green-700 text-sm font-medium rounded">
-                                    {staff.role}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={() => setShowAssignModal(true)}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
-                            >
-                                <UserPlus className="w-4 h-4" />
-                                Assign Course
-                            </button>
-                        </div>
+                    <span className="text-blue-600 font-medium">Staff Profile</span>
+                </div>
+                {/* Profile Header */}
+                <div className="flex mb-9 items-start gap-6">
+                    <div className="w-full">
+                        <div className="w-20 h-20 mb-5 rounded-full bg-slate-800 flex items-center justify-center text-white text-xl font-bold">
+                        {getInitials(staff.full_name)}
                     </div>
+                    <div className="flex justify-between w-full">
+                         <div className=" gap-2">
+                        <h1 className="text-2xl font-bold text-slate-900 mb-1">{staff.full_name}</h1>
+                        <p className="text-slate-600 text-sm font-normal flex items-center gap-2 mb-2">
+                            <User className="w-4 h-4" />
+                            {staff.email}
+                        </p>
+                        <span className="inline-block px-3 py-1 bg-[#EAFDF5] text-[#59904B] text-sm font-medium rounded-[6px]">
+                            {staff.role}
+                        </span>
+                    </div>
+<div className="flex items-start gap-3">
+                        <button
+                            onClick={() => setShowRetakeModal(true)}
+                            className="px-4 py-2 bg-white border border-[#394CE6] text-[#394CE6] rounded-lg font-medium hover:bg-blue-50 transition-colors flex items-center gap-2"
+                        >
+                            Assign Retake
+                        </button>
+                        <button
+                            onClick={() => setShowAssignModal(true)}
+                            className="px-4 py-2 bg-[#394CE6] text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                        >
+                            <UserPlus className="w-4 h-4" />
+                            Assign Course
+                        </button>
+                    </div>
+                    </div>
+
+
+                   
+                    </div>
+                    
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <div className="bg-blue-50 rounded-xl p-6 border border-blue-100">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-                                <BookOpen className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-blue-700 mb-1">Total Courses Assigned</p>
-                                <p className="text-2xl font-bold text-blue-900">{stats.totalAssigned}</p>
-                            </div>
-                        </div>
-                    </div>
+                <div className="flex gap-8">
 
-                    <div className="bg-green-50 rounded-xl p-6 border border-green-100">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
-                                <CheckCircle className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-green-700 mb-1">Courses Passed</p>
-                                <p className="text-2xl font-bold text-green-900">{stats.completed}</p>
-                            </div>
-                        </div>
-                    </div>
+                    {/* Left Column - Profile & Details */}
+                    <div style={{boxShadow: "0 1px 2px 0 #E4E5E73D"}} className="lg:col-span-1 border border-[#EEEFF2] rounded-[17px] p-5 space-y-6">
 
-                    <div className="bg-red-50 rounded-xl p-6 border border-red-100">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center">
-                                <XCircle className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-red-700 mb-1">Failed / Retake Needed</p>
-                                <p className="text-2xl font-bold text-red-900">{stats.failed}</p>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div className="bg-yellow-50 rounded-xl p-6 border border-yellow-100">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-yellow-600 rounded-lg flex items-center justify-center">
-                                <Clock className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-yellow-700 mb-1">Active / Due Soon</p>
-                                <p className="text-2xl font-bold text-yellow-900">{stats.active}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-                    <div className="p-6 border-b border-gray-200">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-xl font-bold text-slate-900">Courses</h2>
-                            <div className="flex items-center gap-4">
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                    <input
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="Search for courses..."
-                                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                                    />
-                                </div>
-                                <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm">
-                                    <Download className="w-4 h-4" />
-                                    Export
+                        {/* Bio Section */}
+                        <div style={{boxShadow: "0 1px 2px 0 #E4E5E73D"}} className="bg-white rounded-[12px] border border-gray-200 p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-slate-900">Bio</h3>
+                                <button
+                                    onClick={() => setEditingBio(!editingBio)}
+                                    className="text-slate-400 hover:text-slate-600"
+                                >
+                                    <Edit3 className="w-4 h-4" />
                                 </button>
                             </div>
+                            {editingBio ? (
+                                <div className="space-y-3">
+                                    <textarea
+                                        value={bioText}
+                                        onChange={(e) => setBioText(e.target.value)}
+                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                        rows={4}
+                                        placeholder="Add bio information..."
+                                    />
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                // Save bio logic here
+                                                setEditingBio(false);
+                                            }}
+                                            className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+                                        >
+                                            Save
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setBioText(staff?.bio || "");
+                                                setEditingBio(false);
+                                            }}
+                                            className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-slate-700 leading-relaxed">
+                                    {bioText || "3 years of experience in residential behavioral programs. I'm passionate about helping healthcare grow, improve their policies, and to raise venture capital through good policies."}
+                                </p>
+                            )}
                         </div>
-                    </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-slate-50 border-b border-gray-200">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Name</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Progress</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Quiz Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                                {filteredAssignments.length === 0 ? (
+                        {/* Background Section */}
+                        <div style={{boxShadow: "0 1px 2px 0 #E4E5E73D"}} className="bg-white rounded-[12px] border border-gray-200 p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-slate-900">Background</h3>
+                                <button className="text-slate-400 hover:text-slate-600">
+                                    <Edit3 className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-6">
+                                {/* Competencies */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Award className="w-4 h-4 text-slate-600" />
+                                        <span className="font-medium text-slate-900">Competencies</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">Client Safety & Emergency Response</span>
+                                        <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">Documentation Accuracy</span>
+                                        <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">Infection Control</span>
+                                    </div>
+                                </div>
+
+                                {/* Strength */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Zap className="w-4 h-4 text-slate-600" />
+                                        <span className="font-medium text-slate-900">Strength</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">Teamwork</span>
+                                        <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">Communication</span>
+                                    </div>
+                                    <p className="text-sm text-slate-600 mt-2">Excellent documentation and ethical practice.</p>
+                                </div>
+
+                                {/* Weakness */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <AlertTriangle className="w-4 h-4 text-slate-600" />
+                                        <span className="font-medium text-slate-900">Weakness</span>
+                                    </div>
+                                    <p className="text-sm text-slate-600">Needs improvement in emergency procedures and infection control.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Courses Section */}
+                <div className="mt-8">
+
+                    <div style={{boxShadow: "0 1px 2px 0 #E4E5E73D"}} className="bg-white rounded-[12px] border border-gray-200 overflow-hidden">
+                        <div className="p-6 border-b border-gray-200">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-bold text-slate-900">Courses</h2>
+                                <div className="flex items-center gap-4">
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            placeholder="Search for courses..."
+                                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                        />
+                                    </div>
+                                    <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-white transition-colors flex items-center gap-2 text-sm">
+                                        <Download className="w-4 h-4" />
+                                        Export
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-white border-b border-gray-200">
                                     <tr>
-                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-600">
-                                            No course assignments found
-                                        </td>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Name</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Progress</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Quiz Status</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Actions</th>
                                     </tr>
-                                ) : (
-                                    filteredAssignments.map((assignment) => {
-                                        const completion = (assignment as any).completion;
-                                        const passMark = (assignment.course as any).pass_mark || 80;
-                                        // Check if passed based on score
-                                        const passed = completion && completion.quiz_score >= passMark;
-                                        // Check if failed (either status is failed OR completion exists but score < passMark)
-                                        const failed = assignment.status === 'failed' || (completion && !passed);
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {filteredAssignments.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} className="px-6 py-12 text-center text-slate-600">
+                                                No course assignments found
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredAssignments.map((assignment) => {
+                                            const completion = (assignment as any).completion;
+                                            const passMark = (assignment.course as any).pass_mark || 80;
+                                            // Check if passed based on score
+                                            const passed = completion && completion.quiz_score >= passMark;
+                                            // Check if failed (either status is failed OR completion exists but score < passMark)
+                                            const failed = assignment.status === 'failed' || (completion && !passed);
 
 
-                                        return (
-                                            <tr key={assignment.id} className="hover:bg-slate-50">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                                                            <BookOpen className="w-5 h-5 text-indigo-600" />
+                                            return (
+                                                <tr key={assignment.id} className="hover:bg-white">
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                                                                <BookOpen className="w-5 h-5 text-white" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-medium text-slate-900">{(assignment.course as any)?.title || "HIPAA Privacy Training"}</p>
+                                                                <p className="text-sm text-slate-500">{(assignment.course as any)?.difficulty || "Advanced"}</p>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <p className="font-medium text-slate-900">{(assignment.course as any)?.title || "Unknown Course"}</p>
-                                                            <p className="text-sm text-slate-500">{(assignment.course as any)?.difficulty || "Beginner"}</p>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="w-full">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className="text-sm text-slate-600">{assignment.progress_percentage || 0}%</span>
+                                                            </div>
+                                                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                                                <div
+                                                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                                                    style={{ width: `${assignment.progress_percentage || 0}%` }}
+                                                                ></div>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {assignment.status === 'not_started' ? (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                            Not Yet Started
-                                                        </span>
-                                                    ) : assignment.status === 'in_progress' ? (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                            In Progress
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                            Completed
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {completion ? (
-                                                        passed ? (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
-                                                                <CheckCircle className="w-3 h-3" />
-                                                                Pass
-                                                            </span>
-                                                        ) : (
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        {completion ? (
+                                                            passed ? (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                                                    <CheckCircle className="w-3 h-3" />
+                                                                    Pass
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
+                                                                    <XCircle className="w-3 h-3" />
+                                                                    Failed
+                                                                </span>
+                                                            )
+                                                        ) : failed ? (
                                                             <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
                                                                 <XCircle className="w-3 h-3" />
                                                                 Failed
                                                             </span>
-                                                        )
-                                                    ) : failed ? (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
-                                                            <XCircle className="w-3 h-3" />
-                                                            Failed
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-sm text-slate-400">-</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {failed ? (
-                                                        <button
-                                                            onClick={() => handleAssignRetake(assignment)}
-                                                            className="px-3 py-1 bg-white border border-red-200 text-red-600 rounded text-sm font-medium hover:bg-red-50 transition-colors"
-                                                        >
-                                                            Assign Retake
+                                                        ) : (
+                                                            <span className="text-sm text-slate-400">-</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        {failed ? (
+                                                            <button
+                                                                onClick={() => handleAssignRetake(assignment)}
+                                                                className="px-3 py-1 bg-white border border-red-200 text-red-600 rounded text-sm font-medium hover:bg-red-50 transition-colors"
+                                                            >
+                                                                Assign Retake
+                                                            </button>
+                                                        ) : passed ? (
+                                                            <button
+                                                                onClick={() => router.push(`/admin/courses/${assignment.course_id}/quiz-results/${completion.id}`)}
+                                                                className="px-3 py-1 bg-indigo-600 text-white rounded text-sm font-medium hover:bg-indigo-700 transition-colors"
+                                                            >
+                                                                View Result
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-sm text-slate-400">-</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <button className="px-3 py-1 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors">
+                                                            View
                                                         </button>
-                                                    ) : passed ? (
-                                                        <button
-                                                            onClick={() => router.push(`/admin/courses/${assignment.course_id}/quiz-results/${completion.id}`)}
-                                                            className="px-3 py-1 bg-indigo-600 text-white rounded text-sm font-medium hover:bg-indigo-700 transition-colors"
-                                                        >
-                                                            View Result
-                                                        </button>
-                                                    ) : (
-                                                        <span className="text-sm text-slate-400">-</span>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
+                    </div>
+
+                    {/* Right Column - Stats */}
+                    <div className="space-y-4 w-[40%]">
+                        <div className="bg-[#E9ECF9] rounded-[12px] p-4 border border-[#9BA7E3]">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                                    <BookOpen className="w-4 h-4 text-white" />
+                                </div>
+                                <div>
+<span className="text-sm text-blue-700 font-medium">Total Courses Assigned</span>
+<p className="text-2xl font-bold text-blue-900">{stats.totalAssigned}</p>
+                                </div>
+                                
+                            </div>
+                            
+                        </div>
+
+                        <div className="bg-[#E9F9F2] rounded-[12px] p-4 border border-[#9BE3C2]">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
+                                    <CheckCircle className="w-4 h-4 text-white" />
+                                </div>
+                                <span className="text-sm text-green-700 font-medium">Courses Completed</span>
+                            </div>
+                            <p className="text-2xl font-bold text-green-900">{stats.completed}</p>
+                        </div>
+
+                        <div className="bg-[#F9E9E9] rounded-[12px] p-4 border border-[#E39B9B]">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
+                                    <XCircle className="w-4 h-4 text-white" />
+                                </div>
+                                <span className="text-sm text-red-700 font-medium">Failed / Retake Needed</span>
+                            </div>
+                            <p className="text-2xl font-bold text-red-900">{stats.failed}</p>
+                        </div>
+
+                        <div className="bg-[#FFFAD5] rounded-[12px] p-4 border border-[#E39B9B]">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-8 h-8 bg-yellow-600 rounded-lg flex items-center justify-center">
+                                    <Clock className="w-4 h-4 text-white" />
+                                </div>
+                                <span className="text-sm text-yellow-700 font-medium">Active / Due Soon</span>
+                            </div>
+                            <p className="text-2xl font-bold text-yellow-900">{stats.active}</p>
+                        </div>
+                    </div>
+                </div>
+
+                
             </div>
         </div>
     );

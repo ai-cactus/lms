@@ -183,7 +183,7 @@ export default function PolicyUploadPage() {
                         htmlFor="file-upload"
                         className={`inline-block px-10 py-3 rounded-lg font-semibold text-sm uppercase tracking-wide transition-colors ${uploading
                                 ? "bg-slate-300 text-slate-500 cursor-not-allowed"
-                                : "bg-slate-400 text-white hover:bg-slate-500 cursor-pointer"
+                                : "bg-slate-400 text-white hover:bg-white0 cursor-pointer"
                             }`}
                     >
                         SELECT FILE
@@ -200,7 +200,7 @@ export default function PolicyUploadPage() {
                 {/* Uploaded File Display with Progress */}
                 {file && (
                     <div className="mt-8 pt-6 border-t-2 border-dashed border-blue-400">
-                        <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-lg">
+                        <div className="flex items-center justify-between gap-4 p-4 bg-white rounded-lg">
                             <div className="flex items-center gap-4 flex-1">
                                 {/* PDF Icon */}
                                 <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">

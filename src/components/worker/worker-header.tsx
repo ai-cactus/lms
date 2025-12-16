@@ -39,7 +39,7 @@ export function WorkerHeader({ onOpenMobileMenu }: WorkerHeaderProps) {
     }, []);
 
     return (
-        <header className="bg-white h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-20 border-b border-gray-100">
+        <header className="bg-white h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-20">
             <div className="flex items-center gap-3">
                 {/* Hamburger menu button - shows on mobile, hides on desktop */}
                 <button
@@ -51,14 +51,14 @@ export function WorkerHeader({ onOpenMobileMenu }: WorkerHeaderProps) {
                 </button>
 
                 {/* Title - hidden on very small screens */}
-                <h1 className="hidden sm:block text-lg font-semibold text-slate-900">My Training</h1>
+               
             </div>
 
             <div className="flex items-center gap-4 sm:gap-6">
                 <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
                     <Bell className="text-xl sm:text-2xl" />
                 </button>
-                <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6 border-l border-gray-200">
+                <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6">
                     <UserProfileDropdown userName={userName} userInitials={userInitials} />
                 </div>
             </div>

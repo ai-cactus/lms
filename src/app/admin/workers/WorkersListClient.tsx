@@ -208,14 +208,14 @@ function WorkersListContent() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Loading workers...</div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 py-8 px-4">
+        <div className="min-h-screen bg-white py-8 px-4">
             <div className="max-w-7xl mx-auto">
                 {/* Header */}
                 <div className="mb-8 flex items-center justify-between">
@@ -283,7 +283,7 @@ function WorkersListContent() {
                 <div className="bg-white rounded-xl shadow-lg border border-gray-200">
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-50 border-b border-gray-200">
+                            <thead className="bg-white border-b border-gray-200">
                                 <tr>
                                     <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Worker
@@ -312,7 +312,7 @@ function WorkersListContent() {
                                     </tr>
                                 ) : (
                                     filteredWorkers.map((worker) => (
-                                        <tr key={worker.id} className="hover:bg-slate-50 transition-colors">
+                                        <tr key={worker.id} className="hover:bg-white transition-colors">
                                             <td className="px-3 sm:px-6 py-4">
                                                 <div>
                                                     <p className="font-medium text-slate-900 text-sm sm:text-base">{worker.full_name}</p>
@@ -473,7 +473,7 @@ function WorkersListContent() {
 export default function WorkersListClient() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Loading...</div>
             </div>
         }>

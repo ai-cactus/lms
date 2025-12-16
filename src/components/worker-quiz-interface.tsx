@@ -139,7 +139,7 @@ export function WorkerQuizInterface({
                             const isCorrectAnswer = option === currentQuestion.correct_answer;
                             const optionLabel = String.fromCharCode(65 + idx); // A, B, C, D...
 
-                            let buttonStyle = "border-slate-200 hover:border-indigo-300 hover:bg-slate-50";
+                            let buttonStyle = "border-slate-200 hover:border-indigo-300 hover:bg-white";
                             let icon = null;
 
                             if (isSelected && !isChecked) {
@@ -231,7 +231,7 @@ export function WorkerQuizInterface({
                 </AnimatePresence>
 
                 {/* Footer Navigation */}
-                <div className="p-8 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="p-8 border-t border-slate-100 flex items-center justify-between bg-white/50">
                     <div>
                         {currentQuestionIndex > 0 && (
                             <button

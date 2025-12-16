@@ -9,7 +9,7 @@ export default function CoursePublishedPage() {
     const courseId = params.id as string;
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-white flex items-center justify-center p-4">
             <div className="max-w-md w-full">
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8 text-center">
                     {/* Success Icon */}

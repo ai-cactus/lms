@@ -7,7 +7,7 @@ import { Hexagon } from "@phosphor-icons/react";
 
 export default function SignupPage() {
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-white flex items-center justify-center p-4">
             <div className="w-full max-w-md text-center">
                 <div className="flex items-center justify-center gap-2 mb-8">
                     <Hexagon size={32} weight="fill" className="text-indigo-600" />

@@ -90,7 +90,7 @@ export default function EnhancedCourseViewer({
     }).join("\n");
 
     return (
-        <div className="flex flex-col h-screen bg-slate-50">
+        <div className="flex flex-col h-screen bg-white">
             {/* Header */}
             <div className="bg-white border-b border-gray-200 px-8 py-5">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -160,7 +160,7 @@ export default function EnhancedCourseViewer({
                                     onClick={() => scrollToSection(section.id)}
                                     className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${activeSection === section.id
                                             ? "bg-indigo-50 text-indigo-700 font-medium"
-                                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                            : "text-slate-600 hover:bg-white hover:text-slate-900"
                                         } ${section.level === 2 ? "pl-6" : section.level === 3 ? "pl-9" : ""}`}
                                 >
                                     {section.title}
@@ -168,22 +168,22 @@ export default function EnhancedCourseViewer({
                             ))
                         ) : (
                             <>
-                                <a href="#benefits" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                <a href="#benefits" className="block px-3 py-2 text-sm text-slate-600 hover:bg-white hover:text-slate-900 rounded-lg">
                                     Benefits of remote worksop
                                 </a>
-                                <a href="#challenges" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                <a href="#challenges" className="block px-3 py-2 text-sm text-slate-600 hover:bg-white hover:text-slate-900 rounded-lg">
                                     Challenges for remote workshops
                                 </a>
-                                <a href="#successful" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                <a href="#successful" className="block px-3 py-2 text-sm text-slate-600 hover:bg-white hover:text-slate-900 rounded-lg">
                                     What goes into a successful remote work...
                                 </a>
                                 <a href="#best-practices" className="block px-3 py-2 text-sm text-indigo-700 bg-indigo-50 font-medium rounded-lg">
                                     Best practices for a remote workshop
                                 </a>
-                                <a href="#mistakes" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                <a href="#mistakes" className="block px-3 py-2 text-sm text-slate-600 hover:bg-white hover:text-slate-900 rounded-lg">
                                     Common remote workshop mistakes
                                 </a>
-                                <a href="#tools" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg">
+                                <a href="#tools" className="block px-3 py-2 text-sm text-slate-600 hover:bg-white hover:text-slate-900 rounded-lg">
                                     Tools needed for remote workshops
                                 </a>
                             </>
@@ -195,7 +195,7 @@ export default function EnhancedCourseViewer({
             {/* Bottom Navigation */}
             <div className="bg-white border-t border-gray-200 px-8 py-4">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors">
+                    <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors">
                         <ArrowLeft className="w-4 h-4" />
                         Previous
                     </button>

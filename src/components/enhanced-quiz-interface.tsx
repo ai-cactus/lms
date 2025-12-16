@@ -130,7 +130,7 @@ export default function EnhancedQuizInterface({
                         <p className="text-sm text-slate-600 mb-2">Pass Grade</p>
                         <p className="text-3xl font-bold text-indigo-900">80% or higher</p>
                     </div>
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-6">
+                    <div className="bg-white border border-slate-200 rounded-lg p-6">
                         <p className="text-sm text-slate-600 mb-2">Your Grade</p>
                         <p className="text-3xl font-bold text-slate-400">—</p>
                     </div>
@@ -205,7 +205,7 @@ export default function EnhancedQuizInterface({
     return (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden max-w-4xl mx-auto">
             {/* Question Header with Timer */}
-            <div className="border-b border-gray-200 px-8 py-4 flex items-center justify-between bg-slate-50">
+            <div className="border-b border-gray-200 px-8 py-4 flex items-center justify-between bg-white">
                 <h2 className="text-xl font-bold text-slate-900">
                     Quiz 1: Basic CARF Principles{" "}
                     <span className="text-slate-500 font-normal">({questions.length} Questions)</span>
@@ -239,7 +239,7 @@ export default function EnhancedQuizInterface({
                                             ? "bg-red-50 border-red-500"
                                             : isSelected
                                                 ? "bg-indigo-50 border-indigo-500"
-                                                : "border-gray-200 hover:bg-slate-50 hover:border-slate-300"
+                                                : "border-gray-200 hover:bg-white hover:border-slate-300"
                                         }`}
                                 >
                                     <div className="flex items-center gap-3">

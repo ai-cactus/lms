@@ -93,7 +93,7 @@ function CallbackContent() {
 
     if (error) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+            <div className="min-h-screen bg-white flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8 text-center max-w-md w-full">
                     <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -112,7 +112,7 @@ function CallbackContent() {
 
                     <button
                         onClick={() => router.push('/login')}
-                        className="block w-full py-3 border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
+                        className="block w-full py-3 border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-white transition-colors"
                     >
                         Back to Login
                     </button>
@@ -122,7 +122,7 @@ function CallbackContent() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-white flex items-center justify-center p-4">
             <div className="text-center">
                 <div className="flex items-center justify-center gap-2 mb-4">
                     <Hexagon size={48} weight="fill" className="text-indigo-600 animate-pulse" />

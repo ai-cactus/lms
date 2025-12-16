@@ -134,7 +134,7 @@ export default function AssignUsersModal({ isOpen, onClose, courseId, onAssignme
     return (
         <div className="fixed inset-0 z-50 overflow-y-auto">
             {/* Backdrop */}
-            <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={onClose}></div>
+            <div className="fixed inset-0 transition-opacity" style={{backgroundColor: '#23232399'}} onClick={onClose}></div>
 
             {/* Modal */}
             <div className="flex min-h-full items-center justify-center p-4">
@@ -179,7 +179,7 @@ export default function AssignUsersModal({ isOpen, onClose, courseId, onAssignme
                                     {unassignedUsers.map(user => (
                                         <label
                                             key={user.id}
-                                            className="flex items-center gap-4 p-4 hover:bg-slate-50 cursor-pointer transition-colors"
+                                            className="flex items-center gap-4 p-4 hover:bg-white cursor-pointer transition-colors"
                                         >
                                             <input
                                                 type="checkbox"

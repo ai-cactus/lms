@@ -28,7 +28,7 @@ export default async function AdminSettingsPage() {
     const { settings } = await getOrgSettings(organizationId);
 
     return (
-        <div className="min-h-screen bg-slate-50 py-8 px-4">
+        <div className="min-h-screen bg-white py-8 px-4">
             <div className="max-w-3xl mx-auto">
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-slate-900 mb-2">Admin Settings</h1>

@@ -143,7 +143,7 @@ export default function CourseReviewPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Loading course...</div>
             </div>
         );
@@ -151,14 +151,14 @@ export default function CourseReviewPage() {
 
     if (!course) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-red-600">Course not found</div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 py-8 px-4">
+        <div className="min-h-screen bg-white py-8 px-4">
             <div className="max-w-5xl mx-auto">
                 {/* Header */}
                 <div className="mb-8">
@@ -340,7 +340,7 @@ function CourseConfiguration({ course, setCourse, lessonNotes, setLessonNotes, q
                             { id: "standard", label: "Standard Training", desc: "General compliance or skills training" },
                             { id: "external", label: "External / Imported", desc: "Uploaded SCORM/PDF or external vendor" },
                         ].map((type) => (
-                            <label key={type.id} className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-slate-50">
+                            <label key={type.id} className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-white">
                                 <input
                                     type="radio"
                                     name="course_type"
@@ -471,7 +471,7 @@ function CourseConfiguration({ course, setCourse, lessonNotes, setLessonNotes, q
 
 
                 {/* Quiz Configuration */}
-                <div className="p-4 bg-slate-50 rounded-lg">
+                <div className="p-4 bg-white rounded-lg">
                     <h3 className="font-semibold text-slate-900 mb-3">Quiz Settings</h3>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -819,12 +819,12 @@ function PublishConfirmation({ course, objectives, questionCount, onPublish, onB
             </p>
 
             <div className="space-y-4 mb-8">
-                <div className="p-4 bg-slate-50 rounded-lg">
+                <div className="p-4 bg-white rounded-lg">
                     <h3 className="font-semibold text-slate-900 mb-2">Course Title</h3>
                     <p className="text-slate-700">{course.title}</p>
                 </div>
 
-                <div className="p-4 bg-slate-50 rounded-lg">
+                <div className="p-4 bg-white rounded-lg">
                     <h3 className="font-semibold text-slate-900 mb-2">Learning Objectives</h3>
                     <ul className="list-disc list-inside space-y-1">
                         {objectives.map((obj: any, index: number) => (
@@ -834,15 +834,15 @@ function PublishConfirmation({ course, objectives, questionCount, onPublish, onB
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 rounded-lg">
+                    <div className="p-4 bg-white rounded-lg">
                         <h3 className="font-semibold text-slate-900 mb-1">Quiz Questions</h3>
                         <p className="text-2xl font-bold text-indigo-600">{questionCount}</p>
                     </div>
-                    <div className="p-4 bg-slate-50 rounded-lg">
+                    <div className="p-4 bg-white rounded-lg">
                         <h3 className="font-semibold text-slate-900 mb-1">Pass Mark</h3>
                         <p className="text-2xl font-bold text-indigo-600">{course.pass_mark}%</p>
                     </div>
-                    <div className="p-4 bg-slate-50 rounded-lg">
+                    <div className="p-4 bg-white rounded-lg">
                         <h3 className="font-semibold text-slate-900 mb-1">Attempts Allowed</h3>
                         <p className="text-2xl font-bold text-indigo-600">{course.attempts_allowed}</p>
                     </div>

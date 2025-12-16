@@ -158,7 +158,7 @@ export function QuizInterface({ questions, onRetake }: QuizInterfaceProps) {
                                         ? "bg-green-50 border-green-500 text-green-700"
                                         : isAnswered && index === selectedOption && index !== currentQuestion.correctAnswer
                                             ? "bg-red-50 border-red-500 text-red-700"
-                                            : "bg-slate-50 border-transparent hover:bg-slate-100 hover:border-slate-200 text-slate-700",
+                                            : "bg-white border-transparent hover:bg-slate-100 hover:border-slate-200 text-slate-700",
                                     !isAnswered && "cursor-pointer",
                                     isAnswered && "cursor-default"
                                 )}

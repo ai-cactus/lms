@@ -201,7 +201,7 @@ export default function AdminDashboard() {
     const hasCompletedFiles = files.some(f => f.status === 'completed');
 
     return (
-        <div className="min-h-[calc(100vh-4rem)] bg-slate-50 flex items-center justify-center py-12 px-4">
+        <div className="min-h-[calc(100vh-4rem)] bg-white flex items-center justify-center py-12 px-4">
             <div className="w-full max-w-5xl bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
                 {/* Main Content Area */}
                 <div className="p-12 md:p-16">
@@ -219,7 +219,7 @@ export default function AdminDashboard() {
                     <div className="max-w-3xl mx-auto">
                         {files.length === 0 ? (
                             <div
-                                className="border-2 border-dashed rounded-3xl py-20 px-8 text-center border-slate-200 bg-slate-50/20 cursor-not-allowed"
+                                className="border-2 border-dashed rounded-3xl py-20 px-8 text-center border-slate-200 bg-white/20 cursor-not-allowed"
                             >
                                 {/* Icon */}
                                 <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6 opacity-50">
@@ -275,7 +275,7 @@ export default function AdminDashboard() {
                                 </div>
 
                                 {files.map((fileState) => (
-                                    <div key={fileState.id} className="bg-slate-50 rounded-2xl p-6 border border-slate-100 relative group opacity-75">
+                                    <div key={fileState.id} className="bg-white rounded-2xl p-6 border border-slate-100 relative group opacity-75">
                                         <div className="flex items-center gap-6">
                                             {/* Icon based on status */}
                                             <div className={`w-12 h-12 rounded-xl shadow-sm flex items-center justify-center flex-shrink-0 ${fileState.status === 'error' ? 'bg-red-50' : 'bg-white'
@@ -349,7 +349,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-4">
                         <button
                             disabled
-                            className="px-8 py-3 text-slate-400 font-semibold bg-slate-50 rounded-xl cursor-not-allowed"
+                            className="px-8 py-3 text-slate-400 font-semibold bg-white rounded-xl cursor-not-allowed"
                         >
                             Cancel
                         </button>

@@ -13,6 +13,7 @@ import {
     CaretRight as CaretRightIcon,
     BookOpen
 } from "@phosphor-icons/react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
@@ -246,7 +247,7 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Loading course content...</div>
             </div>
         );
@@ -254,7 +255,7 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
 
     if (!assignment) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Assignment not found</div>
             </div>
         );
@@ -274,40 +275,63 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
         const isTitleSlide = currentSlideContent.includes('##') && currentSlideContent.split('\n').filter(line => line.trim()).length < 5;
 
         return (
-            <div className="fixed inset-0 bg-slate-50 z-50 flex flex-col">
+            <div className="fixed inset-0 bg-white z-50 flex flex-col">
                 {/* Header */}
-                <div className="bg-white border-b border-gray-200 px-8 py-4">
-                    <div className="flex items-center justify-between max-w-7xl mx-auto">
-                        <div className="flex items-center gap-2">
-                            <Hexagon size={24} weight="fill" className="text-indigo-600" />
-                            <span className="text-lg font-bold text-slate-900">Theraptly</span>
+                <div className="bg-white border-b border-gray-200 px-6 py-4">
+                    <div className="max-w-7xl mx-auto flex items-center justify-between">
+                        {/* Left side - Breadcrumb */}
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                            <span>Trainings</span>
+                            <span>/</span>
+                            <span className="text-gray-900 font-medium">{courseTitle}</span>
                         </div>
 
-                        <div className="flex items-center gap-8">
-                            {/* Breadcrumb */}
-                            <div className="text-sm text-slate-500">
-                                <span className="hover:text-indigo-600 cursor-pointer" onClick={() => router.push('/worker/courses')}>My Courses</span>
-                                <span className="mx-2">/</span>
-                                <span className="text-slate-900">{courseTitle}</span>
+                        {/* Right side - Progress and Actions */}
+                        <div className="flex items-center gap-4">
+                            {/* Progress Indicator */}
+                            <div className="flex items-center gap-4">
+                                <div className="relative w-16 h-16">
+                                    <svg className="w-16 h-16 transform -rotate-90" viewBox="0 0 36 36">
+                                        <path
+                                            className="text-gray-200"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            fill="transparent"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        />
+                                        <path
+                                            className="text-[#4758E0]"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            strokeDasharray={`${Math.round(((currentSlide + 1) / slides.length) * 100)}, 100`}
+                                            strokeLinecap="round"
+                                            fill="transparent"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        />
+                                    </svg>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <span className="text-sm font-bold text-[#4758E0]">
+                                            {Math.round(((currentSlide + 1) / slides.length) * 100)}%
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="font-bold text-gray-900 text-lg">Your Progress</div>
+                                    <div className="text-gray-400">{currentSlide + 1} of {slides.length} Completed</div>
+                                </div>
                             </div>
 
-                            {/* Progress */}
-                            <div className="flex items-center gap-2">
-                                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                                    <span className="text-sm font-bold text-indigo-600">
-                                        {Math.round(((currentSlide + 1) / slides.length) * 100)}%
-                                    </span>
-                                </div>
-                                <div className="text-xs text-slate-500">
-                                    <div className="font-semibold">Your Progress</div>
-                                    <div>{currentSlide + 1} of {slides.length} Completed</div>
-                                </div>
-                            </div>
+                            {/* Share Button */}
+                            <button className="w-12 h-12 border-2 border-[#4758E0] rounded-xl flex items-center justify-center hover:bg-[#4758E0]/10 transition-colors">
+                                <svg className="w-5 h-5 text-[#4758E0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                                </svg>
+                            </button>
 
                             {/* View as Notes Button */}
                             <button
                                 onClick={handleExitSlides}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                                className="px-6 py-3 bg-[#4758E0] text-white rounded-xl hover:bg-[#4758E0]/90 transition-colors text-sm font-medium"
                             >
                                 View as Notes
                             </button>
@@ -421,22 +445,63 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
                 {/* Thumbnail Strip */}
                 <div className="bg-white border-t border-gray-200 px-8 py-3">
                     <div className="max-w-7xl mx-auto">
-                        <div className="flex gap-2 justify-center flex-wrap">
+                        <div 
+                            className="flex gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden" 
+                            style={{ 
+                                scrollbarWidth: 'none', 
+                                msOverflowStyle: 'none'
+                            }}
+                        >
                             {slides.map((slide, index) => {
                                 const slideH2 = slide.match(/^##\s+(.+)$/m)?.[1] || '';
+                                const slideContent = slide.replace(/^##\s+.+$/m, '').trim();
+                                const isFirstSlide = index === 0;
+                                const isLastSlide = index === slides.length - 1;
+                                
                                 return (
                                     <button
                                         key={index}
                                         onClick={() => setCurrentSlide(index)}
-                                        className={`flex-shrink-0 w-28 h-16 rounded border-2 transition-all ${index === currentSlide
-                                            ? 'border-indigo-600 shadow-md'
+                                        className={`flex-shrink-0 w-40 h-24 rounded border-2 transition-all ${index === currentSlide
+                                            ? 'border-[#4758E0] shadow-md'
                                             : 'border-gray-200 hover:border-gray-300'
                                             }`}
                                     >
-                                        <div className="w-full h-full bg-white rounded overflow-hidden p-1.5">
-                                            <div className="text-[5px] text-slate-600 line-clamp-3 font-mono leading-tight">
-                                                {slideH2 || slide.substring(0, 80)}...
-                                            </div>
+                                        <div className="w-full h-full bg-white rounded overflow-hidden relative">
+                                            {isFirstSlide ? (
+                                                // First slide thumbnail - Title slide
+                                                <div className="w-full h-full bg-gradient-to-br from-teal-600 to-teal-700 flex flex-col justify-center items-center p-2">
+                                                    <div className="text-[8px] text-white font-bold text-center leading-tight">
+                                                        Fundamental CARF Principles
+                                                    </div>
+                                                </div>
+                                            ) : isLastSlide && slideContent.toLowerCase().includes('thank') ? (
+                                                // Thank you slide thumbnail
+                                                <div className="w-full h-full bg-gray-50 flex flex-col justify-center items-center p-2">
+                                                    <div className="text-[10px] text-gray-800 font-bold">Thank you</div>
+                                                    <div className="text-[6px] text-gray-500 mt-1">Theraptly.co</div>
+                                                </div>
+                                            ) : (
+                                                // Content slide thumbnail
+                                                <div className="w-full h-full bg-white flex flex-col">
+                                                    {/* Green header */}
+                                                    <div className="bg-teal-700 text-white px-1.5 py-1 flex-shrink-0">
+                                                        <div className="text-[6px] font-bold leading-tight line-clamp-1">
+                                                            {slideH2}
+                                                        </div>
+                                                    </div>
+                                                    {/* Content area */}
+                                                    <div className="flex-1 p-1.5 bg-white">
+                                                        <div className="text-[5px] text-gray-600 leading-tight line-clamp-6">
+                                                            {slideContent.substring(0, 200)}...
+                                                        </div>
+                                                    </div>
+                                                    {/* Bottom line */}
+                                                    <div className="border-t border-gray-100 px-1.5 py-0.5">
+                                                        <div className="text-[4px] text-gray-400">Theraptly.co</div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </button>
                                 );
@@ -449,32 +514,85 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col">
-            {/* Sticky Header */}
-            <div className="sticky top-0 z-40 bg-white border-b border-gray-200 px-8 py-4 shadow-sm">
-                <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
-                    <h2 className="text-lg font-bold text-slate-900 truncate">{courseTitle}</h2>
-                    <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${assignment?.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {assignment?.status === 'completed' ? 'Completed' : 'In Progress'}
+        <div className="min-h-screen bg-gray-50">
+            {/* Header */}
+            <div className="bg-white border-b border-gray-200 px-6 py-4">
+                <div className="max-w-7xl mx-auto flex items-center justify-between">
+                    {/* Left side - Breadcrumb */}
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <span>Trainings</span>
+                        <span>/</span>
+                        <span className="text-gray-900 font-medium">{courseTitle}</span>
+                    </div>
+
+                    {/* Right side - Progress and Actions */}
+                    <div className="flex items-center gap-4">
+                        {/* Progress Indicator */}
+                        <div className="flex items-center gap-4">
+                            <div className="relative w-16 h-16">
+                                <svg className="w-16 h-16 transform -rotate-90" viewBox="0 0 36 36">
+                                    <path
+                                        className="text-[#4758E0]"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                        fill="transparent"
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                    />
+                                    <path
+                                        className="text-[#4758E0]"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                        strokeDasharray="80, 100"
+                                        strokeLinecap="round"
+                                        fill="transparent"
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                    />
+                                </svg>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <span className="text-xs font-bold text-[#4758E0]">80%</span>
+                                </div>
+                            </div>
+                            <div className="text-sm">
+                                <div className="font-bold text-gray-900 text-lg">Your Progress</div>
+                                <div className="text-gray-400">8 of 16 Completed</div>
+                            </div>
+                        </div>
+
+                        {/* Share Button */}
+                        <button className="w-12 h-12 border-2 border-[#4758E0] rounded-xl flex items-center justify-center hover:bg-[#4758E0]/10 transition-colors">
+                            <svg className="w-5 h-5 text-[#4758E0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                            </svg>
+                        </button>
+
+                        {/* View as Slides Button */}
+                        <button
+                            onClick={handleViewAsSlides}
+                            className="px-6 py-3 bg-[#4758E0] text-white rounded-xl hover:bg-[#4758E0]/90 transition-colors text-sm font-medium"
+                        >
+                            View as Slides
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <div className="flex-1 p-8 overflow-hidden">
-                <div className="max-w-7xl mx-auto flex gap-8 h-full">
+            {/* Main Content */}
+            <div className="max-w-7xl mx-auto px-6 py-8">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                     {/* Main Content Area */}
-                    <div
-                        ref={contentRef}
-                        className="flex-1 overflow-y-auto pr-4 pb-20 h-[calc(100vh-10rem)] scroll-smooth"
-                    >
-                        <div className="bg-white rounded-lg p-8 shadow-sm border border-gray-200 mb-8">
-                            <div className="mb-8 text-center border-b border-gray-100 pb-8">
-                                <p className="text-slate-500 max-w-2xl mx-auto">
-                                    Go through the course content below. You can view it as slides or read through the notes, then take the quiz to complete the course.
-                                </p>
+                    <div className="lg:col-span-3">
+                        {/* Course Header */}
+                        <div className="mb-8">
+                            <div className="inline-flex items-center px-3 py-1 bg-[#4758E0]/10 text-[#4758E0] text-sm font-medium rounded-full mb-4">
+                                CARF Policy
                             </div>
+                            <h1 className="text-3xl font-bold text-gray-900 mb-4">{courseTitle}</h1>
+                            <p className="text-gray-600 mb-4">(8 of 16 Completed)</p>
+                        </div>
 
-                            <div className="prose prose-slate max-w-none">
+                        {/* Course Content */}
+                        <div className="bg-white rounded-lg border border-gray-200 p-8 mb-8">
+                            <div className="prose prose-lg max-w-none text-gray-700">
                                 {content ? (
                                     <ReactMarkdown
                                         remarkPlugins={[remarkMath, remarkGfm]}
@@ -484,81 +602,77 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
                                         {content}
                                     </ReactMarkdown>
                                 ) : (
-                                    <p className="text-slate-500 italic">No content available.</p>
+                                    <p className="text-gray-500 italic">No content available.</p>
                                 )}
                             </div>
+                        </div>
 
-                            <div className="flex justify-between items-center mt-12 pt-8 border-t border-gray-200">
-                                <button
-                                    onClick={() => router.push('/worker/courses')}
-                                    className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-slate-600 hover:bg-gray-50 text-sm font-medium"
-                                >
-                                    <CaretLeft /> Back to Dashboard
-                                </button>
-                                <button
-                                    onClick={handleStartQuiz}
-                                    className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium shadow-sm shadow-indigo-200 transition-all hover:scale-105"
-                                >
-                                    Start Quiz <CaretRight />
-                                </button>
-                            </div>
+                        {/* Navigation */}
+                        <div className="flex items-center justify-between">
+                            <button 
+                                onClick={() => router.push('/worker/courses')}
+                                className="flex items-center gap-2 px-4 py-2 text-[#4758E0] hover:text-[#4758E0]/80"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                                Back to Courses
+                            </button>
+                            <button 
+                                onClick={handleStartQuiz}
+                                className="flex items-center gap-2 px-4 py-2 bg-[#4758E0] text-white rounded-lg hover:bg-[#4758E0]/90"
+                            >
+                                Start Quiz
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
                         </div>
                     </div>
 
-                    {/* Sidebar */}
-                    <div className="w-80 flex-shrink-0 h-[calc(100vh-10rem)] overflow-y-auto">
-                        <button
-                            onClick={handleViewAsSlides}
-                            disabled={slides.length === 0}
-                            className="w-full px-4 py-3 bg-white border-2 border-indigo-100 text-indigo-700 font-semibold rounded-xl hover:bg-indigo-50 hover:border-indigo-200 mb-6 transition-all shadow-sm flex items-center justify-center gap-2"
-                        >
-                            <BookOpen size={20} />
-                            View as Slides
-                        </button>
-
-                        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm sticky top-0">
-                            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                                <span className="w-1 h-4 bg-indigo-600 rounded-full"></span>
-                                Table of Contents
-                            </h3>
-                            {headings.length > 0 ? (
-                                <div className="space-y-1">
-                                    {visibleHeadings.map((heading, index) => (
+                    {/* Sidebar - Table of Contents */}
+                    <div className="lg:col-span-1">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-8">
+                            <h3 className="text-lg font-bold text-gray-900 mb-4">Table of Content</h3>
+                            <div className="space-y-2">
+                                {headings.length > 0 ? (
+                                    visibleHeadings.map((heading, index) => (
                                         <button
                                             key={index}
                                             onClick={() => scrollToHeading(heading.id)}
-                                            className={`block text-left w-full py-2 px-3 rounded-lg text-sm transition-colors ${heading.level === 2
-                                                ? 'font-medium text-slate-800 hover:bg-gray-50'
-                                                : 'text-slate-500 pl-6 hover:text-slate-800 hover:bg-gray-50'
-                                                }`}
+                                            className="block w-full text-left text-sm py-2 px-3 text-[#4758E0] hover:bg-[#4758E0]/10 rounded-lg transition-colors"
                                         >
                                             {heading.text}
                                         </button>
-                                    ))}
-
-                                    {/* Show More/Less Button */}
-                                    {headings.length > 7 && (
-                                        <button
-                                            onClick={() => setShowAllModules(!showAllModules)}
-                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 mt-4 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg border border-indigo-100 transition-colors"
-                                        >
-                                            {showAllModules ? (
-                                                <>
-                                                    <CaretUp size={14} />
-                                                    Show Less
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <CaretDown size={14} />
-                                                    Show {remainingCount} more
-                                                </>
-                                            )}
+                                    ))
+                                ) : (
+                                    <>
+                                        <button className="block w-full text-left text-sm py-2 px-3 text-[#4758E0] hover:bg-[#4758E0]/10 rounded-lg transition-colors">
+                                            Benefits of remote worksop
                                         </button>
-                                    )}
-                                </div>
-                            ) : (
-                                <p className="text-sm text-slate-500 italic">No headings found in content</p>
-                            )}
+                                        <button className="block w-full text-left text-sm py-2 px-3 text-[#4758E0] hover:bg-[#4758E0]/10 rounded-lg transition-colors">
+                                            Challenges for remote workshops
+                                        </button>
+                                        <button className="block w-full text-left text-sm py-2 px-3 text-[#4758E0] hover:bg-[#4758E0]/10 rounded-lg transition-colors">
+                                            What goes into a successful remote work...
+                                        </button>
+                                        <button className="block w-full text-left text-sm py-2 px-3 text-[#4758E0] hover:bg-[#4758E0]/10 rounded-lg transition-colors">
+                                            Best practices for a remote workshop
+                                        </button>
+                                        <button className="block w-full text-left text-sm py-2 px-3 text-[#4758E0] hover:bg-[#4758E0]/10 rounded-lg transition-colors">
+                                            Common remote workshop mistakes
+                                        </button>
+                                        <button className="block w-full text-left text-sm py-2 px-3 text-[#4758E0] hover:bg-[#4758E0]/10 rounded-lg transition-colors">
+                                            Tools needed for remote workshops
+                                        </button>
+                                    </>
+                                )}
+
+                                {headings.length > 7 && (
+                                    <button
+                                        onClick={() => setShowAllModules(!showAllModules)}
+                                        className="w-full text-center py-2 text-xs text-[#4758E0] hover:bg-[#4758E0]/10 rounded-lg transition-colors"
+                                    >
+                                        {showAllModules ? 'Show less' : `Show ${remainingCount} more`}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

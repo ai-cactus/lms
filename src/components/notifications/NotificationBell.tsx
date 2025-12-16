@@ -188,7 +188,7 @@ export default function NotificationBell() {
                                     <div
                                         key={notification.id}
                                         onClick={() => handleNotificationClick(notification)}
-                                        className={`p-4 border-b border-gray-100 cursor-pointer transition-colors hover:bg-slate-50 ${!notification.read ? 'bg-blue-50' : ''
+                                        className={`p-4 border-b border-gray-100 cursor-pointer transition-colors hover:bg-white ${!notification.read ? 'bg-blue-50' : ''
                                             }`}
                                     >
                                         <div className="flex gap-3">

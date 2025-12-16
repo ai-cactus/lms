@@ -108,7 +108,7 @@ export default function QuizResultsPage({ params }: { params: Promise<{ id: stri
     const passed = result.quiz_score >= 70; // Assuming 70% pass mark
 
     return (
-        <div className="min-h-screen bg-slate-50 p-8">
+        <div className="min-h-screen bg-white p-8">
             <div className="max-w-4xl mx-auto">
                 {/* Header */}
                 <button
@@ -280,10 +280,10 @@ export default function QuizResultsPage({ params }: { params: Promise<{ id: stri
                         ← Back to Course
                     </button>
                     <div className="flex gap-3">
-                        <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-slate-50 transition-colors">
+                        <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-white transition-colors">
                             Share
                         </button>
-                        <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-slate-50 transition-colors">
+                        <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-white transition-colors">
                             Export
                         </button>
                     </div>

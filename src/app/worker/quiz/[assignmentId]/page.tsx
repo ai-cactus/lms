@@ -293,7 +293,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Loading quiz...</div>
             </div>
         );
@@ -301,7 +301,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
 
     if (!assignment) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Assignment not found</div>
             </div>
         );
@@ -311,7 +311,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
     const currentQuestion = questions[currentQuestionIndex];
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col">
+        <div className="min-h-screen bg-white flex flex-col">
             <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
                 {currentStep === "quiz" && (
                     <div className="space-y-6">
@@ -430,7 +430,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                                 </p>
 
                                 <div className="grid grid-cols-1 gap-4 w-full max-w-sm mb-8">
-                                    <div className="bg-slate-50 p-4 rounded-xl flex items-center justify-between">
+                                    <div className="bg-white p-4 rounded-xl flex items-center justify-between">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
                                                 <HelpCircle className="w-4 h-4" />
@@ -439,7 +439,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                                         </div>
                                         <span className="font-bold text-slate-900">{questions.length}</span>
                                     </div>
-                                    <div className="bg-slate-50 p-4 rounded-xl flex items-center justify-between">
+                                    <div className="bg-white p-4 rounded-xl flex items-center justify-between">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-600">
                                                 <Check className="w-4 h-4" />
@@ -450,7 +450,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                                             {Math.round((quizScore || 0) / 100 * questions.length)}
                                         </span>
                                     </div>
-                                    <div className="bg-slate-50 p-4 rounded-xl flex items-center justify-between">
+                                    <div className="bg-white p-4 rounded-xl flex items-center justify-between">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600">
                                                 <X className="w-4 h-4" />
@@ -491,8 +491,8 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                                         Back to Dashboard
                                     </button>
                                     <div className="flex gap-2">
-                                        <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">Share</button>
-                                        <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">Export</button>
+                                        <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-white">Share</button>
+                                        <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-white">Export</button>
                                     </div>
                                 </div>
 

@@ -1,18 +1,18 @@
 "use client";
 
-import { BookOpen, Users, Target } from "lucide-react";
+import { BookOpen, CheckCircle, Target } from "lucide-react";
 
-interface TrainingStats {
+interface WorkerStats {
     totalCourses: number;
-    totalStaffAssigned: number;
+    coursesCompleted: number;
     averageGrade: number;
 }
 
-interface StatsCardsProps {
-    stats: TrainingStats;
+interface WorkerStatsCardsProps {
+    stats: WorkerStats;
 }
 
-export function StatsCards({ stats }: StatsCardsProps) {
+export function WorkerStatsCards({ stats }: WorkerStatsCardsProps) {
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             {/* Total Courses */}
@@ -26,15 +26,15 @@ export function StatsCards({ stats }: StatsCardsProps) {
                 <p className="text-4xl font-bold text-emerald-900">{stats.totalCourses}</p>
             </div>
 
-            {/* Total Staff Assigned */}
+            {/* Courses Completed */}
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
                 <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center">
-                        <Users className="w-6 h-6 text-white" />
+                        <CheckCircle className="w-6 h-6 text-white" />
                     </div>
                 </div>
-                <p className="text-sm font-medium text-blue-700 mb-1">Total Staff Assigned</p>
-                <p className="text-4xl font-bold text-blue-900">{stats.totalStaffAssigned}</p>
+                <p className="text-sm font-medium text-blue-700 mb-1">Courses Completed</p>
+                <p className="text-4xl font-bold text-blue-900">{stats.coursesCompleted}</p>
             </div>
 
             {/* Average Grade */}

@@ -39,7 +39,7 @@ export default function ReportsPage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 py-8 px-4">
+        <div className="min-h-screen bg-white py-8 px-4">
             <div className="max-w-4xl mx-auto">
                 {/* Header */}
                 <div className="mb-8">
@@ -74,7 +74,7 @@ export default function ReportsPage() {
                                     Includes worker statistics, completion rates, and compliance metrics.
                                 </p>
 
-                                <div className="bg-slate-50 rounded-lg p-4 mb-4">
+                                <div className="bg-white rounded-lg p-4 mb-4">
                                     <h4 className="font-medium text-slate-900 mb-2">Report Includes:</h4>
                                     <ul className="space-y-1 text-sm text-slate-700">
                                         <li className="flex items-center gap-2">

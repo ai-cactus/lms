@@ -10,6 +10,8 @@ import {
     CheckCircle,
     AlertCircle,
     UserPlus,
+    ChevronRight,
+    ChevronLeft,
 } from "lucide-react";
 import AssignUsersModal from "@/components/courses/AssignUsersModal";
 
@@ -154,27 +156,35 @@ function CoursesListContent() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Loading courses...</div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 py-8 px-4">
+        <div className="min-h-screen bg-white py-8 px-4">
             <div className="max-w-7xl mx-auto">
+                {/* Breadcrumb */}
+                <div className="mb-6">
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <span>Trainings</span>
+                        <span>/</span>
+                        <span className="text-slate-900 font-medium">Courses</span>
+                    </div>
+                </div>
+
                 {/* Header */}
                 <div className="mb-8 flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold text-slate-900 mb-2">Course Management</h1>
-                        <p className="text-slate-600">View and manage your training courses</p>
+                        <h1 className="text-3xl font-bold text-slate-900 mb-2">Courses</h1>
                     </div>
                     <button
                         onClick={() => router.push("/admin/courses/create")}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
                     >
                         <Plus className="w-5 h-5" />
-                        Add Course
+                        Create Course
                     </button>
                 </div>
 
@@ -186,31 +196,17 @@ function CoursesListContent() {
                     </div>
                 )}
 
-                {/* Filters */}
-                <div className="mb-6 bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Search */}
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search by course or policy title..."
-                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                            />
-                        </div>
-
-                        {/* Status Filter */}
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
-                        >
-                            <option value="all">All Status</option>
-                            <option value="published">Published</option>
-                            <option value="draft">Draft</option>
-                        </select>
+                {/* Search */}
+                <div className="mb-6">
+                    <div className="relative max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search for courses..."
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        />
                     </div>
                 </div>
 
@@ -218,15 +214,17 @@ function CoursesListContent() {
                 <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-50 border-b border-gray-200">
+                            <thead className="bg-white border-b border-gray-200">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600  uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Course Name
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Assigned Staff
                                     </th>
-
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                                        Completion %
+                                    </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Date Created
                                     </th>
@@ -238,32 +236,42 @@ function CoursesListContent() {
                             <tbody className="divide-y divide-gray-200">
                                 {filteredCourses.length === 0 ? (
                                     <tr>
-                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-600">
+                                        <td colSpan={5} className="px-6 py-12 text-center text-slate-600">
                                             <BookOpen className="w-12 h-12 mx-auto mb-3 text-slate-400" />
                                             <p>No courses found</p>
                                         </td>
                                     </tr>
                                 ) : (
                                     filteredCourses.map((course) => {
-
+                                        const completionRate = course.stats?.totalAssignments && course.stats.totalAssignments > 0 
+                                            ? Math.round(((course.stats.completedAssignments || 0) / course.stats.totalAssignments) * 100)
+                                            : 0;
 
                                         return (
                                             <tr
                                                 key={course.id}
-                                                className="hover:bg-slate-50 transition-colors cursor-pointer"
+                                                className="hover:bg-white transition-colors cursor-pointer"
                                                 onClick={() => router.push(`/admin/courses/${course.id}`)}
                                             >
                                                 <td className="px-6 py-4">
-                                                    <div>
-                                                        <p className="font-medium text-slate-900">{course.title}</p>
-                                                        {course.policy?.title && (
-                                                            <p className="text-sm text-slate-500">{course.policy.title}</p>
-                                                        )}
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                                                            <BookOpen className="w-5 h-5 text-white" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-medium text-slate-900">{course.title}</p>
+                                                            <p className="text-sm text-slate-500">Advanced</p>
+                                                        </div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className="text-sm text-slate-700">
                                                         {course.stats?.totalAssignments || 0}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-sm text-slate-700">
+                                                        {completionRate}%
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -277,11 +285,13 @@ function CoursesListContent() {
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <button
-                                                        onClick={(e) => handleOpenAssignModal(course.id, e)}
-                                                        className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            router.push(`/admin/courses/${course.id}`);
+                                                        }}
+                                                        className="text-slate-400 hover:text-slate-600"
                                                     >
-                                                        <UserPlus className="w-4 h-4" />
-                                                        Assign Workers
+                                                        <ChevronRight className="w-5 h-5" />
                                                     </button>
                                                 </td>
                                             </tr>
@@ -291,39 +301,40 @@ function CoursesListContent() {
                             </tbody>
                         </table>
                     </div>
-                </div>
-
-                {/* Stats Summary */}
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-white rounded-lg shadow border border-gray-200 p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-slate-600">Total Courses</p>
-                                <p className="text-2xl font-bold text-slate-900">{courses.length}</p>
-                            </div>
-                            <BookOpen className="w-8 h-8 text-indigo-600" />
+                    {/* Pagination */}
+                    <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                        <div className="text-sm text-slate-600">
+                            Showing 1 to 10 of {filteredCourses.length} entries
                         </div>
-                    </div>
-                    <div className="bg-white rounded-lg shadow border border-gray-200 p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-slate-600">Published</p>
-                                <p className="text-2xl font-bold text-green-600">
-                                    {courses.filter((c) => c.published_at).length}
-                                </p>
+                        <div className="flex items-center gap-2">
+                            <button className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50">
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <button className="px-3 py-1 bg-blue-600 text-white rounded text-sm">
+                                1
+                            </button>
+                            <button className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50">
+                                2
+                            </button>
+                            <button className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50">
+                                3
+                            </button>
+                            <span className="px-2 text-sm text-slate-600">...</span>
+                            <button className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50">
+                                5
+                            </button>
+                            <button className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50">
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                            <div className="ml-4 flex items-center gap-2">
+                                <span className="text-sm text-slate-600">Show</span>
+                                <select className="border border-gray-300 rounded px-2 py-1 text-sm">
+                                    <option>10</option>
+                                    <option>25</option>
+                                    <option>50</option>
+                                </select>
+                                <span className="text-sm text-slate-600">entries</span>
                             </div>
-                            <CheckCircle className="w-8 h-8 text-green-600" />
-                        </div>
-                    </div>
-                    <div className="bg-white rounded-lg shadow border border-gray-200 p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-slate-600">Total Assignments</p>
-                                <p className="text-2xl font-bold text-blue-600">
-                                    {courses.reduce((sum, c) => sum + (c.stats?.totalAssignments || 0), 0)}
-                                </p>
-                            </div>
-                            <AlertCircle className="w-8 h-8 text-blue-600" />
                         </div>
                     </div>
                 </div>
@@ -345,7 +356,7 @@ function CoursesListContent() {
 export default function CoursesListClient() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Loading...</div>
             </div>
         }>

@@ -8,7 +8,7 @@ export function WorkerLayout({ children }: { children: React.ReactNode }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-white">
             <WorkerSidebar
                 isMobileMenuOpen={isMobileMenuOpen}
                 onCloseMobileMenu={() => setIsMobileMenuOpen(false)}

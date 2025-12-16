@@ -92,7 +92,7 @@ export default function AssessmentHistoryTab({ workerId }: AssessmentHistoryProp
         <div>
             <div className="overflow-x-auto">
                 <table className="w-full">
-                    <thead className="bg-slate-50 border-b border-slate-200">
+                    <thead className="bg-white border-b border-slate-200">
                         <tr>
                             <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Course</th>
                             <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Version</th>
@@ -105,7 +105,7 @@ export default function AssessmentHistoryTab({ workerId }: AssessmentHistoryProp
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                         {attempts.map((attempt) => (
-                            <tr key={attempt.id} className="hover:bg-slate-50">
+                            <tr key={attempt.id} className="hover:bg-white">
                                 <td className="px-4 py-3 text-sm text-slate-900">
                                     {attempt.course?.title || "Unknown Course"}
                                 </td>
@@ -175,7 +175,7 @@ export default function AssessmentHistoryTab({ workerId }: AssessmentHistoryProp
                         ) : attemptDetails ? (
                             <div className="p-6">
                                 {/* Summary */}
-                                <div className="bg-slate-50 rounded-lg p-4 mb-6">
+                                <div className="bg-white rounded-lg p-4 mb-6">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <p className="text-sm text-slate-600 mb-1">Course</p>

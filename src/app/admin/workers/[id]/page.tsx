@@ -230,7 +230,7 @@ export default function WorkerDetailsPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-slate-600">Loading worker details...</div>
             </div>
         );
@@ -238,7 +238,7 @@ export default function WorkerDetailsPage() {
 
     if (!worker) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-white flex items-center justify-center">
                 <div className="text-red-600">Worker not found</div>
             </div>
         );
@@ -248,7 +248,7 @@ export default function WorkerDetailsPage() {
     const overdueCount = assignments.filter(a => a.status === "overdue").length;
 
     return (
-        <div className="min-h-screen bg-slate-50 py-8 px-4">
+        <div className="min-h-screen bg-white py-8 px-4">
             <div className="max-w-5xl mx-auto">
                 {/* Header */}
                 <div className="mb-8">
@@ -372,7 +372,7 @@ export default function WorkerDetailsPage() {
                                             </div>
                                         ) : (
                                             assignments.map((assignment) => (
-                                                <div key={assignment.id} className="p-6 hover:bg-slate-50 transition-colors">
+                                                <div key={assignment.id} className="p-6 hover:bg-white transition-colors">
                                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                                         <div className="flex-1">
                                                             <div className="flex items-start justify-between mb-2">

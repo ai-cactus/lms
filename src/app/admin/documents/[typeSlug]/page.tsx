@@ -148,7 +148,7 @@ export default function DocumentTypePage() {
                         <Link
                             key={category.id}
                             href={`/admin/documents/${typeSlug}/${category.slug}`}
-                            className="flex items-center justify-between p-6 hover:bg-slate-50 transition-colors group"
+                            className="flex items-center justify-between p-6 hover:bg-white transition-colors group"
                         >
                             <div className="flex items-center gap-4">
                                 <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 group-hover:bg-blue-100 transition-colors">

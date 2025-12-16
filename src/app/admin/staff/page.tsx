@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Search, UserPlus, Upload, Trash2, MoreVertical } from "lucide-react";
 import InviteStaffModal from "@/components/staff/InviteStaffModal";
 import ImportWorkersModal from "@/components/staff/ImportWorkersModal";
+import Avatar from "@/components/ui/Avatar";
 
 interface StaffMember {
     id: string;
@@ -29,7 +30,7 @@ export default function StaffDetailsPage() {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [workerToDelete, setWorkerToDelete] = useState<StaffMember | null>(null);
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-    const itemsPerPage = 10;
+    const [itemsPerPage, setItemsPerPage] = useState(10);
 
     useEffect(() => {
         loadStaff();
@@ -121,7 +122,7 @@ export default function StaffDetailsPage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 p-8">
+        <div className="min-h-screen bg-white p-8">
             <InviteStaffModal
                 isOpen={showInviteModal}
                 onClose={() => setShowInviteModal(false)}
@@ -135,10 +136,23 @@ export default function StaffDetailsPage() {
             />
 
             <div className="max-w-7xl mx-auto">
-                <div className="mb-8">
+                <div className="flex justify-between">
+                    <div className="mb-8">
                     <h1 className="text-3xl font-bold text-slate-900 mb-2">Staff Details</h1>
                     <p className="text-slate-600">Here is an overview of your staff details</p>
                 </div>
+                    <div className="flex items-start gap-3">
+                                <button
+                                    onClick={() => setShowInviteModal(true)}
+                                    className="px-4 py-2 border border-[#D4D4D4] text-[#4758E0] rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                                >
+                                    <UserPlus className="w-4 h-4" />
+                                    Assign
+                                </button>
+                            </div>
+                </div>
+                
+                
 
                 <div className="bg-white rounded-xl shadow-lg border border-gray-200">
                     <div className="p-6 border-b border-gray-200">
@@ -156,28 +170,13 @@ export default function StaffDetailsPage() {
                                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                                 />
                             </div>
-                            <div className="flex items-center gap-3">
-                                <button
-                                    onClick={() => setShowImportModal(true)}
-                                    className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2"
-                                >
-                                    <Upload className="w-4 h-4" />
-                                    Import Workers
-                                </button>
-                                <button
-                                    onClick={() => setShowInviteModal(true)}
-                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
-                                >
-                                    <UserPlus className="w-4 h-4" />
-                                    Add Staff
-                                </button>
-                            </div>
+                            
                         </div>
                     </div>
 
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-50 border-b border-gray-200">
+                            <thead className="bg-white border-b border-gray-200">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                         Name
@@ -201,17 +200,18 @@ export default function StaffDetailsPage() {
                                     paginatedStaff.map((member) => (
                                         <tr
                                             key={member.id}
-                                            className="hover:bg-slate-50 cursor-pointer transition-colors"
+                                            className="hover:bg-white cursor-pointer transition-colors"
                                             onClick={() => router.push(`/admin/staff/${member.id}`)}
                                         >
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-semibold">
-                                                        {getInitials(member.full_name)}
-                                                    </div>
+                                                    <Avatar 
+                                                        fallback={member.full_name}
+                                                        size="md"
+                                                    />
                                                     <div>
                                                         <p className="font-medium text-slate-900">{member.full_name}</p>
-                                                        <p className="text-sm text-slate-500">{member.role}</p>
+                                                        <p className="text-sm text-slate-500 capitalize">{member.role}</p>
                                                     </div>
                                                 </div>
                                             </td>
@@ -266,55 +266,91 @@ export default function StaffDetailsPage() {
                         </table>
                     </div>
 
-                    {totalPages > 1 && (
-                        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                    <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
                             <p className="text-sm text-slate-600">
                                 Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
                                 {Math.min(currentPage * itemsPerPage, filteredStaff.length)} of{" "}
                                 {filteredStaff.length} entries
                             </p>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1}
-                                    className="px-3 py-1 border border-gray-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    ‹
-                                </button>
-                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                    let pageNum;
-                                    if (totalPages <= 5) {
-                                        pageNum = i + 1;
-                                    } else if (currentPage <= 3) {
-                                        pageNum = i + 1;
-                                    } else if (currentPage >= totalPages - 2) {
-                                        pageNum = totalPages - 4 + i;
-                                    } else {
-                                        pageNum = currentPage - 2 + i;
-                                    }
-                                    return (
-                                        <button
-                                            key={i}
-                                            onClick={() => setCurrentPage(pageNum)}
-                                            className={`px-3 py-1 border rounded ${currentPage === pageNum
-                                                ? "bg-indigo-600 text-white border-indigo-600"
-                                                : "border-gray-300 hover:bg-slate-50"
-                                                }`}
-                                        >
-                                            {pageNum}
-                                        </button>
-                                    );
-                                })}
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage === totalPages}
-                                    className="px-3 py-1 border border-gray-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    ›
-                                </button>
-                            </div>
                         </div>
-                    )}
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-slate-600">Show</span>
+                                <select
+                                    value={itemsPerPage}
+                                    onChange={(e) => {
+                                        setItemsPerPage(Number(e.target.value));
+                                        setCurrentPage(1);
+                                    }}
+                                    className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={25}>25</option>
+                                    <option value={50}>50</option>
+                                </select>
+                                <span className="text-sm text-slate-600">entries</span>
+                            </div>
+                            {totalPages > 1 && (
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1}
+                                        className="px-3 py-1 border border-gray-300 rounded hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                    >
+                                        ‹
+                                    </button>
+                                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                        let pageNum;
+                                        if (totalPages <= 5) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage <= 3) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage >= totalPages - 2) {
+                                            pageNum = totalPages - 4 + i;
+                                        } else {
+                                            pageNum = currentPage - 2 + i;
+                                        }
+                                        return (
+                                            <button
+                                                key={i}
+                                                onClick={() => setCurrentPage(pageNum)}
+                                                className={`px-3 py-1 border rounded text-sm ${
+                                                    currentPage === pageNum
+                                                        ? "bg-blue-600 text-white border-blue-600"
+                                                        : "border-gray-300 hover:bg-white"
+                                                }`}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+                                    {totalPages > 5 && currentPage < totalPages - 2 && (
+                                        <span className="px-2 text-slate-400">...</span>
+                                    )}
+                                    {totalPages > 5 && (
+                                        <button
+                                            onClick={() => setCurrentPage(totalPages)}
+                                            className={`px-3 py-1 border rounded text-sm ${
+                                                currentPage === totalPages
+                                                    ? "bg-blue-600 text-white border-blue-600"
+                                                    : "border-gray-300 hover:bg-white"
+                                            }`}
+                                        >
+                                            {totalPages}
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages}
+                                        className="px-3 py-1 border border-gray-300 rounded hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                    >
+                                        ›
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </div>
 
