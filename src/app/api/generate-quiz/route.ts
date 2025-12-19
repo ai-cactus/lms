@@ -48,7 +48,7 @@ ${courseContent}
         const questions = JSON.parse(text);
 
         return NextResponse.json({ questions });
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error generating quiz:", error);
         return NextResponse.json(
             { error: error.message || "Failed to generate quiz" },

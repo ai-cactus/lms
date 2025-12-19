@@ -4,6 +4,12 @@ import { chunkText } from "@/lib/text-processing";
 import { extractTextFromFile } from "@/lib/file-processing";
 import { validateDocumentForProcessing } from "@/lib/document-validation";
 
+interface UploadedFile {
+    name: string;
+    type?: string;
+    data?: string;
+}
+
 export async function POST(req: NextRequest) {
     try {
         const { files, courseMetadata } = await req.json();
@@ -18,7 +24,7 @@ export async function POST(req: NextRequest) {
         const validationErrors: string[] = [];
         let totalEstimatedChars = 0;
 
-        files.forEach((file: any, index: number) => {
+        files.forEach((file: UploadedFile, index: number) => {
             // Create a mock File object for validation
             const mockFile = {
                 name: file.name,
@@ -69,7 +75,7 @@ export async function POST(req: NextRequest) {
                 
                 processedFiles.push(`--- DOCUMENT: ${file.name} ---\n${text}\n--- END DOCUMENT ---\n`);
                 console.log(`Successfully processed ${file.name}: ${text.length} characters`);
-            } catch (e: any) {
+            } catch (e) {
                 console.error(`Failed to process file ${file.name}:`, e);
                 processingErrors.push(`${file.name}: ${e.message || 'Failed to extract text'}`);
             }
@@ -151,7 +157,7 @@ export async function POST(req: NextRequest) {
                         } else {
                             throw new Error('Empty or invalid summary generated');
                         }
-                    } catch (e: any) {
+                    } catch (e) {
                         console.error(`Error summarizing chunk ${i + 1} (Attempt ${4 - retries}):`, e.message);
                         if (e.message.includes("429") || e.status === 429) {
                             const waitTime = 15000 + (retries * 5000); // Increasing wait time
@@ -384,7 +390,7 @@ ${contextForGeneration}
         const text = response.text();
 
         return NextResponse.json({ content: text });
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error generating course:", error);
         
         // Provide more specific error messages

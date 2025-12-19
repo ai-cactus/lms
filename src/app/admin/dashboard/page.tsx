@@ -96,7 +96,7 @@ export default function AdminDashboard() {
                 await uploadSingleFile(fileState, userData.organization_id);
             }
 
-        } catch (err: any) {
+        } catch (err) {
             console.error("Global upload error:", err);
             setGlobalError(err.message || "Failed to initiate upload");
         }
@@ -155,7 +155,7 @@ export default function AdminDashboard() {
                 publicUrl: publicUrl
             });
 
-        } catch (err: any) {
+        } catch (err) {
             console.error(`Error uploading ${fileState.file.name}:`, err);
             updateFileState(fileState.id, {
                 status: 'error',

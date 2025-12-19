@@ -108,7 +108,7 @@ export default function AddWorkerPage() {
                 .not("published_at", "is", null);
 
             setAvailableCourses(coursesData || []);
-        } catch (err: any) {
+        } catch (err) {
             console.error("Error loading data:", err);
         }
     };
@@ -185,7 +185,7 @@ export default function AddWorkerPage() {
 
             // Redirect to success or workers list
             router.push("/admin/workers?added=true");
-        } catch (err: any) {
+        } catch (err) {
             console.error("Error creating worker:", err);
             setError(err.message || "Failed to create worker");
             setLoading(false);
