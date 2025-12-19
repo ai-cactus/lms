@@ -273,7 +273,7 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
         revalidatePath('/admin/workers')
         return { success: true, message: 'Worker created successfully! Welcome email with login credentials sent.' }
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('Unexpected error:', err)
         return { error: 'An unexpected error occurred' }
     }
@@ -351,7 +351,7 @@ export async function updateWorker(prevState: CreateWorkerState, formData: FormD
         revalidatePath(`/admin/workers/${workerId}`)
         return { success: true, message: 'Worker updated successfully' }
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('Unexpected error:', err)
         return { error: 'An unexpected error occurred' }
     }

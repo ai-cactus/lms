@@ -35,7 +35,7 @@ export async function deleteCourse(courseId: string): Promise<DeleteCourseState>
         revalidatePath('/admin/courses')
         return { success: true, message: 'Course deleted successfully' }
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('Unexpected error:', err)
         return { error: 'An unexpected error occurred' }
     }

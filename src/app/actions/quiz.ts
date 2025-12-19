@@ -100,11 +100,11 @@ export async function saveQuizAttempt(params: SaveQuizAttemptParams): Promise<{
             attemptNumber
         }
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('Unexpected error in saveQuizAttempt:', err)
         return {
             success: false,
-            error: err.message || 'An unexpected error occurred'
+            error: err instanceof Error ? err.message : 'An unexpected error occurred'
         }
     }
 }
@@ -143,8 +143,8 @@ export async function getWorkerAttempts(workerId: string): Promise<{
 
         return { success: true, attempts: data || [] }
 
-    } catch (err: any) {
-        return { success: false, error: err.message }
+    } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
     }
 }
 
@@ -217,7 +217,7 @@ export async function getAttemptDetails(attemptId: string): Promise<{
             answers: answersData || []
         }
 
-    } catch (err: any) {
-        return { success: false, error: err.message }
+    } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
     }
 }

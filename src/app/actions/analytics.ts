@@ -22,7 +22,7 @@ export async function getWorkerLearningNeeds(workerId: string): Promise<{
         const supabase = await createClient()
 
         // 1. Fetch all quiz answers for the worker with question and course details
-        const { data: answers, error: _answersError } = await supabase
+        const { data: answers } = await supabase
             .from('quiz_answers')
             .select(`
                 is_correct,
@@ -110,7 +110,7 @@ export async function getWorkerLearningNeeds(workerId: string): Promise<{
         })
 
         // Analyze each course
-        courseStats.forEach((stats, _courseId) => {
+        courseStats.forEach((stats) => {
             const { course, attempts, answers } = stats
             const objectives = course.objectives || []
 
@@ -183,9 +183,9 @@ export async function getWorkerLearningNeeds(workerId: string): Promise<{
 
         return { success: true, needs }
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('Error calculating learning needs:', err)
-        return { success: false, error: err.message }
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
     }
 }
 
@@ -204,7 +204,7 @@ export async function getOrgPerformanceOverview(organizationId: string): Promise
 
         // Fetch all quiz answers for the organization
         // We need to join through attempts -> users -> organization_id
-        const { data: answers, error: _error } = await supabase
+        const { data: answers } = await supabase
             .from('quiz_answers')
             .select(`
                 is_correct,
@@ -310,8 +310,8 @@ export async function getOrgPerformanceOverview(organizationId: string): Promise
 
         return { success: true, topStrugglingObjectives: results }
 
-    } catch (err: any) {
-        return { success: false, error: err.message }
+    } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
     }
 }
 
@@ -457,7 +457,7 @@ export async function getDetailedOrgPerformance(
         }>();
 
         attempts.forEach(a => {
-            // @ts-ignore
+            // @ts-expect-error
             const title = a.course?.title || 'Unknown';
             if (!courseStats.has(a.course_id)) {
                 courseStats.set(a.course_id, {
@@ -622,7 +622,7 @@ export async function getDetailedOrgPerformance(
 
         const retrainedCoursesMap = new Map<string, number>();
         retrainingAttempts.forEach(a => {
-            // @ts-ignore
+            // @ts-expect-error
             const title = a.course?.title || 'Unknown';
             retrainedCoursesMap.set(title, (retrainedCoursesMap.get(title) || 0) + 1);
         });
@@ -652,8 +652,8 @@ export async function getDetailedOrgPerformance(
             }
         };
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('Error getting detailed performance:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' };
     }
 }

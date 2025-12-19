@@ -104,8 +104,8 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
         }
 
         return { success: true }
-    } catch (err: any) {
-        return { success: false, error: err.message || 'An unexpected error occurred' }
+    } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
     }
 }
 
@@ -125,8 +125,8 @@ export async function updatePassword(newPassword: string): Promise<{ success: bo
         }
 
         return { success: true }
-    } catch (err: any) {
-        return { success: false, error: err.message || 'An unexpected error occurred' }
+    } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
     }
 }
 

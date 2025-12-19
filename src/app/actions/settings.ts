@@ -35,9 +35,9 @@ export async function getOrgSettings(organizationId: string): Promise<{
         }
 
         return { success: true, settings: data };
-    } catch (err: any) {
+    } catch (err) {
         console.error('Error fetching org settings:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' };
     }
 }
 
@@ -93,8 +93,8 @@ export async function updateOrgSettings(
         revalidatePath('/admin/settings');
         return { success: true, message: 'Settings updated successfully' };
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('Error updating org settings:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' };
     }
 }
