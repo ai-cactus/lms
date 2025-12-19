@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { CloudUpload, FileText, HelpCircle, CheckCircle, Loader2, XCircle, Trash2 } from "lucide-react";
 import dynamic from "next/dynamic";
+import { createClient } from "@/lib/supabase/client";
+import { CloudArrowUp, FilePdf, FileDoc, Trash, CheckCircle, XCircle, Clock } from "@phosphor-icons/react";
+import { CloudUpload, Loader2, FileText, Trash2, HelpCircle } from "lucide-react";
+import { validateDocumentForProcessing } from "@/lib/document-validation";
 
 // Dynamically import DocumentPreview to avoid SSR issues with PDF.js
 const DocumentPreview = dynamic(() => import("@/components/DocumentPreview"), {
@@ -57,24 +59,38 @@ export default function AdminDashboard() {
             "application/msword",
         ];
 
-        // Filter valid files
-        const newFiles: FileUploadState[] = fileArray
-            .filter(file => {
-                const isValidType = validTypes.includes(file.type);
-                const isValidSize = file.size <= 100 * 1024 * 1024;
-                return isValidType && isValidSize;
-            })
-            .map(file => ({
-                id: Math.random().toString(36).substring(7),
-                file,
-                progress: 0,
-                status: 'pending'
-            }));
+        // Filter and validate files using new validation system
+        const validFiles: File[] = [];
+        const invalidFiles: string[] = [];
 
-        if (newFiles.length === 0) {
-            setGlobalError("Please upload valid PDF or DOCX files (max 100MB)");
+        fileArray.forEach(file => {
+            const validation = validateDocumentForProcessing(file);
+            if (validation.isValid) {
+                validFiles.push(file);
+            } else {
+                invalidFiles.push(`${file.name}: ${validation.error}`);
+            }
+        });
+
+        if (validFiles.length === 0) {
+            const errorMsg = invalidFiles.length > 0 
+                ? `Invalid files:\n${invalidFiles.join('\n')}`
+                : "Please upload valid PDF (max 25MB), DOCX (max 50MB), or TXT/MD (max 10MB) files";
+            setGlobalError(errorMsg);
             return;
         }
+
+        // Show warnings for invalid files but continue with valid ones
+        if (invalidFiles.length > 0) {
+            console.warn('Some files were rejected:', invalidFiles);
+        }
+
+        const newFiles: FileUploadState[] = validFiles.map(file => ({
+            id: Math.random().toString(36).substring(7),
+            file,
+            progress: 0,
+            status: 'pending'
+        }));
 
         setFiles(prev => [...prev, ...newFiles]);
         setGlobalError("");
@@ -230,7 +246,7 @@ export default function AdminDashboard() {
                                     Drag & drop your files here
                                 </h3>
                                 <p className="text-slate-400 mb-8 opacity-50">
-                                    file type: PDF, DOCX (max. 100MB)
+                                    PDF (max 25MB), DOCX (max 50MB), TXT/MD (max 10MB)
                                 </p>
 
                                 <div className="flex flex-col items-center gap-4">

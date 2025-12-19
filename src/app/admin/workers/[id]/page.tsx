@@ -75,6 +75,7 @@ export default function WorkerDetailsPage() {
     });
     const [supervisors, setSupervisors] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
 
     const router = useRouter();
     const params = useParams();
@@ -190,11 +191,12 @@ export default function WorkerDetailsPage() {
         setEditFormData({
             fullName: worker.full_name,
             email: worker.email,
-            role: worker.job_title || worker.role, // Fallback to role if job_title is empty
+            role: worker.role,
             category: worker.worker_category || "",
             supervisorId: worker.supervisor_id || "",
             status: worker.status || "active"
         });
+        setError(""); // Clear any previous errors
         setShowEditModal(true);
     };
 
@@ -215,14 +217,17 @@ export default function WorkerDetailsPage() {
             const result = await updateWorker({}, formData);
 
             if (result.error) {
-                throw new Error(result.error);
+                setError(result.error);
+                setSaving(false);
+                return;
             }
 
             await loadWorkerData();
             setShowEditModal(false);
+            setError(""); // Clear any previous errors
         } catch (error) {
             console.error("Error updating worker:", error);
-            alert("Failed to update worker profile");
+            setError(error instanceof Error ? error.message : "Failed to update worker");
         } finally {
             setSaving(false);
         }
@@ -539,6 +544,13 @@ export default function WorkerDetailsPage() {
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
+
+                        {error && (
+                            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+                                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                                <p className="text-sm text-red-700">{error}</p>
+                            </div>
+                        )}
 
                         <form onSubmit={handleUpdateWorker} className="space-y-4">
                             <div>

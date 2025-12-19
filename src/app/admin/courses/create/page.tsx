@@ -1,17 +1,53 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { WizardContainer } from "@/components/wizard/wizard-container";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CourseData } from "@/types/course";
 import { createClient } from "@/lib/supabase/client";
+import { courseDraftManager, CourseDraft } from "@/lib/course-draft";
 
 function CreateCourseContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const policyId = searchParams.get("policyId");
     const policyIds = searchParams.get("policyIds");
+    const draftId = searchParams.get("draftId");
+    const newDraft = searchParams.get("newDraft") === "true";
+    const [loadingDraft, setLoadingDraft] = useState(!!draftId);
+    const [draftData, setDraftData] = useState<CourseDraft | null>(null);
     const supabase = createClient();
+
+    useEffect(() => {
+        if (draftId) {
+            loadDraftById(draftId);
+        }
+    }, [draftId]);
+
+    const loadDraftById = async (id: string) => {
+        try {
+            setLoadingDraft(true);
+            const { data: draft, error } = await supabase
+                .from('course_drafts')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            if (error || !draft) {
+                console.error('Error loading draft:', error);
+                router.push('/admin/courses/create'); // Redirect to clean create page
+                return;
+            }
+
+            setDraftData(draft);
+            courseDraftManager.setCurrentDraftId(draft.id);
+        } catch (error) {
+            console.error('Error loading draft:', error);
+            router.push('/admin/courses/create');
+        } finally {
+            setLoadingDraft(false);
+        }
+    };
 
     const handleClose = () => {
         router.push("/admin/training-center");
@@ -167,11 +203,24 @@ function CreateCourseContent() {
             ? [policyId]
             : undefined;
 
+    if (loadingDraft) {
+        return (
+            <div className="min-h-screen bg-white flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4E61F6] mx-auto mb-4"></div>
+                    <p className="text-slate-600">Loading draft...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <WizardContainer
             onClose={handleClose}
             onComplete={handleComplete}
             initialPolicyIds={initialPolicyIds}
+            initialDraft={draftData ?? undefined}
+            forceNewDraft={newDraft}
         />
     );
 }

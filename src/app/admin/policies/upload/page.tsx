@@ -3,7 +3,8 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { CloudUpload, FileText } from "lucide-react";
+import { CloudUpload, FileText, AlertTriangle } from "lucide-react";
+import { validateDocumentForProcessing, getValidFileTypes, formatFileSize } from "@/lib/document-validation";
 
 export default function PolicyUploadPage() {
     const [file, setFile] = useState<File | null>(null);
@@ -11,6 +12,7 @@ export default function PolicyUploadPage() {
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [error, setError] = useState("");
+    const [warning, setWarning] = useState("");
     const [uploadedFileId, setUploadedFileId] = useState<string | null>(null);
     const router = useRouter();
     const supabase = createClient();
@@ -36,26 +38,18 @@ export default function PolicyUploadPage() {
     }, []);
 
     const handleFileSelect = async (selectedFile: File) => {
-        // Validate file type
-        const validTypes = [
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/msword",
-        ];
-
-        if (!validTypes.includes(selectedFile.type)) {
-            setError("Please upload a PDF or DOCX file");
-            return;
-        }
-
-        // Validate file size (100MB max)
-        if (selectedFile.size > 100 * 1024 * 1024) {
-            setError("File size must be under 100MB");
+        // Use new validation system
+        const validation = validateDocumentForProcessing(selectedFile);
+        
+        if (!validation.isValid) {
+            setError(validation.error || "Invalid file");
+            setWarning("");
             return;
         }
 
         setFile(selectedFile);
         setError("");
+        setWarning(validation.warning || "");
 
         // Auto-upload the file
         await uploadFile(selectedFile);
@@ -166,14 +160,14 @@ export default function PolicyUploadPage() {
                         Drag & drop your files here
                     </h3>
                     <p className="text-sm text-slate-400 mb-1">
-                        file type: PDF, DOCX (max. 100MB)
+                        PDF (max 25MB), DOCX (max 50MB), TXT/MD (max 10MB)
                     </p>
                     <p className="text-sm text-slate-400 mb-6">or</p>
 
                     {/* Select File Button */}
                     <input
                         type="file"
-                        accept=".pdf,.doc,.docx"
+                        accept=".pdf,.doc,.docx,.txt,.md"
                         onChange={(e) => e.target.files && handleFileSelect(e.target.files[0])}
                         className="hidden"
                         id="file-upload"
@@ -191,8 +185,17 @@ export default function PolicyUploadPage() {
 
                     {/* Error Message */}
                     {error && (
-                        <div className="mt-6 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="mt-6 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
                             <p className="text-sm text-red-700">{error}</p>
+                        </div>
+                    )}
+                    
+                    {/* Warning Message */}
+                    {warning && (
+                        <div className="mt-6 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                            <p className="text-sm text-amber-700">{warning}</p>
                         </div>
                     )}
                 </div>

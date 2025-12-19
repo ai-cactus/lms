@@ -178,7 +178,9 @@ export default function AddWorkerPage() {
             const result = await createWorker({}, submitData);
 
             if (result.error) {
-                throw new Error(result.error);
+                setError(result.error);
+                setLoading(false);
+                return;
             }
 
             // Redirect to success or workers list

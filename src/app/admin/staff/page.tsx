@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Search, UserPlus, Upload, Trash2, MoreVertical } from "lucide-react";
+import { Search, UserPlus, Upload, Trash2, MoreVertical, CheckCircle, XCircle, X } from "lucide-react";
 import InviteStaffModal from "@/components/staff/InviteStaffModal";
 import ImportWorkersModal from "@/components/staff/ImportWorkersModal";
 import Avatar from "@/components/ui/Avatar";
@@ -31,10 +31,21 @@ export default function StaffDetailsPage() {
     const [workerToDelete, setWorkerToDelete] = useState<StaffMember | null>(null);
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+    const [alertMessage, setAlertMessage] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
     useEffect(() => {
         loadStaff();
     }, []);
+
+    // Auto-dismiss alert after 5 seconds
+    useEffect(() => {
+        if (alertMessage) {
+            const timer = setTimeout(() => {
+                setAlertMessage(null);
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [alertMessage]);
 
     const loadStaff = async () => {
         try {
@@ -72,15 +83,27 @@ export default function StaffDetailsPage() {
                 .delete()
                 .eq("id", workerToDelete.id);
 
-            if (error) throw error;
+            if (error) {
+                console.error("Error deleting worker:", error);
+                throw new Error(`Failed to delete worker: ${error.message}`);
+            }
 
             // Refresh staff list
-            loadStaff();
+            await loadStaff();
             setShowDeleteModal(false);
             setWorkerToDelete(null);
+            
+            // Show success message
+            setAlertMessage({
+                type: 'success',
+                message: `Successfully removed ${workerToDelete.full_name} from your organization.`
+            });
         } catch (error) {
             console.error("Error deleting worker:", error);
-            alert("Failed to delete worker. Please try again.");
+            setAlertMessage({
+                type: 'error',
+                message: `Failed to delete worker: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
+            });
         }
     };
 
@@ -143,8 +166,15 @@ export default function StaffDetailsPage() {
                 </div>
                     <div className="flex items-start gap-3">
                                 <button
+                                    onClick={() => router.push('/admin/workers/add')}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                                >
+                                    <UserPlus className="w-4 h-4" />
+                                    Add New Worker
+                                </button>
+                                <button
                                     onClick={() => setShowInviteModal(true)}
-                                    className="px-4 py-2 border border-[#D4D4D4] text-[#4758E0] rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                                    className="px-4 py-2 border border-[#D4D4D4] text-[#4758E0] rounded-lg font-medium hover:bg-blue-50 transition-colors flex items-center gap-2"
                                 >
                                     <UserPlus className="w-4 h-4" />
                                     Assign
@@ -384,6 +414,38 @@ export default function StaffDetailsPage() {
                                 Remove Worker
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom Alert */}
+            {alertMessage && (
+                <div className="fixed top-4 right-4 z-50 max-w-md">
+                    <div className={`rounded-lg shadow-lg border p-4 flex items-start gap-3 ${
+                        alertMessage.type === 'success' 
+                            ? 'bg-green-50 border-green-200' 
+                            : 'bg-red-50 border-red-200'
+                    }`}>
+                        {alertMessage.type === 'success' ? (
+                            <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                        ) : (
+                            <XCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                        )}
+                        <div className="flex-1">
+                            <p className={`text-sm font-medium ${
+                                alertMessage.type === 'success' ? 'text-green-800' : 'text-red-800'
+                            }`}>
+                                {alertMessage.message}
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setAlertMessage(null)}
+                            className={`text-gray-400 hover:text-gray-600 ${
+                                alertMessage.type === 'success' ? 'hover:text-green-600' : 'hover:text-red-600'
+                            }`}
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
                     </div>
                 </div>
             )}

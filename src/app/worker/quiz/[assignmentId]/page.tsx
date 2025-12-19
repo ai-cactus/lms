@@ -18,6 +18,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
     const { assignmentId } = use(params);
     const router = useRouter();
     const searchParams = useSearchParams();
+    const token = searchParams.get('token');
     const supabase = createClient();
 
     const [loading, setLoading] = useState(true);
@@ -34,7 +35,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
 
     useEffect(() => {
         loadAssignment();
-    }, [assignmentId]);
+    }, [assignmentId, token]);
 
 
 
@@ -62,8 +63,123 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
+    const setupQuizFromValidatedAssignment = async (assignmentData: any) => {
+        try {
+            const course = assignmentData.course;
+            
+            // Fetch questions separately from quiz_questions table
+            const { data: questionsData, error: questionsError } = await supabase
+                .from("quiz_questions")
+                .select("*")
+                .eq("course_id", course.id);
+
+            if (questionsError) {
+                console.error("Error fetching questions:", questionsError.message, questionsError);
+            }
+
+            const questions = questionsData || [];
+
+            // Determine difficulty from objectives or default to Beginner
+            const difficulty = (course.objectives as any)?.difficulty || "Beginner";
+
+            let timePerQuestion = 60; // Default Beginner
+            if (difficulty?.toLowerCase() === "moderate") timePerQuestion = 30;
+            if (difficulty?.toLowerCase() === "advanced") timePerQuestion = 15;
+
+            const totalTime = questions.length * timePerQuestion;
+
+            // Combine data
+            setAssignment({
+                ...assignmentData,
+                course: {
+                    ...course,
+                    quiz_questions: questions
+                }
+            });
+
+            // Check if assignment is already completed, failed, or view=results is requested
+            const viewMode = searchParams.get('view');
+            if (assignmentData.status === 'completed' || assignmentData.status === 'failed' || viewMode === 'results') {
+                console.log("Assignment is completed/failed or view=results, fetching results...");
+
+                // Fetch latest attempt
+                const { data: attempt, error: attemptError } = await supabase
+                    .from('quiz_attempts')
+                    .select('*')
+                    .eq('assignment_id', assignmentId)
+                    .order('completed_at', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                if (attempt) {
+                    console.log("Found attempt:", attempt);
+                    setQuizScore(attempt.score);
+                    setQuizPassed(attempt.passed);
+                    setQuizSubmitted(true);
+
+                    // Fetch answers
+                    const { data: answers, error: answersError } = await supabase
+                        .from('quiz_answers')
+                        .select('question_id, selected_option_text')
+                        .eq('attempt_id', attempt.id);
+
+                    if (answers) {
+                        const answersMap: Record<string, any> = {};
+                        answers.forEach((a: any) => {
+                            answersMap[a.question_id] = a.selected_option_text;
+                        });
+                        setQuizAnswers(answersMap);
+                    }
+
+                    setCurrentStep("results");
+                } else {
+                    console.log("No attempt found, but status is completed/failed");
+                }
+            } else {
+                console.log("Starting fresh quiz with time:", totalTime);
+                setTimeLeft(totalTime);
+            }
+
+            setLoading(false);
+        } catch (error) {
+            console.error("Error setting up quiz:", error);
+            setLoading(false);
+        }
+    };
+
     const loadAssignment = async () => {
         try {
+            // If we have a token, validate it first
+            if (token) {
+                const response = await fetch('/api/course/validate-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ token }),
+                });
+                
+                const validation = await response.json();
+                if (!validation.isValid) {
+                    router.push("/login");
+                    return;
+                }
+                
+                // Verify the token matches this assignment
+                if (validation.assignment?.id !== assignmentId) {
+                    router.push("/login");
+                    return;
+                }
+                
+                // Use assignment data from token validation
+                setWorkerName(validation.assignment.worker.full_name);
+                
+                // Continue with quiz setup using validated assignment
+                await setupQuizFromValidatedAssignment(validation.assignment);
+                return;
+            }
+
+            // Fallback: try to load with regular authentication
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
                 router.push("/login");
@@ -309,6 +425,15 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
 
     const questions = assignment.course.quiz_questions || [];
     const currentQuestion = questions[currentQuestionIndex];
+
+    // Safety check for currentQuestion
+    if (currentStep === "quiz" && !currentQuestion) {
+        return (
+            <div className="min-h-screen bg-white flex items-center justify-center">
+                <div className="text-slate-600">Loading quiz questions...</div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-white flex flex-col">

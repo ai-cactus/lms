@@ -63,7 +63,9 @@ export async function updateSession(request: NextRequest) {
         !request.nextUrl.pathname.startsWith('/signup') &&
         !request.nextUrl.pathname.startsWith('/auth') &&
         !request.nextUrl.pathname.startsWith('/debug') &&
-        !request.nextUrl.pathname.startsWith('/api/cron'); // Allow cron jobs
+        !request.nextUrl.pathname.startsWith('/forgot-password') && // Allow forgot password page
+        !request.nextUrl.pathname.startsWith('/api/cron') && // Allow cron jobs
+        !request.nextUrl.pathname.startsWith('/api/auth/'); // Allow auth API endpoints
 
     if (!user && isProtectedRoute) {
         // For API routes, return 401 JSON instead of redirecting to HTML login page

@@ -12,8 +12,11 @@ import {
     UserPlus,
     ChevronRight,
     ChevronLeft,
+    Clock,
 } from "lucide-react";
 import AssignUsersModal from "@/components/courses/AssignUsersModal";
+import { CourseDrafts } from "@/components/courses/course-drafts";
+import { CourseDraft } from "@/lib/course-draft";
 
 interface Course {
     id: string;
@@ -39,6 +42,7 @@ function CoursesListContent() {
     const [showSuccess, setShowSuccess] = useState(false);
     const [assignModalOpen, setAssignModalOpen] = useState(false);
     const [selectedCourseForAssign, setSelectedCourseForAssign] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'courses' | 'drafts'>('courses');
     const router = useRouter();
     const searchParams = useSearchParams();
     const supabase = createClient();
@@ -154,6 +158,11 @@ function CoursesListContent() {
         handleCloseAssignModal();
     };
 
+    const handleContinueDraft = (draft: CourseDraft) => {
+        // Navigate to course creation with draft data
+        router.push(`/admin/courses/create?draftId=${draft.id}`);
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-white flex items-center justify-center">
@@ -179,13 +188,28 @@ function CoursesListContent() {
                     <div>
                         <h1 className="text-3xl font-bold text-slate-900 mb-2">Courses</h1>
                     </div>
-                    <button
-                        onClick={() => router.push("/admin/courses/create")}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
-                    >
-                        <Plus className="w-5 h-5" />
-                        Create Course
-                    </button>
+                    <div className="flex items-center gap-3">
+                        {activeTab === 'drafts' && (
+                            <button
+                                onClick={() => router.push("/admin/courses/create?newDraft=true")}
+                                className="px-4 py-2 bg-[#4E61F6] text-white rounded-lg font-medium hover:bg-[#4E61F6]/90 transition-colors flex items-center gap-2"
+                            >
+                                <Plus className="w-5 h-5" />
+                                New Draft
+                            </button>
+                        )}
+                        <button
+                            onClick={() => router.push("/admin/courses/create")}
+                            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                                activeTab === 'drafts' 
+                                    ? 'border border-gray-300 text-slate-700 hover:bg-gray-50'
+                                    : 'bg-[#4E61F6] text-white hover:bg-[#4E61F6]/90'
+                            }`}
+                        >
+                            <Plus className="w-5 h-5" />
+                            {activeTab === 'drafts' ? 'Create Course' : 'Create Course'}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Success Message */}
@@ -196,19 +220,56 @@ function CoursesListContent() {
                     </div>
                 )}
 
-                {/* Search */}
+                {/* Tabs */}
                 <div className="mb-6">
-                    <div className="relative max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search for courses..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                        />
+                    <div className="border-b border-gray-200">
+                        <nav className="-mb-px flex space-x-8">
+                            <button
+                                onClick={() => setActiveTab('courses')}
+                                className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                                    activeTab === 'courses'
+                                        ? 'border-[#4E61F6] text-[#4E61F6]'
+                                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-gray-300'
+                                }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <BookOpen className="w-4 h-4" />
+                                    Published Courses
+                                </div>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('drafts')}
+                                className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                                    activeTab === 'drafts'
+                                        ? 'border-[#4E61F6] text-[#4E61F6]'
+                                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-gray-300'
+                                }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Clock className="w-4 h-4" />
+                                    Drafts
+                                </div>
+                            </button>
+                        </nav>
                     </div>
                 </div>
+
+                {/* Tab Content */}
+                {activeTab === 'courses' ? (
+                    <>
+                        {/* Search */}
+                        <div className="mb-6">
+                            <div className="relative max-w-md">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search for courses..."
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                />
+                            </div>
+                        </div>
 
                 {/* Courses Table */}
                 <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
@@ -337,7 +398,12 @@ function CoursesListContent() {
                             </div>
                         </div>
                     </div>
-                </div>
+                        </div>
+                    </>
+                ) : (
+                    /* Drafts Tab Content */
+                    <CourseDrafts onContinueDraft={handleContinueDraft} />
+                )}
 
                 {/* Assign Users Modal */}
                 {assignModalOpen && selectedCourseForAssign && (

@@ -94,10 +94,37 @@ IMPORTANT: Return ONLY valid JSON, no markdown formatting or code blocks.
     } catch (error: any) {
         console.error("Error analyzing documents:", error);
 
-        // Handle 429 specifically
+        // Handle specific API errors
+        if (error.message?.includes("403") || error.status === 403) {
+            if (error.message?.includes("API key was reported as leaked")) {
+                return NextResponse.json(
+                    { error: "API key security issue detected. Please contact your administrator to update the API configuration." },
+                    { status: 403 }
+                );
+            }
+            return NextResponse.json(
+                { error: "API access denied. Please check your API configuration." },
+                { status: 403 }
+            );
+        }
+
         if (error.message?.includes("429") || error.status === 429) {
             return NextResponse.json(
                 { error: "AI Service is busy. Please try again in a minute." },
+                { status: 429 }
+            );
+        }
+
+        if (error.message?.includes("401") || error.status === 401) {
+            return NextResponse.json(
+                { error: "API authentication failed. Please check your API key configuration." },
+                { status: 401 }
+            );
+        }
+
+        if (error.message?.includes("quota") || error.message?.includes("QUOTA_EXCEEDED")) {
+            return NextResponse.json(
+                { error: "API quota exceeded. Please try again later or contact your administrator." },
                 { status: 429 }
             );
         }
