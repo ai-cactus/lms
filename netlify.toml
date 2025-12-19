@@ -1,0 +1,37 @@
+[build]
+  # Build command
+  command = "npm run build"
+
+  # Directory to publish (Next.js build output)
+  publish = ".next"
+
+  # Node version (Next.js 15 requires Node 18+)
+  environment = { NODE_VERSION = "18" }
+
+[build.environment]
+  # Ensure we use the correct Node environment
+  NODE_ENV = "production"
+
+# Redirect rules for Next.js (optional but recommended)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# SPA fallback for client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Cache static assets
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Cache images and other assets
+[[headers]]
+  for = "/public/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
