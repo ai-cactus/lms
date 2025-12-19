@@ -1,3 +1,10 @@
+export interface QuizQuestion {
+    id: string;
+    question_text: string;
+    options: string[];
+    correct_answer: string;
+}
+
 export interface QuizConfig {
     title?: string;
     numQuestions?: number;
@@ -19,5 +26,5 @@ export interface CourseData {
     prerequisites?: string;
     complianceMapping?: string;
     generatedContent?: string; // AI-generated markdown course content
-    questions?: any[]; // Array of quiz questions
+    questions?: QuizQuestion[]; // Array of quiz questions
 }

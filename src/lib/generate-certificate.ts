@@ -119,14 +119,14 @@ export function downloadCertificate(data: CertificateData) {
 
 export async function uploadCertificateToStorage(
     doc: jsPDF,
-    supabase: any,
+    supabase: import('@supabase/supabase-js').SupabaseClient,
     certificateId: string
 ): Promise<string | null> {
     try {
         const pdfBlob = doc.output("blob");
         const fileName = `${certificateId}.pdf`;
 
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
             .from("certificates")
             .upload(fileName, pdfBlob, {
                 contentType: "application/pdf",

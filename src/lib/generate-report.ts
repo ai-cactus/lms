@@ -43,6 +43,37 @@ interface ReportData {
     }>;
 }
 
+// Types for data processing - simplified to avoid complex type issues
+interface WorkerData {
+    id: string;
+    full_name: string;
+    role?: string;
+    deactivated_at?: string | null;
+    assignments?: AssignmentData[];
+}
+
+interface AssignmentData {
+    id: string;
+    status: string;
+    deadline: string;
+    course?: unknown;
+    worker?: unknown;
+}
+
+interface CompletionData {
+    id: string;
+    completed_at: string;
+    quiz_score: number;
+    status?: string;
+    course?: unknown;
+    worker?: unknown;
+    admin_confirmation?: unknown;
+}
+
+interface AdminConfirmationData {
+    confirmed: boolean;
+}
+
 export async function generateAccreditationReport(
     organizationId: string
 ): Promise<ReportData> {
@@ -134,7 +165,7 @@ export async function generateAccreditationReport(
 
     // Workers by role
     const roleMap = new Map<string, { count: number; compliant: number }>();
-    activeWorkers.forEach((worker: any) => {
+    activeWorkers.forEach((worker: WorkerData) => {
         const workerRole = worker.role || "Unknown";
         const assignments = Array.isArray(worker.assignments) ? worker.assignments : [];
 
@@ -146,7 +177,7 @@ export async function generateAccreditationReport(
         stats.count++;
 
         const hasOverdue = assignments.some(
-            (a: any) =>
+            (a: AssignmentData) =>
                 a.status === "overdue" ||
                 (a.status === "not_started" && new Date(a.deadline) < new Date())
         );
@@ -165,8 +196,8 @@ export async function generateAccreditationReport(
 
     // Course completions
     const courseMap = new Map<string, { assigned: number; completed: number }>();
-    assignments?.forEach((a: any) => {
-        const courseTitle = Array.isArray(a.course) ? a.course[0]?.title : a.course?.title;
+    assignments?.forEach((a: AssignmentData) => {
+        const courseTitle = Array.isArray(a.course) ? (a.course as any)[0]?.title : (a.course as any)?.title;
         if (!courseTitle) return;
 
         if (!courseMap.has(courseTitle)) {
@@ -191,26 +222,26 @@ export async function generateAccreditationReport(
 
     // Recent completions
     const recentCompletions =
-        completions?.slice(0, 10).map((c: any) => ({
-            workerName: Array.isArray(c.worker) ? c.worker[0]?.full_name : c.worker?.full_name,
-            courseTitle: Array.isArray(c.course) ? c.course[0]?.title : c.course?.title,
-            completedAt: c.completed_at,
-            quizScore: c.quiz_score,
+        completions?.slice(0, 10).map((c: CompletionData) => ({
+            workerName: Array.isArray(c.worker) ? (c.worker as any)[0]?.full_name : (c.worker as any)?.full_name,
+            courseTitle: Array.isArray(c.course) ? (c.course as any)[0]?.title : (c.course as any)?.title,
+            completedAt: c.completed_at as string,
+            quizScore: c.quiz_score as number,
             confirmed: Array.isArray(c.admin_confirmation)
-                ? c.admin_confirmation[0]?.confirmed
-                : c.admin_confirmation?.confirmed,
+                ? (c.admin_confirmation as any)[0]?.confirmed
+                : (c.admin_confirmation as any)?.confirmed,
         })) || [];
 
     // Overdue trainings
     const overdueTrainings =
         assignments
-            ?.filter((a: any) => {
+            ?.filter((a: AssignmentData) => {
                 if (a.status === "completed") return false;
                 return new Date(a.deadline) < new Date();
             })
-            .map((a: any) => ({
-                workerName: Array.isArray(a.worker) ? a.worker[0]?.full_name : a.worker?.full_name,
-                courseTitle: Array.isArray(a.course) ? a.course[0]?.title : a.course?.title,
+            .map((a: AssignmentData) => ({
+                workerName: Array.isArray(a.worker) ? (a.worker as any)[0]?.full_name : (a.worker as any)?.full_name,
+                courseTitle: Array.isArray(a.course) ? (a.course as any)[0]?.title : (a.course as any)?.title,
                 deadline: a.deadline,
                 daysOverdue: Math.floor(
                     (Date.now() - new Date(a.deadline).getTime()) / (1000 * 60 * 60 * 24)
