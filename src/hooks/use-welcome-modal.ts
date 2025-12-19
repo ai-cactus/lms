@@ -3,16 +3,11 @@
 import { useState, useEffect } from "react";
 
 export function useWelcomeModal() {
-  const [isOpen, setIsOpen] = useState(false);
-
-  useEffect(() => {
+  const [isOpen, setIsOpen] = useState(() => {
     // Check if user has seen the welcome modal before
     const hasSeenWelcome = localStorage.getItem("theraptly-welcome-seen");
-    
-    if (!hasSeenWelcome) {
-      setIsOpen(true);
-    }
-  }, []);
+    return !hasSeenWelcome;
+  });
 
   const closeModal = () => {
     setIsOpen(false);

@@ -2,6 +2,37 @@
 
 import { createClient } from '@/lib/supabase/server'
 
+interface QuizAttempt {
+    id: string
+    worker_id: string
+    course_id: string
+    assignment_id?: string
+    score: number
+    passed: boolean
+    attempt_number: number
+    started_at: string
+    completed_at: string
+    created_at: string
+}
+
+interface QuizAnswer {
+    id: string
+    attempt_id: string
+    question_id?: string
+    is_correct: boolean
+    created_at: string
+}
+
+interface CourseStats {
+    course: {
+        id: string
+        title: string
+        objectives?: Array<{ id: string; text: string }>
+    }
+    attempts: QuizAttempt[]
+    answers: QuizAnswer[]
+}
+
 export interface LearningNeed {
     objectiveId: string
     objectiveText: string
@@ -84,11 +115,7 @@ export async function getWorkerLearningNeeds(workerId: string): Promise<{
 
         // Process data to calculate needs
         const needs: LearningNeed[] = []
-        const courseStats = new Map<string, {
-            course: any,
-            attempts: any[],
-            answers: any[]
-        }>()
+        const courseStats = new Map<string, CourseStats>()
 
         // Group by course
         attempts.forEach(attempt => {
@@ -160,7 +187,7 @@ export async function getWorkerLearningNeeds(workerId: string): Promise<{
             })
 
             // Calculate % for each objective
-            objectives.forEach((obj: any) => {
+            objectives.forEach((obj: { id: string; text: string }) => {
                 const stat = objectiveStats.get(obj.id)
                 if (stat && stat.total > 0) {
                     const percentage = Math.round((stat.correct / stat.total) * 100)
@@ -277,7 +304,7 @@ export async function getOrgPerformanceOverview(organizationId: string): Promise
                 const course = attempt?.course
                 // Find objective text from course objectives
                 const courseData = Array.isArray(course) ? course[0] : course
-                const objective = courseData?.objectives?.find((o: any) => o.id === objId)
+                const objective = courseData?.objectives?.find((o: { id: string; text: string }) => o.id === objId)
 
                 if (objective) {
                     const key = `${attempt?.course_id}-${objId}`
@@ -457,7 +484,7 @@ export async function getDetailedOrgPerformance(
         }>();
 
         attempts.forEach(a => {
-            // @ts-expect-error
+            // @ts-expect-error - Supabase query result may not have full type information for joined tables
             const title = a.course?.title || 'Unknown';
             if (!courseStats.has(a.course_id)) {
                 courseStats.set(a.course_id, {
@@ -487,7 +514,7 @@ export async function getDetailedOrgPerformance(
         // B. Struggling Objectives (Reusing logic from getOrgPerformanceOverview but with filtered attempts)
         // We need answers for these attempts
         const attemptIds = attempts.map(a => a.id);
-        let strugglingObjectives: any[] = [];
+        let strugglingObjectives: Array<{ objectiveId: string; courseId: string; courseTitle: string; correctPercentage: number }> = [];
 
         if (attemptIds.length > 0) {
             // Fetch answers in chunks if needed, but for now assume it fits
@@ -513,7 +540,7 @@ export async function getDetailedOrgPerformance(
                         const attempt = attempts.find(a => a.id === ans.attempt_id);
                         const courseData = attempt?.course;
                         const course = Array.isArray(courseData) ? courseData[0] : courseData;
-                        const objective = course?.objectives?.find((o: any) => o.id === objId);
+                        const objective = course?.objectives?.find((o: { id: string; text: string }) => o.id === objId);
 
                         if (objective) {
                             const key = `${course?.id}-${objId}`;
@@ -622,7 +649,7 @@ export async function getDetailedOrgPerformance(
 
         const retrainedCoursesMap = new Map<string, number>();
         retrainingAttempts.forEach(a => {
-            // @ts-expect-error
+            // @ts-expect-error - Supabase query result may not have full type information for joined tables
             const title = a.course?.title || 'Unknown';
             retrainedCoursesMap.set(title, (retrainedCoursesMap.get(title) || 0) + 1);
         });

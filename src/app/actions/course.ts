@@ -94,9 +94,9 @@ export async function ensureCoursesExist(courses: CARFCourse[]): Promise<{ idMap
         }
 
         return { idMap }
-    } catch (error: any) {
+    } catch (error) {
         console.error('Error ensuring courses exist:', error)
-        return { error: error.message }
+        return { error: error instanceof Error ? error.message : 'Unknown error' }
     }
 }
 
@@ -160,7 +160,7 @@ export async function updateCourseProgress(assignmentId: string, progress: numbe
         }
 
         return { success: true }
-    } catch (error: any) {
+    } catch (error) {
         console.error('Error updating progress:', error)
         return { error: 'An unexpected error occurred' }
     }

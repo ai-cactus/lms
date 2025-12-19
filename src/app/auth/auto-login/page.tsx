@@ -33,19 +33,6 @@ function AutoLoginContent() {
     const searchParams = useSearchParams();
     const supabase = createClient();
 
-    useEffect(() => {
-        const token = searchParams.get('token');
-        const redirectTo = searchParams.get('redirect');
-
-        if (!token) {
-            setError('No login token provided');
-            setStatus('error');
-            return;
-        }
-
-        performAutoLogin(token, redirectTo);
-    }, [searchParams]);
-
     const performAutoLogin = async (token: string, redirectTo: string | null) => {
         try {
             // Step 1: Validate the auto-login token
@@ -79,9 +66,9 @@ function AutoLoginContent() {
             });
 
             const adminResult = await adminResponse.json();
-            
+
             console.log('Admin sign-in response:', adminResult);
-            
+
             if (!adminResult.success) {
                 console.error('Admin sign-in failed:', adminResult.error);
                 setError('Failed to authenticate user: ' + (adminResult.error || 'Unknown error'));
@@ -91,7 +78,7 @@ function AutoLoginContent() {
 
             // Step 3: Establish session
             setLoadingMessage('Preparing your course materials...');
-            
+
             // Set session with tokens from admin API
             if (adminResult.session && adminResult.session.access_token && adminResult.session.refresh_token) {
                 try {
@@ -131,17 +118,30 @@ function AutoLoginContent() {
 
             // Redirect to the specified page (from token) or fallback
             const destination = result.redirectTo || redirectTo || '/worker/courses';
-            
+
             setTimeout(() => {
                 router.push(destination);
             }, 1000);
 
-        } catch (err: any) {
+        } catch (err) {
             console.error('Auto-login error:', err);
             setError('Failed to process login');
             setStatus('error');
         }
     };
+
+    useEffect(() => {
+        const token = searchParams.get('token');
+        const redirectTo = searchParams.get('redirect');
+
+        if (!token) {
+            setError('No login token provided');
+            setStatus('error');
+            return;
+        }
+
+        performAutoLogin(token, redirectTo);
+    }, [searchParams]);
 
     if (status === 'loading') {
         return (

@@ -29,11 +29,6 @@ export default function NotificationBell() {
     const router = useRouter();
     const supabase = createClient();
 
-    useEffect(() => {
-        loadNotifications();
-        setupRealtimeSubscription();
-    }, []);
-
     const loadNotifications = async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -84,6 +79,11 @@ export default function NotificationBell() {
             supabase.removeChannel(channel);
         };
     };
+
+    useEffect(() => {
+        loadNotifications();
+        setupRealtimeSubscription();
+    }, []);
 
     const handleMarkAsRead = async (notificationId: string) => {
         try {

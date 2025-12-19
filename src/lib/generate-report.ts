@@ -67,7 +67,7 @@ interface CompletionData {
     status?: string;
     course?: unknown;
     worker?: unknown;
-    admin_confirmation?: unknown;
+    admin_confirmation?: AdminConfirmationData | AdminConfirmationData[];
 }
 
 interface AdminConfirmationData {

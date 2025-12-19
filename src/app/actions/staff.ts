@@ -135,24 +135,24 @@ export async function bulkImportWorkers(
                         await supabase.auth.resetPasswordForEmail(email, {
                             redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/reset-password`,
                         });
-                    } catch (emailError: any) {
+                    } catch (emailError) {
                         console.error(`Failed to send reset email to ${email}:`, emailError);
                         // Don't fail the import if email fails, just log it
                     }
 
                     result.success++;
                 }
-            } catch (error: any) {
+            } catch (error) {
                 result.errors.push({
                     row: i + 1,
                     email,
-                    error: error.message || "Unknown error occurred",
+                    error: error instanceof Error ? error.message : "Unknown error occurred",
                 });
             }
         }
 
         return result;
-    } catch (error: any) {
-        throw new Error(`Failed to import workers: ${error.message}`);
+    } catch (error) {
+        throw new Error(`Failed to import workers: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }

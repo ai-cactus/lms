@@ -5,6 +5,40 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { generateCourseAccessToken, storeCourseAccessToken, generateCourseAccessUrl } from '@/lib/course-tokens'
 
+interface CourseAssignmentData {
+    id: string
+    course_id: string
+    worker_id: string
+}
+
+interface CourseAccessLink {
+    courseTitle: string
+    courseDescription: string
+    autoLoginUrl: string
+    assignmentId: string
+}
+
+interface CourseData {
+    id: string
+    title: string
+    description?: string
+}
+
+interface UserAssignmentData {
+    id: string
+    course_id: string
+    course: CourseData | CourseData[]
+}
+
+interface WorkerUpdateData {
+    full_name: string
+    job_title: string
+    worker_category: string
+    supervisor_id: string | null
+    status?: string
+    deactivated_at?: string | null
+}
+
 export type CreateWorkerState = {
     message?: string
     error?: string
@@ -138,9 +172,9 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
                 const { data: courseDetails } = await adminSupabase
                     .from('courses')
                     .select('id, title')
-                    .in('id', insertedAssignments.map((a: any) => a.course_id));
+                    .in('id', insertedAssignments.map((a: CourseAssignmentData) => a.course_id));
 
-                const tokenPromises = insertedAssignments.map(async (assignment: any) => {
+                const tokenPromises = insertedAssignments.map(async (assignment: CourseAssignmentData) => {
                     try {
                         const tokenData = generateCourseAccessToken(
                             assignment.id,
@@ -184,7 +218,7 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
             const { sendWorkerWelcomeWithCourseAccess } = await import('@/lib/email');
 
             // Get course details and assignments for the email
-            let courseAccessLinks: any[] = [];
+            let courseAccessLinks: CourseAccessLink[] = [];
             if (finalCourseIds.length > 0) {
                 // Get course assignments that were just created
                 const { data: userAssignments } = await adminSupabase
@@ -198,7 +232,7 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
 
                 if (userAssignments && userAssignments.length > 0) {
                     // Generate auto-login token for each course
-                    const tokenPromises = userAssignments.map(async (assignment: any) => {
+                    const tokenPromises = userAssignments.map(async (assignment: UserAssignmentData) => {
                         const course = Array.isArray(assignment.course) ? assignment.course[0] : assignment.course;
 
                         // Generate token that redirects directly to course details page
@@ -306,7 +340,7 @@ export async function updateWorker(prevState: CreateWorkerState, formData: FormD
         }
 
         // 3. Update public.users
-        const updateData: any = {
+        const updateData: WorkerUpdateData = {
             full_name: fullName,
             job_title: role,
             worker_category: category,

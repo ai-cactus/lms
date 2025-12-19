@@ -22,10 +22,6 @@ export default function AdminOnboarding() {
     const router = useRouter();
     const supabase = createClient();
 
-    useEffect(() => {
-        checkOnboardingStatus();
-    }, []);
-
     const checkOnboardingStatus = async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -142,6 +138,10 @@ export default function AdminOnboarding() {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        checkOnboardingStatus();
+    }, []);
 
     const completedCount = steps.filter(s => s.completed).length;
     const progress = (completedCount / steps.length) * 100;

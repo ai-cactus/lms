@@ -10,6 +10,48 @@ interface QuizAnswer {
     isCorrect: boolean
 }
 
+interface WorkerAttempt {
+    id: string
+    score: number
+    passed: boolean
+    attempt_number: number
+    completed_at: string
+    course?: {
+        id: string
+        title: string
+        version?: number
+    }
+}
+
+interface AttemptDetails {
+    id: string
+    score: number
+    passed: boolean
+    attempt_number: number
+    completed_at: string
+    course?: {
+        id: string
+        title: string
+        version?: number
+    }
+    worker?: {
+        id: string
+        full_name: string
+        email: string
+    }
+}
+
+interface AttemptAnswer {
+    id: string
+    selected_option_text: string
+    is_correct: boolean
+    question?: {
+        id: string
+        question_text: string
+        correct_answer: string
+    }
+}
+
 interface SaveQuizAttemptParams {
     workerId: string
     courseId: string
@@ -114,7 +156,7 @@ export async function saveQuizAttempt(params: SaveQuizAttemptParams): Promise<{
  */
 export async function getWorkerAttempts(workerId: string): Promise<{
     success: boolean
-    attempts?: any[]
+    attempts?: WorkerAttempt[]
     error?: string
 }> {
     try {
@@ -153,8 +195,8 @@ export async function getWorkerAttempts(workerId: string): Promise<{
  */
 export async function getAttemptDetails(attemptId: string): Promise<{
     success: boolean
-    attempt?: any
-    answers?: any[]
+    attempt?: AttemptDetails
+    answers?: AttemptAnswer[]
     error?: string
 }> {
     try {

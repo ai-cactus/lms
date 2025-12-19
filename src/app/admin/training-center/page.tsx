@@ -48,113 +48,6 @@ export default function TrainingCenterPage() {
     const [showOnboarding, setShowOnboarding] = useState(true);
     const supabase = createClient();
 
-    useEffect(() => {
-        fetchTrainingData();
-    }, []);
-
-    // Refetch data when page becomes visible (e.g., when navigating back to dashboard)
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (!document.hidden) {
-                fetchTrainingData();
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, []);
-
-    const fetchPerformanceData = async (orgId: string) => {
-        try {
-            // Get monthly performance data from course assignments
-            const { data: performanceData } = await supabase
-                .from("course_assignments")
-                .select("final_grade, created_at")
-                .not("final_grade", "is", null)
-                .gte("created_at", new Date(new Date().getFullYear(), 0, 1).toISOString());
-
-            // Group by month and calculate averages
-            const monthlyData = new Array(12).fill(0);
-            const monthlyCounts = new Array(12).fill(0);
-
-            performanceData?.forEach(item => {
-                const month = new Date(item.created_at).getMonth();
-                monthlyData[month] += item.final_grade || 0;
-                monthlyCounts[month]++;
-            });
-
-            // Calculate averages for each month
-            const averages = monthlyData.map((total, index) => 
-                monthlyCounts[index] > 0 ? Math.round(total / monthlyCounts[index]) : 0
-            );
-
-            setPerformanceData(averages);
-        } catch (error) {
-            console.error("Error fetching performance data:", error);
-            // Use fallback data
-            setPerformanceData([65, 35, 80, 55, 70, 60, 55, 100, 75, 45, 70, 50]);
-        }
-    };
-
-    const fetchCoverageData = async (orgId: string) => {
-        try {
-            // Get total staff count
-            const { count: totalStaff } = await supabase
-                .from("users")
-                .select("*", { count: "exact", head: true })
-                .eq("organization_id", orgId)
-                .eq("role", "worker");
-
-            if (!totalStaff || totalStaff === 0) {
-                setCoverageData({ completed: 0, inProgress: 0, notStarted: 100 });
-                return;
-            }
-
-            // First get all worker IDs in the organization
-            const { data: workers } = await supabase
-                .from("users")
-                .select("id")
-                .eq("organization_id", orgId)
-                .eq("role", "worker");
-
-            const workerIds = workers?.map(w => w.id) || [];
-
-            // Get assignment statuses for these workers
-            const { data: assignments } = await supabase
-                .from("course_assignments")
-                .select("status, worker_id")
-                .in("worker_id", workerIds);
-
-            // Count unique workers by status
-            const workerStatuses = new Map();
-            assignments?.forEach(assignment => {
-                const workerId = assignment.worker_id;
-                const currentStatus = workerStatuses.get(workerId);
-                
-                // Priority: completed > in_progress > not_started
-                if (!currentStatus || 
-                    (assignment.status === 'completed' && currentStatus !== 'completed') ||
-                    (assignment.status === 'in_progress' && currentStatus === 'not_started')) {
-                    workerStatuses.set(workerId, assignment.status);
-                }
-            });
-
-            const completed = Array.from(workerStatuses.values()).filter(s => s === 'completed').length;
-            const inProgress = Array.from(workerStatuses.values()).filter(s => s === 'in_progress').length;
-            const notStarted = totalStaff - completed - inProgress;
-
-            setCoverageData({
-                completed: Math.round((completed / totalStaff) * 100),
-                inProgress: Math.round((inProgress / totalStaff) * 100),
-                notStarted: Math.round((notStarted / totalStaff) * 100)
-            });
-        } catch (error) {
-            console.error("Error fetching coverage data:", error);
-            // Use fallback data
-            setCoverageData({ completed: 30, inProgress: 34, notStarted: 36 });
-        }
-    };
-
     const fetchTrainingData = async () => {
         try {
             // Get current user
@@ -306,6 +199,113 @@ export default function TrainingCenterPage() {
         } catch (error) {
             console.error("Error fetching training data:", error);
             setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchTrainingData();
+    }, []);
+
+    // Refetch data when page becomes visible (e.g., when navigating back to dashboard)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                fetchTrainingData();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, []);
+
+    const fetchPerformanceData = async (orgId: string) => {
+        try {
+            // Get monthly performance data from course assignments
+            const { data: performanceData } = await supabase
+                .from("course_assignments")
+                .select("final_grade, created_at")
+                .not("final_grade", "is", null)
+                .gte("created_at", new Date(new Date().getFullYear(), 0, 1).toISOString());
+
+            // Group by month and calculate averages
+            const monthlyData = new Array(12).fill(0);
+            const monthlyCounts = new Array(12).fill(0);
+
+            performanceData?.forEach(item => {
+                const month = new Date(item.created_at).getMonth();
+                monthlyData[month] += item.final_grade || 0;
+                monthlyCounts[month]++;
+            });
+
+            // Calculate averages for each month
+            const averages = monthlyData.map((total, index) => 
+                monthlyCounts[index] > 0 ? Math.round(total / monthlyCounts[index]) : 0
+            );
+
+            setPerformanceData(averages);
+        } catch (error) {
+            console.error("Error fetching performance data:", error);
+            // Use fallback data
+            setPerformanceData([65, 35, 80, 55, 70, 60, 55, 100, 75, 45, 70, 50]);
+        }
+    };
+
+    const fetchCoverageData = async (orgId: string) => {
+        try {
+            // Get total staff count
+            const { count: totalStaff } = await supabase
+                .from("users")
+                .select("*", { count: "exact", head: true })
+                .eq("organization_id", orgId)
+                .eq("role", "worker");
+
+            if (!totalStaff || totalStaff === 0) {
+                setCoverageData({ completed: 0, inProgress: 0, notStarted: 100 });
+                return;
+            }
+
+            // First get all worker IDs in the organization
+            const { data: workers } = await supabase
+                .from("users")
+                .select("id")
+                .eq("organization_id", orgId)
+                .eq("role", "worker");
+
+            const workerIds = workers?.map(w => w.id) || [];
+
+            // Get assignment statuses for these workers
+            const { data: assignments } = await supabase
+                .from("course_assignments")
+                .select("status, worker_id")
+                .in("worker_id", workerIds);
+
+            // Count unique workers by status
+            const workerStatuses = new Map();
+            assignments?.forEach(assignment => {
+                const workerId = assignment.worker_id;
+                const currentStatus = workerStatuses.get(workerId);
+                
+                // Priority: completed > in_progress > not_started
+                if (!currentStatus || 
+                    (assignment.status === 'completed' && currentStatus !== 'completed') ||
+                    (assignment.status === 'in_progress' && currentStatus === 'not_started')) {
+                    workerStatuses.set(workerId, assignment.status);
+                }
+            });
+
+            const completed = Array.from(workerStatuses.values()).filter(s => s === 'completed').length;
+            const inProgress = Array.from(workerStatuses.values()).filter(s => s === 'in_progress').length;
+            const notStarted = totalStaff - completed - inProgress;
+
+            setCoverageData({
+                completed: Math.round((completed / totalStaff) * 100),
+                inProgress: Math.round((inProgress / totalStaff) * 100),
+                notStarted: Math.round((notStarted / totalStaff) * 100)
+            });
+        } catch (error) {
+            console.error("Error fetching coverage data:", error);
+            // Use fallback data
+            setCoverageData({ completed: 30, inProgress: 34, notStarted: 36 });
         }
     };
 

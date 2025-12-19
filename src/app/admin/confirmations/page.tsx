@@ -48,79 +48,79 @@ export default function PendingConfirmationsPage() {
     const supabase = createClient();
 
     useEffect(() => {
+        const loadCompletions = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    router.push("/login");
+                    return;
+                }
+
+                const { data: userData } = await supabase
+                    .from("users")
+                    .select("organization_id, role")
+                    .eq("id", user.id)
+                    .single();
+
+                if (!userData || userData.role !== "admin") {
+                    router.push("/");
+                    return;
+                }
+
+                const { data, error } = await supabase
+                    .from("course_completions")
+                    .select(`
+              id,
+              completed_at,
+              quiz_score,
+              quiz_attempts,
+              acknowledgment_signature,
+              assignment_id,
+              worker_id,
+              course_id,
+              worker:worker_id(id, full_name, email, role, organization_id),
+              course:course_id(title)
+            `)
+                    .eq("status", "pending_confirmation")
+                    .order("completed_at", { ascending: true });
+
+                if (error) throw error;
+
+                const filtered = (data || [])
+                    .filter((c) => {
+                        const worker = Array.isArray(c.worker) ? c.worker[0] : c.worker;
+                        return worker?.organization_id === userData.organization_id;
+                    })
+                    .map((c) => ({
+                        ...c,
+                        worker: Array.isArray(c.worker) ? c.worker[0] : c.worker,
+                        course: Array.isArray(c.course) ? c.course[0] : c.course,
+                    }));
+
+                setCompletions(filtered);
+                setLoading(false);
+            } catch (error) {
+                console.error("Error loading completions:", error);
+                setLoading(false);
+            }
+        };
+
         loadCompletions();
     }, []);
 
     useEffect(() => {
+        const applyFilter = () => {
+            if (filter === "at-risk") {
+                setFilteredCompletions(
+                    completions.filter((c) => getDaysWaiting(c.completed_at) > 7)
+                );
+            } else {
+                setFilteredCompletions(completions);
+            }
+        };
+
         applyFilter();
     }, [filter, completions]);
-
-    const loadCompletions = async () => {
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                router.push("/login");
-                return;
-            }
-
-            const { data: userData } = await supabase
-                .from("users")
-                .select("organization_id, role")
-                .eq("id", user.id)
-                .single();
-
-            if (!userData || userData.role !== "admin") {
-                router.push("/");
-                return;
-            }
-
-            const { data, error } = await supabase
-                .from("course_completions")
-                .select(`
-          id,
-          completed_at,
-          quiz_score,
-          quiz_attempts,
-          acknowledgment_signature,
-          assignment_id,
-          worker_id,
-          course_id,
-          worker:worker_id(id, full_name, email, role, organization_id),
-          course:course_id(title)
-        `)
-                .eq("status", "pending_confirmation")
-                .order("completed_at", { ascending: true });
-
-            if (error) throw error;
-
-            const filtered = (data || [])
-                .filter((c: any) => {
-                    const worker = Array.isArray(c.worker) ? c.worker[0] : c.worker;
-                    return worker?.organization_id === userData.organization_id;
-                })
-                .map((c: any) => ({
-                    ...c,
-                    worker: Array.isArray(c.worker) ? c.worker[0] : c.worker,
-                    course: Array.isArray(c.course) ? c.course[0] : c.course,
-                }));
-
-            setCompletions(filtered);
-            setLoading(false);
-        } catch (error) {
-            console.error("Error loading completions:", error);
-            setLoading(false);
-        }
-    };
-
-    const applyFilter = () => {
-        if (filter === "at-risk") {
-            setFilteredCompletions(
-                completions.filter((c) => getDaysWaiting(c.completed_at) > 7)
-            );
-        } else {
-            setFilteredCompletions(completions);
-        }
-    };
 
     const getDaysWaiting = (completedAt: string) => {
         return Math.floor(

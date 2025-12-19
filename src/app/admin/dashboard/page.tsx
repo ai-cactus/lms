@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
-import { CloudArrowUp, FilePdf, FileDoc, Trash, CheckCircle, XCircle, Clock } from "@phosphor-icons/react";
+import { CheckCircle, XCircle } from "@phosphor-icons/react";
 import { CloudUpload, Loader2, FileText, Trash2, HelpCircle } from "lucide-react";
 import { validateDocumentForProcessing } from "@/lib/document-validation";
 
@@ -25,39 +25,14 @@ interface FileUploadState {
 
 export default function AdminDashboard() {
     const [files, setFiles] = useState<FileUploadState[]>([]);
-    const [dragActive, setDragActive] = useState(false);
     const [globalError, setGlobalError] = useState("");
     const [showPreview, setShowPreview] = useState(false);
     const router = useRouter();
     const supabase = createClient();
 
-    const handleDrag = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.type === "dragenter" || e.type === "dragover") {
-            setDragActive(true);
-        } else if (e.type === "dragleave") {
-            setDragActive(false);
-        }
-    }, []);
-
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragActive(false);
-
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFilesSelect(e.dataTransfer.files);
-        }
-    }, []);
 
     const handleFilesSelect = async (selectedFiles: FileList | File[]) => {
         const fileArray = Array.from(selectedFiles);
-        const validTypes = [
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/msword",
-        ];
 
         // Filter and validate files using new validation system
         const validFiles: File[] = [];
@@ -190,17 +165,6 @@ export default function AdminDashboard() {
         }
     };
 
-    const handleRemoveFile = (id: string) => {
-        setFiles(prev => prev.filter(f => f.id !== id));
-    };
-
-    const handleCancel = () => {
-        router.push("/admin/documents");
-    };
-
-    const handlePreview = () => {
-        setShowPreview(true);
-    };
 
     const handleAnalyze = () => {
         setShowPreview(false);
@@ -213,8 +177,6 @@ export default function AdminDashboard() {
 
     // Get the last successfully uploaded file for preview
     const lastUploadedFile = [...files].reverse().find(f => f.status === 'completed');
-    const isUploading = files.some(f => f.status === 'uploading');
-    const hasCompletedFiles = files.some(f => f.status === 'completed');
 
     return (
         <div className="min-h-[calc(100vh-4rem)] bg-white flex items-center justify-center py-12 px-4">

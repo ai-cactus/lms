@@ -16,10 +16,6 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
     const [userInitials, setUserInitials] = useState("--");
     const supabase = createClient();
 
-    useEffect(() => {
-        loadUserData();
-    }, []);
-
     const loadUserData = async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -45,6 +41,10 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
             console.error("Error loading user data:", error);
         }
     };
+
+    useEffect(() => {
+        loadUserData();
+    }, []);
 
     // Determine title based on path
     const getTitle = () => {

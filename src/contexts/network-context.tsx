@@ -14,7 +14,7 @@ interface NetworkContextType {
 const NetworkContext = createContext<NetworkContextType | undefined>(undefined);
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
-    const [isOnline, setIsOnline] = useState(true);
+    const [isOnline, setIsOnline] = useState(() => navigator.onLine);
     const [isRetrying, setIsRetrying] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
 
@@ -25,9 +25,6 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
-
-        // Set initial state
-        setIsOnline(navigator.onLine);
 
         return () => {
             window.removeEventListener('online', handleOnline);

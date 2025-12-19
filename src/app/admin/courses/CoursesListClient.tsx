@@ -46,6 +46,68 @@ function CoursesListContent() {
     const supabase = createClient();
 
     useEffect(() => {
+        const loadCourses = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    router.push("/login");
+                    return;
+                }
+
+                const { data: userData } = await supabase
+                    .from("users")
+                    .select("organization_id")
+                    .eq("id", user.id)
+                    .single();
+
+                // Get all courses with policy info
+                const { data: coursesData, error } = await supabase
+                    .from("courses")
+                    .select(`
+                        id,
+                        title,
+                        published_at,
+                        created_at,
+                        updated_at,
+                        policy:policies(title)
+                    `)
+                    .eq("organization_id", userData?.organization_id)
+                    .order("created_at", { ascending: false });
+
+                if (error) throw error;
+
+                // Get assignment stats for each course
+                const coursesWithStats = await Promise.all(
+                    (coursesData || []).map(async (course) => {
+                        const { count: total } = await supabase
+                            .from("course_assignments")
+                            .select("*", { count: "exact", head: true })
+                            .eq("course_id", course.id);
+
+                        const { count: completed } = await supabase
+                            .from("course_assignments")
+                            .select("*", { count: "exact", head: true })
+                            .eq("course_id", course.id)
+                            .eq("status", "completed");
+
+                        return {
+                            ...course,
+                            stats: {
+                                totalAssignments: total || 0,
+                                completedAssignments: completed || 0,
+                            },
+                        };
+                    })
+                );
+
+                setCourses(coursesWithStats);
+                setLoading(false);
+            } catch (error) {
+                console.error("Error loading courses:", error);
+                setLoading(false);
+            }
+        };
+
         if (searchParams.get("updated") === "true") {
             setShowSuccess(true);
             setTimeout(() => setShowSuccess(false), 5000);
@@ -54,91 +116,29 @@ function CoursesListContent() {
     }, []);
 
     useEffect(() => {
-        filterCourses();
-    }, [courses, searchQuery, statusFilter]);
+        const filterCourses = () => {
+            let filtered = [...courses];
 
-    const loadCourses = async () => {
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                router.push("/login");
-                return;
+            // Status filter
+            if (statusFilter === "published") {
+                filtered = filtered.filter((c) => c.published_at);
+            } else if (statusFilter === "draft") {
+                filtered = filtered.filter((c) => !c.published_at);
             }
 
-            const { data: userData } = await supabase
-                .from("users")
-                .select("organization_id")
-                .eq("id", user.id)
-                .single();
+            // Search filter
+            if (searchQuery) {
+                filtered = filtered.filter((c) =>
+                    c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (c.policy?.title && c.policy.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                );
+            }
 
-            // Get all courses with policy info
-            const { data: coursesData, error } = await supabase
-                .from("courses")
-                .select(`
-                    id,
-                    title,
-                    published_at,
-                    created_at,
-                    updated_at,
-                    policy:policies(title)
-                `)
-                .eq("organization_id", userData?.organization_id)
-                .order("created_at", { ascending: false });
+            setFilteredCourses(filtered);
+        };
 
-            if (error) throw error;
-
-            // Get assignment stats for each course
-            const coursesWithStats = await Promise.all(
-                (coursesData || []).map(async (course: any) => {
-                    const { count: total } = await supabase
-                        .from("course_assignments")
-                        .select("*", { count: "exact", head: true })
-                        .eq("course_id", course.id);
-
-                    const { count: completed } = await supabase
-                        .from("course_assignments")
-                        .select("*", { count: "exact", head: true })
-                        .eq("course_id", course.id)
-                        .eq("status", "completed");
-
-                    return {
-                        ...course,
-                        stats: {
-                            totalAssignments: total || 0,
-                            completedAssignments: completed || 0,
-                        },
-                    };
-                })
-            );
-
-            setCourses(coursesWithStats);
-            setLoading(false);
-        } catch (error) {
-            console.error("Error loading courses:", error);
-            setLoading(false);
-        }
-    };
-
-    const filterCourses = () => {
-        let filtered = [...courses];
-
-        // Status filter
-        if (statusFilter === "published") {
-            filtered = filtered.filter((c) => c.published_at);
-        } else if (statusFilter === "draft") {
-            filtered = filtered.filter((c) => !c.published_at);
-        }
-
-        // Search filter
-        if (searchQuery) {
-            filtered = filtered.filter((c) =>
-                c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (c.policy?.title && c.policy.title.toLowerCase().includes(searchQuery.toLowerCase()))
-            );
-        }
-
-        setFilteredCourses(filtered);
-    };
+        filterCourses();
+    }, [courses, searchQuery, statusFilter]);
 
     const handleCloseAssignModal = () => {
         setAssignModalOpen(false);

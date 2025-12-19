@@ -6,7 +6,7 @@ export async function generateQuizExplanation(
     courseTitle: string,
     questionText: string,
     correctAnswer: string,
-    courseObjectives?: any
+    courseObjectives?: string[]
 ) {
     try {
         const model = getGeminiModel();
