@@ -139,7 +139,7 @@ export default function WorkerCoursesPage() {
                             <BookOpen className="w-8 h-8 text-gray-400" />
                         </div>
                         <h3 className="text-lg font-medium text-slate-900 mb-1">No courses assigned</h3>
-                        <p>You don't have any courses assigned to you yet.</p>
+                        <p>You don&apos;t have any courses assigned to you yet.</p>
                     </div>
                 ) : (
                     assignments

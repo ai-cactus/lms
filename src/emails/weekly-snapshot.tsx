@@ -100,7 +100,7 @@ export const WeeklySnapshotEmail = ({
                         </Section>
 
                         <Text className="text-[#666666] text-[12px] leading-[24px]">
-                            This email was sent automatically based on your organization's settings.
+                            This email was sent automatically based on your organization&apos;s settings.
                             You can manage these notifications in your <Link href={`${dashboardUrl}/../settings`} className="text-blue-600 underline">Admin Settings</Link>.
                         </Text>
                     </Container>

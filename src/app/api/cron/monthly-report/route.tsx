@@ -83,7 +83,6 @@ export async function GET(req: NextRequest) {
 
             // Generate PDF
             const pdfBuffer = await renderToBuffer(
-                // @ts-ignore
                 <MonthlyPerformancePDF
                     organizationName={orgName}
                     month={monthName}

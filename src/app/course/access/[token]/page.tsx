@@ -136,7 +136,7 @@ export default function CourseAccessPage() {
                         <div className="flex-1">
                             <h1 className="text-3xl font-bold mb-4">{course.title}</h1>
                             <p className="text-slate-300 text-lg leading-relaxed mb-6">
-                                Welcome, {worker.full_name}! You've been assigned this training course. 
+                                Welcome, {worker.full_name}! You&apos;ve been assigned this training course.
                                 Complete it by your deadline to stay compliant with organizational requirements.
                             </p>
 

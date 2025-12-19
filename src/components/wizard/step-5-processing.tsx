@@ -46,8 +46,8 @@ export function Step5Processing({ onComplete }: Step5ProcessingProps) {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 text-center">
             <h2 className="text-3xl font-bold text-slate-900 mb-4">Your course is being created...</h2>
             <p className="text-slate-500 mb-12 max-w-xl mx-auto text-base">
-                We're reviewing your document to create the course.
-                You'll receive an email notification once the course is complete and ready for review.
+                We&apos;re reviewing your document to create the course.
+                You&apos;ll receive an email notification once the course is complete and ready for review.
             </p>
 
             <div className="max-w-md mx-auto bg-white rounded-3xl border border-gray-200 p-8 shadow-sm mb-12">

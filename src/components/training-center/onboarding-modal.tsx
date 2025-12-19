@@ -171,7 +171,7 @@ export function OnboardingModal({ onClose, userRole = 'admin' }: OnboardingModal
                                     <div>
                                         <h3 className="text-lg font-bold text-slate-900 mb-2">2. Upload Policies</h3>
                                         <p className="text-slate-600 leading-relaxed">
-                                            Upload your organization's documents. Theraptly will analyze and prepare a draft training automatically.
+                                            Upload your organization&apos;s documents. Theraptly will analyze and prepare a draft training automatically.
                                         </p>
                                     </div>
 

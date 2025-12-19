@@ -169,7 +169,7 @@ function AutoLoginContent() {
                         </svg>
                     </div>
                     <h2 className="text-xl font-semibold text-slate-900 mb-2">Welcome!</h2>
-                    <p className="text-slate-500">You've been successfully signed in. Redirecting to your training...</p>
+                    <p className="text-slate-500">You&apos;ve been successfully signed in. Redirecting to your training...</p>
                 </div>
             </div>
         );

@@ -218,7 +218,7 @@ export function CourseViewer({ content, onComplete }: CourseViewerProps) {
                         <div className="mt-20 pt-10 border-t border-slate-200 flex flex-col items-center text-center">
                             <h3 className="text-2xl font-bold mb-4 text-slate-900">Course Completed</h3>
                             <p className="text-slate-500 mb-8">
-                                You've reached the end of the material. Ready to test your knowledge?
+                                You&apos;ve reached the end of the material. Ready to test your knowledge?
                             </p>
                             <button
                                 onClick={onComplete}

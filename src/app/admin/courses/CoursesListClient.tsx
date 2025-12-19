@@ -8,8 +8,6 @@ import {
     Plus,
     Search,
     CheckCircle,
-    AlertCircle,
-    UserPlus,
     ChevronRight,
     ChevronLeft,
     Clock,
@@ -37,7 +35,7 @@ function CoursesListContent() {
     const [courses, setCourses] = useState<Course[]>([]);
     const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
-    const [statusFilter, setStatusFilter] = useState("all");
+    const [statusFilter] = useState("all");
     const [loading, setLoading] = useState(true);
     const [showSuccess, setShowSuccess] = useState(false);
     const [assignModalOpen, setAssignModalOpen] = useState(false);
@@ -140,12 +138,6 @@ function CoursesListContent() {
         }
 
         setFilteredCourses(filtered);
-    };
-
-    const handleOpenAssignModal = (courseId: string, e?: React.MouseEvent) => {
-        if (e) e.stopPropagation();
-        setSelectedCourseForAssign(courseId);
-        setAssignModalOpen(true);
     };
 
     const handleCloseAssignModal = () => {

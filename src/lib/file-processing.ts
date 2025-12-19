@@ -81,7 +81,6 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
     try {
         console.log("Strategy 2: pdfjs-dist");
         // Use dynamic import for ESM module
-        // @ts-ignore
         const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
         const pdfjs = (pdfjsModule as any).default || pdfjsModule;
 

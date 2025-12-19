@@ -37,7 +37,6 @@ export default async function PerformanceOverviewPage({
         .eq('organization_id', organizationId)
         .not('job_title', 'is', null);
 
-    // @ts-ignore
     const roles = Array.from(new Set(rolesData?.map(r => r.job_title) || [])).sort();
 
     const { data: coursesData } = await supabase

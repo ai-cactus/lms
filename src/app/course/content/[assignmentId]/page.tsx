@@ -328,7 +328,7 @@ export default function CourseContentPage() {
                                     Complete Reading & Take Quiz
                                 </button>
                                 <p className="text-sm text-slate-500 mt-2">
-                                    Click when you've finished reading to proceed to the assessment
+                                    Click when you&apos;ve finished reading to proceed to the assessment
                                 </p>
                             </div>
                         </div>

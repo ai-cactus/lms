@@ -22,7 +22,7 @@ export async function getWorkerLearningNeeds(workerId: string): Promise<{
         const supabase = await createClient()
 
         // 1. Fetch all quiz answers for the worker with question and course details
-        const { data: answers, error: answersError } = await supabase
+        const { data: answers, error: _answersError } = await supabase
             .from('quiz_answers')
             .select(`
                 is_correct,
@@ -110,7 +110,7 @@ export async function getWorkerLearningNeeds(workerId: string): Promise<{
         })
 
         // Analyze each course
-        courseStats.forEach((stats, courseId) => {
+        courseStats.forEach((stats, _courseId) => {
             const { course, attempts, answers } = stats
             const objectives = course.objectives || []
 
@@ -204,7 +204,7 @@ export async function getOrgPerformanceOverview(organizationId: string): Promise
 
         // Fetch all quiz answers for the organization
         // We need to join through attempts -> users -> organization_id
-        const { data: answers, error } = await supabase
+        const { data: answers, error: _error } = await supabase
             .from('quiz_answers')
             .select(`
                 is_correct,
@@ -276,8 +276,8 @@ export async function getOrgPerformanceOverview(organizationId: string): Promise
                 const attempt = attempts.find(a => a.id === answer.attempt_id)
                 const course = attempt?.course
                 // Find objective text from course objectives
-                // @ts-ignore
-                const objective = course?.objectives?.find((o: any) => o.id === objId)
+                const courseData = Array.isArray(course) ? course[0] : course
+                const objective = courseData?.objectives?.find((o: any) => o.id === objId)
 
                 if (objective) {
                     const key = `${attempt?.course_id}-${objId}`
@@ -286,8 +286,7 @@ export async function getOrgPerformanceOverview(organizationId: string): Promise
                             correct: 0,
                             total: 0,
                             text: objective.text,
-                            // @ts-ignore
-                            courseTitle: course?.title || 'Unknown Course'
+                            courseTitle: courseData?.title || 'Unknown Course'
                         })
                     }
 
@@ -512,10 +511,8 @@ export async function getDetailedOrgPerformance(
                     const objId = question?.objective_id;
                     if (objId) {
                         const attempt = attempts.find(a => a.id === ans.attempt_id);
-                        // @ts-ignore
                         const courseData = attempt?.course;
                         const course = Array.isArray(courseData) ? courseData[0] : courseData;
-                        // @ts-ignore
                         const objective = course?.objectives?.find((o: any) => o.id === objId);
 
                         if (objective) {
@@ -525,7 +522,6 @@ export async function getDetailedOrgPerformance(
                                     correct: 0,
                                     total: 0,
                                     text: objective.text,
-                                    // @ts-ignore
                                     courseTitle: course?.title || 'Unknown'
                                 });
                             }

@@ -4,7 +4,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { generateCourseAccessToken, storeCourseAccessToken, generateCourseAccessUrl } from '@/lib/course-tokens'
-import { sendWorkerInvitationWithTokens } from '@/lib/email'
 
 export type CreateWorkerState = {
     message?: string

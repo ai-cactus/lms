@@ -55,7 +55,7 @@ export default function WorkerWelcomeCourseAccessEmail({
                     <Section style={greetingSection}>
                         <Text style={greetingText}>Hi {workerName},</Text>
                         <Text style={introText}>
-                            Great news! Your training account has been set up and you're ready to begin your compliance training journey with {organizationName}.
+                            Great news! Your training account has been set up and you&apos;re ready to begin your compliance training journey with {organizationName}.
                         </Text>
                     </Section>
 
