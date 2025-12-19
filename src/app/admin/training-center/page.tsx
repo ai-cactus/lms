@@ -120,6 +120,7 @@ export default function TrainingCenterPage() {
             });
 
             // Fetch performance data for charts
+
             await fetchPerformanceData(orgId);
             await fetchCoverageData(orgId);
 

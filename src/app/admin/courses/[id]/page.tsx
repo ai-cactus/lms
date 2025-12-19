@@ -3,6 +3,17 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Course } from "@/types/database";
+
+interface CourseAssignment {
+    worker_id: string;
+    status: string;
+    progress_percentage: number;
+    users?: {
+        full_name: string;
+        role: string;
+    };
+}
 import {
     ArrowLeft,
     Users,
@@ -90,7 +101,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                 .single();
 
             if (courseError) throw courseError;
-            setCourse(courseData as any);
+            setCourse(courseData as Course);
 
             // Fetch assignments with user details
             const { data: assignments } = await supabase
@@ -118,7 +129,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                 .order("completed_at", { ascending: false });
 
             // Combine data
-            const staffData: StaffPerformance[] = (assignments || []).map((assignment: any) => {
+            const staffData: StaffPerformance[] = (assignments || []).map((assignment: CourseAssignment) => {
                 const completion = completions?.find((c) => c.worker_id === assignment.worker_id);
                 // Find latest attempt for this worker
                 const attempt = attempts?.find((a) => a.worker_id === assignment.worker_id);

@@ -33,8 +33,14 @@ function AutoLoginContent() {
     const searchParams = useSearchParams();
     const supabase = createClient();
 
-    const performAutoLogin = async (token: string, redirectTo: string | null) => {
+    const performAutoLogin = async (token: string | null, redirectTo: string | null) => {
         try {
+            if (!token) {
+                setError('No login token provided');
+                setStatus('error');
+                return;
+            }
+
             // Step 1: Validate the auto-login token
             setLoadingMessage('Validating your secure access link...');
             const response = await fetch('/api/auth/auto-login', {
@@ -133,12 +139,6 @@ function AutoLoginContent() {
     useEffect(() => {
         const token = searchParams.get('token');
         const redirectTo = searchParams.get('redirect');
-
-        if (!token) {
-            setError('No login token provided');
-            setStatus('error');
-            return;
-        }
 
         performAutoLogin(token, redirectTo);
     }, [searchParams]);

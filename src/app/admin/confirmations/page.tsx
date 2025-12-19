@@ -215,9 +215,9 @@ export default function PendingConfirmationsPage() {
             setShowBatchDialog(false);
             setSelectedIds(new Set());
             loadCompletions();
-        } catch (error: any) {
+        } catch (error) {
             console.error("Error submitting batch action:", error);
-            alert(error.message || "Failed to submit batch action");
+            alert(error instanceof Error ? error.message : "Failed to submit batch action");
         } finally {
             setSubmitting(false);
         }

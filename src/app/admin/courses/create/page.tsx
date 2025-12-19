@@ -7,6 +7,13 @@ import { CourseData } from "@/types/course";
 import { createClient } from "@/lib/supabase/client";
 import { courseDraftManager, CourseDraft } from "@/lib/course-draft";
 
+interface InputQuizQuestion {
+    text: string;
+    options: string[];
+    correctAnswer: number;
+    explanation?: string;
+}
+
 function CreateCourseContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -129,7 +136,7 @@ function CreateCourseContent() {
 
             // 4. Insert Quiz Questions
             if (data.questions && data.questions.length > 0) {
-                const questionsToInsert = data.questions.map((q: any) => ({
+                const questionsToInsert = data.questions.map((q: InputQuizQuestion) => ({
                     course_id: course.id,
                     question_text: q.text,
                     options: q.options,
@@ -189,7 +196,7 @@ function CreateCourseContent() {
             // 5. Redirect
             router.push("/admin/training-center");
 
-        } catch (error: any) {
+        } catch (error) {
             console.error("Error saving course:", error);
             console.error("Error details:", JSON.stringify(error, null, 2));
             alert(`Failed to save course: ${error.message || "Unknown error"}`);
