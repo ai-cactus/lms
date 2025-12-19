@@ -11,7 +11,13 @@ interface QuizResult {
     worker_id: string;
     quiz_score: number;
     completed_at: string;
-    quiz_answers: any;
+    quiz_answers: QuizAnswer[];
+}
+
+interface QuizAnswer {
+    question_id: string;
+    selected_option: number;
+    is_correct: boolean;
 }
 
 interface QuizQuestion {

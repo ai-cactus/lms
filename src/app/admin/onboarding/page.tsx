@@ -140,6 +140,7 @@ export default function AdminOnboarding() {
     };
 
     useEffect(() => {
+
         checkOnboardingStatus();
     }, []);
 

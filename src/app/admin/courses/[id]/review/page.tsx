@@ -5,13 +5,58 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle, AlertCircle, Plus, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
 import type { Course, CourseObjective, CARFStandard } from "@/types/database";
+import type { QuizQuestion } from "@/types/course";
 import { convertToSlides, convertToPages } from "@/lib/format-converter";
+
+interface CourseConfigurationProps {
+    course: Course;
+    setCourse: (course: Course) => void;
+    lessonNotes: string;
+    setLessonNotes: (notes: string) => void;
+    quizQuestions: QuizQuestion[];
+    onNext: () => void;
+    onBack: () => void;
+    saving: boolean;
+}
+
+interface ObjectivesReviewProps {
+    objectives: CourseObjective[];
+    setObjectives: (objectives: CourseObjective[]) => void;
+    onNext: () => void;
+    saving: boolean;
+}
+
+interface LessonNotesReviewProps {
+    lessonNotes: string;
+    setLessonNotes: (notes: string) => void;
+    onNext: () => void;
+    onBack: () => void;
+    saving: boolean;
+}
+
+interface QuizQuestionsReviewProps {
+    questions: QuizQuestion[];
+    setQuestions: (questions: QuizQuestion[]) => void;
+    objectives: CourseObjective[];
+    onNext: () => void;
+    onBack: () => void;
+    saving: boolean;
+}
+
+interface PublishConfirmationProps {
+    course: Course;
+    objectives: CourseObjective[];
+    questionCount: number;
+    onPublish: () => void;
+    onBack: () => void;
+    saving: boolean;
+}
 
 export default function CourseReviewPage() {
     const [course, setCourse] = useState<Course | null>(null);
     const [objectives, setObjectives] = useState<CourseObjective[]>([]);
     const [lessonNotes, setLessonNotes] = useState("");
-    const [quizQuestions, setQuizQuestions] = useState<any[]>([]);
+    const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -39,7 +84,7 @@ export default function CourseReviewPage() {
             setCourse(courseData);
 
             // Ensure objectives have IDs (AI might not generate them)
-            const objectivesWithIds = (courseData.objectives || []).map((obj: any, index: number) => ({
+            const objectivesWithIds = (courseData.objectives || []).map((obj: CourseObjective, index: number) => ({
                 ...obj,
                 id: obj.id || `obj-${Date.now()}-${index}`
             }));
@@ -57,7 +102,7 @@ export default function CourseReviewPage() {
             setQuizQuestions(questionsData || []);
 
             setLoading(false);
-        } catch (err: any) {
+        } catch (err) {
             setError(err.message);
             setLoading(false);
         }
@@ -73,7 +118,7 @@ export default function CourseReviewPage() {
 
             if (error) throw error;
             setCurrentStep(2);
-        } catch (err: any) {
+        } catch (err) {
             setError(err.message);
         } finally {
             setSaving(false);
@@ -90,7 +135,7 @@ export default function CourseReviewPage() {
 
             if (error) throw error;
             setCurrentStep(3);
-        } catch (err: any) {
+        } catch (err) {
             setError(err.message);
         } finally {
             setSaving(false);
@@ -110,7 +155,7 @@ export default function CourseReviewPage() {
 
             if (error) throw error;
             setCurrentStep(4);
-        } catch (err: any) {
+        } catch (err) {
             setError(err.message);
         } finally {
             setSaving(false);
@@ -135,7 +180,7 @@ export default function CourseReviewPage() {
             } else {
                 router.push(`/admin/courses/${courseId}/published`);
             }
-        } catch (err: any) {
+        } catch (err) {
             setError(err.message);
             setSaving(false);
         }
@@ -263,7 +308,7 @@ export default function CourseReviewPage() {
                                         .eq("id", courseId);
                                     if (error) throw error;
                                     setCurrentStep(5);
-                                } catch (err: any) {
+                                } catch (err) {
                                     setError(err.message);
                                 } finally {
                                     setSaving(false);
@@ -291,8 +336,8 @@ export default function CourseReviewPage() {
 }
 
 // Course Configuration Component
-function CourseConfiguration({ course, setCourse, lessonNotes, setLessonNotes, quizQuestions, onNext, onBack, saving }: any) {
-    const updateCourse = (field: string, value: any) => {
+function CourseConfiguration({ course, setCourse, lessonNotes, setLessonNotes, quizQuestions, onNext, onBack, saving }: CourseConfigurationProps) {
+    const updateCourse = (field: keyof Course, value: any) => {
         setCourse({ ...course, [field]: value });
     };
 
@@ -544,7 +589,7 @@ function CourseConfiguration({ course, setCourse, lessonNotes, setLessonNotes, q
 }
 
 // Objectives Review Component
-function ObjectivesReview({ objectives, setObjectives, onNext, saving }: any) {
+function ObjectivesReview({ objectives, setObjectives, onNext, saving }: ObjectivesReviewProps) {
     const addObjective = () => {
         setObjectives([
             ...objectives,
@@ -552,17 +597,17 @@ function ObjectivesReview({ objectives, setObjectives, onNext, saving }: any) {
         ]);
     };
 
-    const updateObjective = (index: number, field: string, value: any) => {
+    const updateObjective = (index: number, field: keyof CourseObjective, value: string) => {
         const updated = [...objectives];
         updated[index] = { ...updated[index], [field]: value };
         setObjectives(updated);
     };
 
     const removeObjective = (index: number) => {
-        setObjectives(objectives.filter((_: any, i: number) => i !== index));
+        setObjectives(objectives.filter((_, i: number) => i !== index));
     };
 
-    const hasValidObjectives = objectives.some((obj: any) => obj.text.trim());
+    const hasValidObjectives = objectives.some((obj: CourseObjective) => obj.text.trim());
 
     return (
         <div>
@@ -572,7 +617,7 @@ function ObjectivesReview({ objectives, setObjectives, onNext, saving }: any) {
             </p>
 
             <div className="space-y-4 mb-6">
-                {objectives.map((obj: any, index: number) => (
+                {objectives.map((obj: CourseObjective, index: number) => (
                     <div key={obj.id || index} className="p-4 border border-gray-200 rounded-lg">
                         <div className="flex items-start gap-3">
                             <div className="flex-1">
@@ -626,7 +671,7 @@ function ObjectivesReview({ objectives, setObjectives, onNext, saving }: any) {
 }
 
 // Lesson Notes Review Component
-function LessonNotesReview({ lessonNotes, setLessonNotes, onNext, onBack, saving }: any) {
+function LessonNotesReview({ lessonNotes, setLessonNotes, onNext, onBack, saving }: LessonNotesReviewProps) {
     return (
         <div>
             <h2 className="text-2xl font-bold text-slate-900 mb-2">Review Lesson Notes</h2>
@@ -664,7 +709,7 @@ function LessonNotesReview({ lessonNotes, setLessonNotes, onNext, onBack, saving
 }
 
 // Quiz Questions Review Component
-function QuizQuestionsReview({ questions, setQuestions, objectives, onNext, onBack, saving }: any) {
+function QuizQuestionsReview({ questions, setQuestions, objectives, onNext, onBack, saving }: QuizQuestionsReviewProps) {
     const addQuestion = () => {
         setQuestions([
             ...questions,
@@ -684,7 +729,7 @@ function QuizQuestionsReview({ questions, setQuestions, objectives, onNext, onBa
         ]);
     };
 
-    const updateQuestion = (index: number, field: string, value: any) => {
+    const updateQuestion = (index: number, field: keyof QuizQuestion, value: any) => {
         const updated = [...questions];
         updated[index] = { ...updated[index], [field]: value };
         setQuestions(updated);
@@ -698,13 +743,13 @@ function QuizQuestionsReview({ questions, setQuestions, objectives, onNext, onBa
 
     const removeQuestion = (index: number) => {
         if (questions.length > 3) {
-            setQuestions(questions.filter((_: any, i: number) => i !== index));
+            setQuestions(questions.filter((_, i: number) => i !== index));
         }
     };
 
-    const hasValidQuestions = questions.length >= 3 && questions.every((q: any) =>
+    const hasValidQuestions = questions.length >= 3 && questions.every((q: QuizQuestion) =>
         q.question_text.trim() &&
-        q.options.every((opt: any) => opt.text.trim()) &&
+        q.options.every((opt: string) => opt.trim()) &&
         q.correct_answer
     );
 
@@ -716,7 +761,7 @@ function QuizQuestionsReview({ questions, setQuestions, objectives, onNext, onBa
             </p>
 
             <div className="space-y-6 mb-6">
-                {questions.map((q: any, qIndex: number) => (
+                {questions.map((q: QuizQuestion, qIndex: number) => (
                     <div key={q.id || qIndex} className="p-4 border border-gray-200 rounded-lg">
                         <div className="flex items-start justify-between mb-3">
                             <span className="font-semibold text-slate-900">Question {qIndex + 1}</span>
@@ -740,7 +785,7 @@ function QuizQuestionsReview({ questions, setQuestions, objectives, onNext, onBa
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                             >
                                 <option value="">Select an objective...</option>
-                                {objectives?.map((obj: any) => (
+                                {objectives?.map((obj: CourseObjective) => (
                                     <option key={obj.id} value={obj.id}>
                                         {obj.text.length > 100 ? obj.text.substring(0, 100) + "..." : obj.text}
                                     </option>
@@ -757,7 +802,7 @@ function QuizQuestionsReview({ questions, setQuestions, objectives, onNext, onBa
                         />
 
                         <div className="space-y-2">
-                            {q.options.map((opt: any, optIndex: number) => (
+                            {q.options.map((opt: string, optIndex: number) => (
                                 <div key={opt.id} className="flex items-center gap-2">
                                     <input
                                         type="radio"
@@ -810,7 +855,7 @@ function QuizQuestionsReview({ questions, setQuestions, objectives, onNext, onBa
 }
 
 // Publish Confirmation Component
-function PublishConfirmation({ course, objectives, questionCount, onPublish, onBack, saving }: any) {
+function PublishConfirmation({ course, objectives, questionCount, onPublish, onBack, saving }: PublishConfirmationProps) {
     return (
         <div>
             <h2 className="text-2xl font-bold text-slate-900 mb-2">Confirm Course Details</h2>
@@ -827,7 +872,7 @@ function PublishConfirmation({ course, objectives, questionCount, onPublish, onB
                 <div className="p-4 bg-white rounded-lg">
                     <h3 className="font-semibold text-slate-900 mb-2">Learning Objectives</h3>
                     <ul className="list-disc list-inside space-y-1">
-                        {objectives.map((obj: any, index: number) => (
+                        {objectives.map((obj: CourseObjective, index: number) => (
                             <li key={index} className="text-slate-700">{obj.text}</li>
                         ))}
                     </ul>

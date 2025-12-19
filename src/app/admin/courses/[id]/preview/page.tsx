@@ -3,6 +3,7 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import type { Course } from "@/types/database";
 import { Clock, BookOpen, Calendar, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
@@ -58,7 +59,7 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
                 .single();
 
             if (courseError) throw courseError;
-            setCourse(courseData as any);
+            setCourse(courseData as Course);
             setLoading(false);
         } catch (error) {
             console.error("Error loading course data:", error);
