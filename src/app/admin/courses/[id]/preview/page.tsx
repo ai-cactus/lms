@@ -235,7 +235,7 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
 
                                     {course.objectives?.items && (
                                         <div className="mt-8">
-                                            <h3 className="text-xl font-bold text-gray-900 mb-4">What You'll Learn</h3>
+                                            <h3 className="text-xl font-bold text-gray-900 mb-4">What You&apos;ll Learn</h3>
                                             <ul className="space-y-2">
                                                 {course.objectives.items.map((item, index) => (
                                                     <li key={index} className="flex items-start gap-3">

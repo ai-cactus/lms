@@ -169,7 +169,7 @@ Format your response as JSON with this structure:
   "gaps": ["Any missing or unclear CARF requirements"]
 }`;
 
-        let promptParts: any[] = [prompt];
+        const promptParts: any[] = [prompt];
 
         if (fileName.endsWith(".pdf")) {
             const fileData = Buffer.from(fileBuffer).toString("base64");

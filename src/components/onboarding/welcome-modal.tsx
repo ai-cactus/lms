@@ -78,7 +78,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-2">Upload Policies</h3>
                   <p className="text-gray-600">
-                    Upload your organization's documents. Theraptly will analyze and prepare a draft training automatically.
+                    Upload your organization&apos;s documents. Theraptly will analyze and prepare a draft training automatically.
                   </p>
                 </div>
               </div>

@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
             console.warn('Some files failed to process:', processingErrors);
         }
 
-        let fullText = processedFiles.join("\n");
+        const fullText = processedFiles.join("\n");
 
         // 2. Check if content is too large and implement smart chunking
         // Gemini 2.5 Flash has ~1M token limit (~4M chars), but we use conservative limits

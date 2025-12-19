@@ -48,7 +48,7 @@ export default function ForgotPasswordPage() {
                             We&apos;ve sent a password reset link to <strong>{email}</strong>
                         </p>
                         <p className="text-sm text-slate-500 mb-6">
-                            The link will expire in 1 hour. If you don't see the email, check your spam folder.
+                            The link will expire in 1 hour. If you don&apos;t see the email, check your spam folder.
                         </p>
                         <button
                             onClick={() => router.push("/login")}
@@ -83,7 +83,7 @@ export default function ForgotPasswordPage() {
 
                     <h1 className="text-2xl font-bold text-slate-900 mb-2">Forgot password?</h1>
                     <p className="text-slate-600 mb-6">
-                        No worries! Enter your email and we'll send you a reset link.
+                        No worries! Enter your email and we&apos;ll send you a reset link.
                     </p>
 
                     {error && (

@@ -201,7 +201,7 @@ export default function CourseAccessPage() {
                         {/* What You'll Learn */}
                         {course.objectives && course.objectives.length > 0 && (
                             <div className="mb-12">
-                                <h2 className="text-2xl font-bold text-slate-900 mb-6">What You'll Learn</h2>
+                                <h2 className="text-2xl font-bold text-slate-900 mb-6">What You&apos;ll Learn</h2>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {course.objectives.map((objective, index) => (
                                         <div key={index} className="flex items-start gap-3">

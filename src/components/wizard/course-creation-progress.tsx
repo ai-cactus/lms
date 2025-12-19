@@ -85,7 +85,7 @@ export function CourseCreationProgress({ onComplete }: CourseCreationProgressPro
                         We&apos;re reviewing your document to create the course.
                     </p>
                     <p className="text-sm text-slate-400">
-                        You'll receive an email notification once the course is complete and ready for review.
+                        You&apos;ll receive an email notification once the course is complete and ready for review.
                     </p>
                 </div>
 

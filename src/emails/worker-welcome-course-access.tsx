@@ -108,7 +108,7 @@ export default function WorkerWelcomeCourseAccessEmail({
                         </>
                     ) : (
                         <Text style={introText}>
-                            You don't have any courses assigned yet. Your supervisor will assign courses to you soon.
+                            You don&apos;t have any courses assigned yet. Your supervisor will assign courses to you soon.
                         </Text>
                     )}
 

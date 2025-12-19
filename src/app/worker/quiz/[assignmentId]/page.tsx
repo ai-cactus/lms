@@ -209,7 +209,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                 )
             `;
 
-            let { data: assignmentData, error: assignmentError } = await supabase
+            const { data: assignmentData, error: assignmentError } = await supabase
                 .from("course_assignments")
                 .select(selectQuery)
                 .eq("id", assignmentId)
