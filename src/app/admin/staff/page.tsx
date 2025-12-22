@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Search, UserPlus, Upload, Trash2, MoreVertical, CheckCircle, XCircle, X } from "lucide-react";
-import InviteStaffModal from "@/components/staff/InviteStaffModal";
 import ImportWorkersModal from "@/components/staff/ImportWorkersModal";
 import Avatar from "@/components/ui/Avatar";
 
@@ -24,7 +23,6 @@ export default function StaffDetailsPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
-    const [showInviteModal, setShowInviteModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
     const [organizationId, setOrganizationId] = useState("");
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -146,11 +144,6 @@ export default function StaffDetailsPage() {
 
     return (
         <div className="min-h-screen bg-white p-8">
-            <InviteStaffModal
-                isOpen={showInviteModal}
-                onClose={() => setShowInviteModal(false)}
-                onInviteComplete={() => loadStaff()}
-            />
             <ImportWorkersModal
                 isOpen={showImportModal}
                 onClose={() => setShowImportModal(false)}
@@ -171,13 +164,6 @@ export default function StaffDetailsPage() {
                                 >
                                     <UserPlus className="w-4 h-4" />
                                     Add New Worker
-                                </button>
-                                <button
-                                    onClick={() => setShowInviteModal(true)}
-                                    className="px-4 py-2 border border-[#D4D4D4] text-[#4758E0] rounded-lg font-medium hover:bg-blue-50 transition-colors flex items-center gap-2"
-                                >
-                                    <UserPlus className="w-4 h-4" />
-                                    Assign
                                 </button>
                             </div>
                 </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Download, MoreHorizontal } from "lucide-react";
+import { Search, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface WorkerCourse {
@@ -21,6 +21,32 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
 
     const handleViewCourse = (courseId: string) => {
         router.push(`/worker/courses/${courseId}/details`);
+    };
+
+    const handleExportCSV = () => {
+        // Create CSV content
+        const headers = ['Course Name', 'Level', 'Progress', 'Status', 'Deadline'];
+        const csvContent = [
+            headers.join(','),
+            ...courses.map(course => [
+                `"${course.name}"`,
+                course.level,
+                `${course.progress}%`,
+                course.status,
+                course.deadline
+            ].join(','))
+        ].join('\n');
+
+        // Create and download the file
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'my-courses.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const getStatusColor = (progress: number) => {
@@ -54,7 +80,10 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                                 className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                         </div>
-                        <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <button
+                            onClick={handleExportCSV}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                        >
                             <Download className="w-4 h-4" />
                             Export
                         </button>
@@ -111,14 +140,11 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="flex items-center gap-2">
-                                        <button 
+                                        <button
                                             onClick={() => handleViewCourse(course.id)}
                                             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
                                         >
                                             View
-                                        </button>
-                                        <button className="p-2 text-gray-400 hover:text-gray-600">
-                                            <MoreHorizontal className="w-4 h-4" />
                                         </button>
                                     </div>
                                 </td>

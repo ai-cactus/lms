@@ -47,7 +47,7 @@ export default function WorkerWelcomeCourseAccessEmail({
                 <Container style={container}>
                     {/* Header */}
                     <Section style={headerSection}>
-                        <Heading style={h1}>🎓 Welcome to {organizationName}</Heading>
+                        <Heading style={h1}> Welcome to {organizationName}</Heading>
                         <Text style={subtitle}>Your training account is now active</Text>
                     </Section>
 
@@ -63,7 +63,7 @@ export default function WorkerWelcomeCourseAccessEmail({
                         <>
                             {/* Course Access Section */}
                             <Section style={coursesSection}>
-                                <Text style={sectionTitle}>📚 Your Assigned Training Courses</Text>
+                                <Text style={sectionTitle}> Your Assigned Training Courses</Text>
                                 <Text style={sectionSubtitle}>
                                     Click the buttons below to start your training immediately - no login required!
                                 </Text>
@@ -79,7 +79,7 @@ export default function WorkerWelcomeCourseAccessEmail({
 
                                         <Section style={buttonContainer}>
                                             <Button style={primaryButton} href={course.autoLoginUrl}>
-                                                🚀 Start Course Now
+                                                 Start Course Now
                                             </Button>
                                         </Section>
 
@@ -91,7 +91,7 @@ export default function WorkerWelcomeCourseAccessEmail({
                             </Section>
 
                             <Section style={infoBox}>
-                                <Text style={infoTitle}>🎯 How It Works</Text>
+                                <Text style={infoTitle}>How It Works</Text>
                                 <Text style={infoText}>
                                     • <strong>One-click access</strong> - No passwords or manual login required
                                 </Text>
@@ -113,7 +113,7 @@ export default function WorkerWelcomeCourseAccessEmail({
                     )}
 
                     <Section style={securityBox}>
-                        <Text style={securityTitle}>🔒 Security & Access Information</Text>
+                        <Text style={securityTitle}>Security & Access Information</Text>
                         <Text style={securityText}>
                             • <strong>Personalized access</strong> - These links are unique to your account
                         </Text>
@@ -130,14 +130,14 @@ export default function WorkerWelcomeCourseAccessEmail({
 
                     {/* Alternative Access */}
                     <Section style={alternativeSection}>
-                        <Text style={alternativeTitle}>🔄 Alternative Access</Text>
+                        <Text style={alternativeTitle}>Alternative Access</Text>
                         <Text style={alternativeText}>
                             You can also access your complete training dashboard:
                         </Text>
 
                         <Section style={buttonContainer}>
                             <Button style={secondaryButton} href={fallbackLoginUrl}>
-                                📊 View All Training
+                                 View All Training
                             </Button>
                         </Section>
 

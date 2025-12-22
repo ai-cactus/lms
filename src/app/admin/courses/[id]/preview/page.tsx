@@ -35,7 +35,7 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
     const supabase = createClient();
     const [course, setCourse] = useState<CourseDetails | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState("about");
+    const [showAllSections, setShowAllSections] = useState(false);
 
     useEffect(() => {
         loadCourseData();
@@ -188,81 +188,45 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Main Content */}
                         <div style={{border: "1px solid #EEEFF2", borderRadius: "12px", padding: "35px", boxShadow: "0 4px 4px 0 #0000000D"}} className="lg:col-span-2">
-                            {/* Tabs */}
-                            <div className="border-b border-gray-200 mb-8">
-                                <nav className="flex space-x-8">
-                                    <button
-                                        onClick={() => setActiveTab("about")}
-                                        className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "about"
-                                            ? "border-blue-500 text-blue-600"
-                                            : "border-transparent text-gray-500 hover:text-gray-700"
-                                            }`}
-                                    >
-                                        About
-                                    </button>
-                                    <button
-                                        onClick={() => setActiveTab("ratings")}
-                                        className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "ratings"
-                                            ? "border-blue-500 text-blue-600"
-                                            : "border-transparent text-gray-500 hover:text-gray-700"
-                                            }`}
-                                    >
-                                        Course Ratings
-                                    </button>
-                                    <button
-                                        onClick={() => setActiveTab("discussions")}
-                                        className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "discussions"
-                                            ? "border-blue-500 text-blue-600"
-                                            : "border-transparent text-gray-500 hover:text-gray-700"
-                                            }`}
-                                    >
-                                        Discussions
-                                    </button>
-                                </nav>
-                            </div>
-
-                            {/* Tab Content */}
-                            {activeTab === "about" && (
+                            <div className="space-y-8">
+                                {/* Course Overview */}
                                 <div>
-                                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Course Overview</h2>
-                                    <div className="prose prose-lg max-w-none text-gray-700">
-                                        <ReactMarkdown
-                                            remarkPlugins={[remarkMath, remarkGfm]}
-                                            rehypePlugins={[rehypeKatex]}
-                                        >
-                                            {course.lesson_notes || "Course content will be displayed here."}
-                                        </ReactMarkdown>
+                                    <h3 className="text-xl font-bold text-gray-900 mb-4">Course Overview</h3>
+                                    <div className="text-gray-700 leading-relaxed">
+                                        {course.objectives?.difficulty && (
+                                            <p className="mb-3">
+                                                <span className="font-medium">Skill Level:</span> {course.objectives.difficulty}
+                                            </p>
+                                        )}
+                                        <p className="mb-3">
+                                            <span className="font-medium">Duration:</span> {estimateReadTime(course.lesson_notes || '')} minutes
+                                        </p>
+                                        <p className="mb-3">
+                                            <span className="font-medium">Pass Mark:</span> {course.pass_mark}%
+                                        </p>
+                                        {course.policy?.title && (
+                                            <p>
+                                                <span className="font-medium">Related Policy:</span> {course.policy.title}
+                                            </p>
+                                        )}
                                     </div>
-
-                                    {course.objectives?.items && (
-                                        <div className="mt-8">
-                                            <h3 className="text-xl font-bold text-gray-900 mb-4">What You&apos;ll Learn</h3>
-                                            <ul className="space-y-2">
-                                                {course.objectives.items.map((item, index) => (
-                                                    <li key={index} className="flex items-start gap-3">
-                                                        <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
-                                                        <span className="text-gray-700">{item}</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
                                 </div>
-                            )}
 
-                            {activeTab === "ratings" && (
-                                <div>
-                                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Course Ratings</h2>
-                                    <p className="text-gray-600">Course ratings and reviews will be displayed here.</p>
-                                </div>
-                            )}
-
-                            {activeTab === "discussions" && (
-                                <div>
-                                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Discussions</h2>
-                                    <p className="text-gray-600">Course discussions will be displayed here.</p>
-                                </div>
-                            )}
+                                {/* What You Will Learn */}
+                                {course.objectives?.items && course.objectives.items.length > 0 && (
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-900 mb-4">What You Will Learn</h3>
+                                        <ul className="space-y-3">
+                                            {course.objectives.items.map((item, index) => (
+                                                <li key={index} className="flex items-start gap-3">
+                                                    <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                                                    <span className="text-gray-700">{item}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Sidebar */}
@@ -271,7 +235,7 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
                                 <h3 className="text-lg font-bold text-gray-900 mb-4">Course Content</h3>
                                  <div className="border-t border-dotted border-[#DFE1E6] mb-4"></div>
                                 <div className="space-y-3">
-                                    {sections.map((section, index) => (
+                                    {sections.slice(0, showAllSections ? sections.length : 5).map((section, index) => (
                                         <div key={index} className="text-sm">
                                             <div className="text-[#808897] hover:text-[#2C3D8F] cursor-pointer">
                                                 {section.title}
@@ -279,6 +243,17 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
                                         </div>
                                     ))}
                                 </div>
+
+                                {sections.length > 5 && (
+                                    <div className="mt-6">
+                                        <button
+                                            onClick={() => setShowAllSections(!showAllSections)}
+                                            className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                                        >
+                                            {showAllSections ? "View Less" : `View ${sections.length - 5} More Sections`}
+                                        </button>
+                                    </div>
+                                )}
 
                                 <div className="mt-8 space-y-4">
                                     <div className="flex items-center gap-3">

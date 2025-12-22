@@ -406,6 +406,18 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
                             </button>
                         </div>
                     ))}
+
+                    {/* Show analyze button for existing files if not yet analyzed */}
+                    {files.length > 0 && uploadProgress < 100 && !isAnalyzing && (
+                        <div className="text-center">
+                            <button
+                                onClick={() => onAnalyze()}
+                                className="px-8 py-3 bg-[#4E61F6] text-white rounded-lg font-semibold hover:bg-[#4E61F6]/90 transition-colors"
+                            >
+                                Analyze {files.length} Document{files.length > 1 ? 's' : ''}
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 

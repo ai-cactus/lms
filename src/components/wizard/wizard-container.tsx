@@ -524,7 +524,7 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds, initial
                         <Step2Upload
                             files={files}
                             onFilesChange={handleFilesSelected}
-                            onAnalyze={() => { }} // No longer needed as manual trigger
+                            onAnalyze={() => performAnalysis(files)}
                             isAnalyzing={isAnalyzing}
                             uploadProgress={uploadProgress}
                         />

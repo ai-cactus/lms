@@ -4,6 +4,47 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { CARFCourse } from '@/lib/carf-courses'
 
+export async function sendCourseAssignmentNotifications(
+    assignments: Array<{
+        userId: string;
+        userEmail: string;
+        userName: string;
+        courseTitle: string;
+        organizationName: string;
+        courseId: string;
+        deadline: string;
+    }>
+) {
+    const { sendCourseAssignmentNotification } = await import("@/lib/email");
+
+    // Send notifications in parallel but don't block on failures
+    const emailPromises = assignments.map(async (assignment) => {
+        try {
+            await sendCourseAssignmentNotification({
+                to: assignment.userEmail,
+                workerName: assignment.userName,
+                courseTitle: assignment.courseTitle,
+                organizationName: assignment.organizationName,
+                accessUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/worker/courses/${assignment.courseId}/details`,
+                deadline: assignment.deadline,
+            });
+            return { success: true, email: assignment.userEmail };
+        } catch (error) {
+            console.error(`Failed to send notification to ${assignment.userEmail}:`, error);
+            return { success: false, email: assignment.userEmail, error };
+        }
+    });
+
+    const results = await Promise.allSettled(emailPromises);
+    const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
+
+    console.log(`Course assignment notifications: ${successful} successful, ${failed} failed`);
+
+    // Return success regardless of email results - don't break the assignment flow
+    return { success: true };
+}
+
 export type DeleteCourseState = {
     message?: string
     error?: string

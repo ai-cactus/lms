@@ -628,7 +628,7 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
 
                     {/* Sidebar - Table of Contents */}
                     <div className="lg:col-span-1">
-                        <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-8">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-8 max-h-[calc(100vh-200px)] overflow-y-auto">
                             <h3 className="text-lg font-bold text-gray-900 mb-4">Table of Content</h3>
                             <div className="space-y-2">
                                 {headings.length > 0 ? (

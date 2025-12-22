@@ -14,11 +14,14 @@ interface NetworkContextType {
 const NetworkContext = createContext<NetworkContextType | undefined>(undefined);
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
-    const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+    const [isOnline, setIsOnline] = useState(true); // Default to online for SSR compatibility
     const [isRetrying, setIsRetrying] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
 
     useEffect(() => {
+        // Set initial online status on client side
+        setIsOnline(navigator.onLine);
+
         // Monitor browser online/offline status
         const handleOnline = () => setIsOnline(true);
         const handleOffline = () => setIsOnline(false);

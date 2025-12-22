@@ -91,9 +91,33 @@ export default function AssignUsersModal({ isOpen, onClose, courseId, onAssignme
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
+
+            // Get course details first
+            const { data: courseData, error: courseError } = await supabase
+                .from("courses")
+                .select("title")
+                .eq("id", courseId)
+                .single();
+
+            if (courseError) throw courseError;
+
+            // Get organization name
+            const { data: userData } = await supabase
+                .from("users")
+                .select("organization:organizations(name)")
+                .eq("id", user.id)
+                .single();
+
+            const organizationName = (userData?.organization as any)?.name || "Your Organization";
+
             // Calculate deadline (30 days from now)
             const deadline = new Date();
             deadline.setDate(deadline.getDate() + 30);
+            const deadlineString = deadline.toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric'
+            });
 
             const assignments = Array.from(selectedUsers).map(userId => ({
                 course_id: courseId,
@@ -109,6 +133,29 @@ export default function AssignUsersModal({ isOpen, onClose, courseId, onAssignme
                 .insert(assignments);
 
             if (error) throw error;
+
+            // Send email notifications to assigned users
+            const selectedUserObjects = users.filter(u => selectedUsers.has(u.id));
+
+            // Prepare assignment data for email notifications
+            const assignmentData = selectedUserObjects.map(user => ({
+                userId: user.id,
+                userEmail: user.email,
+                userName: user.full_name,
+                courseTitle: courseData.title,
+                organizationName,
+                courseId,
+                deadline: deadlineString,
+            }));
+
+            // Send notifications via server action (don't block on email failures)
+            try {
+                const { sendCourseAssignmentNotifications } = await import("@/app/actions/course");
+                await sendCourseAssignmentNotifications(assignmentData);
+            } catch (emailError) {
+                console.error("Failed to send email notifications:", emailError);
+                // Don't fail the entire operation if email fails
+            }
 
             onAssignmentComplete();
             onClose();

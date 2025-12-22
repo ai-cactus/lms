@@ -17,6 +17,7 @@ import {
     Award,
     Zap,
     AlertTriangle,
+    Loader2,
 } from "lucide-react";
 import AssignRetakeModal from "@/components/staff/AssignRetakeModal";
 import AssignCourseModal from "@/components/staff/AssignCourseModal";
@@ -62,6 +63,7 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [editingBio, setEditingBio] = useState(false);
     const [bioText, setBioText] = useState("");
+    const [isExporting, setIsExporting] = useState(false);
     const [stats, setStats] = useState({
         totalAssigned: 0,
         completed: 0,
@@ -451,9 +453,42 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
                                             className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                                         />
                                     </div>
-                                    <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-white transition-colors flex items-center gap-2 text-sm">
-                                        <Download className="w-4 h-4" />
-                                        Export
+                                    <button
+                                        onClick={async () => {
+                                            if (isExporting) return; // Prevent multiple clicks
+
+                                            setIsExporting(true);
+                                            try {
+                                                const response = await fetch(`/api/staff/${id}/performance-pdf`);
+                                                if (response.ok) {
+                                                    const blob = await response.blob();
+                                                    const url = window.URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    a.download = `Staff_Performance_${staff?.full_name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    document.body.removeChild(a);
+                                                    window.URL.revokeObjectURL(url);
+                                                } else {
+                                                    alert('Failed to generate PDF report');
+                                                }
+                                            } catch (error) {
+                                                console.error('Error downloading PDF:', error);
+                                                alert('Failed to download PDF report');
+                                            } finally {
+                                                setIsExporting(false);
+                                            }
+                                        }}
+                                        disabled={isExporting}
+                                        className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-white transition-colors flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isExporting ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Download className="w-4 h-4" />
+                                        )}
+                                        {isExporting ? 'Exporting...' : 'Export'}
                                     </button>
                                 </div>
                             </div>

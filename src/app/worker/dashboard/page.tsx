@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { WorkerStatsCards } from "@/components/worker/worker-stats-cards";
 import { WorkerCoursesTable } from "@/components/worker/worker-courses-table";
@@ -39,7 +39,7 @@ interface WorkerCourse {
     status: 'not-started' | 'in-progress' | 'completed';
 }
 
-export default function WorkerDashboardPage() {
+function WorkerDashboardContent() {
     const [inProgressCourses, setInProgressCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
     const [showOnboarding, setShowOnboarding] = useState(false);
@@ -50,12 +50,24 @@ export default function WorkerDashboardPage() {
     });
     const [workerCourses, setWorkerCourses] = useState<WorkerCourse[]>([]);
     const router = useRouter();
+    const searchParams = useSearchParams();
     const supabase = createClient();
 
     useEffect(() => {
         loadInProgressCourses();
         checkOnboardingStatus();
     }, []);
+
+    // Check for refresh parameter and reload data
+    useEffect(() => {
+        if (searchParams.get('refresh') === 'true') {
+            loadInProgressCourses();
+            // Clean up URL
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('refresh');
+            window.history.replaceState({}, '', newUrl.toString());
+        }
+    }, [searchParams]);
 
     const checkOnboardingStatus = () => {
         const hasSeenWelcome = localStorage.getItem("theraptly-welcome-seen");
@@ -80,6 +92,7 @@ export default function WorkerDashboardPage() {
                     course_id,
                     deadline,
                     status,
+                    progress_percentage,
                     courses(title, objectives)
                 `)
                 .eq("worker_id", user.id)
@@ -108,8 +121,11 @@ export default function WorkerDashboardPage() {
 
             // Transform data for the courses table
             const transformedCourses: WorkerCourse[] = normalizedData.map((assignment: any) => {
-                const progress = assignment.status === 'completed' ? 100 : 
-                               assignment.status === 'in_progress' ? Math.floor(Math.random() * 90) + 10 : 0;
+                // Use actual progress_percentage from database, fallback to status-based calculation
+                const progress = assignment.progress_percentage !== null && assignment.progress_percentage !== undefined
+                    ? assignment.progress_percentage
+                    : (assignment.status === 'completed' ? 100 :
+                       assignment.status === 'in_progress' ? 50 : 0); // Default 50% for in-progress if no specific progress
                 
                 return {
                     id: assignment.id,
@@ -207,5 +223,17 @@ export default function WorkerDashboardPage() {
             {/* Courses Table */}
             <WorkerCoursesTable courses={workerCourses} />
         </div>
+    );
+}
+
+export default function WorkerDashboardPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-white flex items-center justify-center">
+                <div className="text-slate-600">Loading your courses...</div>
+            </div>
+        }>
+            <WorkerDashboardContent />
+        </Suspense>
     );
 }

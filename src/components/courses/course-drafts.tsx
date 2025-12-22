@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useNotification } from "@/contexts/notification-context";
 import { CourseDraft, courseDraftManager } from "@/lib/course-draft";
-import { FilePdf, FileDoc, Trash, Clock, Play, PencilSimple } from "@phosphor-icons/react";
+import { FilePdf, FileDoc, Trash, Clock, Play, PencilSimple, ArrowClockwise } from "@phosphor-icons/react";
 
 interface CourseDraftsProps {
     onContinueDraft: (draft: CourseDraft) => void;
@@ -163,9 +163,10 @@ export function CourseDrafts({ onContinueDraft }: CourseDraftsProps) {
                 <h2 className="text-lg font-semibold text-slate-900">Course Drafts ({drafts.length})</h2>
                 <button
                     onClick={loadDrafts}
-                    className="text-sm text-[#4E61F6] hover:text-[#4E61F6]/80 font-medium"
+                    className="text-sm text-[#4E61F6] hover:text-[#4E61F6]/80 font-medium flex items-center gap-1"
+                    title="Refresh drafts"
                 >
-                    Refresh
+                    <ArrowClockwise size={16} />
                 </button>
             </div>
 

@@ -32,6 +32,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
     const [showReview, setShowReview] = useState(false);
     const [workerName, setWorkerName] = useState("");
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
+    const [isExporting, setIsExporting] = useState(false);
 
     useEffect(() => {
         loadAssignment();
@@ -97,10 +98,10 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                 }
             });
 
-            // Check if assignment is already completed, failed, or view=results is requested
+            // Check if view=results is requested (for viewing previous results)
             const viewMode = searchParams.get('view');
-            if (assignmentData.status === 'completed' || assignmentData.status === 'failed' || viewMode === 'results') {
-                console.log("Assignment is completed/failed or view=results, fetching results...");
+            if (viewMode === 'results') {
+                console.log("View=results requested, fetching previous results...");
 
                 // Fetch latest attempt
                 const { data: attempt, error: attemptError } = await supabase
@@ -132,8 +133,11 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                     }
 
                     setCurrentStep("results");
+                    setShowReview(true); // Show detailed results
                 } else {
-                    console.log("No attempt found, but status is completed/failed");
+                    console.log("No attempt found for view=results");
+                    // Start fresh quiz instead
+                    setTimeLeft(totalTime);
                 }
             } else {
                 console.log("Starting fresh quiz with time:", totalTime);
@@ -251,10 +255,10 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                 }
             });
 
-            // Check if assignment is already completed, failed, or view=results is requested
+            // Check if view=results is requested (for viewing previous results)
             const viewMode = searchParams.get('view');
-            if (assignmentData.status === 'completed' || assignmentData.status === 'failed' || viewMode === 'results') {
-                console.log("Assignment is completed/failed or view=results, fetching results...");
+            if (viewMode === 'results') {
+                console.log("View=results requested, fetching previous results...");
 
                 // Fetch latest attempt
                 const { data: attempt, error: attemptError } = await supabase
@@ -286,10 +290,13 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                     }
 
                     setCurrentStep("results");
+                    setShowReview(true); // Show detailed results
                     setLoading(false);
                     return; // Stop here, don't set timer
                 } else {
-                    console.warn("Assignment completed but no attempt found.");
+                    console.log("No attempt found for view=results");
+                    // Start fresh quiz instead
+                    setTimeLeft(totalTime);
                 }
             }
 
@@ -333,6 +340,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
         setQuizPassed(passed);
         setQuizSubmitted(true);
         setCurrentStep("results");
+        setShowReview(true); // Automatically show detailed results
 
         // Save quiz attempt
         try {
@@ -405,6 +413,41 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
             return JSON.stringify(text);
         }
         return "Question Text";
+    };
+
+    // Helper to clean explanation text by removing module references
+    const cleanExplanation = (explanation: string) => {
+        return explanation
+            .replace(/\b(module|Module)\b/g, '') // Remove standalone "module" words
+            .replace(/\s+/g, ' ') // Clean up extra spaces
+            .trim();
+    };
+
+    // Handle PDF export
+    const handleExportPDF = async () => {
+        setIsExporting(true);
+        try {
+            const response = await fetch(`/api/quiz/${assignmentId}/results-pdf`);
+
+            if (!response.ok) {
+                throw new Error('Failed to generate PDF');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `quiz-results-${assignment?.course?.title?.replace(/\s+/g, '-').toLowerCase() || 'course'}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Error exporting PDF:', error);
+            alert('Failed to export quiz results. Please try again.');
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     if (loading) {
@@ -590,14 +633,24 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
 
                                 <div className="flex gap-4">
                                     <button
-                                        onClick={() => setShowReview(true)}
-                                        className="px-6 py-3 border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-gray-50 transition-colors flex items-center gap-2"
+                                        onClick={() => {
+                                            // Reset quiz state to allow retaking
+                                            setCurrentStep("quiz");
+                                            setQuizSubmitted(false);
+                                            setQuizScore(null);
+                                            setQuizPassed(false);
+                                            setQuizAnswers({});
+                                            setShowReview(false);
+                                            setCurrentQuestionIndex(0);
+                                            setTimeLeft(assignment?.course?.quiz_questions?.length ? assignment.course.quiz_questions.length * (assignment.course.objectives?.difficulty?.toLowerCase() === "moderate" ? 30 : assignment.course.objectives?.difficulty?.toLowerCase() === "advanced" ? 15 : 60) : null);
+                                        }}
+                                        className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-lg shadow-blue-200"
                                     >
-                                        View Result
-                                        <Share2 className="w-4 h-4" />
+                                        RETAKE QUIZ
+                                        <ArrowLeft className="w-5 h-5" />
                                     </button>
                                     <button
-                                        onClick={() => router.push('/worker/dashboard')}
+                                        onClick={() => router.push('/worker/dashboard?refresh=true')}
                                         className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-lg shadow-indigo-200"
                                     >
                                         FINISH
@@ -617,7 +670,20 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                                     </button>
                                     <div className="flex gap-2">
                                         <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-white">Share</button>
-                                        <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-white">Export</button>
+                                        <button
+                                            onClick={handleExportPDF}
+                                            disabled={isExporting}
+                                            className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                        >
+                                            {isExporting ? (
+                                                <>
+                                                    <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
+                                                    Exporting...
+                                                </>
+                                            ) : (
+                                                'Export PDF'
+                                            )}
+                                        </button>
                                     </div>
                                 </div>
 
@@ -692,14 +758,8 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                                                 </div>
 
                                                 <div className={`p-4 rounded-lg ${isCorrect ? "bg-green-100" : "bg-green-100"}`}>
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <div className="bg-green-600 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1">
-                                                            <Check className="w-3 h-3" />
-                                                            Correct Answer: {q.correct_answer}
-                                                        </div>
-                                                    </div>
                                                     <p className="text-sm text-slate-700">
-                                                        <span className="font-bold">Explanation:</span> {q.explanation || "No explanation available."}
+                                                        <span className="font-bold">Explanation:</span> {cleanExplanation(q.explanation || "No explanation available.")}
                                                     </p>
                                                 </div>
                                             </div>
