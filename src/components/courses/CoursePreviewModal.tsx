@@ -450,7 +450,7 @@ export default function CoursePreviewModal({ isOpen, onClose, courseData }: Cour
                                         {headings.length > 7 && (
                                             <button
                                                 onClick={() => setShowAllModules(!showAllModules)}
-                                                className="w-full flex items-center justify-center gap-2 px-3 py-2 mt-2 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition-colors"
+                                                className="w-full flex items-center justify-center gap-2 px-3 py-2 mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-600/80 underline transition-colors"
                                             >
                                                 {showAllModules ? (
                                                     <>

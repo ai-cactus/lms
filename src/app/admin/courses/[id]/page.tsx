@@ -397,9 +397,9 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                             <thead className="bg-white border-b border-gray-200">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Staff Name</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Score</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">Quiz result</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider">Score</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider">Quiz result</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
@@ -430,12 +430,12 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 text-right">
                                                 <span className="text-sm text-slate-700">
                                                     {staff.score !== null ? `${staff.score}%` : "-"}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 text-right">
                                                 {staff.status === "completed" ? (
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
                                                         <CheckCircle className="w-3 h-3" />
@@ -457,7 +457,7 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 text-right">
                                                 {staff.completion_id ? (
                                                     <button
                                                         onClick={() => {
@@ -468,7 +468,9 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                                                         View
                                                     </button>
                                                 ) : (
-                                                    <span className="text-sm text-slate-400">No results</span>
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">
+                                                        No result
+                                                    </span>
                                                 )}
                                             </td>
                                         </tr>

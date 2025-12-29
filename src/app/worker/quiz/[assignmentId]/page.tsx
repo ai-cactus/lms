@@ -578,7 +578,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center min-h-[600px] flex flex-col items-center justify-center">
                         {!showReview ? (
                             <>
-                                <h2 className="text-3xl font-bold text-slate-900 mb-4">Congratulations!</h2>
+                                <h2 className="text-3xl font-bold text-slate-900 mb-4">{quizPassed ? "Congratulations!" : "Quiz Completed"}</h2>
                                 <p className="text-slate-600 mb-8 max-w-md">
                                     You&apos;ve completed the course. We hope you&apos;ve learned something new about <span className="font-bold text-slate-900">{assignment.course.title}</span> today.
                                 </p>

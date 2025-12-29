@@ -37,6 +37,7 @@ interface WorkerCourse {
     progress: number;
     deadline: string;
     status: 'not-started' | 'in-progress' | 'completed';
+    grade?: number | null;
 }
 
 function WorkerDashboardContent() {
@@ -108,10 +109,96 @@ function WorkerDashboardContent() {
 
             setInProgressCourses(normalizedData);
 
+            // Hide onboarding banner once any course has been started (status is not 'not-started')
+            if (normalizedData.some(assignment => assignment.status !== 'not-started')) {
+                localStorage.setItem("theraptly-welcome-seen", "true");
+            }
+
             // Calculate stats
             const totalCourses = normalizedData.length;
-            const completedCourses = normalizedData.filter(c => c.status === 'completed').length;
-            const averageGrade = 70; // TODO: Calculate from actual grades when available
+            const completedCourses = normalizedData.filter(c => c.status === 'completed' || c.status === 'failed').length;
+
+            // Fetch scores for all assignments to populate grades and calculate average
+            const scoreMap: { [key: string]: number | null } = {};
+            let totalScore = 0;
+            let scoreCount = 0;
+
+            for (const assignment of normalizedData) {
+                try {
+                    // Try to get score from course_completions first (try both course_id and assignment_id)
+                    let completion = null;
+                    try {
+                        const { data } = await supabase
+                            .from("course_completions")
+                            .select("quiz_score")
+                            .eq("course_id", assignment.course_id)
+                            .eq("worker_id", assignment.worker_id)
+                            .single();
+                        completion = data;
+                    } catch {
+                        // Try with assignment_id
+                        try {
+                            const { data } = await supabase
+                                .from("course_completions")
+                                .select("quiz_score")
+                                .eq("assignment_id", assignment.id)
+                                .single();
+                            completion = data;
+                        } catch {
+                            // Ignore
+                        }
+                    }
+
+                    let score = null;
+                    if (completion?.quiz_score && completion.quiz_score > 0) {
+                        score = completion.quiz_score;
+                    } else {
+                        // Fallback to quiz_attempts
+                        try {
+                            const { data: attempt } = await supabase
+                                .from("quiz_attempts")
+                                .select("score")
+                                .eq("course_id", assignment.course_id)
+                                .eq("worker_id", assignment.worker_id)
+                                .order("completed_at", { ascending: false })
+                                .limit(1)
+                                .single();
+
+                            if (attempt?.score && attempt.score > 0) {
+                                score = attempt.score;
+                            }
+                        } catch {
+                            // Try with assignment_id
+                            try {
+                                const { data: attempt } = await supabase
+                                    .from("quiz_attempts")
+                                    .select("score")
+                                    .eq("assignment_id", assignment.id)
+                                    .order("completed_at", { ascending: false })
+                                    .limit(1)
+                                    .single();
+
+                                if (attempt?.score && attempt.score > 0) {
+                                    score = attempt.score;
+                                }
+                            } catch {
+                                // Ignore
+                            }
+                        }
+                    }
+
+                    scoreMap[assignment.id] = score;
+                    if (score !== null && (assignment.status === 'completed' || assignment.status === 'failed')) {
+                        totalScore += score;
+                        scoreCount++;
+                    }
+                } catch (error) {
+                    console.error(`Error fetching score for assignment ${assignment.id}:`, error);
+                    scoreMap[assignment.id] = null;
+                }
+            }
+
+            const averageGrade = scoreCount > 0 ? Math.round(totalScore / scoreCount) : 0;
 
             setStats({
                 totalCourses,
@@ -119,7 +206,7 @@ function WorkerDashboardContent() {
                 averageGrade
             });
 
-            // Transform data for the courses table
+            // Transform data for the courses table (show all courses)
             const transformedCourses: WorkerCourse[] = normalizedData.map((assignment: any) => {
                 // Use actual progress_percentage from database, fallback to status-based calculation
                 const progress = assignment.progress_percentage !== null && assignment.progress_percentage !== undefined
@@ -137,7 +224,8 @@ function WorkerDashboardContent() {
                         day: 'numeric',
                         year: 'numeric'
                     }),
-                    status: assignment.status as 'not-started' | 'in-progress' | 'completed'
+                    status: assignment.status as 'not-started' | 'in-progress' | 'completed',
+                    grade: scoreMap[assignment.id] || null
                 };
             });
 

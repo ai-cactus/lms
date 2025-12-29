@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Download } from "lucide-react";
+import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface WorkerCourse {
@@ -10,6 +10,7 @@ interface WorkerCourse {
     progress: number;
     deadline: string;
     status: 'not-started' | 'in-progress' | 'completed';
+    grade?: number | null;
 }
 
 interface WorkerCoursesTableProps {
@@ -23,31 +24,6 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
         router.push(`/worker/courses/${courseId}/details`);
     };
 
-    const handleExportCSV = () => {
-        // Create CSV content
-        const headers = ['Course Name', 'Level', 'Progress', 'Status', 'Deadline'];
-        const csvContent = [
-            headers.join(','),
-            ...courses.map(course => [
-                `"${course.name}"`,
-                course.level,
-                `${course.progress}%`,
-                course.status,
-                course.deadline
-            ].join(','))
-        ].join('\n');
-
-        // Create and download the file
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', 'my-courses.csv');
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
 
     const getStatusColor = (progress: number) => {
         if (progress === 100) return 'bg-blue-500';
@@ -80,13 +56,6 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                                 className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                         </div>
-                        <button
-                            onClick={handleExportCSV}
-                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                        >
-                            <Download className="w-4 h-4" />
-                            Export
-                        </button>
                     </div>
                 </div>
             </div>
@@ -101,6 +70,9 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 Progress
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Grade
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 Deadline
@@ -127,13 +99,16 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="flex items-center">
                                         <div className="w-full bg-gray-200 rounded-full h-2 mr-3">
-                                            <div 
-                                                className="bg-blue-500 h-2 rounded-full" 
+                                            <div
+                                                className="bg-blue-500 h-2 rounded-full"
                                                 style={{ width: `${course.progress}%` }}
                                             ></div>
                                         </div>
                                         <span className="text-sm font-medium text-gray-900">{course.progress}%</span>
                                     </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {course.grade !== null && course.grade !== undefined ? `${course.grade}%` : '-'}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     {course.deadline}

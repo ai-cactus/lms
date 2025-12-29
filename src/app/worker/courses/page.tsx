@@ -33,25 +33,6 @@ export default function WorkerCoursesPage() {
         loadDashboardData();
     }, []);
 
-    const handleRejectCourse = async (assignmentId: string) => {
-        try {
-            // Since 'rejected' status doesn't exist, we'll delete the assignment
-            const { error } = await supabase
-                .from("course_assignments")
-                .delete()
-                .eq("id", assignmentId);
-
-            if (error) {
-                console.error("Error deleting course assignment:", error);
-                throw error;
-            }
-
-            // Reload the data to reflect the change
-            await loadDashboardData();
-        } catch (error) {
-            console.error("Error rejecting course:", error);
-        }
-    };
 
     const loadDashboardData = async () => {
         try {
@@ -273,28 +254,18 @@ export default function WorkerCoursesPage() {
                                 </div>
                                 <div className="flex items-center gap-3">
                                     {activeTab === 'assigned' ? (
-                                        <>
-                                            <button
-                                                onClick={() => router.push(`/worker/courses/${assignment.id}/details`)}
-                                                className="px-6 py-2 bg-[#4758E0] text-white text-sm font-medium rounded-lg hover:bg-[#4758E0]/90 transition-colors"
-                                            >
-                                                {assignment.status === 'not_started' ? 'Start Course' : 'Continue Course'}
-                                            </button>
-                                            {assignment.status === 'not_started' && (
-                                                <button
-                                                    onClick={() => handleRejectCourse(assignment.id)}
-                                                    className="px-6 py-2 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors"
-                                                >
-                                                    Reject
-                                                </button>
-                                            )}
-                                        </>
+                                        <button
+                                            onClick={() => router.push(`/worker/courses/${assignment.id}/details`)}
+                                            className="px-6 py-2 bg-[#4758E0] text-white text-sm font-medium rounded-lg hover:bg-[#4758E0]/90 transition-colors"
+                                        >
+                                            {assignment.status === 'not_started' ? 'Start Course' : 'Continue Course'}
+                                        </button>
                                     ) : (
                                         <button
                                             onClick={() => router.push(`/worker/quiz/${assignment.id}?view=results`)}
                                             className="px-6 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
                                         >
-                                            View Results
+                                            Continue
                                         </button>
                                     )}
                                 </div>

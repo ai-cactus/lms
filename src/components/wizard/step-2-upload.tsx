@@ -188,18 +188,19 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
             <h2 className="text-3xl font-bold text-slate-900 mb-4">
                 {selectedSource === 'uploaded' ? 'Upload Training Documents' : 'Upload Training Documents'}
             </h2>
-            <p className="text-slate-500 mb-12 max-w-2xl mx-auto text-base">
-                {selectedSource === 'uploaded' 
+            <p className="text-slate-500 mb-8 max-w-2xl mx-auto text-base">
+                {selectedSource === 'uploaded'
                     ? 'Upload your policy or compliance documents. We will analyze them and convert them into courses and quizzes automatically.'
                     : 'Upload your policy or compliance documents. We will analyze them and convert them into courses and quizzes automatically.'
                 }
             </p>
 
-            <div className="text-left mb-2">
-                <span className="text-slate-500 text-sm">Select file(s) from;</span>
-            </div>
+            <div className="max-w-xl mx-auto">
+                <div className="text-left mb-2">
+                    <span className="text-slate-500 text-sm">Select file(s) from;</span>
+                </div>
 
-            <div className="mb-8 relative" ref={dropdownRef}>
+                <div className="mb-6 relative" ref={dropdownRef}>
                 <button 
                     onClick={() => setShowDropdown(!showDropdown)}
                     className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white text-left flex justify-between items-center shadow-sm hover:border-gray-300 transition-colors"
@@ -233,7 +234,7 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
                     onClick={() => !isAnalyzing && fileInputRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={!isAnalyzing ? handleDrop : (e) => e.preventDefault()}
-                    className={`border-2 border-dashed border-gray-200 rounded-xl p-16 bg-white transition-colors mb-8 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white cursor-pointer'}`}
+                    className={`border-2 border-dashed border-gray-200 rounded-xl p-8 bg-white transition-colors mb-6 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white cursor-pointer'}`}
                 >
                     <div className="w-16 h-16 bg-gray-500 text-white rounded-lg flex items-center justify-center mx-auto mb-6">
                         <CloudArrowUp size={32} weight="fill" />
@@ -253,7 +254,7 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
                     />
                 </div>
             ) : (
-                <div className="mb-8">
+                <div className="mb-6">
                     {loadingDocuments ? (
                         <div className="text-center py-12">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4E61F6] mx-auto mb-4"></div>
@@ -325,7 +326,7 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
 
             {/* Validation Errors */}
             {validationErrors.length > 0 && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                     <div className="flex items-start gap-2">
                         <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
                         <div>
@@ -342,7 +343,7 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
 
             {/* Validation Warnings */}
             {validationWarnings.length > 0 && (
-                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                     <div className="flex items-start gap-2">
                         <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
                         <div>
@@ -358,7 +359,7 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
             )}
 
             {isAnalyzing && (
-                <div className="mb-8 text-left">
+                <div className="mb-6 text-left">
                     <div className="flex justify-between text-sm mb-2">
                         <span className="font-medium text-slate-700">Analyzing documents...</span>
                         <span className="text-slate-500">{uploadProgress}%</span>
@@ -376,7 +377,7 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
             )}
 
             {files.length > 0 && (
-                <div className="text-left space-y-3 mb-8">
+                <div className="text-left space-y-3 mb-6">
                     {files.map((file, idx) => (
                         <div key={idx} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
                             <div className="flex items-center gap-4">
@@ -420,6 +421,7 @@ export function Step2Upload({ files, onFilesChange, onAnalyze, isAnalyzing, uplo
                     )}
                 </div>
             )}
+            </div>
 
             {/* Document Preview Modal */}
             {previewDocument && (

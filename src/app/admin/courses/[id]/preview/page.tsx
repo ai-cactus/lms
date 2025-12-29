@@ -248,7 +248,7 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
                                     <div className="mt-6">
                                         <button
                                             onClick={() => setShowAllSections(!showAllSections)}
-                                            className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                                            className="py-3 text-left text-blue-600 hover:text-blue-600/80 underline transition-colors font-medium"
                                         >
                                             {showAllSections ? "View Less" : `View ${sections.length - 5} More Sections`}
                                         </button>
