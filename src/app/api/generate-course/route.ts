@@ -43,16 +43,16 @@ export async function POST(req: NextRequest) {
         });
 
         if (validationErrors.length > 0) {
-            return NextResponse.json({ 
-                error: `File validation failed:\n${validationErrors.join('\n')}` 
+            return NextResponse.json({
+                error: `File validation failed:\n${validationErrors.join('\n')}`
             }, { status: 400 });
         }
 
         // Check if total estimated content is too large for processing
         const MAX_TOTAL_CHARS = 800000; // 800k characters total limit
         if (totalEstimatedChars > MAX_TOTAL_CHARS) {
-            return NextResponse.json({ 
-                error: `Combined document size too large for processing. Estimated ${Math.round(totalEstimatedChars/1000)}k characters, maximum ${Math.round(MAX_TOTAL_CHARS/1000)}k allowed. Please split into smaller documents or reduce file sizes.` 
+            return NextResponse.json({
+                error: `Combined document size too large for processing. Estimated ${Math.round(totalEstimatedChars / 1000)}k characters, maximum ${Math.round(MAX_TOTAL_CHARS / 1000)}k allowed. Please split into smaller documents or reduce file sizes.`
             }, { status: 400 });
         }
 
@@ -67,22 +67,22 @@ export async function POST(req: NextRequest) {
             try {
                 console.log(`Processing file ${i + 1}/${files.length}: ${file.name}`);
                 const text = await extractTextFromFile(file);
-                
+
                 if (!text || text.trim().length < 50) {
                     processingErrors.push(`${file.name}: Document appears to be empty or unreadable`);
                     continue;
                 }
-                
+
                 processedFiles.push(`--- DOCUMENT: ${file.name} ---\n${text}\n--- END DOCUMENT ---\n`);
                 console.log(`Successfully processed ${file.name}: ${text.length} characters`);
-            } catch (e) {
+            } catch (e: any) {
                 console.error(`Failed to process file ${file.name}:`, e);
                 processingErrors.push(`${file.name}: ${e.message || 'Failed to extract text'}`);
             }
         }
 
         if (processedFiles.length === 0) {
-            const errorMsg = processingErrors.length > 0 
+            const errorMsg = processingErrors.length > 0
                 ? `All files failed to process:\n${processingErrors.join('\n')}`
                 : 'No readable content found in uploaded files';
             return NextResponse.json({ error: errorMsg }, { status: 400 });
@@ -98,12 +98,12 @@ export async function POST(req: NextRequest) {
         // Gemini 2.5 Flash has ~1M token limit (~4M chars), but we use conservative limits
         const CHAR_LIMIT = 150000; // Start chunking if > 150k chars (more generous than before)
         const actualCharCount = fullText.length;
-        
+
         console.log(`Total extracted content: ${actualCharCount} characters`);
-        
+
         if (actualCharCount < 100) {
-            return NextResponse.json({ 
-                error: 'Extracted content is too short to generate a meaningful course. Please ensure your documents contain substantial text content.' 
+            return NextResponse.json({
+                error: 'Extracted content is too short to generate a meaningful course. Please ensure your documents contain substantial text content.'
             }, { status: 400 });
         }
         let contextForGeneration = fullText;
@@ -116,15 +116,15 @@ export async function POST(req: NextRequest) {
             console.log(`Split into ${chunks.length} chunks for processing.`);
 
             if (chunks.length > 20) {
-                return NextResponse.json({ 
-                    error: `Document is too complex for processing (${chunks.length} chunks). Please split into smaller documents or reduce content size.` 
+                return NextResponse.json({
+                    error: `Document is too complex for processing (${chunks.length} chunks). Please split into smaller documents or reduce content size.`
                 }, { status: 400 });
             }
 
             // Map: Summarize each chunk with improved error handling
             const summaries: string[] = [];
             let failedChunks = 0;
-            
+
             for (let i = 0; i < chunks.length; i++) {
                 const chunk = chunks[i];
                 let retries = 3;
@@ -145,11 +145,11 @@ export async function POST(req: NextRequest) {
                             Document Section:
                             ${chunk}
                         `;
-                        
+
                         const result = await model.generateContent(summaryPrompt);
                         const response = await result.response;
                         const summaryText = response.text();
-                        
+
                         if (summaryText && summaryText.length > 50) {
                             summaries.push(`--- SUMMARY PART ${i + 1} ---\n${summaryText}\n`);
                             success = true;
@@ -157,16 +157,16 @@ export async function POST(req: NextRequest) {
                         } else {
                             throw new Error('Empty or invalid summary generated');
                         }
-                    } catch (e) {
+                    } catch (e: any) {
                         console.error(`Error summarizing chunk ${i + 1} (Attempt ${4 - retries}):`, e.message);
-                        if (e.message.includes("429") || e.status === 429) {
+                        if (e.message?.includes("429") || e.status === 429) {
                             const waitTime = 15000 + (retries * 5000); // Increasing wait time
-                            console.log(`Rate limit hit. Waiting ${waitTime/1000}s before retry...`);
+                            console.log(`Rate limit hit. Waiting ${waitTime / 1000}s before retry...`);
                             await new Promise(resolve => setTimeout(resolve, waitTime));
                             retries--;
                         } else if (e.message.includes("quota") || e.message.includes("limit")) {
-                            return NextResponse.json({ 
-                                error: 'AI service quota exceeded. Please try again later or reduce document size.' 
+                            return NextResponse.json({
+                                error: 'AI service quota exceeded. Please try again later or reduce document size.'
                             }, { status: 429 });
                         } else {
                             retries--;
@@ -184,8 +184,8 @@ export async function POST(req: NextRequest) {
             }
 
             if (summaries.length === 0) {
-                return NextResponse.json({ 
-                    error: 'Failed to process document content. The document may be too complex or the AI service is temporarily unavailable.' 
+                return NextResponse.json({
+                    error: 'Failed to process document content. The document may be too complex or the AI service is temporarily unavailable.'
                 }, { status: 500 });
             }
 
@@ -390,9 +390,9 @@ ${contextForGeneration}
         const text = response.text();
 
         return NextResponse.json({ content: text });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error generating course:", error);
-        
+
         // Provide more specific error messages
         if (error.message?.includes("429") || error.status === 429) {
             return NextResponse.json(
@@ -400,21 +400,21 @@ ${contextForGeneration}
                 { status: 429 }
             );
         }
-        
+
         if (error.message?.includes("quota") || error.message?.includes("limit")) {
             return NextResponse.json(
                 { error: "AI service quota exceeded. Please try again later or reduce document size." },
                 { status: 429 }
             );
         }
-        
+
         if (error.message?.includes("timeout")) {
             return NextResponse.json(
                 { error: "Document processing timed out. Please try with a smaller document." },
                 { status: 408 }
             );
         }
-        
+
         return NextResponse.json(
             { error: "Failed to generate course content. Please try again or contact support if the problem persists." },
             { status: 500 }
