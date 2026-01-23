@@ -16,7 +16,7 @@ interface QuizResult {
 
 interface QuizAnswer {
     question_id: string;
-    selected_option: number;
+    selected_option: number | string;
     is_correct: boolean;
 }
 
@@ -24,7 +24,7 @@ interface QuizQuestion {
     id: string;
     question_text: string;
     options: string[];
-    correct_answer: number;
+    correct_answer: number | string;
     explanation?: string;
 }
 
@@ -109,9 +109,24 @@ export default function QuizResultsPage({ params }: { params: Promise<{ id: stri
 
     const userAnswers = result.quiz_answers || {};
     const totalQuestions = questions.length;
-    const correctCount = questions.filter((q, idx) => userAnswers[idx] === q.correct_answer).length;
+
+    // Calculate stats correctly
+    let correctCount = 0;
+    questions.forEach(q => {
+        const userAnswer = userAnswers[q.id];
+        const correctAnswer = typeof q.correct_answer === 'number'
+            ? q.options[q.correct_answer]
+            : q.correct_answer;
+
+        // Normalize strings for comparison
+        if (String(userAnswer).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase()) {
+            correctCount++;
+        }
+    });
+
     const incorrectCount = totalQuestions - correctCount;
-    const passed = result.quiz_score >= 70; // Assuming 70% pass mark
+    // Calculate pass status based on score stored in result, or re-calculate
+    const passed = result.quiz_score >= 80; // Assuming 80% pass mark (standard in LMS)
 
     return (
         <div className="min-h-screen bg-white p-8">
@@ -215,8 +230,14 @@ export default function QuizResultsPage({ params }: { params: Promise<{ id: stri
                     <h2 className="text-2xl font-bold text-slate-900 mb-6">Answers</h2>
                     <div className="space-y-6">
                         {questions.map((question, idx) => {
-                            const userAnswer = userAnswers[idx];
-                            const isCorrect = userAnswer === question.correct_answer;
+                            const userAnswer = userAnswers[question.id];
+
+                            // Determine correct answer text
+                            const correctAnswerText = typeof question.correct_answer === 'number'
+                                ? question.options[question.correct_answer]
+                                : question.correct_answer;
+
+                            const isCorrect = String(userAnswer).trim().toLowerCase() === String(correctAnswerText).trim().toLowerCase();
 
                             return (
                                 <div key={question.id} className="border-b border-gray-200 pb-6 last:border-0 last:pb-0">
@@ -226,14 +247,14 @@ export default function QuizResultsPage({ params }: { params: Promise<{ id: stri
 
                                     <div className="space-y-2">
                                         {question.options.map((option, optIdx) => {
-                                            const isUserAnswer = userAnswer === optIdx;
-                                            const isCorrectAnswer = question.correct_answer === optIdx;
+                                            const isUserAnswer = userAnswer === option;
+                                            const isCorrectOption = option === correctAnswerText;
 
                                             let bgColor = "bg-white";
                                             let borderColor = "border-gray-200";
                                             let textColor = "text-slate-700";
 
-                                            if (isCorrectAnswer) {
+                                            if (isCorrectOption) {
                                                 bgColor = "bg-green-50";
                                                 borderColor = "border-green-500";
                                                 textColor = "text-green-900";
@@ -253,7 +274,7 @@ export default function QuizResultsPage({ params }: { params: Promise<{ id: stri
                                                             <span className="font-medium">{String.fromCharCode(65 + optIdx)}.</span>
                                                             <span className={textColor}>{option}</span>
                                                         </div>
-                                                        {isCorrectAnswer && (
+                                                        {isCorrectOption && (
                                                             <CheckCircle className="w-5 h-5 text-green-600" />
                                                         )}
                                                         {isUserAnswer && !isCorrect && (

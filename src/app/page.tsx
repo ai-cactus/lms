@@ -19,7 +19,7 @@ export default async function Home() {
     .eq("id", user.id)
     .single();
 
-  if (userData?.role === "admin") {
+  if (userData?.role === "admin" || userData?.role === "agency_owner") {
     redirect("/admin/dashboard");
   } else if (userData?.role === "worker") {
     redirect("/worker/dashboard");

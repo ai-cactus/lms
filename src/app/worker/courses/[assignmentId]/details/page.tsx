@@ -44,6 +44,8 @@ export default function WorkerCourseDetailsPage({ params }: { params: Promise<{ 
     const [showAllSections, setShowAllSections] = useState(false);
 
     useEffect(() => {
+        // Force scroll to top on mount to prevent opening in the middle
+        window.scrollTo(0, 0);
         loadAssignmentData();
     }, [assignmentId]);
 
@@ -241,7 +243,7 @@ export default function WorkerCourseDetailsPage({ params }: { params: Promise<{ 
                 <div className="mx-auto px-[30px] py-8">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Main Content */}
-                        <div style={{border: "1px solid #EEEFF2", borderRadius: "12px", padding: "35px", boxShadow: "0 4px 4px 0 #0000000D"}} className="lg:col-span-2">
+                        <div style={{ border: "1px solid #EEEFF2", borderRadius: "12px", padding: "35px", boxShadow: "0 4px 4px 0 #0000000D" }} className="lg:col-span-2">
                             <div className="space-y-8">
                                 {/* Course Overview */}
                                 <div>
@@ -284,7 +286,7 @@ export default function WorkerCourseDetailsPage({ params }: { params: Promise<{ 
                         </div>
 
                         {/* Sidebar */}
-                        <div style={{border: "1px solid #EEEFF2", borderRadius: "12px", padding: "27px 20px", boxShadow: "0 4px 4px 0 #0000000D"}} className="lg:col-span-1">
+                        <div style={{ border: "1px solid #EEEFF2", borderRadius: "12px", padding: "27px 20px", boxShadow: "0 4px 4px 0 #0000000D" }} className="lg:col-span-1">
                             <div className="rounded-lg">
                                 <h3 className="text-lg font-bold text-gray-900 mb-4">Course Content</h3>
                                 <div className="border-t border-dotted border-[#DFE1E6] mb-4"></div>

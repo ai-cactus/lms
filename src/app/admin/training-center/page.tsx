@@ -95,28 +95,21 @@ export default function TrainingCenterPage() {
             const totalCourses = statsData?.length || 0;
 
             // Get staff count (users with role 'worker' in the organization)
-            const { count: staffCount } = await supabase
+            const { count: staffCount, error: staffError } = await supabase
                 .from("users")
                 .select("*", { count: "exact", head: true })
                 .eq("organization_id", orgId)
                 .eq("role", "worker");
 
-            // Calculate average grade from course assignments
-            const { data: gradesData } = await supabase
-                .from("course_assignments")
-                .select("final_grade")
-                .not("final_grade", "is", null);
+            console.log('Staff Count Debug - OrgId:', orgId, 'Count:', staffCount, 'Error:', staffError);
 
-            let averageGrade = 0;
-            if (gradesData && gradesData.length > 0) {
-                const totalGrades = gradesData.reduce((sum, item) => sum + (item.final_grade || 0), 0);
-                averageGrade = Math.round(totalGrades / gradesData.length);
-            }
+            // Removed deprecated average grade calculation causing 400 errors
+            // Real calculation is done below using update logic
 
             setStats({
                 totalCourses,
                 totalStaffAssigned: staffCount || 0,
-                averageGrade,
+                averageGrade: 0,
             });
 
             // Fetch performance data for charts
@@ -176,24 +169,43 @@ export default function TrainingCenterPage() {
 
             setCourses(coursesWithStats);
 
-            // Calculate total staff assigned across all courses
-            const totalAssigned = coursesWithStats.reduce(
-                (sum, course) => sum + course.assignedStaff,
-                0
-            );
+            // Calculate average grade correctly from completions
+            // First get all course IDs for this organization
+            const { data: courseIds } = await supabase
+                .from("courses")
+                .select("id")
+                .eq("organization_id", orgId);
 
-            // Calculate average completion
-            const avgCompletion = coursesWithStats.length
-                ? Math.round(
-                    coursesWithStats.reduce((sum, course) => sum + course.completion, 0) /
-                    coursesWithStats.length
-                )
-                : 0;
+            const targetCourseIds = courseIds?.map(c => c.id) || [];
+
+            let realAverageGrade = 0;
+
+            if (targetCourseIds.length > 0) {
+                const { data: completionScores, error: completionError } = await supabase
+                    .from("course_completions")
+                    .select("quiz_score")
+                    .in("course_id", targetCourseIds)
+                    .gt("quiz_score", 0);
+
+                if (completionError) {
+                    console.error('Error fetching completions:', completionError);
+                } else {
+                    console.log('Completion Scores Debug (Scoped to Org):', completionScores);
+
+                    if (completionScores && completionScores.length > 0) {
+                        const totalScore = completionScores.reduce((sum, item) => sum + (item.quiz_score || 0), 0);
+                        realAverageGrade = Math.round(totalScore / completionScores.length);
+                        console.log('Calculated Average:', realAverageGrade);
+                    }
+                }
+            } else {
+                console.log('No courses found for org, skipping completions fetch');
+            }
 
             setStats({
                 totalCourses: count,
-                totalStaffAssigned: totalAssigned,
-                averageGrade: avgCompletion,
+                totalStaffAssigned: staffCount || 0,
+                averageGrade: realAverageGrade,
             });
 
             setLoading(false);
@@ -221,28 +233,47 @@ export default function TrainingCenterPage() {
 
     const fetchPerformanceData = async (orgId: string) => {
         try {
-            // Get monthly performance data from course assignments
-            const { data: performanceData } = await supabase
-                .from("course_assignments")
-                .select("final_grade, created_at")
-                .not("final_grade", "is", null)
-                .gte("created_at", new Date(new Date().getFullYear(), 0, 1).toISOString());
+            // First get course IDs for this organization
+            const { data: orgCourses } = await supabase
+                .from("courses")
+                .select("id")
+                .eq("organization_id", orgId);
+
+            const courseIds = orgCourses?.map(c => c.id) || [];
+            console.log('Performance - Org Course IDs:', courseIds);
+
+            if (courseIds.length === 0) {
+                console.log('No courses for org, using empty performance data');
+                setPerformanceData(new Array(12).fill(0));
+                return;
+            }
+
+            // Get monthly performance data from course completions for org's courses
+            const { data: performanceData, error } = await supabase
+                .from("course_completions")
+                .select("quiz_score, completed_at")
+                .in("course_id", courseIds)
+                .not("completed_at", "is", null)
+                .gte("completed_at", new Date(new Date().getFullYear(), 0, 1).toISOString());
+
+            console.log('Performance Data Debug:', performanceData, 'Error:', error);
 
             // Group by month and calculate averages
             const monthlyData = new Array(12).fill(0);
             const monthlyCounts = new Array(12).fill(0);
 
             performanceData?.forEach(item => {
-                const month = new Date(item.created_at).getMonth();
-                monthlyData[month] += item.final_grade || 0;
+                const month = new Date(item.completed_at).getMonth();
+                monthlyData[month] += item.quiz_score || 0;
                 monthlyCounts[month]++;
             });
 
             // Calculate averages for each month
-            const averages = monthlyData.map((total, index) => 
+            const averages = monthlyData.map((total, index) =>
                 monthlyCounts[index] > 0 ? Math.round(total / monthlyCounts[index]) : 0
             );
 
+            console.log('Calculated Performance Averages:', averages);
             setPerformanceData(averages);
         } catch (error) {
             console.error("Error fetching performance data:", error);
@@ -260,6 +291,8 @@ export default function TrainingCenterPage() {
                 .eq("organization_id", orgId)
                 .eq("role", "worker");
 
+            console.log('Coverage Debug - Total Staff:', totalStaff);
+
             if (!totalStaff || totalStaff === 0) {
                 setCoverageData({ completed: 0, inProgress: 0, notStarted: 100 });
                 return;
@@ -273,30 +306,47 @@ export default function TrainingCenterPage() {
                 .eq("role", "worker");
 
             const workerIds = workers?.map(w => w.id) || [];
+            console.log('Coverage Debug - Worker IDs:', workerIds);
 
             // Get assignment statuses for these workers
-            const { data: assignments } = await supabase
+            const { data: assignments, error: assignmentError } = await supabase
                 .from("course_assignments")
                 .select("status, worker_id")
                 .in("worker_id", workerIds);
+
+            console.log('Coverage Debug - Assignments:', assignments, 'Error:', assignmentError);
+
+            // Log unique statuses found
+            const uniqueStatuses = [...new Set(assignments?.map(a => a.status) || [])];
+            console.log('Coverage Debug - Unique Statuses in DB:', uniqueStatuses);
 
             // Count unique workers by status
             const workerStatuses = new Map();
             assignments?.forEach(assignment => {
                 const workerId = assignment.worker_id;
                 const currentStatus = workerStatuses.get(workerId);
-                
+
                 // Priority: completed > in_progress > not_started
-                if (!currentStatus || 
-                    (assignment.status === 'completed' && currentStatus !== 'completed') ||
-                    (assignment.status === 'in_progress' && currentStatus === 'not_started')) {
-                    workerStatuses.set(workerId, assignment.status);
+                // Also handle variations like 'in-progress' or 'passed' or 'failed'
+                const normalizedStatus = assignment.status?.toLowerCase().replace('-', '_');
+                // 'failed' counts as completed (they finished the course)
+                const isCompleted = normalizedStatus === 'completed' || normalizedStatus === 'passed' || normalizedStatus === 'failed';
+                const isInProgress = normalizedStatus === 'in_progress' || normalizedStatus === 'in-progress';
+
+                if (!currentStatus ||
+                    (isCompleted && currentStatus !== 'completed') ||
+                    (isInProgress && currentStatus === 'not_started')) {
+                    workerStatuses.set(workerId, isCompleted ? 'completed' : (isInProgress ? 'in_progress' : 'not_started'));
                 }
             });
+
+            console.log('Coverage Debug - Worker Statuses Map:', Object.fromEntries(workerStatuses));
 
             const completed = Array.from(workerStatuses.values()).filter(s => s === 'completed').length;
             const inProgress = Array.from(workerStatuses.values()).filter(s => s === 'in_progress').length;
             const notStarted = totalStaff - completed - inProgress;
+
+            console.log('Coverage Debug - Completed:', completed, 'In Progress:', inProgress, 'Not Started:', notStarted);
 
             setCoverageData({
                 completed: Math.round((completed / totalStaff) * 100),

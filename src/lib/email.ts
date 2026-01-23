@@ -7,13 +7,18 @@ import WeeklySnapshotEmail from "@/emails/weekly-snapshot";
 import MonthlyOverviewEmail from "@/emails/monthly-overview";
 
 // Create Zoho SMTP transporter
+// Create Zoho SMTP transporter
+// TODO: Enter the new Zoho credentials from Mr. Seyi below
+const SENDER_EMAIL = ""; // Leave space for email
+const ZOHO_PASSWORD = ""; // Leave space for password
+
 const transporter = nodemailer.createTransport({
     host: process.env.ZOHO_SMTP_HOST || "smtp.zoho.com",
     port: parseInt(process.env.ZOHO_SMTP_PORT || "587"),
     secure: false, // true for 465, false for other ports
     auth: {
-        user: process.env.ZOHO_EMAIL!,
-        pass: process.env.ZOHO_PASSWORD!,
+        user: SENDER_EMAIL || process.env.ZOHO_EMAIL!, // Fallback to env if set, but prioritize the new var
+        pass: ZOHO_PASSWORD || process.env.ZOHO_PASSWORD!,
     },
     tls: {
         rejectUnauthorized: false
@@ -123,7 +128,7 @@ export async function sendWorkerInvitationWithTokens(params: {
         `;
 
         const info = await transporter.sendMail({
-            from: `"Theraptly Training" <${process.env.ZOHO_EMAIL!}>`,
+            from: `"Theraptly" <${SENDER_EMAIL || process.env.ZOHO_EMAIL!}>`,
             to: params.to,
             subject: `Training Assignment - ${params.organizationName}`,
             html: emailHtml,
@@ -151,7 +156,7 @@ export async function sendWorkerWelcomeEmail(params: SendWorkerWelcomeParams) {
         );
 
         const info = await transporter.sendMail({
-            from: `"Theraptly Training" <${process.env.ZOHO_EMAIL!}>`,
+            from: `"Theraptly" <${SENDER_EMAIL || process.env.ZOHO_EMAIL!}>`,
             to: params.to,
             subject: `Welcome to ${params.organizationName} Training Portal`,
             html: emailHtml,
@@ -175,7 +180,7 @@ export async function sendWorkerWelcomeWithAutoLogin(params: {
     try {
         // Dynamic import to avoid module resolution issues
         const { default: WorkerWelcomeAutoLoginEmail } = await import("@/emails/worker-welcome-auto-login");
-        
+
         const emailHtml = await render(
             WorkerWelcomeAutoLoginEmail({
                 workerName: params.workerName,
@@ -187,7 +192,7 @@ export async function sendWorkerWelcomeWithAutoLogin(params: {
         );
 
         const info = await transporter.sendMail({
-            from: `"Theraptly Training" <${process.env.ZOHO_EMAIL!}>`,
+            from: `"Theraptly" <${SENDER_EMAIL || process.env.ZOHO_EMAIL!}>`,
             to: params.to,
             subject: `Welcome to ${params.organizationName} Training Portal - Start Your Training`,
             html: emailHtml,
@@ -263,7 +268,7 @@ export async function sendCourseAssignmentNotification(params: {
         `;
 
         const info = await transporter.sendMail({
-            from: `"Theraptly Training" <${process.env.ZOHO_EMAIL!}>`,
+            from: `"Theraptly" <${SENDER_EMAIL || process.env.ZOHO_EMAIL!}>`,
             to: params.to,
             subject: `New Course Assignment: ${params.courseTitle}`,
             html: emailHtml,
@@ -288,11 +293,12 @@ export async function sendWorkerWelcomeWithCourseAccess(params: {
     }>;
     fallbackLoginUrl: string;
     hasAutoLogin: boolean;
+    tempPassword?: string;
 }) {
     try {
         // Dynamic import to avoid module resolution issues
         const { default: WorkerWelcomeCourseAccessEmail } = await import("@/emails/worker-welcome-course-access");
-        
+
         const emailHtml = await render(
             WorkerWelcomeCourseAccessEmail({
                 workerName: params.workerName,
@@ -300,13 +306,14 @@ export async function sendWorkerWelcomeWithCourseAccess(params: {
                 courseAccessLinks: params.courseAccessLinks,
                 fallbackLoginUrl: params.fallbackLoginUrl,
                 hasAutoLogin: params.hasAutoLogin,
+                tempPassword: params.tempPassword,
             })
         );
 
         const info = await transporter.sendMail({
-            from: `"Theraptly Training" <${process.env.ZOHO_EMAIL!}>`,
+            from: `"Theraptly" <${SENDER_EMAIL || process.env.ZOHO_EMAIL!}>`,
             to: params.to,
-            subject: `Welcome to ${params.organizationName} - Start Your Training`,
+            subject: `Welcome to ${params.organizationName}`,
             html: emailHtml,
         });
 
@@ -345,7 +352,7 @@ export async function sendTrainingReminderEmail(params: SendTrainingReminderPara
             : `Reminder: ${params.courseTitle} due in ${daysRemaining} day${daysRemaining !== 1 ? "s" : ""}`;
 
         const info = await transporter.sendMail({
-            from: `"Theraptly Training" <${process.env.ZOHO_EMAIL!}>`,
+            from: `"Theraptly" <${SENDER_EMAIL || process.env.ZOHO_EMAIL!}>`,
             to: params.to,
             subject,
             html: emailHtml,
@@ -390,7 +397,7 @@ export async function sendWeeklyComplianceEmail(params: SendWeeklySnapshotParams
         );
 
         const info = await transporter.sendMail({
-            from: `"Theraptly Training" <${process.env.ZOHO_EMAIL!}>`,
+            from: `"Theraptly" <${SENDER_EMAIL || process.env.ZOHO_EMAIL!}>`,
             to: params.to,
             subject: `Weekly Compliance Snapshot – ${params.organizationName}`,
             html: emailHtml,

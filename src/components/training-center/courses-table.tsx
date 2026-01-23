@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, ExternalLink, Download, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, ExternalLink } from "lucide-react";
 
 interface Course {
     id: string;
@@ -18,35 +17,6 @@ interface CoursesTableProps {
 }
 
 export function CoursesTable({ courses }: CoursesTableProps) {
-    const [isExporting, setIsExporting] = useState(false);
-
-    const handleExport = async () => {
-        if (isExporting) return;
-
-        setIsExporting(true);
-        try {
-            const response = await fetch('/api/training-center/export');
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Training_Center_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-            } else {
-                alert('Failed to generate PDF report');
-            }
-        } catch (error) {
-            console.error('Error downloading PDF:', error);
-            alert('Failed to download PDF report');
-        } finally {
-            setIsExporting(false);
-        }
-    };
-
     return (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
@@ -57,23 +27,6 @@ export function CoursesTable({ courses }: CoursesTableProps) {
                         placeholder="Search for courses..."
                         className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <button
-                        onClick={handleExport}
-                        disabled={isExporting}
-                        className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                        {isExporting ? (
-                            <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Exporting...
-                            </>
-                        ) : (
-                            <>
-                                <Download className="w-4 h-4" />
-                                Export
-                            </>
-                        )}
-                    </button>
                 </div>
             </div>
 

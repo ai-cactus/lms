@@ -67,7 +67,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
     const setupQuizFromValidatedAssignment = async (assignmentData: any) => {
         try {
             const course = assignmentData.course;
-            
+
             // Fetch questions separately from quiz_questions table
             const { data: questionsData, error: questionsError } = await supabase
                 .from("quiz_questions")
@@ -79,6 +79,12 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
             }
 
             const questions = questionsData || [];
+
+            // Randomize questions (Fisher-Yates shuffle)
+            for (let i = questions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [questions[i], questions[j]] = [questions[j], questions[i]];
+            }
 
             // Determine difficulty from objectives or default to Beginner
             const difficulty = (course.objectives as any)?.difficulty || "Beginner";
@@ -162,22 +168,22 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                     },
                     body: JSON.stringify({ token }),
                 });
-                
+
                 const validation = await response.json();
                 if (!validation.isValid) {
                     router.push("/login");
                     return;
                 }
-                
+
                 // Verify the token matches this assignment
                 if (validation.assignment?.id !== assignmentId) {
                     router.push("/login");
                     return;
                 }
-                
+
                 // Use assignment data from token validation
                 setWorkerName(validation.assignment.worker.full_name);
-                
+
                 // Continue with quiz setup using validated assignment
                 await setupQuizFromValidatedAssignment(validation.assignment);
                 return;
@@ -206,9 +212,12 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                 id,
                 course_id,
                 status,
+                assigned_at,
+                assigned_by,
                 course:courses(
                     id,
                     title,
+                    version,
                     objectives
                 )
             `;
@@ -346,6 +355,20 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
+                // Prepare audit metadata
+                const auditMetadata = {
+                    assigned_at: assignment.assigned_at,
+                    assigned_by: assignment.assigned_by,
+                    course_version: assignment.course.version,
+                    worker_name: workerName,
+                    worker_email: user.email,
+                    course_title: assignment.course.title,
+                    quiz_score: score,
+                    passed: passed,
+                    completed_at: new Date().toISOString(),
+                    user_agent: navigator.userAgent
+                };
+
                 const { saveQuizAttempt } = await import("@/app/actions/quiz");
                 await saveQuizAttempt({
                     workerId: user.id,
@@ -353,7 +376,8 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                     assignmentId: assignmentId,
                     score,
                     passed,
-                    answers: answersData
+                    answers: answersData,
+                    metadata: auditMetadata
                 });
 
                 // ALWAYS record completion (attempt), even if failed
@@ -365,7 +389,8 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                         course_id: assignment.course.id,
                         quiz_score: score,
                         completed_at: new Date().toISOString(),
-                        quiz_answers: quizAnswers
+                        quiz_answers: quizAnswers,
+                        metadata: auditMetadata
                     });
 
                 // Update assignment status based on pass/fail

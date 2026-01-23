@@ -59,6 +59,7 @@ interface SaveQuizAttemptParams {
     score: number
     passed: boolean
     answers: QuizAnswer[]
+    metadata?: Record<string, any>
 }
 
 /**
@@ -73,7 +74,7 @@ export async function saveQuizAttempt(params: SaveQuizAttemptParams): Promise<{
 }> {
     try {
         const supabase = await createClient()
-        const { workerId, courseId, assignmentId, score, passed, answers } = params
+        const { workerId, courseId, assignmentId, score, passed, answers, metadata } = params
 
         // 1. Get existing attempts count to calculate attempt number
         const { data: existingAttempts, error: countError } = await supabase
@@ -101,7 +102,8 @@ export async function saveQuizAttempt(params: SaveQuizAttemptParams): Promise<{
                 passed: passed,
                 attempt_number: attemptNumber,
                 started_at: new Date().toISOString(),
-                completed_at: new Date().toISOString()
+                completed_at: new Date().toISOString(),
+                metadata: metadata || {}
             })
             .select('id')
             .single()
@@ -183,11 +185,22 @@ export async function getWorkerAttempts(workerId: string): Promise<{
             return { success: false, error: error.message }
         }
 
-        return { success: true, attempts: data || [] }
+        // Transform Supabase response
+        const attempts = (data || []).map((attempt: any) => ({
+            ...attempt,
+            course: Array.isArray(attempt.course) ? attempt.course[0] : attempt.course
+        })) as WorkerAttempt[]
+
+        return { success: true, attempts }
 
     } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
     }
+}
+
+    } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
+}
 }
 
 /**
@@ -203,7 +216,7 @@ export async function getAttemptDetails(attemptId: string): Promise<{
         const supabase = await createClient()
 
         // Get attempt details
-        const { data: attemptData, error: attemptError } = await supabase
+        const { data: attemptDataRaw, error: attemptError } = await supabase
             .from('quiz_attempts')
             .select(`
                 id,
@@ -229,8 +242,15 @@ export async function getAttemptDetails(attemptId: string): Promise<{
             return { success: false, error: attemptError.message }
         }
 
+        // Transform Supabase response (array -> single object)
+        const attempt = {
+            ...attemptDataRaw,
+            course: Array.isArray(attemptDataRaw.course) ? attemptDataRaw.course[0] : attemptDataRaw.course,
+            worker: Array.isArray(attemptDataRaw.worker) ? attemptDataRaw.worker[0] : attemptDataRaw.worker
+        } as AttemptDetails
+
         // Get all answers for this attempt
-        const { data: answersData, error: answersError } = await supabase
+        const { data: answersDataRaw, error: answersError } = await supabase
             .from('quiz_answers')
             .select(`
                 id,
@@ -247,16 +267,22 @@ export async function getAttemptDetails(attemptId: string): Promise<{
         if (answersError) {
             return {
                 success: true,
-                attempt: attemptData,
+                attempt,
                 answers: [],
                 error: 'Failed to load answers'
             }
         }
 
+        // Transform answers (array -> single object for question)
+        const answers = (answersDataRaw || []).map((a: any) => ({
+            ...a,
+            question: Array.isArray(a.question) ? a.question[0] : a.question
+        })) as AttemptAnswer[]
+
         return {
             success: true,
-            attempt: attemptData,
-            answers: answersData || []
+            attempt,
+            answers
         }
 
     } catch (err) {

@@ -1,10 +1,12 @@
 "use client";
 
-import { Bell, CaretDown, UserCircle } from "@phosphor-icons/react";
+import { CaretDown, UserCircle } from "@phosphor-icons/react";
 import { Menu } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 interface WorkerHeaderProps {
     onOpenMobileMenu: () => void;
@@ -13,6 +15,7 @@ interface WorkerHeaderProps {
 export function WorkerHeader({ onOpenMobileMenu }: WorkerHeaderProps) {
     const [userName, setUserName] = useState("Worker");
     const [userInitials, setUserInitials] = useState("W");
+    const router = useRouter();
     const supabase = createClient();
 
     useEffect(() => {
@@ -51,15 +54,17 @@ export function WorkerHeader({ onOpenMobileMenu }: WorkerHeaderProps) {
                 </button>
 
                 {/* Title - hidden on very small screens */}
-               
+
             </div>
 
             <div className="flex items-center gap-4 sm:gap-6">
-                <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
-                    <Bell className="text-xl sm:text-2xl" />
-                </button>
+                <NotificationBell />
                 <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6">
-                    <UserProfileDropdown userName={userName} userInitials={userInitials} />
+                    <UserProfileDropdown
+                        userName={userName}
+                        userInitials={userInitials}
+                        onEditProfile={() => router.push('/worker/profile')}
+                    />
                 </div>
             </div>
         </header>

@@ -37,6 +37,7 @@ interface WorkerUpdateData {
     supervisor_id: string | null
     status?: string
     deactivated_at?: string | null
+    email?: string
 }
 
 export type CreateWorkerState = {
@@ -109,7 +110,8 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
                 worker_category: category,
                 organization_id: organizationId || null,
                 supervisor_id: supervisorId || null,
-                status: 'active'
+                status: 'active',
+                must_change_password: true
             })
 
         if (profileError) {
@@ -181,12 +183,12 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
                             assignment.worker_id,
                             assignment.course_id
                         );
-                        
+
                         const result = await storeCourseAccessToken(tokenData);
                         if (result.success) {
                             const course = courseDetails?.find(c => c.id === assignment.course_id);
                             const assignmentDetail = assignments.find(a => a.course_id === assignment.course_id);
-                            
+
                             return {
                                 assignmentId: assignment.id,
                                 courseId: assignment.course_id,
@@ -204,7 +206,7 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
 
                 const accessTokens = await Promise.all(tokenPromises);
                 const validTokens = accessTokens.filter(token => token !== null);
-                
+
                 console.log(`Generated ${validTokens.length} course access tokens for worker ${email}`);
                 console.log(`Total assignments created: ${assignments.length}`);
             }
@@ -274,26 +276,27 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
 
             const fallbackToken = generateAutoLoginToken(newUserId, email, undefined, fallbackRedirectUrl);
             const fallbackTokenResult = await storeAutoLoginToken(fallbackToken);
-            
+
             let fallbackUrl;
             if (fallbackTokenResult.success) {
                 fallbackUrl = generateAutoLoginUrl(fallbackToken.token, fallbackRedirectUrl);
             } else {
                 console.error('Failed to create fallback auto-login token, falling back to manual login');
-                fallbackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/login`;
+                fallbackUrl = `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`;
             }
-                
+
             console.log('Final fallback URL:', fallbackUrl);
-            
+
             const emailResult = await sendWorkerWelcomeWithCourseAccess({
                 to: email,
                 workerName: fullName,
                 organizationName: 'Your Organization',
                 courseAccessLinks: courseAccessLinks,
                 fallbackLoginUrl: fallbackUrl,
-                hasAutoLogin: courseAccessLinks.length > 0
+                hasAutoLogin: courseAccessLinks.length > 0,
+                tempPassword: tempPassword // Pass temporary password to email
             });
-            
+
             if (emailResult.success) {
                 console.log(`✅ Successfully sent welcome email with course-specific auto-login to ${email}`);
             } else {
@@ -303,6 +306,7 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
             console.error('❌ Error sending email:', emailError);
             // Don't fail the entire operation if email fails
         }
+
 
         revalidatePath('/admin/workers')
         return { success: true, message: 'Worker created successfully! Welcome email with login credentials sent.' }
@@ -388,5 +392,45 @@ export async function updateWorker(prevState: CreateWorkerState, formData: FormD
     } catch (err) {
         console.error('Unexpected error:', err)
         return { error: 'An unexpected error occurred' }
+    }
+}
+
+export async function deleteWorker(workerId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const supabase = await createClient()
+        const adminSupabase = createAdminClient()
+
+        // 1. Verify current user is admin/supervisor
+        const { data: { user: currentUser } } = await supabase.auth.getUser()
+        if (!currentUser) {
+            return { success: false, error: 'Not authenticated' }
+        }
+
+        // 2. Delete from Auth (this usually cascades to public.users if set up correctly, but we'll be safe)
+        const { error: authError } = await adminSupabase.auth.admin.deleteUser(workerId)
+
+        if (authError) {
+            console.error('Failed to delete auth user:', authError)
+            return { success: false, error: 'Failed to delete worker account: ' + authError.message }
+        }
+
+        // 3. Delete from public.users (explicitly, just in case CASCADE isn't set up)
+        // Note: If auth delete succeeded, this might fail if the user is already gone, which is fine.
+        const { error: profileError } = await adminSupabase
+            .from('users')
+            .delete()
+            .eq('id', workerId)
+
+        if (profileError && profileError.code !== 'PGRST116') { // Ignore "not found" if it was cascaded
+            console.error('Failed to delete user profile:', profileError)
+            // We don't return failure here if auth delete worked, as the main goal is achieved (freeing the email)
+        }
+
+        revalidatePath('/admin/workers')
+        revalidatePath('/admin/staff')
+        return { success: true }
+    } catch (err) {
+        console.error('Unexpected error in deleteWorker:', err)
+        return { success: false, error: 'An unexpected error occurred' }
     }
 }

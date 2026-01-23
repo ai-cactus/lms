@@ -118,7 +118,9 @@ export async function bulkImportWorkers(
                         email,
                         full_name: fullName,
                         role: role,
+
                         organization_id: organizationId,
+                        must_change_password: true
                     });
 
                     if (insertError) {
@@ -130,13 +132,22 @@ export async function bulkImportWorkers(
                         continue;
                     }
 
-                    // Send password reset email so worker can set their own password
+                    // Send welcome email with temp password
+                    // Note: We're not assigning courses here yet in bulk import, just creating users
+                    // But we should still send credentials
                     try {
-                        await supabase.auth.resetPasswordForEmail(email, {
-                            redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/reset-password`,
+                        const { sendWorkerWelcomeWithCourseAccess } = await import('@/lib/email');
+                        await sendWorkerWelcomeWithCourseAccess({
+                            to: email,
+                            workerName: fullName,
+                            organizationName: 'Your Organization', // Ideally fetch from org
+                            courseAccessLinks: [], // No courses assigned yet
+                            fallbackLoginUrl: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`,
+                            hasAutoLogin: false,
+                            tempPassword: tempPassword
                         });
                     } catch (emailError) {
-                        console.error(`Failed to send reset email to ${email}:`, emailError);
+                        console.error(`Failed to send welcome email to ${email}:`, emailError);
                         // Don't fail the import if email fails, just log it
                     }
 

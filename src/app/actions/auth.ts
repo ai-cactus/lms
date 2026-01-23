@@ -96,7 +96,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
         const origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${origin}/reset-password`
+            redirectTo: `${origin}/auth/callback?next=/reset-password`
         })
 
         if (error) {
@@ -141,4 +141,43 @@ export async function signOut() {
 
     // Redirect is handled by middleware after signOut
     return { success: true }
+}
+
+/**
+ * Change immediate password and clear force-change flag
+ */
+export async function changePassword(newPassword: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const supabase = await createClient()
+        const adminSupabase = createAdminClient()
+
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+            return { success: false, error: 'Not authenticated' }
+        }
+
+        // 1. Update Auth Password
+        const { error: authError } = await supabase.auth.updateUser({
+            password: newPassword
+        })
+
+        if (authError) {
+            return { success: false, error: authError.message }
+        }
+
+        // 2. Clear force password flag
+        const { error: profileError } = await adminSupabase
+            .from('users')
+            .update({ must_change_password: false })
+            .eq('id', user.id)
+
+        if (profileError) {
+            console.error('Failed to clear password flag:', profileError)
+            // Non-critical, but good to know
+        }
+
+        return { success: true }
+    } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
+    }
 }

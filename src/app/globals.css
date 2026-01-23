@@ -2,7 +2,32 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-manrope);
+  --font-inter: var(--font-inter);
+
+  /* Brand Colors */
+  --color-brand-primary: #405DDD;
+  --color-brand-hover: #3a50c0;
+  --color-brand-sidebar: #2D4DDD;
+
+  /* Text Colors */
+  --color-text-primary: #1A1A1A;
+  --color-text-secondary: #64748B;
+  --color-text-tertiary: #94A3B8;
+  --color-text-white: #FFFFFF;
+  --color-text-white-dim: #CFD9E0;
+
+  /* Border Colors */
+  --color-border-default: #E2E8F0;
+
+  /* Border Radius */
+  --radius-xl: 12px;
+  --radius-2xl: 22px;
+
+  /* Font Weights - Shifted lighter */
+  --font-weight-bold: 600;
+  --font-weight-semibold: 500;
+  --font-weight-medium: 400;
 }
 
 /* Custom Scrollbar */
@@ -25,11 +50,10 @@
 
 @layer base {
   * {
-    font-family: var(--font-inter), system-ui, sans-serif;
+    border-color: var(--color-border-default);
   }
-  
+
   body {
-    @apply bg-white text-slate-900;
-    font-family: var(--font-inter), system-ui, sans-serif;
+    @apply bg-white text-text-primary;
   }
 }

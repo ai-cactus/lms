@@ -14,19 +14,19 @@ export interface AutoLoginToken {
  * Generate a secure auto-login token
  */
 export function generateAutoLoginToken(
-    userId: string, 
-    email: string, 
-    courseAssignmentId?: string, 
+    userId: string,
+    email: string,
+    courseAssignmentId?: string,
     redirectTo?: string
 ): AutoLoginToken {
     // Generate a cryptographically secure random token
     const tokenBytes = crypto.randomBytes(32);
     const token = tokenBytes.toString('base64url'); // URL-safe base64
-    
+
     // Token expires in 30 days (for now, as requested)
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
-    
+
     return {
         token,
         userId,
@@ -111,13 +111,13 @@ export async function validateAutoLoginToken(token: string): Promise<{
                 error: 'Login token has expired'
             };
         }
-        
+
         // Token is valid, delete it (one-time use)
         await supabase
             .from('auto_login_tokens')
             .delete()
             .eq('token', token);
-        
+
         return {
             isValid: true,
             userId: tokenData.user_id,
@@ -125,7 +125,7 @@ export async function validateAutoLoginToken(token: string): Promise<{
             courseAssignmentId: tokenData.course_assignment_id,
             redirectTo: tokenData.redirect_to
         };
-        
+
     } catch (error: any) {
         console.error('Error validating auto-login token:', error);
         return {
@@ -139,11 +139,11 @@ export async function validateAutoLoginToken(token: string): Promise<{
  * Generate auto-login URL
  */
 export function generateAutoLoginUrl(token: string, redirectTo?: string): string {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const params = new URLSearchParams({
         token,
         ...(redirectTo && { redirect: redirectTo })
     });
-    
+
     return `${baseUrl}/auth/auto-login?${params.toString()}`;
 }

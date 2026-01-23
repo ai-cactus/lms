@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Search, UserPlus, Upload, Trash2, MoreVertical, CheckCircle, XCircle, X } from "lucide-react";
 import ImportWorkersModal from "@/components/staff/ImportWorkersModal";
+import { deleteWorker } from "@/app/actions/worker";
 import Avatar from "@/components/ui/Avatar";
 
 interface StaffMember {
@@ -29,7 +30,7 @@ export default function StaffDetailsPage() {
     const [workerToDelete, setWorkerToDelete] = useState<StaffMember | null>(null);
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [itemsPerPage, setItemsPerPage] = useState(10);
-    const [alertMessage, setAlertMessage] = useState<{type: 'success' | 'error', message: string} | null>(null);
+    const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
     useEffect(() => {
         loadStaff();
@@ -76,21 +77,17 @@ export default function StaffDetailsPage() {
         if (!workerToDelete) return;
 
         try {
-            const { error } = await supabase
-                .from("users")
-                .delete()
-                .eq("id", workerToDelete.id);
+            const result = await deleteWorker(workerToDelete.id);
 
-            if (error) {
-                console.error("Error deleting worker:", error);
-                throw new Error(`Failed to delete worker: ${error.message}`);
+            if (!result.success) {
+                throw new Error(result.error);
             }
 
             // Refresh staff list
             await loadStaff();
             setShowDeleteModal(false);
             setWorkerToDelete(null);
-            
+
             // Show success message
             setAlertMessage({
                 type: 'success',
@@ -154,21 +151,21 @@ export default function StaffDetailsPage() {
             <div className="max-w-7xl mx-auto">
                 <div className="flex justify-between">
                     <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2">Staff Details</h1>
-                    <p className="text-slate-600">Here is an overview of your staff details</p>
-                </div>
+                        <h1 className="text-3xl font-bold text-slate-900 mb-2">Staff Details</h1>
+                        <p className="text-slate-600">Here is an overview of your staff details</p>
+                    </div>
                     <div className="flex items-start gap-3">
-                                <button
-                                    onClick={() => router.push('/admin/workers/add')}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
-                                >
-                                    <UserPlus className="w-4 h-4" />
-                                    Add New Worker
-                                </button>
-                            </div>
+                        <button
+                            onClick={() => router.push('/admin/workers/add')}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                        >
+                            <UserPlus className="w-4 h-4" />
+                            Add New Worker
+                        </button>
+                    </div>
                 </div>
-                
-                
+
+
 
                 <div className="bg-white rounded-xl shadow-lg border border-gray-200">
                     <div className="p-6 border-b border-gray-200">
@@ -186,7 +183,7 @@ export default function StaffDetailsPage() {
                                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                                 />
                             </div>
-                            
+
                         </div>
                     </div>
 
@@ -221,7 +218,7 @@ export default function StaffDetailsPage() {
                                         >
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <Avatar 
+                                                    <Avatar
                                                         fallback={member.full_name}
                                                         size="md"
                                                     />
@@ -331,11 +328,10 @@ export default function StaffDetailsPage() {
                                             <button
                                                 key={i}
                                                 onClick={() => setCurrentPage(pageNum)}
-                                                className={`px-3 py-1 border rounded text-sm ${
-                                                    currentPage === pageNum
-                                                        ? "bg-blue-600 text-white border-blue-600"
-                                                        : "border-gray-300 hover:bg-white"
-                                                }`}
+                                                className={`px-3 py-1 border rounded text-sm ${currentPage === pageNum
+                                                    ? "bg-blue-600 text-white border-blue-600"
+                                                    : "border-gray-300 hover:bg-white"
+                                                    }`}
                                             >
                                                 {pageNum}
                                             </button>
@@ -347,11 +343,10 @@ export default function StaffDetailsPage() {
                                     {totalPages > 5 && (
                                         <button
                                             onClick={() => setCurrentPage(totalPages)}
-                                            className={`px-3 py-1 border rounded text-sm ${
-                                                currentPage === totalPages
-                                                    ? "bg-blue-600 text-white border-blue-600"
-                                                    : "border-gray-300 hover:bg-white"
-                                            }`}
+                                            className={`px-3 py-1 border rounded text-sm ${currentPage === totalPages
+                                                ? "bg-blue-600 text-white border-blue-600"
+                                                : "border-gray-300 hover:bg-white"
+                                                }`}
                                         >
                                             {totalPages}
                                         </button>
@@ -407,28 +402,25 @@ export default function StaffDetailsPage() {
             {/* Custom Alert */}
             {alertMessage && (
                 <div className="fixed top-4 right-4 z-50 max-w-md">
-                    <div className={`rounded-lg shadow-lg border p-4 flex items-start gap-3 ${
-                        alertMessage.type === 'success' 
-                            ? 'bg-green-50 border-green-200' 
-                            : 'bg-red-50 border-red-200'
-                    }`}>
+                    <div className={`rounded-lg shadow-lg border p-4 flex items-start gap-3 ${alertMessage.type === 'success'
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-red-50 border-red-200'
+                        }`}>
                         {alertMessage.type === 'success' ? (
                             <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
                         ) : (
                             <XCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
                         )}
                         <div className="flex-1">
-                            <p className={`text-sm font-medium ${
-                                alertMessage.type === 'success' ? 'text-green-800' : 'text-red-800'
-                            }`}>
+                            <p className={`text-sm font-medium ${alertMessage.type === 'success' ? 'text-green-800' : 'text-red-800'
+                                }`}>
                                 {alertMessage.message}
                             </p>
                         </div>
                         <button
                             onClick={() => setAlertMessage(null)}
-                            className={`text-gray-400 hover:text-gray-600 ${
-                                alertMessage.type === 'success' ? 'hover:text-green-600' : 'hover:text-red-600'
-                            }`}
+                            className={`text-gray-400 hover:text-gray-600 ${alertMessage.type === 'success' ? 'hover:text-green-600' : 'hover:text-red-600'
+                                }`}
                         >
                             <X className="w-4 h-4" />
                         </button>

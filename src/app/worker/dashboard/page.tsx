@@ -118,6 +118,29 @@ function WorkerDashboardContent() {
             const totalCourses = normalizedData.length;
             const completedCourses = normalizedData.filter(c => c.status === 'completed' || c.status === 'failed').length;
 
+            // Fetch all scores in bulk to avoid N+1 queries
+            const { data: allCompletions, error: completionsError } = await supabase
+                .from("course_completions")
+                .select("*")
+                .eq("worker_id", user.id);
+
+            if (completionsError) {
+                console.error("Error fetching completions:", completionsError);
+            }
+
+            const { data: allAttempts, error: attemptsError } = await supabase
+                .from("quiz_attempts")
+                .select("*")
+                .eq("worker_id", user.id)
+                .order("completed_at", { ascending: false });
+
+            if (attemptsError) {
+                console.error("Error fetching attempts:", attemptsError);
+            }
+
+            console.log('All Completions:', allCompletions);
+            console.log('All Attempts:', allAttempts);
+
             // Fetch scores for all assignments to populate grades and calculate average
             const scoreMap: { [key: string]: number | null } = {};
             let totalScore = 0;
@@ -125,78 +148,43 @@ function WorkerDashboardContent() {
 
             for (const assignment of normalizedData) {
                 try {
-                    // Try to get score from course_completions first (try both course_id and assignment_id)
-                    let completion = null;
-                    try {
-                        const { data } = await supabase
-                            .from("course_completions")
-                            .select("quiz_score")
-                            .eq("course_id", assignment.course_id)
-                            .eq("worker_id", assignment.worker_id)
-                            .single();
-                        completion = data;
-                    } catch {
-                        // Try with assignment_id
-                        try {
-                            const { data } = await supabase
-                                .from("course_completions")
-                                .select("quiz_score")
-                                .eq("assignment_id", assignment.id)
-                                .single();
-                            completion = data;
-                        } catch {
-                            // Ignore
-                        }
-                    }
-
                     let score = null;
-                    if (completion?.quiz_score && completion.quiz_score > 0) {
+
+                    // 1. Try to find in course_completions (Official Record)
+                    const completion = allCompletions?.find(c =>
+                        c.course_id === assignment.course_id || c.assignment_id === assignment.id
+                    );
+
+                    if (completion?.quiz_score != null) {
                         score = completion.quiz_score;
                     } else {
-                        // Fallback to quiz_attempts
-                        try {
-                            const { data: attempt } = await supabase
-                                .from("quiz_attempts")
-                                .select("score")
-                                .eq("course_id", assignment.course_id)
-                                .eq("worker_id", assignment.worker_id)
-                                .order("completed_at", { ascending: false })
-                                .limit(1)
-                                .single();
+                        // 2. Fallback to quiz_attempts (Best/Latest Attempt)
+                        const attempt = allAttempts?.find(a =>
+                            a.course_id === assignment.course_id || a.assignment_id === assignment.id
+                        );
 
-                            if (attempt?.score && attempt.score > 0) {
-                                score = attempt.score;
-                            }
-                        } catch {
-                            // Try with assignment_id
-                            try {
-                                const { data: attempt } = await supabase
-                                    .from("quiz_attempts")
-                                    .select("score")
-                                    .eq("assignment_id", assignment.id)
-                                    .order("completed_at", { ascending: false })
-                                    .limit(1)
-                                    .single();
-
-                                if (attempt?.score && attempt.score > 0) {
-                                    score = attempt.score;
-                                }
-                            } catch {
-                                // Ignore
-                            }
+                        if (attempt?.score != null) {
+                            score = attempt.score;
                         }
                     }
 
+                    console.log(`Final score for ${assignment.id}: ${score}`);
+
                     scoreMap[assignment.id] = score;
-                    if (score !== null && (assignment.status === 'completed' || assignment.status === 'failed')) {
+
+                    // Calculate stats
+                    // Include 'passed' status and ensure score is present
+                    if (score !== null && (assignment.status === 'completed' || assignment.status === 'failed' || assignment.status === 'passed' || assignment.progress_percentage === 100)) {
                         totalScore += score;
                         scoreCount++;
                     }
                 } catch (error) {
-                    console.error(`Error fetching score for assignment ${assignment.id}:`, error);
+                    console.error(`Error processing score for assignment ${assignment.id}:`, error);
                     scoreMap[assignment.id] = null;
                 }
             }
+
+            console.log(`Total Score: ${totalScore}, Count: ${scoreCount}`);
 
             const averageGrade = scoreCount > 0 ? Math.round(totalScore / scoreCount) : 0;
 
@@ -212,8 +200,8 @@ function WorkerDashboardContent() {
                 const progress = assignment.progress_percentage !== null && assignment.progress_percentage !== undefined
                     ? assignment.progress_percentage
                     : (assignment.status === 'completed' ? 100 :
-                       assignment.status === 'in_progress' ? 50 : 0); // Default 50% for in-progress if no specific progress
-                
+                        assignment.status === 'in_progress' ? 50 : 0); // Default 50% for in-progress if no specific progress
+
                 return {
                     id: assignment.id,
                     name: assignment.courses?.title || 'Untitled Course',
@@ -286,12 +274,12 @@ function WorkerDashboardContent() {
     if (showOnboarding) {
         return (
             <div className="p-8">
-                <OnboardingModal 
+                <OnboardingModal
                     onClose={() => {
                         setShowOnboarding(false);
                         localStorage.setItem("theraptly-welcome-seen", "true");
-                    }} 
-                    userRole="worker" 
+                    }}
+                    userRole="worker"
                 />
             </div>
         );

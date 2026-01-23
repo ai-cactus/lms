@@ -23,6 +23,7 @@ interface WorkerWelcomeCourseAccessEmailProps {
     courseAccessLinks: CourseAccessLink[];
     fallbackLoginUrl: string;
     hasAutoLogin: boolean;
+    tempPassword?: string;
 }
 
 export default function WorkerWelcomeCourseAccessEmail({
@@ -38,6 +39,7 @@ export default function WorkerWelcomeCourseAccessEmail({
     ],
     fallbackLoginUrl = "https://example.com/login",
     hasAutoLogin = true,
+    tempPassword,
 }: WorkerWelcomeCourseAccessEmailProps) {
     return (
         <Html>
@@ -59,6 +61,23 @@ export default function WorkerWelcomeCourseAccessEmail({
                         </Text>
                     </Section>
 
+                    {tempPassword && (
+                        <Section style={infoBox}>
+                            <Text style={infoTitle}>Your Login Credentials</Text>
+                            <Text style={infoText}>
+                                A temporary password has been generated for you. You will be required to change this password when you first log in.
+                            </Text>
+                            <Section style={{ background: "#e2e8f0", padding: "12px", borderRadius: "6px", margin: "10px 0", textAlign: "center" }}>
+                                <Text style={{ fontFamily: "monospace", fontSize: "18px", fontWeight: "bold", margin: 0, letterSpacing: "1px", color: "#1e293b" }}>
+                                    {tempPassword}
+                                </Text>
+                            </Section>
+                            <Text style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic", margin: "5px 0 0 0", textAlign: "center" }}>
+                                Use this password if auto-login links expire or when logging in manually.
+                            </Text>
+                        </Section>
+                    )}
+
                     {courseAccessLinks.length > 0 ? (
                         <>
                             {/* Course Access Section */}
@@ -79,7 +98,7 @@ export default function WorkerWelcomeCourseAccessEmail({
 
                                         <Section style={buttonContainer}>
                                             <Button style={primaryButton} href={course.autoLoginUrl}>
-                                                 Start Course Now
+                                                Start Course Now
                                             </Button>
                                         </Section>
 
@@ -137,7 +156,7 @@ export default function WorkerWelcomeCourseAccessEmail({
 
                         <Section style={buttonContainer}>
                             <Button style={secondaryButton} href={fallbackLoginUrl}>
-                                 View All Training
+                                View All Training
                             </Button>
                         </Section>
 

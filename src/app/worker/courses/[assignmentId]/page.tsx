@@ -18,6 +18,7 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
+import { Logo } from "@/components/Logo";
 import "katex/dist/katex.min.css";
 
 // Icons for internal use
@@ -119,32 +120,49 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
     const content = assignment?.course?.lesson_notes || "";
     const courseTitle = assignment?.course?.title || "Course Content";
 
-    // Split content into slides based on H2 headings
-    const slides = useMemo(() => {
+    interface Slide {
+        content: string;
+        title: string;
+    }
+
+    // Split content into slides based on H2 headings and horizontal rules
+    const slides = useMemo<Slide[]>(() => {
         if (!content) return [];
 
         const lines = content.split('\n');
-        const slideContents: string[] = [];
-        let currentSlideContent: string[] = [];
+        const parsedSlides: Slide[] = [];
+        let currentContent: string[] = [];
+        let currentTitle = "Course Introduction";
+
+        const flushSlide = () => {
+            if (currentContent.length > 0) {
+                parsedSlides.push({
+                    content: currentContent.join('\n'),
+                    title: currentTitle
+                });
+            }
+            currentContent = [];
+        };
 
         for (const line of lines) {
             if (line.startsWith('## ')) {
-                // New slide starts
-                if (currentSlideContent.length > 0) {
-                    slideContents.push(currentSlideContent.join('\n'));
-                }
-                currentSlideContent = [line];
+                // New Module handling
+                flushSlide();
+                currentTitle = line.replace('## ', '').trim();
+                currentContent = [line]; // Keep H2 in content for markdown rendering if needed, or remove if used only for banner
+            } else if (line.trim() === '---' || line.trim() === '***') {
+                // Horizontal rule - New Page within same module
+                flushSlide();
+                // Don't add the rule itself to content
             } else {
-                currentSlideContent.push(line);
+                currentContent.push(line);
             }
         }
 
         // Add the last slide
-        if (currentSlideContent.length > 0) {
-            slideContents.push(currentSlideContent.join('\n'));
-        }
+        flushSlide();
 
-        return slideContents;
+        return parsedSlides;
     }, [content]);
 
     // Extract headings from markdown content for table of contents
@@ -267,12 +285,8 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
         const isFirstSlide = currentSlide === 0;
         const isLastSlide = currentSlide === slides.length - 1;
 
-        // Extract module title (H2) from current slide
-        const h2Match = currentSlideContent.match(/^##\s+(.+)$/m);
-        const moduleTitle = h2Match ? h2Match[1] : 'Module Content';
-
-        // Check if this is a title slide (has H2 but minimal content)
-        const isTitleSlide = currentSlideContent.includes('##') && currentSlideContent.split('\n').filter(line => line.trim()).length < 5;
+        // Check if this is a title slide (minimal content)
+        const isTitleSlide = currentSlideContent.content.includes('##') && currentSlideContent.content.split('\n').filter(line => line.trim()).length < 5;
 
         return (
             <div className="fixed inset-0 bg-white z-50 flex flex-col">
@@ -361,26 +375,36 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
                                             ),
                                         }}
                                     >
-                                        {currentSlideContent}
+                                        {currentSlideContent.content}
                                     </ReactMarkdown>
                                 </div>
 
-                                {/* Decorative Shape */}
-                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-64 h-80 bg-teal-700 rounded-l-full opacity-90 z-0"></div>
+                                {/* Decorative Shape - UPDATED: Blue & 50% opacity */}
+                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-64 h-80 bg-[#4758E0] rounded-l-full opacity-50 z-0"></div>
 
-                                <div className="absolute bottom-8 left-16 text-xs text-slate-500">
-                                    Theraptly.co
+                                <div className="absolute bottom-8 left-16">
+                                    <Logo showText={true} />
                                 </div>
                             </div>
-                        ) : isLastSlide && currentSlideContent.toLowerCase().includes('thank') ? (
-                            // Thank You Slide Layout
+                        ) : isLastSlide ? (
+                            // Last Slide (Thank You / Quiz Prompt) Layout
                             <div className="min-h-[500px] flex flex-col items-center justify-center py-12 relative">
-                                <h1 className="text-6xl font-bold text-slate-900 mb-4">Thank you</h1>
-                                <p className="text-sm text-slate-500">Theraptly.co</p>
+                                <div className="prose prose-slate max-w-none mb-8 text-center">
+                                    <ReactMarkdown
+                                        remarkPlugins={[remarkMath, remarkGfm]}
+                                        rehypePlugins={[rehypeKatex]}
+                                    >
+                                        {currentSlideContent.content}
+                                    </ReactMarkdown>
+                                </div>
+
+                                <div className="mb-4 transform scale-150">
+                                    <Logo showText={true} />
+                                </div>
 
                                 <button
                                     onClick={handleStartQuiz}
-                                    className="absolute right-8 top-1/2 -translate-y-1/2 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium flex items-center gap-2"
+                                    className="px-6 py-3 bg-[#4758E0] text-white rounded-lg hover:bg-[#4758E0]/90 transition-colors text-lg font-medium flex items-center gap-2 shadow-lg"
                                 >
                                     Start Quiz <CaretRight />
                                 </button>
@@ -388,10 +412,10 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
                         ) : (
                             // Content Slide Layout
                             <div className="h-full flex flex-col relative">
-                                {/* Green Header Banner */}
-                                <div className="bg-teal-700 text-white px-12 py-6 relative z-10 flex-shrink-0">
+                                {/* Blue Header Banner - UPDATED: Blue */}
+                                <div className="bg-[#4758E0] text-white px-12 py-6 relative z-10 flex-shrink-0">
                                     <h2 className="text-2xl font-bold">
-                                        {moduleTitle}
+                                        {currentSlideContent.title}
                                     </h2>
                                 </div>
 
@@ -411,16 +435,16 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
                                                 ),
                                             }}
                                         >
-                                            {currentSlideContent}
+                                            {currentSlideContent.content}
                                         </ReactMarkdown>
                                     </div>
 
-                                    {/* Decorative Shape - Bottom Right */}
-                                    <div className="absolute bottom-8 right-0 w-48 h-48 bg-teal-700/20 rounded-l-full pointer-events-none z-0"></div>
+                                    {/* Decorative Shape - Bottom Right - UPDATED: Blue & 50% opacity */}
+                                    <div className="absolute bottom-8 right-0 w-48 h-48 bg-[#4758E0] rounded-l-full pointer-events-none opacity-20 z-0"></div>
                                 </div>
 
-                                <div className="px-12 py-4 text-xs text-slate-500 border-t border-gray-100 flex-shrink-0">
-                                    Theraptly.co
+                                <div className="px-12 py-4 border-t border-gray-100 flex-shrink-0">
+                                    <Logo className="scale-75 origin-left" showText={true} />
                                 </div>
                             </div>
                         )}
@@ -438,19 +462,19 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
                 {/* Thumbnail Strip */}
                 <div className="bg-white border-t border-gray-200 px-8 py-3">
                     <div className="max-w-7xl mx-auto">
-                        <div 
-                            className="flex gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden" 
-                            style={{ 
-                                scrollbarWidth: 'none', 
+                        <div
+                            className="flex gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+                            style={{
+                                scrollbarWidth: 'none',
                                 msOverflowStyle: 'none'
                             }}
                         >
                             {slides.map((slide, index) => {
-                                const slideH2 = slide.match(/^##\s+(.+)$/m)?.[1] || '';
-                                const slideContent = slide.replace(/^##\s+.+$/m, '').trim();
+                                const slideH2 = slide.content.match(/^##\s+(.+)$/m)?.[1] || '';
+                                const slideContent = slide.content.replace(/^##\s+.+$/m, '').trim();
                                 const isFirstSlide = index === 0;
                                 const isLastSlide = index === slides.length - 1;
-                                
+
                                 return (
                                     <button
                                         key={index}
@@ -595,14 +619,14 @@ export default function WorkerCoursePreviewPage({ params }: { params: Promise<{ 
 
                         {/* Navigation */}
                         <div className="flex items-center justify-between">
-                            <button 
+                            <button
                                 onClick={() => router.push('/worker/courses')}
                                 className="flex items-center gap-2 px-4 py-2 text-[#4758E0] hover:text-[#4758E0]/80"
                             >
                                 <ChevronLeft className="w-4 h-4" />
                                 Back to Courses
                             </button>
-                            <button 
+                            <button
                                 onClick={handleStartQuiz}
                                 className="flex items-center gap-2 px-4 py-2 bg-[#4758E0] text-white rounded-lg hover:bg-[#4758E0]/90"
                             >

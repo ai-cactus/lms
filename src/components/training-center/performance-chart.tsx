@@ -30,9 +30,9 @@ interface PerformanceChartProps {
 export function PerformanceChart({ data }: { data: number[] }) {
     const [timeFilter, setTimeFilter] = useState("Monthly");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    
+
     const timeFilters = ["Daily", "Weekly", "Monthly", "Yearly"];
-    
+
     const getLabelsAndData = () => {
         switch (timeFilter) {
             case "Daily":
@@ -73,6 +73,11 @@ export function PerformanceChart({ data }: { data: number[] }) {
         ],
     };
 
+    // Calculate dynamic Y-axis max based on data
+    const maxValue = Math.max(...chartDataPoints, 0);
+    const dynamicMax = maxValue === 0 ? 100 : Math.ceil(maxValue / 10) * 10 + 10; // Round up to nearest 10 + buffer
+    const dynamicStepSize = Math.max(Math.ceil(dynamicMax / 5), 1); // 5 steps on Y-axis
+
     const options = {
         responsive: true,
         maintainAspectRatio: false,
@@ -87,9 +92,9 @@ export function PerformanceChart({ data }: { data: number[] }) {
         scales: {
             y: {
                 beginAtZero: true,
-                max: 100,
+                max: dynamicMax,
                 ticks: {
-                    stepSize: 20,
+                    stepSize: dynamicStepSize,
                 },
                 grid: {
                     display: true,
@@ -116,7 +121,7 @@ export function PerformanceChart({ data }: { data: number[] }) {
                         {timeFilter}
                         <ChevronDown className="w-4 h-4" />
                     </button>
-                    
+
                     {isDropdownOpen && (
                         <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[120px]">
                             {timeFilters.map((filter) => (
@@ -126,9 +131,8 @@ export function PerformanceChart({ data }: { data: number[] }) {
                                         setTimeFilter(filter);
                                         setIsDropdownOpen(false);
                                     }}
-                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-white first:rounded-t-lg last:rounded-b-lg ${
-                                        timeFilter === filter ? 'text-blue-600 bg-blue-50' : 'text-slate-700'
-                                    }`}
+                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-white first:rounded-t-lg last:rounded-b-lg ${timeFilter === filter ? 'text-blue-600 bg-blue-50' : 'text-slate-700'
+                                        }`}
                                 >
                                     {filter}
                                 </button>

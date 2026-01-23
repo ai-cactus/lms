@@ -40,11 +40,11 @@ export function generateCourseAccessToken(assignmentId: string, workerId: string
     // Generate a cryptographically secure random token
     const tokenBytes = crypto.randomBytes(32);
     const token = tokenBytes.toString('base64url'); // URL-safe base64
-    
+
     // Token expires in 30 days
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
-    
+
     return {
         assignmentId,
         workerId,
@@ -60,7 +60,7 @@ export function generateCourseAccessToken(assignmentId: string, workerId: string
 export async function storeCourseAccessToken(tokenData: CourseAccessToken): Promise<{ success: boolean; error?: string }> {
     try {
         const supabase = createAdminClient();
-        
+
         const { error } = await supabase
             .from('course_access_tokens')
             .insert({
@@ -71,12 +71,12 @@ export async function storeCourseAccessToken(tokenData: CourseAccessToken): Prom
                 expires_at: tokenData.expiresAt.toISOString(),
                 created_at: new Date().toISOString()
             });
-            
+
         if (error) {
             console.error('Error storing course access token:', error);
             return { success: false, error: error.message };
         }
-        
+
         return { success: true };
     } catch (error: any) {
         console.error('Error storing course access token:', error);
@@ -90,21 +90,21 @@ export async function storeCourseAccessToken(tokenData: CourseAccessToken): Prom
 export async function validateCourseAccessToken(token: string): Promise<TokenValidationResult> {
     try {
         const supabase = createAdminClient();
-        
+
         // Find the token and check if it's valid and not expired
         const { data: tokenData, error: tokenError } = await supabase
             .from('course_access_tokens')
             .select('*')
             .eq('token', token)
             .single();
-            
+
         if (tokenError || !tokenData) {
             return {
                 isValid: false,
                 error: 'Invalid or expired access token'
             };
         }
-        
+
         // Check if token is expired
         const now = new Date();
         const expiresAt = new Date(tokenData.expires_at);
@@ -114,7 +114,7 @@ export async function validateCourseAccessToken(token: string): Promise<TokenVal
                 error: 'Access token has expired'
             };
         }
-        
+
         // Get assignment details with course and worker info
         const { data: assignment, error: assignmentError } = await supabase
             .from('course_assignments')
@@ -139,14 +139,14 @@ export async function validateCourseAccessToken(token: string): Promise<TokenVal
             `)
             .eq('id', tokenData.assignment_id)
             .single();
-            
+
         if (assignmentError || !assignment) {
             return {
                 isValid: false,
                 error: 'Assignment not found or access denied'
             };
         }
-        
+
         // Verify the token matches the assignment
         if (assignment.worker_id !== tokenData.worker_id || assignment.course_id !== tokenData.course_id) {
             return {
@@ -154,12 +154,12 @@ export async function validateCourseAccessToken(token: string): Promise<TokenVal
                 error: 'Token does not match assignment details'
             };
         }
-        
+
         return {
             isValid: true,
             assignment: assignment as any
         };
-        
+
     } catch (error: any) {
         console.error('Error validating course access token:', error);
         return {
@@ -173,7 +173,7 @@ export async function validateCourseAccessToken(token: string): Promise<TokenVal
  * Generate a complete course access URL
  */
 export function generateCourseAccessUrl(token: string, baseUrl?: string): string {
-    const base = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const base = baseUrl || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     return `${base}/course/access/${token}`;
 }
 
@@ -183,17 +183,17 @@ export function generateCourseAccessUrl(token: string, baseUrl?: string): string
 export async function cleanupExpiredTokens(): Promise<{ deleted: number; error?: string }> {
     try {
         const supabase = createAdminClient();
-        
+
         const { data, error } = await supabase
             .from('course_access_tokens')
             .delete()
             .lt('expires_at', new Date().toISOString())
             .select('id');
-            
+
         if (error) {
             return { deleted: 0, error: error.message };
         }
-        
+
         return { deleted: data?.length || 0 };
     } catch (error: any) {
         return { deleted: 0, error: error.message };

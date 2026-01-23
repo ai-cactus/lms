@@ -12,48 +12,6 @@ export function Step1Category({ value, onChange }: Step1CategoryProps) {
     const [isOpen, setIsOpen] = useState(false);
 
     const categories = [
-        // Federal & Legal Compliance
-        "HIPAA Privacy Rule & Patient Rights",
-        "HIPAA Security Rule & Electronic Safeguards",
-        "HIPAA Breach Notification Protocols",
-        "Fraud, Waste, and Abuse (FWA) Prevention",
-        "False Claims Act & Whistleblower Protections",
-        "Anti-Kickback Statute and Stark Law",
-        "EMTALA (Emergency Medical Treatment and Labor Act)",
-        "Corporate Code of Conduct & Ethics",
-        "Section 1557 (ACA) Nondiscrimination",
-        "Incident Reporting & Root Cause Analysis",
-
-        // SOC 2 & Advanced Cybersecurity
-        "Social Engineering & Phishing Prevention",
-        "Password Hygiene & Multi-Factor Authentication (MFA)",
-        "Clean Desk & Clear Screen Policies",
-        "Data Classification & Handling (Public vs. Confidential)",
-        "Mobile Device Security & BYOD Policies",
-        "Physical Security & Visitor Access Controls",
-        "Acceptable Use Policy (AUP) for Technology",
-        "Vendor Risk Management & Third-Party Access",
-        "Disaster Recovery & Business Continuity Planning",
-
-        // Workplace Culture & HR
-        "Sexual Harassment & Discrimination Prevention",
-        "Diversity, Equity, and Inclusion (DEI) in Healthcare",
-        "Cultural Competency & CLAS Standards",
-        "Substance Abuse & Drug-Free Workplace",
-        "Social Media Use & Patient Privacy",
-        "Workplace Violence & Active Shooter Response",
-        "Conflicts of Interest",
-
-        // Specialized Clinical & Safety
-        "Trauma-Informed Care Fundamentals",
-        "Bloodborne Pathogens & Sharps Safety (OSHA)",
-        "Hazard Communication (HazCom/GHS)",
-        "Tuberculosis (TB) Prevention & Control",
-        "Pain Management & Safe Opioid Prescribing",
-        "Rights of Persons Served (Patient Bill of Rights)",
-        "Medical Record Documentation Standards",
-
-        // General Healthcare
         "Health and Safety Practices",
         "Infection Prevention and Control",
         "Cybersecurity and Technology",
@@ -69,7 +27,7 @@ export function Step1Category({ value, onChange }: Step1CategoryProps) {
         "Office-Based Opioid Treatment",
         "Court Treatment Programs",
         "Health Home Programs"
-    ].sort();
+    ];
 
     const handleSelect = (cat: string) => {
         onChange(cat);

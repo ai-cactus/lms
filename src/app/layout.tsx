@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Manrope } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/react";
 import { NetworkProvider } from "@/contexts/network-context";
@@ -10,6 +10,11 @@ import "./globals.css";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+});
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-manrope",
 });
 
 export const metadata: Metadata = {
@@ -24,7 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} font-sans antialiased bg-white text-slate-900`} style={{ fontFamily: 'var(--font-inter), system-ui, sans-serif' }}>
+      <body className={`${inter.variable} ${manrope.variable} font-sans antialiased bg-white text-slate-900`}>
         <NetworkProvider>
           <NotificationProvider>
             <NetworkStatus />

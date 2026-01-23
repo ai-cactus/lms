@@ -1,10 +1,11 @@
 "use client";
 
-import { Bell, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 interface HeaderProps {
     onOpenMobileMenu: () => void;
@@ -73,7 +74,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
 
                 {/* Breadcrumb */}
                 <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
-                    
+
                 </div>
 
                 {/* Mobile title */}
@@ -83,9 +84,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
             </div>
 
             <div className="flex items-center gap-3 sm:gap-6">
-                <button className="relative text-slate-400 hover:text-slate-600 transition-colors p-2">
-                    <Bell className="w-5 h-5 sm:w-6 sm:h-6" />
-                </button>
+                <NotificationBell />
 
                 <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-6 ">
                     <UserProfileDropdown userName={userName} userInitials={userInitials} />

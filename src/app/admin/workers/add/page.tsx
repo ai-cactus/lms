@@ -7,7 +7,8 @@ import { UserPlus, Mail, CheckCircle, AlertCircle, ArrowRight } from "lucide-rea
 
 export default function AddWorkerPage() {
     const [formData, setFormData] = useState({
-        fullName: "",
+        firstName: "",
+        lastName: "",
         email: "",
         supervisorId: "",
     });
@@ -60,6 +61,7 @@ export default function AddWorkerPage() {
             setAvailableCourses(coursesData || []);
         } catch (err) {
             console.error("Error loading data:", err);
+            // setError((err as Error).message); // Optional: add state for initial load error if needed
         }
     };
 
@@ -67,8 +69,8 @@ export default function AddWorkerPage() {
         e.preventDefault();
         if (step === 1) {
             // Validate step 1
-            if (!formData.fullName || !formData.email) {
-                    setError("Please fill in all required fields");
+            if (!formData.firstName || !formData.lastName || !formData.email) {
+                setError("Please fill in all required fields");
                 return;
             }
             setError("");
@@ -93,7 +95,7 @@ export default function AddWorkerPage() {
             // Prepare FormData for Server Action
             const submitData = new FormData();
             submitData.append("email", formData.email);
-            submitData.append("fullName", formData.fullName);
+            submitData.append("fullName", `${formData.firstName} ${formData.lastName}`);
             submitData.append("role", "General Staff"); // Dummy value for required field
             submitData.append("category", "General"); // Dummy value for required field
             submitData.append("supervisorId", formData.supervisorId);
@@ -117,7 +119,7 @@ export default function AddWorkerPage() {
             router.push("/admin/workers?added=true");
         } catch (err) {
             console.error("Error creating worker:", err);
-            setError(err.message || "Failed to create worker");
+            setError((err as Error).message || "Failed to create worker");
             setLoading(false);
         }
     };
@@ -178,21 +180,40 @@ export default function AddWorkerPage() {
                     {step === 1 ? (
                         /* Step 1: Worker Information */
                         <div className="space-y-6">
-                            <div>
-                                <label htmlFor="fullName" className="block text-sm font-medium text-slate-700 mb-1">
-                                    Full Name <span className="text-red-500">*</span>
-                                </label>
-                                <div className="relative">
-                                    <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                    <input
-                                        id="fullName"
-                                        type="text"
-                                        value={formData.fullName}
-                                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                                        required
-                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                                        placeholder="John Doe"
-                                    />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="firstName" className="block text-sm font-medium text-slate-700 mb-1">
+                                        First Name <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="relative">
+                                        <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                        <input
+                                            id="firstName"
+                                            type="text"
+                                            value={formData.firstName}
+                                            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                                            required
+                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                            placeholder="John"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label htmlFor="lastName" className="block text-sm font-medium text-slate-700 mb-1">
+                                        Last Name <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="relative">
+                                        <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                        <input
+                                            id="lastName"
+                                            type="text"
+                                            value={formData.lastName}
+                                            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                                            required
+                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                            placeholder="Doe"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
@@ -257,30 +278,30 @@ export default function AddWorkerPage() {
 
                             {/* Available Courses */}
                             {availableCourses.length > 0 ? (
-                                    <div className="space-y-2">
+                                <div className="space-y-2">
                                     {availableCourses.map((course) => {
-                                                const isSelected = selectedCourses.has(course.id);
-                                                return (
-                                                    <div
-                                                        key={course.id}
-                                                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${isSelected
-                                                            ? "border-indigo-500 bg-indigo-50"
-                                                            : "border-gray-200 hover:border-gray-300"
-                                                            }`}
-                                                        onClick={() => toggleCourse(course.id, false)}
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            {isSelected ? (
-                                                                <CheckCircle className="w-4 h-4 text-indigo-600" />
-                                                            ) : (
-                                                                <div className="w-4 h-4 border-2 border-gray-300 rounded" />
-                                                            )}
-                                                            <span className="text-sm text-slate-900">{course.title}</span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                    </div>
+                                        const isSelected = selectedCourses.has(course.id);
+                                        return (
+                                            <div
+                                                key={course.id}
+                                                className={`p-3 border rounded-lg cursor-pointer transition-colors ${isSelected
+                                                    ? "border-indigo-500 bg-indigo-50"
+                                                    : "border-gray-200 hover:border-gray-300"
+                                                    }`}
+                                                onClick={() => toggleCourse(course.id)}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    {isSelected ? (
+                                                        <CheckCircle className="w-4 h-4 text-indigo-600" />
+                                                    ) : (
+                                                        <div className="w-4 h-4 border-2 border-gray-300 rounded" />
+                                                    )}
+                                                    <span className="text-sm text-slate-900">{course.title}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             ) : (
                                 <div className="text-center py-8 text-slate-600">
                                     No courses available.

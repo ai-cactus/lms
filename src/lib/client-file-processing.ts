@@ -1,33 +1,24 @@
 import mammoth from 'mammoth';
 
-// We use a CDN for the worker to avoid build/bundling issues with Next.js
-const PDFJS_WORKER_SRC = `https://unpkg.com/pdfjs-dist@5.4.296/build/pdf.worker.min.mjs`;
-
 export async function extractTextFromPdf(file: File): Promise<string> {
     try {
-        // Dynamic import to avoid SSR issues
-        const pdfjs = await import('pdfjs-dist');
+        // Use server-side API to extract PDF text (avoids Next.js bundling issues with pdfjs-dist)
+        const formData = new FormData();
+        formData.append('file', file);
 
-        // Set worker source
-        if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-            pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+        const response = await fetch('/api/document/extract-pdf', {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to extract PDF text');
         }
 
-        const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
-        const pdfDocument = await loadingTask.promise;
-
-        let fullText = '';
-        for (let i = 1; i <= pdfDocument.numPages; i++) {
-            const page = await pdfDocument.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items.map((item: any) => item.str).join(' ');
-            fullText += pageText + '\n';
-        }
-
-        return fullText;
+        const data = await response.json();
+        return data.text;
     } catch (error) {
-        console.error("Error extracting PDF text client-side:", error);
+        console.error("Error extracting PDF text:", error);
         throw new Error("Failed to extract text from PDF");
     }
 }
