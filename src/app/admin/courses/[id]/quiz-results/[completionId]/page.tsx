@@ -11,7 +11,7 @@ interface QuizResult {
     worker_id: string;
     quiz_score: number;
     completed_at: string;
-    quiz_answers: QuizAnswer[];
+    quiz_answers: Record<string, any>;
 }
 
 interface QuizAnswer {
@@ -307,12 +307,7 @@ export default function QuizResultsPage({ params }: { params: Promise<{ id: stri
                         ← Back to Course
                     </button>
                     <div className="flex gap-3">
-                        <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-white transition-colors">
-                            Share
-                        </button>
-                        <button className="px-4 py-2 bg-white border border-gray-300 text-slate-900 rounded-lg font-medium hover:bg-white transition-colors">
-                            Export
-                        </button>
+                        {/* Share and Export removed as per requirement */}
                     </div>
                 </div>
             </div>

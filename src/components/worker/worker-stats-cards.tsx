@@ -14,38 +14,38 @@ interface WorkerStatsCardsProps {
 
 export function WorkerStatsCards({ stats }: WorkerStatsCardsProps) {
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             {/* Total Courses */}
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-emerald-500 rounded-lg flex items-center justify-center">
-                        <BookOpen className="w-6 h-6 text-white" />
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200 shadow-sm">
+                <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+                        <BookOpen className="w-4 h-4 text-white" />
                     </div>
+                    <p className="text-sm font-medium text-emerald-700">Total Courses</p>
                 </div>
-                <p className="text-sm font-medium text-emerald-700 mb-1">Total Courses</p>
-                <p className="text-4xl font-bold text-emerald-900">{stats.totalCourses}</p>
+                <p className="text-3xl font-bold text-emerald-900">{stats.totalCourses}</p>
             </div>
 
             {/* Courses Completed */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center">
-                        <CheckCircle className="w-6 h-6 text-white" />
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200 shadow-sm">
+                <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                        <CheckCircle className="w-4 h-4 text-white" />
                     </div>
+                    <p className="text-sm font-medium text-blue-700">Courses Completed</p>
                 </div>
-                <p className="text-sm font-medium text-blue-700 mb-1">Courses Completed</p>
-                <p className="text-4xl font-bold text-blue-900">{stats.coursesCompleted}</p>
+                <p className="text-3xl font-bold text-blue-900">{stats.coursesCompleted}</p>
             </div>
 
             {/* Average Grade */}
-            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center">
-                        <Target className="w-6 h-6 text-white" />
+            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 border border-red-200 shadow-sm">
+                <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
+                        <Target className="w-4 h-4 text-white" />
                     </div>
+                    <p className="text-sm font-medium text-red-700">Average Grade</p>
                 </div>
-                <p className="text-sm font-medium text-red-700 mb-1">Average Grade</p>
-                <p className="text-4xl font-bold text-red-900">{stats.averageGrade}%</p>
+                <p className="text-3xl font-bold text-red-900">{stats.averageGrade}%</p>
             </div>
         </div>
     );

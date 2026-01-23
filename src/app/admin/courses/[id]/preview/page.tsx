@@ -187,7 +187,7 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
                 <div className="mx-auto px-[30px] py-8">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Main Content */}
-                        <div style={{border: "1px solid #EEEFF2", borderRadius: "12px", padding: "35px", boxShadow: "0 4px 4px 0 #0000000D"}} className="lg:col-span-2">
+                        <div style={{ border: "1px solid #EEEFF2", borderRadius: "12px", padding: "35px", boxShadow: "0 4px 4px 0 #0000000D" }} className="lg:col-span-2">
                             <div className="space-y-8">
                                 {/* Course Overview */}
                                 <div>
@@ -230,10 +230,10 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
                         </div>
 
                         {/* Sidebar */}
-                        <div style={{border: "1px solid #EEEFF2", borderRadius: "12px", padding: "27px 20px", boxShadow: "0 4px 4px 0 #0000000D"}} className="lg:col-span-1">
+                        <div style={{ border: "1px solid #EEEFF2", borderRadius: "12px", padding: "27px 20px", boxShadow: "0 4px 4px 0 #0000000D" }} className="lg:col-span-1">
                             <div className=" rounded-lg">
                                 <h3 className="text-lg font-bold text-gray-900 mb-4">Course Content</h3>
-                                 <div className="border-t border-dotted border-[#DFE1E6] mb-4"></div>
+                                <div className="border-t border-dotted border-[#DFE1E6] mb-4"></div>
                                 <div className="space-y-3">
                                     {sections.slice(0, showAllSections ? sections.length : 5).map((section, index) => (
                                         <div key={index} className="text-sm">
@@ -248,7 +248,7 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
                                     <div className="mt-6">
                                         <button
                                             onClick={() => setShowAllSections(!showAllSections)}
-                                            className="py-3 text-left text-blue-600 hover:text-blue-600/80 underline transition-colors font-medium"
+                                            className="py-3 text-left text-brand-primary hover:text-brand-hover underline transition-colors font-medium text-sm inline-flex items-center gap-1"
                                         >
                                             {showAllSections ? "View Less" : `View ${sections.length - 5} More Sections`}
                                         </button>

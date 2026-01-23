@@ -109,8 +109,10 @@ function WorkerDashboardContent() {
 
             setInProgressCourses(normalizedData);
 
-            // Hide onboarding banner once any course has been started (status is not 'not-started')
-            if (normalizedData.some(assignment => assignment.status !== 'not-started')) {
+            // Hide onboarding banner once any course has been started (status is not 'not_started')
+            // Note: DB status is 'not_started' (underscore), but frontend might use hyphen. Let's check DB value.
+            // Actually the DB usually uses underscores 'not_started'.
+            if (normalizedData.some(assignment => assignment.status !== 'not_started')) {
                 localStorage.setItem("theraptly-welcome-seen", "true");
             }
 
@@ -196,11 +198,26 @@ function WorkerDashboardContent() {
 
             // Transform data for the courses table (show all courses)
             const transformedCourses: WorkerCourse[] = normalizedData.map((assignment: any) => {
-                // Use actual progress_percentage from database, fallback to status-based calculation
-                const progress = assignment.progress_percentage !== null && assignment.progress_percentage !== undefined
-                    ? assignment.progress_percentage
-                    : (assignment.status === 'completed' ? 100 :
-                        assignment.status === 'in_progress' ? 50 : 0); // Default 50% for in-progress if no specific progress
+                // Use actual progress_percentage from database, fallback to status/score-based calculation
+                let progress = assignment.progress_percentage;
+
+                const score = scoreMap[assignment.id];
+                const isPassed = score !== null && score >= 80; // Assuming 80 is passing
+
+                if (progress === null || progress === undefined) {
+                    if (assignment.status === 'completed' || isPassed) {
+                        progress = 100;
+                    } else if (assignment.status === 'in_progress') {
+                        progress = 50;
+                    } else {
+                        progress = 0;
+                    }
+                }
+
+                // Force 100% if passed regardless of stored progress
+                if (isPassed) {
+                    progress = 100;
+                }
 
                 return {
                     id: assignment.id,
@@ -213,7 +230,7 @@ function WorkerDashboardContent() {
                         year: 'numeric'
                     }),
                     status: assignment.status as 'not-started' | 'in-progress' | 'completed',
-                    grade: scoreMap[assignment.id] || null
+                    grade: score
                 };
             });
 

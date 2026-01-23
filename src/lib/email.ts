@@ -304,11 +304,12 @@ export async function sendWorkerWelcomeWithCourseAccess(params: {
                 workerName: params.workerName,
                 organizationName: params.organizationName,
                 courseAccessLinks: params.courseAccessLinks,
-                fallbackLoginUrl: params.fallbackLoginUrl,
+                fallbackLoginUrl: params.fallbackLoginUrl || `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/login`,
                 hasAutoLogin: params.hasAutoLogin,
                 tempPassword: params.tempPassword,
             })
         );
+
 
         const info = await transporter.sendMail({
             from: `"Theraptly" <${SENDER_EMAIL || process.env.ZOHO_EMAIL!}>`,

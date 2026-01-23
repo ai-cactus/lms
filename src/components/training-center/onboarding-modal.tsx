@@ -15,10 +15,10 @@ export function OnboardingModal({ onClose, userRole = 'admin' }: OnboardingModal
             {onClose && (
                 <button
                     onClick={onClose}
-                    className="absolute top-4 right-4 z-10 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="absolute top-4 right-4 z-50 p-2.5 text-slate-600 bg-white hover:bg-slate-50 rounded-full shadow-md border border-gray-100 transition-all hover:scale-105"
                     aria-label="Close"
                 >
-                    <X size={24} />
+                    <X size={24} weight="bold" />
                 </button>
             )}
 

@@ -4,15 +4,7 @@ import { useState, useEffect, useMemo, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-import {
-    PencilSimple,
-    Hexagon,
-    CaretDown,
-    CaretUp,
-    CaretLeft as CaretLeftIcon,
-    CaretRight as CaretRightIcon,
-    BookOpen
-} from "@phosphor-icons/react";
+// function CaretLeft and CaretRight are defined locally below
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";

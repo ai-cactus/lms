@@ -49,15 +49,21 @@ export default function WorkerWelcomeCourseAccessEmail({
                 <Container style={container}>
                     {/* Header */}
                     <Section style={headerSection}>
-                        <Heading style={h1}> Welcome to {organizationName}</Heading>
-                        <Text style={subtitle}>Your training account is now active</Text>
+                        <Heading style={h1}>Welcome to {organizationName} Training Centre</Heading>
+                        <Text style={subtitle}>Your account is active. Courses will appear here once they&apos;re assigned.</Text>
                     </Section>
 
                     {/* Greeting */}
                     <Section style={greetingSection}>
                         <Text style={greetingText}>Hi {workerName},</Text>
                         <Text style={introText}>
-                            Great news! Your training account has been set up and you&apos;re ready to begin your compliance training journey with {organizationName}.
+                            Your training account is ready.
+                        </Text>
+                        <Text style={introText}>
+                            When your supervisor/admin assigns courses, they&apos;ll appear in your dashboard and you&apos;ll receive a notification.
+                        </Text>
+                        <Text style={introText}>
+                            To protect your account, you&apos;ll be prompted to change your password on first login.
                         </Text>
                     </Section>
 
@@ -132,18 +138,18 @@ export default function WorkerWelcomeCourseAccessEmail({
                     )}
 
                     <Section style={securityBox}>
-                        <Text style={securityTitle}>Security & Access Information</Text>
+                        <Text style={securityTitle}>Security & Access Checklist</Text>
                         <Text style={securityText}>
-                            • <strong>Personalized access</strong> - These links are unique to your account
+                            • <strong>Unique access:</strong> This sign-in link is tied to your account, don&apos;t share it.
                         </Text>
                         <Text style={securityText}>
-                            • <strong>30-day validity</strong> - Links remain active for a full month
+                            • <strong>Link expires in 30 days:</strong> If it expires, request a new link from your supervisor/admin.
                         </Text>
                         <Text style={securityText}>
-                            • <strong>Complete by deadlines</strong> - Finish your assigned courses on time
+                            • <strong>Meet deadlines:</strong> Complete courses before the due dates shown in your dashboard.
                         </Text>
                         <Text style={securityText}>
-                            • <strong>Need help?</strong> Contact your supervisor or administrator
+                            • <strong>Need help?</strong> Contact your supervisor/admin.
                         </Text>
                     </Section>
 

@@ -205,27 +205,27 @@ export function Step2Upload({
 
     return (
         <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-3xl font-bold text-slate-900 mb-4">
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">
                 {selectedSource === 'uploaded' ? 'Upload Training Documents' : 'Upload Training Documents'}
             </h2>
-            <p className="text-slate-500 mb-8 max-w-2xl mx-auto text-base">
+            <p className="text-slate-500 mb-4 max-w-2xl mx-auto text-sm">
                 {selectedSource === 'uploaded'
                     ? 'Upload your policy or compliance documents. We will analyze them and convert them into courses and quizzes automatically.'
                     : 'Upload your policy or compliance documents. We will analyze them and convert them into courses and quizzes automatically.'
                 }
             </p>
 
-            <div className="max-w-xl mx-auto">
-                <div className="text-left mb-2">
-                    <span className="text-slate-500 text-sm">Select file(s) from;</span>
+            <div className="max-w-lg mx-auto">
+                <div className="text-left mb-1">
+                    <span className="text-slate-500 text-xs">Select file(s) from;</span>
                 </div>
 
-                <div className="mb-6 relative" ref={dropdownRef}>
+                <div className="mb-4 relative" ref={dropdownRef}>
                     <button
                         onClick={() => setShowDropdown(!showDropdown)}
-                        className="w-full border border-gray-200 rounded-lg px-4 py-3 bg-white text-left flex justify-between items-center shadow-sm hover:border-gray-300 transition-colors"
+                        className="w-full border border-gray-200 rounded-lg px-4 py-2 bg-white text-left flex justify-between items-center shadow-sm hover:border-gray-300 transition-colors"
                     >
-                        <span className="text-slate-700 font-medium">
+                        <span className="text-slate-700 font-medium text-sm">
                             {selectedSource === 'computer' ? 'Browse Computer' : 'Uploaded documents'}
                         </span>
                         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
@@ -235,13 +235,13 @@ export function Step2Upload({
                         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
                             <button
                                 onClick={(e) => handleSourceChange(e, 'computer')}
-                                className={`w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors ${selectedSource === 'computer' ? 'bg-[#4E61F6]/10 text-[#4E61F6]' : 'text-slate-700'}`}
+                                className={`w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors text-sm ${selectedSource === 'computer' ? 'bg-[#4E61F6]/10 text-[#4E61F6]' : 'text-slate-700'}`}
                             >
                                 Browse Computer
                             </button>
                             <button
                                 onClick={(e) => handleSourceChange(e, 'uploaded')}
-                                className={`w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-t border-gray-100 ${selectedSource === 'uploaded' ? 'bg-[#4E61F6]/10 text-[#4E61F6]' : 'text-slate-700'}`}
+                                className={`w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors border-t border-gray-100 text-sm ${selectedSource === 'uploaded' ? 'bg-[#4E61F6]/10 text-[#4E61F6]' : 'text-slate-700'}`}
                             >
                                 Uploaded documents
                             </button>
@@ -254,15 +254,15 @@ export function Step2Upload({
                         onClick={() => !isAnalyzing && fileInputRef.current?.click()}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={!isAnalyzing ? handleDrop : (e) => e.preventDefault()}
-                        className={`border-2 border-dashed border-gray-200 rounded-xl p-8 bg-white transition-colors mb-6 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white cursor-pointer'}`}
+                        className={`border-2 border-dashed border-gray-200 rounded-xl p-6 bg-white transition-colors mb-4 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white cursor-pointer'}`}
                     >
-                        <div className="w-16 h-16 bg-gray-500 text-white rounded-lg flex items-center justify-center mx-auto mb-6">
-                            <CloudArrowUp size={32} weight="fill" />
+                        <div className="w-12 h-12 bg-gray-500 text-white rounded-lg flex items-center justify-center mx-auto mb-4">
+                            <CloudArrowUp size={24} weight="fill" />
                         </div>
-                        <p className="font-medium text-slate-700 mb-2">
+                        <p className="font-medium text-slate-700 mb-1 text-sm">
                             Drop your files here or <span className="text-[#4E61F6] underline">Click to upload</span>
                         </p>
-                        <p className="text-sm text-slate-400">PDF (max 25MB), DOCX (max 50MB), TXT/MD (max 10MB). You may upload multiple files.</p>
+                        <p className="text-xs text-slate-400">PDF (max 25MB), DOCX (max 50MB), TXT/MD (max 10MB). You may upload multiple files.</p>
                         <input
                             type="file"
                             ref={fileInputRef}
@@ -274,49 +274,49 @@ export function Step2Upload({
                         />
                     </div>
                 ) : (
-                    <div className="mb-6">
+                    <div className="mb-4">
                         {loadingDocuments ? (
-                            <div className="text-center py-12">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4E61F6] mx-auto mb-4"></div>
-                                <p className="text-slate-500">Loading uploaded documents...</p>
+                            <div className="text-center py-8">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#4E61F6] mx-auto mb-2"></div>
+                                <p className="text-slate-500 text-sm">Loading uploaded documents...</p>
                             </div>
                         ) : uploadedDocuments.length === 0 ? (
-                            <div className="text-center py-12">
-                                <p className="text-slate-500 mb-4">No uploaded documents found.</p>
+                            <div className="text-center py-8">
+                                <p className="text-slate-500 mb-2 text-sm">No uploaded documents found.</p>
                                 <button
                                     onClick={(e) => handleSourceChange(e, 'computer')}
-                                    className="text-[#4E61F6] hover:text-[#4E61F6]/80 font-medium"
+                                    className="text-[#4E61F6] hover:text-[#4E61F6]/80 font-medium text-sm"
                                 >
                                     Upload new documents instead
                                 </button>
                             </div>
                         ) : (
-                            <div className="space-y-3">
+                            <div className="space-y-2">
                                 {uploadedDocuments.map((document) => (
-                                    <div key={document.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-white hover:border-gray-300 transition-colors">
-                                        <div className="flex items-center gap-4">
+                                    <div key={document.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-white hover:border-gray-300 transition-colors">
+                                        <div className="flex items-center gap-3">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedPolicyIds.includes(document.id)}
                                                 onChange={() => handleDocumentSelection(document.id)}
                                                 className="w-4 h-4 text-[#4E61F6] border-gray-300 rounded focus:ring-[#4E61F6]"
                                             />
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2">
                                                 {document.file_name.endsWith('.pdf') ? (
-                                                    <FilePdf size={24} className="text-red-500" weight="fill" />
+                                                    <FilePdf size={20} className="text-red-500" weight="fill" />
                                                 ) : (
-                                                    <FileDoc size={24} className="text-blue-500" weight="fill" />
+                                                    <FileDoc size={20} className="text-blue-500" weight="fill" />
                                                 )}
                                                 <div>
                                                     <Link
                                                         href="/admin/documents"
-                                                        className="font-medium text-slate-900 hover:text-[#4E61F6] hover:underline flex items-center gap-1"
+                                                        className="font-medium text-slate-900 hover:text-[#4E61F6] hover:underline flex items-center gap-1 text-sm"
                                                     >
                                                         {document.file_name}
-                                                        <ArrowSquareOut size={14} className="text-slate-400" />
+                                                        <ArrowSquareOut size={12} className="text-slate-400" />
                                                     </Link>
                                                     <div className="flex items-center gap-2 text-xs text-slate-500">
-                                                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded">Analyzed</span>
+                                                        <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px]">Analyzed</span>
                                                         {document.file_size && (
                                                             <span>{(document.file_size / (1024 * 1024)).toFixed(1)} MB</span>
                                                         )}
@@ -326,9 +326,9 @@ export function Step2Upload({
                                         </div>
                                         <button
                                             onClick={() => handlePreviewDocument(document)}
-                                            className="px-4 py-2 bg-[#4E61F6] text-white rounded-lg font-medium hover:bg-[#4E61F6]/90 transition-colors flex items-center gap-2"
+                                            className="px-3 py-1.5 bg-[#4E61F6] text-white rounded-lg font-medium hover:bg-[#4E61F6]/90 transition-colors flex items-center gap-1 text-xs"
                                         >
-                                            <Eye size={16} />
+                                            <Eye size={14} />
                                             Preview
                                         </button>
                                     </div>
@@ -340,12 +340,12 @@ export function Step2Upload({
 
                 {/* Validation Errors */}
                 {validationErrors.length > 0 && (
-                    <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                         <div className="flex items-start gap-2">
-                            <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                            <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
                             <div>
-                                <h4 className="font-medium text-red-800 mb-2">File Validation Errors</h4>
-                                <ul className="text-sm text-red-700 space-y-1">
+                                <h4 className="font-medium text-red-800 mb-1 text-sm">File Validation Errors</h4>
+                                <ul className="text-xs text-red-700 space-y-1">
                                     {validationErrors.map((error, index) => (
                                         <li key={index}>• {error}</li>
                                     ))}
@@ -357,12 +357,12 @@ export function Step2Upload({
 
                 {/* Validation Warnings */}
                 {validationWarnings.length > 0 && (
-                    <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                         <div className="flex items-start gap-2">
-                            <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                            <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                             <div>
-                                <h4 className="font-medium text-amber-800 mb-2">File Validation Warnings</h4>
-                                <ul className="text-sm text-amber-700 space-y-1">
+                                <h4 className="font-medium text-amber-800 mb-1 text-sm">File Validation Warnings</h4>
+                                <ul className="text-xs text-amber-700 space-y-1">
                                     {validationWarnings.map((warning, index) => (
                                         <li key={index}>• {warning}</li>
                                     ))}
@@ -373,32 +373,32 @@ export function Step2Upload({
                 )}
 
                 {isAnalyzing && (
-                    <div className="mb-6 text-left">
-                        <div className="flex justify-between text-sm mb-2">
+                    <div className="mb-4 text-left">
+                        <div className="flex justify-between text-xs mb-1">
                             <span className="font-medium text-slate-700">Analyzing documents...</span>
                             <span className="text-slate-500">{uploadProgress}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
                             <div
-                                className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                                className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
                                 style={{ width: `${uploadProgress}%` }}
                             ></div>
                         </div>
-                        <p className="text-xs text-slate-500 mt-2">
+                        <p className="text-[10px] text-slate-500 mt-1">
                             Please wait while we process your files. This may take a moment.
                         </p>
                     </div>
                 )}
 
                 {files.length > 0 && (
-                    <div className="text-left space-y-3 mb-6">
+                    <div className="text-left space-y-2 mb-4">
                         {files.map((file, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
-                                <div className="flex items-center gap-4">
+                            <div key={idx} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+                                <div className="flex items-center gap-3">
                                     {file.name.endsWith('.pdf') ? (
-                                        <FilePdf size={32} className="text-red-500" weight="fill" />
+                                        <FilePdf size={24} className="text-red-500" weight="fill" />
                                     ) : (
-                                        <FileDoc size={32} className="text-blue-500" weight="fill" />
+                                        <FileDoc size={24} className="text-blue-500" weight="fill" />
                                     )}
                                     <div>
                                         <p className="text-sm font-bold text-slate-900">{file.name}</p>
@@ -415,9 +415,9 @@ export function Step2Upload({
                                         if (!isAnalyzing) removeFile(idx);
                                     }}
                                     disabled={isAnalyzing}
-                                    className="w-10 h-10 flex items-center justify-center rounded-full bg-[#4E61F6] text-white hover:bg-[#4E61F6]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-8 h-8 flex items-center justify-center rounded-full bg-[#4E61F6] text-white hover:bg-[#4E61F6]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <Trash size={20} weight="fill" />
+                                    <Trash size={16} weight="fill" />
                                 </button>
                             </div>
                         ))}

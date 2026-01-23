@@ -282,7 +282,13 @@ export async function createWorker(prevState: CreateWorkerState, formData: FormD
                 fallbackUrl = generateAutoLoginUrl(fallbackToken.token, fallbackRedirectUrl);
             } else {
                 console.error('Failed to create fallback auto-login token, falling back to manual login');
-                fallbackUrl = `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`;
+                const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ||
+                    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null) ||
+                    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+                    process.env.NEXT_PUBLIC_APP_URL ||
+                    'http://localhost:3000';
+
+                fallbackUrl = `${siteUrl}/login`;
             }
 
             console.log('Final fallback URL:', fallbackUrl);

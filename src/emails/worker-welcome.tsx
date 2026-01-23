@@ -33,7 +33,7 @@ export default function WorkerWelcomeEmail({
                 <Container style={container}>
                     <Heading style={h1}>Welcome to Theraptly Training</Heading>
 
-                    <Text style={text}>Hi {workerName},</Text>
+                    <Text style={text}>Hello {workerName},</Text>
 
                     <Text style={text}>
                         Welcome to {organizationName}! Your training account has been created and you have been

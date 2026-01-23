@@ -181,13 +181,10 @@ function CoursesListContent() {
                     <div className="flex items-center gap-3">
                         <button
                             onClick={() => router.push("/admin/courses/create")}
-                            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${activeTab === 'drafts'
-                                ? 'border border-gray-300 text-slate-700 hover:bg-gray-50'
-                                : 'bg-[#4E61F6] text-white hover:bg-[#4E61F6]/90'
-                                }`}
+                            className="px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 bg-[#4E61F6] text-white hover:bg-[#4E61F6]/90"
                         >
                             <Plus className="w-5 h-5" />
-                            {activeTab === 'drafts' ? 'Create Course' : 'Create Course'}
+                            Create Course
                         </button>
                     </div>
                 </div>

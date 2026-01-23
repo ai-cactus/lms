@@ -7,7 +7,6 @@ import {
     CheckCircle,
     ArrowLeft,
     X,
-    Share2,
     Clock,
     HelpCircle,
     Check
@@ -32,7 +31,6 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
     const [showReview, setShowReview] = useState(false);
     const [workerName, setWorkerName] = useState("");
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
-    const [isExporting, setIsExporting] = useState(false);
 
     useEffect(() => {
         loadAssignment();
@@ -394,13 +392,14 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                     });
 
                 // Update assignment status based on pass/fail
-                const newStatus = passed ? "completed" : "failed";
+                // Note: "quiz_passed" status triggers attestation flow, "completed" is set after attestation+badge
+                const newStatus = passed ? "quiz_passed" : "failed";
 
                 const { error: updateError } = await supabase
                     .from("course_assignments")
                     .update({
                         status: newStatus,
-                        progress_percentage: passed ? 100 : 100 // 100% done with the attempt, even if failed
+                        progress_percentage: passed ? 75 : 100 // 75% if passed (attestation pending), 100% if failed (done with attempt)
                     })
                     .eq("id", assignmentId);
 
@@ -448,32 +447,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
             .trim();
     };
 
-    // Handle PDF export
-    const handleExportPDF = async () => {
-        setIsExporting(true);
-        try {
-            const response = await fetch(`/api/quiz/${assignmentId}/results-pdf`);
 
-            if (!response.ok) {
-                throw new Error('Failed to generate PDF');
-            }
-
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `quiz-results-${assignment?.course?.title?.replace(/\s+/g, '-').toLowerCase() || 'course'}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error('Error exporting PDF:', error);
-            alert('Failed to export quiz results. Please try again.');
-        } finally {
-            setIsExporting(false);
-        }
-    };
 
     if (loading) {
         return (
@@ -603,12 +577,14 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center min-h-[600px] flex flex-col items-center justify-center">
                         {!showReview ? (
                             <>
-                                <h2 className="text-3xl font-bold text-slate-900 mb-4">{quizPassed ? "Congratulations!" : "Quiz Completed"}</h2>
+                                <h2 className="text-3xl font-bold text-slate-900 mb-4">{quizPassed ? "You passed" : "Not passed yet"}</h2>
                                 <p className="text-slate-600 mb-8 max-w-md">
-                                    You&apos;ve completed the course. We hope you&apos;ve learned something new about <span className="font-bold text-slate-900">{assignment.course.title}</span> today.
+                                    {quizPassed
+                                        ? <span>Score: <span className="font-bold">{quizScore}%</span> (Pass mark: 80%)</span>
+                                        : <span>Score: <span className="font-bold">{quizScore}%</span> (Pass mark: 80%). Review the training and try again.</span>
+                                    }
                                 </p>
 
-                                <p className="text-slate-500 mb-4">Your Quiz Score is:</p>
                                 <div className="mb-8">
                                     <CircularProgress
                                         percentage={quizScore || 0}
@@ -618,9 +594,11 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                                     />
                                 </div>
 
-                                <p className={`text-lg font-bold mb-8 ${quizPassed ? "text-green-600" : "text-red-600"}`}>
-                                    {quizPassed ? "You passed the course." : "You did not pass the course."}
-                                </p>
+                                {quizPassed && (
+                                    <p className="text-slate-500 mb-6 text-sm max-w-sm">
+                                        To finish this course, you must sign the training attestation.
+                                    </p>
+                                )}
 
                                 <div className="grid grid-cols-1 gap-4 w-full max-w-sm mb-8">
                                     <div className="bg-white p-4 rounded-xl flex items-center justify-between">
@@ -657,31 +635,54 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                                 </div>
 
                                 <div className="flex gap-4">
-                                    <button
-                                        onClick={() => {
-                                            // Reset quiz state to allow retaking
-                                            setCurrentStep("quiz");
-                                            setQuizSubmitted(false);
-                                            setQuizScore(null);
-                                            setQuizPassed(false);
-                                            setQuizAnswers({});
-                                            setShowReview(false);
-                                            setCurrentQuestionIndex(0);
-                                            setTimeLeft(assignment?.course?.quiz_questions?.length ? assignment.course.quiz_questions.length * (assignment.course.objectives?.difficulty?.toLowerCase() === "moderate" ? 30 : assignment.course.objectives?.difficulty?.toLowerCase() === "advanced" ? 15 : 60) : null);
-                                        }}
-                                        className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-lg shadow-blue-200"
-                                    >
-                                        RETAKE QUIZ
-                                        <ArrowLeft className="w-5 h-5" />
-                                    </button>
-                                    <button
-                                        onClick={() => router.push('/worker/dashboard?refresh=true')}
-                                        className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-lg shadow-indigo-200"
-                                    >
-                                        FINISH
-                                        <CheckCircle className="w-5 h-5" />
-                                    </button>
+                                    {quizPassed ? (
+                                        <>
+                                            <button
+                                                onClick={() => setShowReview(true)}
+                                                className="px-8 py-3 bg-white text-slate-700 rounded-xl font-medium hover:bg-gray-50 transition-colors border border-gray-200"
+                                            >
+                                                Review Answers
+                                            </button>
+                                            <button
+                                                onClick={() => router.push(`/worker/attestation/${assignmentId}`)}
+                                                className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-lg shadow-indigo-200"
+                                            >
+                                                Continue to Attestation
+                                                <CheckCircle className="w-5 h-5" />
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button
+                                                onClick={() => router.push(`/worker/courses/${assignmentId}`)}
+                                                className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-lg shadow-blue-200"
+                                            >
+                                                Review Training
+                                                <ArrowLeft className="w-5 h-5" />
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    // Reset quiz state to allow retaking
+                                                    setCurrentStep("quiz");
+                                                    setQuizSubmitted(false);
+                                                    setQuizScore(null);
+                                                    setQuizPassed(false);
+                                                    setQuizAnswers({});
+                                                    setShowReview(false);
+                                                    setCurrentQuestionIndex(0);
+                                                    setTimeLeft(assignment?.course?.quiz_questions?.length ? assignment.course.quiz_questions.length * (assignment.course.objectives?.difficulty?.toLowerCase() === "moderate" ? 30 : assignment.course.objectives?.difficulty?.toLowerCase() === "advanced" ? 15 : 60) : null);
+                                                }}
+                                                className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-lg shadow-indigo-200"
+                                            >
+                                                Retake Quiz
+                                                <CheckCircle className="w-5 h-5" />
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
+                                <p className="text-slate-400 text-sm mt-4">
+                                    {quizPassed ? "Your completion will be recorded after you sign." : ""}
+                                </p>
                             </>
                         ) : (
                             <div className="w-full text-left">
@@ -694,21 +695,7 @@ export default function QuizPage({ params }: { params: Promise<{ assignmentId: s
                                         Back to Dashboard
                                     </button>
                                     <div className="flex gap-2">
-                                        <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-white">Share</button>
-                                        <button
-                                            onClick={handleExportPDF}
-                                            disabled={isExporting}
-                                            className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                        >
-                                            {isExporting ? (
-                                                <>
-                                                    <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
-                                                    Exporting...
-                                                </>
-                                            ) : (
-                                                'Export PDF'
-                                            )}
-                                        </button>
+                                        {/* Share and Export removed as per requirement */}
                                     </div>
                                 </div>
 

@@ -131,11 +131,14 @@ export default function WorkerCourseDetailsPage({ params }: { params: Promise<{ 
         let currentSection = { title: '', content: '' };
 
         for (const line of lines) {
-            if (line.startsWith('## ')) {
+            // Match any markdown header (e.g. #, ##, ###)
+            const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
+
+            if (headerMatch) {
                 if (currentSection.title) {
                     sections.push(currentSection);
                 }
-                currentSection = { title: line.replace('## ', ''), content: '' };
+                currentSection = { title: headerMatch[2], content: '' };
             } else if (currentSection.title) {
                 currentSection.content += line + '\n';
             }
@@ -145,7 +148,18 @@ export default function WorkerCourseDetailsPage({ params }: { params: Promise<{ 
             sections.push(currentSection);
         }
 
-        return sections;
+        // Fallback: If no headers found, try to split by bullet points if it looks like a list
+        if (sections.length === 0 && content.length > 0) {
+            const listLines = content.split('\n').filter(line => line.trim().match(/^[-*]\s/));
+            if (listLines.length > 5) {
+                return listLines.map(line => ({
+                    title: line.replace(/^[-*]\s/, ''),
+                    content: ''
+                }));
+            }
+        }
+
+        return sections.length > 0 ? sections : [{ title: 'Course Content', content }];
     };
 
     const estimateReadTime = (content: string) => {
@@ -229,7 +243,12 @@ export default function WorkerCourseDetailsPage({ params }: { params: Promise<{ 
                                         onClick={handleStartCourse}
                                         className="px-6 w-full py-3 h-[58px] bg-[#4758E0] text-white rounded-lg font-medium hover:bg-[#4758E0]/90 transition-colors"
                                     >
-                                        Start Course
+                                        {['completed', 'failed', 'passed'].includes(assignment.status)
+                                            ? "Retake Course"
+                                            : assignment.status === 'in_progress'
+                                                ? "Continue Course"
+                                                : "Start Course"
+                                        }
                                     </button>
                                 </div>
                             </div>
@@ -304,9 +323,9 @@ export default function WorkerCourseDetailsPage({ params }: { params: Promise<{ 
                                     <div className="mt-4 pt-4 border-t border-gray-200">
                                         <button
                                             onClick={() => setShowAllSections(!showAllSections)}
-                                            className="text-sm text-[#2C3D8F] hover:text-[#1e2d5f] font-medium hover:underline"
+                                            className="text-sm text-blue-600 font-semibold hover:underline inline-flex items-center gap-1 transition-colors"
                                         >
-                                            {showAllSections ? "View Less" : `View ${remainingCount} More Sections`}
+                                            {showAllSections ? "View Less" : "View More"}
                                         </button>
                                     </div>
                                 )}

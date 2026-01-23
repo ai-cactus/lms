@@ -198,10 +198,7 @@ export async function getWorkerAttempts(workerId: string): Promise<{
     }
 }
 
-    } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred' }
-}
-}
+
 
 /**
  * Get detailed information about a specific attempt including all answers

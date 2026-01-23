@@ -27,7 +27,7 @@ export function CourseDrafts({ onContinueDraft }: CourseDraftsProps) {
         try {
             setLoading(true);
             const result = await courseDraftManager.loadAllDrafts();
-            
+
             if (result.success) {
                 setDrafts(result.drafts || []);
             } else {
@@ -44,7 +44,7 @@ export function CourseDrafts({ onContinueDraft }: CourseDraftsProps) {
 
     const handleDeleteDraft = async (draftId: string) => {
         if (deletingId) return;
-        
+
         if (!confirm('Are you sure you want to delete this draft? This action cannot be undone.')) {
             return;
         }
@@ -52,7 +52,7 @@ export function CourseDrafts({ onContinueDraft }: CourseDraftsProps) {
         try {
             setDeletingId(draftId);
             const result = await courseDraftManager.deleteDraft(draftId);
-            
+
             if (result.success) {
                 setDrafts(prev => prev.filter(draft => draft.id !== draftId));
                 showNotification('success', 'Draft deleted successfully');
@@ -92,12 +92,12 @@ export function CourseDrafts({ onContinueDraft }: CourseDraftsProps) {
                 return;
             }
 
-            setDrafts(prev => prev.map(draft => 
-                draft.id === draftId 
+            setDrafts(prev => prev.map(draft =>
+                draft.id === draftId
                     ? { ...draft, draft_name: newName.trim() }
                     : draft
             ));
-            
+
             showNotification('success', 'Draft renamed successfully');
             handleCancelRename();
         } catch (error) {
@@ -123,7 +123,7 @@ export function CourseDrafts({ onContinueDraft }: CourseDraftsProps) {
         const date = new Date(dateString);
         const now = new Date();
         const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-        
+
         if (diffInHours < 1) {
             const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
             return diffInMinutes < 1 ? 'Just now' : `${diffInMinutes}m ago`;
@@ -161,13 +161,6 @@ export function CourseDrafts({ onContinueDraft }: CourseDraftsProps) {
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">Course Drafts ({drafts.length})</h2>
-                <button
-                    onClick={loadDrafts}
-                    className="text-sm text-[#4E61F6] hover:text-[#4E61F6]/80 font-medium flex items-center gap-1"
-                    title="Refresh drafts"
-                >
-                    <ArrowClockwise size={16} />
-                </button>
             </div>
 
             <div className="grid gap-4">

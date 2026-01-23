@@ -1,6 +1,7 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Search, MoreHorizontal } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 interface WorkerCourse {
@@ -69,10 +70,10 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                                 Name
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Progress
+                                Grade
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Grade
+                                Progress
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 Deadline
@@ -96,9 +97,18 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                                         </div>
                                     </div>
                                 </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {course.grade !== null && course.grade !== undefined ? (
+                                        <span className={`font-semibold ${course.grade >= 80 ? 'text-green-600' : 'text-slate-600'}`}>
+                                            {course.grade}%
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-400">-</span>
+                                    )}
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="flex items-center">
-                                        <div className="w-full bg-gray-200 rounded-full h-2 mr-3">
+                                        <div className="w-full bg-gray-200 rounded-full h-2 mr-3 max-w-[100px]">
                                             <div
                                                 className="bg-blue-500 h-2 rounded-full"
                                                 style={{ width: `${course.progress}%` }}
@@ -106,9 +116,6 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                                         </div>
                                         <span className="text-sm font-medium text-gray-900">{course.progress}%</span>
                                     </div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {course.grade !== null && course.grade !== undefined ? `${course.grade}%` : '-'}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     {course.deadline}
@@ -121,6 +128,7 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                                         >
                                             View
                                         </button>
+                                        <CourseActionMenu course={course} onView={() => handleViewCourse(course.id)} />
                                     </div>
                                 </td>
                             </tr>
@@ -160,6 +168,65 @@ export function WorkerCoursesTable({ courses }: WorkerCoursesTableProps) {
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+function CourseActionMenu({ course, onView }: { course: WorkerCourse, onView: () => void }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+    const router = useRouter();
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+
+        if (isOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isOpen]);
+
+    const handleRetake = () => {
+        router.push(`/worker/quiz/${course.id}?retake=true`);
+        setIsOpen(false);
+    };
+
+    return (
+        <div className="relative" ref={menuRef}>
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+                <MoreHorizontal className="w-5 h-5" />
+            </button>
+
+            {isOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10">
+                    <button
+                        onClick={() => {
+                            onView();
+                            setIsOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                    >
+                        View Details
+                    </button>
+                    {(course.progress === 100 || course.status === 'completed') && (
+                        <button
+                            onClick={handleRetake}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                        >
+                            Retake Course
+                        </button>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

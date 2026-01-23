@@ -2,32 +2,43 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --font-sans: var(--font-manrope);
-  --font-inter: var(--font-inter);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-manrope);
 
-  /* Brand Colors */
-  --color-brand-primary: #405DDD;
-  --color-brand-hover: #3a50c0;
-  --color-brand-sidebar: #2D4DDD;
+  /* Brand Colors - Premium & Vibrant */
+  --color-brand-primary: #4F46E5;
+  /* Indigo 600 - More vibrant than #405DDD */
+  --color-brand-hover: #4338CA;
+  /* Indigo 700 */
+  --color-brand-sidebar: #312E81;
+  /* Indigo 900 - Deep, rich sidebar */
+  --color-brand-light: #EEF2FF;
+  /* Indigo 50 */
 
-  /* Text Colors */
-  --color-text-primary: #1A1A1A;
-  --color-text-secondary: #64748B;
+  /* Text Colors - High Contrast & Readable */
+  --color-text-primary: #0F172A;
+  /* Slate 900 */
+  --color-text-secondary: #475569;
+  /* Slate 600 */
   --color-text-tertiary: #94A3B8;
+  /* Slate 400 */
   --color-text-white: #FFFFFF;
-  --color-text-white-dim: #CFD9E0;
+  --color-text-white-dim: #F8FAFC;
 
   /* Border Colors */
   --color-border-default: #E2E8F0;
+  /* Slate 200 */
+  --color-border-subtle: #F1F5F9;
+  /* Slate 100 */
 
-  /* Border Radius */
-  --radius-xl: 12px;
-  --radius-2xl: 22px;
+  /* Border Radius - Modern & Soft */
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
 
-  /* Font Weights - Shifted lighter */
-  --font-weight-bold: 600;
-  --font-weight-semibold: 500;
-  --font-weight-medium: 400;
+  /* Font Weights - Refined Hierarchy */
+  --font-weight-bold: 700;
+  --font-weight-semibold: 600;
+  --font-weight-medium: 500;
 }
 
 /* Custom Scrollbar */

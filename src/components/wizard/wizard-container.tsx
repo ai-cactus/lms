@@ -138,6 +138,11 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds, initial
             const restoredFiles = await courseDraftManager.restoreFilesFromDraft(draft.files_data);
             setFiles(restoredFiles);
 
+            // If we have files, mark upload/analysis as complete so user can proceed
+            if (restoredFiles.length > 0) {
+                setUploadProgress(100);
+            }
+
             // Set draft as current
             courseDraftManager.setCurrentDraftId(draft.id);
             setIsDraftLoaded(true);

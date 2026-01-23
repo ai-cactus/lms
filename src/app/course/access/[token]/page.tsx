@@ -10,7 +10,7 @@ export default function CourseAccessPage() {
     const params = useParams();
     const router = useRouter();
     const token = params.token as string;
-    
+
     const [validation, setValidation] = useState<TokenValidationResult | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export default function CourseAccessPage() {
     const validateToken = async () => {
         try {
             setLoading(true);
-            
+
             const response = await fetch('/api/course/validate-token', {
                 method: 'POST',
                 headers: {
@@ -36,10 +36,10 @@ export default function CourseAccessPage() {
                 },
                 body: JSON.stringify({ token }),
             });
-            
+
             const result = await response.json();
             setValidation(result);
-            
+
             if (!result.isValid) {
                 setError(result.error || "Invalid access token");
             }
@@ -92,7 +92,7 @@ export default function CourseAccessPage() {
     }
 
     const { assignment } = validation;
-    
+
     if (!assignment) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -108,7 +108,7 @@ export default function CourseAccessPage() {
             </div>
         );
     }
-    
+
     const course = assignment.course;
     const worker = assignment.worker;
 
@@ -175,26 +175,18 @@ export default function CourseAccessPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
                     {/* Main Content */}
                     <div className="lg:col-span-2">
-                        {/* Tabs */}
-                        <div className="border-b border-gray-200 mb-8">
-                            <nav className="flex space-x-8">
-                                <button className="py-2 px-1 border-b-2 border-blue-600 text-blue-600 font-medium text-sm">
-                                    About
-                                </button>
-                                <button className="py-2 px-1 text-gray-500 hover:text-gray-700 font-medium text-sm">
-                                    Course Ratings
-                                </button>
-                                <button className="py-2 px-1 text-gray-500 hover:text-gray-700 font-medium text-sm">
-                                    Discussions
-                                </button>
-                            </nav>
-                        </div>
-
-                        {/* Course Overview */}
+                        {/* Course Description */}
                         <div className="mb-12">
-                            <h2 className="text-2xl font-bold text-slate-900 mb-6">Course Overview</h2>
-                            <div className="prose prose-slate max-w-none">
-                                <ReactMarkdown>{course.lesson_notes}</ReactMarkdown>
+                            <h2 className="text-xl font-bold text-slate-900 mb-4">About this Course</h2>
+                            <div className="prose prose-slate max-w-none text-gray-600">
+                                <p>
+                                    {course.lesson_notes ?
+                                        // Extract first paragraph or first 300 chars as description
+                                        (course.lesson_notes.split('\n\n')[0].length > 300
+                                            ? course.lesson_notes.split('\n\n')[0].substring(0, 300) + '...'
+                                            : course.lesson_notes.split('\n\n')[0])
+                                        : "No description available."}
+                                </p>
                             </div>
                         </div>
 
