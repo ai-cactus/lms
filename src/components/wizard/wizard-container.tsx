@@ -448,7 +448,9 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds, initial
     };
 
     const handleBack = () => {
-        if (step > 1) {
+        if (step === 1) {
+            handleClose();
+        } else {
             setStep(step - 1);
         }
     };
@@ -653,10 +655,9 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds, initial
                     <div className="max-w-3xl mx-auto flex justify-between">
                         <button
                             onClick={handleBack}
-                            disabled={step === 1}
                             className="px-6 py-2 rounded-lg border border-gray-300 text-slate-700 font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            Back
+                            {step === 1 ? "Cancel" : "Back"}
                         </button>
                         <button
                             onClick={handleNext}
