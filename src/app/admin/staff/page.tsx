@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Search, UserPlus, Upload, Trash2, MoreVertical, CheckCircle, XCircle, X } from "lucide-react";
+import { Search, UserPlus, Upload, Trash2, MoreVertical, CheckCircle, XCircle, X, ChevronLeft, ChevronRight } from "lucide-react";
 import ImportWorkersModal from "@/components/staff/ImportWorkersModal";
 import { deleteWorker } from "@/app/actions/worker";
 import Avatar from "@/components/ui/Avatar";
@@ -283,87 +283,71 @@ export default function StaffDetailsPage() {
                 </div>
 
                 {/* Pagination Footer - Fixed at bottom of container */}
-                <div className="flex-none px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-white z-20">
-                    <div className="flex items-center gap-4">
-                        <p className="text-sm text-slate-600">
-                            Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-                            {Math.min(currentPage * itemsPerPage, filteredStaff.length)} of{" "}
-                            {filteredStaff.length} entries
-                        </p>
+                <div className="flex-none px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50 backdrop-blur-sm z-20">
+                    <div className="text-sm text-slate-500">
+                        Showing <span className="font-medium text-slate-700">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium text-slate-700">{Math.min(currentPage * itemsPerPage, filteredStaff.length)}</span> of <span className="font-medium text-slate-700">{filteredStaff.length}</span> entries
                     </div>
-                    <div className="flex items-center gap-4">
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
                         <div className="flex items-center gap-2">
-                            <span className="text-sm text-slate-600">Show</span>
-                            <select
-                                value={itemsPerPage}
-                                onChange={(e) => {
-                                    setItemsPerPage(Number(e.target.value));
-                                    setCurrentPage(1);
-                                }}
-                                className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            <button
+                                onClick={() => setCurrentPage(currentPage - 1)}
+                                disabled={currentPage === 1}
+                                className="p-2 border border-gray-200 rounded-lg text-slate-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed bg-white shadow-sm transition-all"
                             >
-                                <option value={10}>10</option>
-                                <option value={25}>25</option>
-                                <option value={50}>50</option>
-                            </select>
-                            <span className="text-sm text-slate-600">entries</span>
-                        </div>
-                        {totalPages > 1 && (
-                            <div className="flex items-center gap-1">
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1}
-                                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm bg-white"
-                                >
-                                    ‹
-                                </button>
-                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                    let pageNum;
-                                    if (totalPages <= 5) {
-                                        pageNum = i + 1;
-                                    } else if (currentPage <= 3) {
-                                        pageNum = i + 1;
-                                    } else if (currentPage >= totalPages - 2) {
-                                        pageNum = totalPages - 4 + i;
-                                    } else {
-                                        pageNum = currentPage - 2 + i;
+                                <ChevronLeft className="w-4 h-4 ml-0" />
+                            </button>
+
+                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                let p = i + 1;
+                                if (totalPages > 5) {
+                                    if (currentPage > 3) {
+                                        p = currentPage - 2 + i;
                                     }
-                                    return (
-                                        <button
-                                            key={i}
-                                            onClick={() => setCurrentPage(pageNum)}
-                                            className={`px-3 py-1 border rounded text-sm ${currentPage === pageNum
-                                                ? "bg-blue-600 text-white border-blue-600"
-                                                : "border-gray-300 hover:bg-gray-50 bg-white"
-                                                }`}
-                                        >
-                                            {pageNum}
-                                        </button>
-                                    );
-                                })}
-                                {totalPages > 5 && currentPage < totalPages - 2 && (
-                                    <span className="px-2 text-slate-400">...</span>
-                                )}
-                                {totalPages > 5 && (
+                                    if (p > totalPages) return null;
+                                }
+
+                                return (
                                     <button
-                                        onClick={() => setCurrentPage(totalPages)}
-                                        className={`px-3 py-1 border rounded text-sm ${currentPage === totalPages
-                                            ? "bg-blue-600 text-white border-blue-600"
-                                            : "border-gray-300 hover:bg-gray-50 bg-white"
+                                        key={p}
+                                        onClick={() => setCurrentPage(p)}
+                                        className={`w-8 h-8 rounded-lg text-sm font-medium transition-all ${currentPage === p
+                                            ? "bg-blue-600 text-white shadow-sm"
+                                            : "bg-white border border-gray-200 text-slate-600 hover:bg-gray-50"
                                             }`}
                                     >
-                                        {totalPages}
+                                        {p}
                                     </button>
-                                )}
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage === totalPages}
-                                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm bg-white"
-                                >
-                                    ›
-                                </button>
-                            </div>
-                        )}
+                                );
+                            }).filter(Boolean)}
+
+                            <button
+                                onClick={() => setCurrentPage(currentPage + 1)}
+                                disabled={currentPage === totalPages}
+                                className="p-2 border border-gray-200 rounded-lg text-slate-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed bg-white shadow-sm transition-all"
+                            >
+                                <ChevronRight className="w-4 h-4 mr-0" />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Per Page Select */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-500">Show</span>
+                        <select
+                            value={itemsPerPage}
+                            onChange={(e) => {
+                                setItemsPerPage(Number(e.target.value));
+                                setCurrentPage(1);
+                            }}
+                            className="border border-gray-200 bg-white rounded-lg px-2 py-1.5 text-sm text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer"
+                        >
+                            <option value={10}>10</option>
+                            <option value={20}>20</option>
+                            <option value={50}>50</option>
+                        </select>
+                        <span className="text-sm text-slate-500">entries</span>
                     </div>
                 </div>
             </div>
