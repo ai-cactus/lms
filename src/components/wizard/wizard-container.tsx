@@ -41,6 +41,8 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds, initial
     const [isDraftLoaded, setIsDraftLoaded] = useState(false);
     const [showDraftRecovery, setShowDraftRecovery] = useState(false);
     const [availableDraft, setAvailableDraft] = useState<CourseDraft | null>(null);
+    const [showConflictModal, setShowConflictModal] = useState(false);
+    const [pendingSaveData, setPendingSaveData] = useState<{ step: number; courseData: CourseData; files: File[] } | null>(null);
     const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
     const [selectedPolicyIds, setSelectedPolicyIds] = useState<string[]>([]);
     const supabase = createClient();
@@ -159,16 +161,23 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds, initial
 
     const saveDraftNow = async () => {
         try {
-            const result = await courseDraftManager.saveDraft({
+            const dataToSave = {
                 step,
                 courseData,
                 files
-            });
+            };
+
+            const result = await courseDraftManager.saveDraft(dataToSave);
 
             if (result.success) {
                 setLastSaveTime(new Date());
                 hasUnsavedChanges.current = false;
                 return true;
+            } else if (result.conflict) {
+                // Show conflict resolution modal
+                setPendingSaveData(dataToSave);
+                setShowConflictModal(true);
+                return false;
             } else {
                 console.error('Failed to save draft:', result.error);
                 return false;
@@ -177,6 +186,34 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds, initial
             console.error('Error saving draft:', error);
             return false;
         }
+    };
+
+    const handleForceSave = async () => {
+        if (!pendingSaveData) return;
+
+        try {
+            setShowConflictModal(false);
+            const result = await courseDraftManager.forceSave(pendingSaveData);
+
+            if (result.success) {
+                setLastSaveTime(new Date());
+                hasUnsavedChanges.current = false;
+                setPendingSaveData(null);
+                showNotification('success', 'Draft overwritten successfully');
+            } else {
+                showNotification('error', 'Failed to overwrite draft');
+            }
+        } catch (error) {
+            console.error('Error force saving:', error);
+            showNotification('error', 'Failed to overwrite draft');
+        }
+    };
+
+    const handleDiscardLocal = async () => {
+        // Reload draft from server
+        setShowConflictModal(false);
+        setPendingSaveData(null);
+        await checkForExistingDraft(); // Re-fetch
     };
 
     const deleteDraft = async () => {
@@ -707,6 +744,53 @@ export function WizardContainer({ onClose, onComplete, initialPolicyIds, initial
                                 className="flex-1 px-4 py-2 bg-[#4E61F6] text-white rounded-lg font-medium hover:bg-[#4E61F6]/90 transition-colors"
                             >
                                 Resume Draft
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Conflict Resolution Modal */}
+            {showConflictModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] p-4">
+                    <div className="bg-white rounded-lg max-w-md w-full p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                                <svg className="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-900">Version Conflict</h3>
+                                <p className="text-sm text-slate-500">
+                                    A newer version of this draft was saved from another tab or window.
+                                </p>
+                            </div>
+                        </div>
+
+                        <p className="text-slate-600 mb-6 font-medium">
+                            How would you like to proceed?
+                        </p>
+
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={handleForceSave}
+                                className="w-full px-4 py-3 bg-[#4E61F6] text-white rounded-lg font-medium hover:bg-[#4E61F6]/90 transition-colors text-left flex items-center justify-between"
+                            >
+                                <div>
+                                    <div className="font-semibold">Overwrite Server Version</div>
+                                    <div className="text-xs text-white/80 font-normal">Keep my changes here and update the server</div>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={handleDiscardLocal}
+                                className="w-full px-4 py-3 border border-gray-300 text-slate-700 rounded-lg font-medium hover:bg-gray-50 transition-colors text-left flex items-center justify-between"
+                            >
+                                <div>
+                                    <div className="font-semibold">Discard My Changes</div>
+                                    <div className="text-xs text-slate-500 font-normal">Reload the latest version from the server</div>
+                                </div>
                             </button>
                         </div>
                     </div>
