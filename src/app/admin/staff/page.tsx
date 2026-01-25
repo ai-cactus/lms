@@ -139,8 +139,9 @@ export default function StaffDetailsPage() {
         );
     }
 
+    // Fixed height container layout
     return (
-        <div className="min-h-screen bg-white p-8">
+        <div className="h-[calc(100vh-8rem)] flex flex-col font-sans -my-4 sm:-my-6 lg:-my-8 py-4 sm:py-6 lg:py-8 px-4 sm:px-0">
             <ImportWorkersModal
                 isOpen={showImportModal}
                 onClose={() => setShowImportModal(false)}
@@ -148,9 +149,10 @@ export default function StaffDetailsPage() {
                 organizationId={organizationId}
             />
 
-            <div className="max-w-7xl mx-auto">
-                <div className="flex justify-between">
-                    <div className="mb-8">
+            {/* Header Section - Fixed */}
+            <div className="flex-none px-0 sm:px-4 lg:px-0 mb-6">
+                <div className="flex justify-between items-start sm:items-center flex-col sm:flex-row gap-4 sm:gap-0">
+                    <div>
                         <h1 className="text-3xl font-bold text-slate-900 mb-2">Staff Details</h1>
                         <p className="text-slate-600">Here is an overview of your staff details</p>
                     </div>
@@ -164,210 +166,211 @@ export default function StaffDetailsPage() {
                         </button>
                     </div>
                 </div>
+            </div>
 
-
-
-                <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-                    <div className="p-6 border-b border-gray-200">
-                        <div className="flex items-center justify-between">
-                            <div className="relative flex-1 max-w-md">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                <input
-                                    type="text"
-                                    value={searchQuery}
-                                    onChange={(e) => {
-                                        setSearchQuery(e.target.value);
-                                        setCurrentPage(1);
-                                    }}
-                                    placeholder="Search for staff..."
-                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                                />
-                            </div>
-
+            {/* Table Container section - fills remaining space */}
+            <div className="flex-1 min-h-0 min-w-0 bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col mx-0 sm:mx-4 lg:mx-0 overflow-hidden">
+                {/* Search Bar - Fixed at top of table container */}
+                <div className="flex-none p-6 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                        <div className="relative flex-1 max-w-md">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => {
+                                    setSearchQuery(e.target.value);
+                                    setCurrentPage(1);
+                                }}
+                                placeholder="Search for staff..."
+                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                            />
                         </div>
                     </div>
+                </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-white border-b border-gray-200">
+                {/* Table - Scrolls Internally */}
+                <div className="flex-1 overflow-auto min-h-0">
+                    <table className="w-full relative border-separate border-spacing-0">
+                        <thead className="bg-white">
+                            <tr>
+                                <th className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider shadow-sm">
+                                    Name
+                                </th>
+                                <th className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider shadow-sm">
+                                    Date Invited
+                                </th>
+                                <th className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider shadow-sm">
+                                    Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {paginatedStaff.length === 0 ? (
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                        Name
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                        Date Invited
-                                    </th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                        Actions
-                                    </th>
+                                    <td colSpan={3} className="px-6 py-12 text-center text-slate-600">
+                                        No staff members found
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                                {paginatedStaff.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={3} className="px-6 py-12 text-center text-slate-600">
-                                            No staff members found
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    paginatedStaff.map((member) => (
-                                        <tr
-                                            key={member.id}
-                                            className="hover:bg-white cursor-pointer transition-colors"
-                                            onClick={() => router.push(`/admin/staff/${member.id}`)}
-                                        >
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <Avatar
-                                                        fallback={member.full_name}
-                                                        size="md"
-                                                    />
-                                                    <div>
-                                                        <p className="font-medium text-slate-900">{member.full_name}</p>
-                                                        <p className="text-sm text-slate-500 capitalize">{member.role}</p>
-                                                    </div>
+                            ) : (
+                                paginatedStaff.map((member) => (
+                                    <tr
+                                        key={member.id}
+                                        className="hover:bg-gray-50 cursor-pointer transition-colors"
+                                        onClick={() => router.push(`/admin/staff/${member.id}`)}
+                                    >
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <Avatar
+                                                    fallback={member.full_name}
+                                                    size="md"
+                                                />
+                                                <div>
+                                                    <p className="font-medium text-slate-900">{member.full_name}</p>
+                                                    <p className="text-sm text-slate-500 capitalize">{member.role}</p>
                                                 </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className="text-sm text-slate-700">
-                                                    {getTimeAgo(member.created_at)}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <div className="relative">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setOpenMenuId(openMenuId === member.id ? null : member.id);
-                                                        }}
-                                                        className="text-slate-400 hover:text-slate-600 p-2"
-                                                    >
-                                                        <MoreVertical className="w-5 h-5" />
-                                                    </button>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="text-sm text-slate-700">
+                                                {getTimeAgo(member.created_at)}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="relative">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setOpenMenuId(openMenuId === member.id ? null : member.id);
+                                                    }}
+                                                    className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors"
+                                                >
+                                                    <MoreVertical className="w-5 h-5" />
+                                                </button>
 
-                                                    {openMenuId === member.id && (
-                                                        <>
-                                                            <div
-                                                                className="fixed inset-0 z-10"
+                                                {openMenuId === member.id && (
+                                                    <>
+                                                        <div
+                                                            className="fixed inset-0 z-10"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOpenMenuId(null);
+                                                            }}
+                                                        ></div>
+                                                        <div className="absolute right-0 bottom-full mb-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                                                            <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setWorkerToDelete(member);
+                                                                    setShowDeleteModal(true);
                                                                     setOpenMenuId(null);
                                                                 }}
-                                                            ></div>
-                                                            <div className="absolute right-0 bottom-full mb-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setWorkerToDelete(member);
-                                                                        setShowDeleteModal(true);
-                                                                        setOpenMenuId(null);
-                                                                    }}
-                                                                    className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-lg transition-colors"
-                                                                >
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                    Remove Worker
-                                                                </button>
-                                                            </div>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                                                className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-lg transition-colors"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                                Remove Worker
+                                                            </button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
 
-                    <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <p className="text-sm text-slate-600">
-                                Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-                                {Math.min(currentPage * itemsPerPage, filteredStaff.length)} of{" "}
-                                {filteredStaff.length} entries
-                            </p>
+                {/* Pagination Footer - Fixed at bottom of container */}
+                <div className="flex-none px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-white z-20">
+                    <div className="flex items-center gap-4">
+                        <p className="text-sm text-slate-600">
+                            Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                            {Math.min(currentPage * itemsPerPage, filteredStaff.length)} of{" "}
+                            {filteredStaff.length} entries
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-slate-600">Show</span>
+                            <select
+                                value={itemsPerPage}
+                                onChange={(e) => {
+                                    setItemsPerPage(Number(e.target.value));
+                                    setCurrentPage(1);
+                                }}
+                                className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            >
+                                <option value={10}>10</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                            </select>
+                            <span className="text-sm text-slate-600">entries</span>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-slate-600">Show</span>
-                                <select
-                                    value={itemsPerPage}
-                                    onChange={(e) => {
-                                        setItemsPerPage(Number(e.target.value));
-                                        setCurrentPage(1);
-                                    }}
-                                    className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        {totalPages > 1 && (
+                            <div className="flex items-center gap-1">
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm bg-white"
                                 >
-                                    <option value={10}>10</option>
-                                    <option value={25}>25</option>
-                                    <option value={50}>50</option>
-                                </select>
-                                <span className="text-sm text-slate-600">entries</span>
-                            </div>
-                            {totalPages > 1 && (
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                        disabled={currentPage === 1}
-                                        className="px-3 py-1 border border-gray-300 rounded hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                                    >
-                                        ‹
-                                    </button>
-                                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                        let pageNum;
-                                        if (totalPages <= 5) {
-                                            pageNum = i + 1;
-                                        } else if (currentPage <= 3) {
-                                            pageNum = i + 1;
-                                        } else if (currentPage >= totalPages - 2) {
-                                            pageNum = totalPages - 4 + i;
-                                        } else {
-                                            pageNum = currentPage - 2 + i;
-                                        }
-                                        return (
-                                            <button
-                                                key={i}
-                                                onClick={() => setCurrentPage(pageNum)}
-                                                className={`px-3 py-1 border rounded text-sm ${currentPage === pageNum
-                                                    ? "bg-blue-600 text-white border-blue-600"
-                                                    : "border-gray-300 hover:bg-white"
-                                                    }`}
-                                            >
-                                                {pageNum}
-                                            </button>
-                                        );
-                                    })}
-                                    {totalPages > 5 && currentPage < totalPages - 2 && (
-                                        <span className="px-2 text-slate-400">...</span>
-                                    )}
-                                    {totalPages > 5 && (
+                                    ‹
+                                </button>
+                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                    let pageNum;
+                                    if (totalPages <= 5) {
+                                        pageNum = i + 1;
+                                    } else if (currentPage <= 3) {
+                                        pageNum = i + 1;
+                                    } else if (currentPage >= totalPages - 2) {
+                                        pageNum = totalPages - 4 + i;
+                                    } else {
+                                        pageNum = currentPage - 2 + i;
+                                    }
+                                    return (
                                         <button
-                                            onClick={() => setCurrentPage(totalPages)}
-                                            className={`px-3 py-1 border rounded text-sm ${currentPage === totalPages
+                                            key={i}
+                                            onClick={() => setCurrentPage(pageNum)}
+                                            className={`px-3 py-1 border rounded text-sm ${currentPage === pageNum
                                                 ? "bg-blue-600 text-white border-blue-600"
-                                                : "border-gray-300 hover:bg-white"
+                                                : "border-gray-300 hover:bg-gray-50 bg-white"
                                                 }`}
                                         >
-                                            {totalPages}
+                                            {pageNum}
                                         </button>
-                                    )}
+                                    );
+                                })}
+                                {totalPages > 5 && currentPage < totalPages - 2 && (
+                                    <span className="px-2 text-slate-400">...</span>
+                                )}
+                                {totalPages > 5 && (
                                     <button
-                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={currentPage === totalPages}
-                                        className="px-3 py-1 border border-gray-300 rounded hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                        onClick={() => setCurrentPage(totalPages)}
+                                        className={`px-3 py-1 border rounded text-sm ${currentPage === totalPages
+                                            ? "bg-blue-600 text-white border-blue-600"
+                                            : "border-gray-300 hover:bg-gray-50 bg-white"
+                                            }`}
                                     >
-                                        ›
+                                        {totalPages}
                                     </button>
-                                </div>
-                            )}
-                        </div>
+                                )}
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm bg-white"
+                                >
+                                    ›
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
             {/* Delete Confirmation Modal */}
             {showDeleteModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
                         <div className="flex items-center gap-3 mb-4">
                             <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
