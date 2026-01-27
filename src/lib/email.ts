@@ -219,3 +219,131 @@ export async function sendWeeklyComplianceEmail({
         html: htmlKey,
     });
 }
+
+interface WorkerInvitationParams {
+    to: string;
+    workerName: string;
+    organizationName: string;
+    courseAccessLinks: {
+        courseTitle: string;
+        accessUrl: string;
+        deadline?: string;
+    }[];
+}
+
+export async function sendWorkerInvitationWithTokens({
+    to,
+    workerName,
+    organizationName,
+    courseAccessLinks
+}: WorkerInvitationParams) {
+
+    const coursesHtml = courseAccessLinks.map(link => `
+        <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #e2e8f0;">
+            <h3 style="margin: 0 0 10px 0; color: #1e293b; font-size: 16px;">${link.courseTitle}</h3>
+            ${link.deadline ? `<p style="margin: 0 0 10px 0; color: #64748b; font-size: 14px;">Due: ${link.deadline}</p>` : ''}
+            <a href="${link.accessUrl}" style="background-color: #4E61F6; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; font-weight: 500; font-size: 14px; display: inline-block;">Start Course</a>
+        </div>
+    `).join('');
+
+    const htmlKey = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #334155;">
+        <div style="background-color: #4E61F6; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">Course Invitation</h1>
+        </div>
+        
+        <div style="padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px; background-color: white;">
+            <p style="font-size: 16px;">Hi ${workerName},</p>
+            <p style="font-size: 16px; line-height: 1.6;">
+                You have been invited to complete the following training courses at <strong>${organizationName}</strong>.
+                You can access these courses directly using the links below without needing a password.
+            </p>
+
+            <div style="margin: 30px 0;">
+                ${coursesHtml}
+            </div>
+
+            <p style="font-size: 14px; color: #64748b; background-color: #fff1f2; padding: 10px; border-radius: 4px; border: 1px solid #fecdd3;">
+                <strong>Note:</strong> These are unique access links for you. Please do not share them.
+            </p>
+        </div>
+    </div>
+    `;
+
+    return transporter.sendMail({
+        from: `"Theraptly LMS" <${process.env.ZOHO_EMAIL}>`,
+        to,
+        subject: `Course Invitation - ${organizationName}`,
+        html: htmlKey,
+    });
+}
+
+interface MonthlyPerformanceParams {
+    to: string[];
+    organizationName: string;
+    month: string;
+    topCourses: { title: string; completionRate: number }[];
+    strugglingObjectives: { text: string; incorrectRate: number }[];
+    retrainingStats: { workersInRetraining: number; completionRate: number };
+    reportUrl: string;
+    attachments?: { filename: string; content: Buffer }[];
+}
+
+export async function sendMonthlyPerformanceEmail({
+    to,
+    organizationName,
+    month,
+    topCourses,
+    strugglingObjectives,
+    retrainingStats,
+    reportUrl,
+    attachments
+}: MonthlyPerformanceParams) {
+
+    const topCoursesHtml = topCourses.map(c => `
+        <li style="margin-bottom: 5px;">
+            <strong>${c.title}</strong>: ${Math.round(c.completionRate)}% Pass Rate
+        </li>
+    `).join('');
+
+    const strugglesHtml = strugglingObjectives.length > 0 ? strugglingObjectives.slice(0, 3).map(o => `
+        <li style="margin-bottom: 5px;">
+            "${o.text}" (${Math.round(o.incorrectRate)}% Incorrect)
+        </li>
+    `).join('') : '<li>No significant struggles detected.</li>';
+
+    const htmlKey = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <h2 style="color: #4E61F6;">Monthly Performance Report</h2>
+        <p style="color: #64748b; margin-top: -10px;">${organizationName} - ${month}</p>
+
+        <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #1e293b;">Highlights</h3>
+            
+            <p><strong>Top Performing Courses:</strong></p>
+            <ul style="padding-left: 20px; color: #475569;">${topCoursesHtml}</ul>
+
+            <p><strong>Areas for Improvement:</strong></p>
+            <ul style="padding-left: 20px; color: #475569;">${strugglesHtml}</ul>
+
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                <p style="margin: 0;"><strong>Retraining Status:</strong> ${retrainingStats.workersInRetraining} workers in retraining (${Math.round(retrainingStats.completionRate)}% completion)</p>
+            </div>
+        </div>
+
+        <p>A detailed PDF report is attached to this email.</p>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="${reportUrl}" style="display: inline-block; background-color: #4E61F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Full Analytics</a>
+        </div>
+    </div>
+    `;
+
+    return transporter.sendMail({
+        from: `"Theraptly LMS" <${process.env.ZOHO_EMAIL}>`,
+        to: to.join(', '),
+        subject: `Monthly Performance Report - ${month}`,
+        html: htmlKey,
+        attachments
+    });
+}
