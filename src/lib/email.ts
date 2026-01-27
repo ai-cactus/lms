@@ -106,3 +106,116 @@ export async function sendCourseAssignmentEmail({ to, userName, courseTitle, cou
         html: htmlKey,
     });
 }
+
+export interface ReminderParams {
+    to: string;
+    workerName: string;
+    courseTitle: string;
+    deadline?: Date;
+}
+
+export async function sendBulkTrainingReminders(reminders: ReminderParams[]) {
+    // Send emails in batches to avoid rate limits
+    const results = {
+        success: 0,
+        failed: 0,
+        errors: [] as string[]
+    };
+
+    for (const reminder of reminders) {
+        try {
+            await transporter.sendMail({
+                from: `"Theraptly LMS" <${process.env.ZOHO_EMAIL}>`,
+                to: reminder.to,
+                subject: `Training Reminder: ${reminder.courseTitle}`,
+                html: `
+                <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                    <h2 style="color: #4E61F6;">Training Reminder</h2>
+                    <p>Hi ${reminder.workerName},</p>
+                    <p>This is a reminder to complete your assigned training:</p>
+                    
+                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+                        <h3 style="margin: 0; color: #1e293b;">${reminder.courseTitle}</h3>
+                        ${reminder.deadline ? `<p style="color: #dc2626; font-weight: bold; margin-top: 10px; margin-bottom: 0;">Due Date: ${new Date(reminder.deadline).toLocaleDateString()}</p>` : ''}
+                    </div>
+
+                    <p>Please log in to your dashboard to complete this course.</p>
+                </div>
+                `
+            });
+            results.success++;
+        } catch (error: any) {
+            console.error(`Failed to send reminder to ${reminder.to}:`, error);
+            results.failed++;
+            results.errors.push(error.message);
+        }
+    }
+
+    return results;
+}
+
+interface WeeklyReportParams {
+    to: string[];
+    organizationName: string;
+    overdueCount: number;
+    pendingConfirmations: number;
+    complianceRate: number;
+    roleCompliance: { role: string; rate: number }[];
+    dashboardUrl: string;
+}
+
+export async function sendWeeklyComplianceEmail({
+    to,
+    organizationName,
+    overdueCount,
+    pendingConfirmations,
+    complianceRate,
+    roleCompliance,
+    dashboardUrl
+}: WeeklyReportParams) {
+
+    const roleRows = roleCompliance.map(r => `
+        <tr>
+            <td style="padding: 8px; border-bottom: 1px solid #eee;">${r.role}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${r.rate}%</td>
+        </tr>
+    `).join('');
+
+    const htmlKey = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <h2 style="color: #4E61F6;">Weekly Training Report</h2>
+        <p style="color: #64748b; font-size: 14px; margin-top: -10px;">${organizationName}</p>
+        
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 25px 0;">
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; text-align: center;">
+                <div style="font-size: 24px; font-weight: bold; color: ${complianceRate >= 80 ? '#10b981' : '#f59e0b'};">${complianceRate}%</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 5px;">Compliance Rate</div>
+            </div>
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; text-align: center;">
+                <div style="font-size: 24px; font-weight: bold; color: ${overdueCount > 0 ? '#ef4444' : '#10b981'};">${overdueCount}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 5px;">Overdue Tasks</div>
+            </div>
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; text-align: center;">
+                <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">${pendingConfirmations}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 5px;">Pending Review</div>
+            </div>
+        </div>
+
+        <h3 style="font-size: 16px; margin-top: 30px; margin-bottom: 15px;">Compliance by Role</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            ${roleRows}
+        </table>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="${dashboardUrl}" style="display: inline-block; background-color: #4E61F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Dashboard</a>
+        </div>
+    </div>
+    `;
+
+    return transporter.sendMail({
+        from: `"Theraptly LMS" <${process.env.ZOHO_EMAIL}>`,
+        to: to.join(', '), // Nodemailer supports array or comma-separated string
+        subject: `Weekly Training Report - ${organizationName}`,
+        html: htmlKey,
+    });
+}
