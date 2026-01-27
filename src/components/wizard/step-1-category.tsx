@@ -42,7 +42,7 @@ export function Step1Category({ value, onChange }: Step1CategoryProps) {
                 <div className="relative">
                     <button
                         onClick={() => setIsOpen(!isOpen)}
-                        className={`flex items-center justify-between w-full p-4 border rounded-lg cursor-pointer bg-white z-10 relative transition-colors ${isOpen || value ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-300 hover:border-indigo-500'
+                        className={`flex items-center justify-between w-full p-4 border rounded-[12px] cursor-pointer bg-white z-10 relative transition-all ${isOpen || value ? 'border-[#4758E0] ring-1 ring-[#4758E0]' : 'border-gray-200 hover:border-[#4758E0]'
                             }`}
                     >
                         <span className={value ? "text-slate-900 font-medium" : "text-slate-500"}>
@@ -52,15 +52,15 @@ export function Step1Category({ value, onChange }: Step1CategoryProps) {
                     </button>
 
                     {isOpen && (
-                        <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-20 max-h-60 overflow-y-auto">
+                        <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-100 rounded-[12px] shadow-xl z-20 max-h-[60vh] overflow-y-auto">
                             <div className="p-2 space-y-1">
                                 {categories.map((cat) => (
                                     <div
                                         key={cat}
                                         onClick={() => handleSelect(cat)}
                                         className={`px-4 py-2 text-sm rounded cursor-pointer transition-colors ${value === cat
-                                            ? 'bg-indigo-50 text-indigo-700 font-medium'
-                                            : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700'
+                                            ? 'bg-[#4758E0]/10 text-[#4758E0] font-medium'
+                                            : 'text-slate-700 hover:bg-[#4758E0]/5 hover:text-[#4758E0]'
                                             }`}
                                     >
                                         {cat}

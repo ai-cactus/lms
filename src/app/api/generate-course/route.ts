@@ -8,13 +8,13 @@ interface UploadedFile {
     name: string;
     type?: string;
     data?: string;
+    content?: string;
 }
 
 export async function POST(req: NextRequest) {
     try {
         const { files, courseMetadata } = await req.json();
-        // files is an array of { name: string, content: string }
-        // courseMetadata is optional: { title, description, objectives, category, difficulty, duration, complianceMapping }
+        // files is an array of { name: string, content?: string, data?: string }
 
         if (!files || files.length === 0) {
             return NextResponse.json({ error: "No files provided" }, { status: 400 });
@@ -25,11 +25,19 @@ export async function POST(req: NextRequest) {
         let totalEstimatedChars = 0;
 
         files.forEach((file: UploadedFile, index: number) => {
+            // Calculate size based on available data
+            let size = 0;
+            if (file.content) {
+                size = file.content.length; // Approximate size
+            } else if (file.data) {
+                size = Buffer.from(file.data.split(',')[1] || '', 'base64').length;
+            }
+
             // Create a mock File object for validation
             const mockFile = {
                 name: file.name,
                 type: file.type || 'application/octet-stream',
-                size: file.data ? Buffer.from(file.data.split(',')[1] || '', 'base64').length : 0
+                size: size
             } as File;
 
             const validation = validateDocumentForProcessing(mockFile);
@@ -37,7 +45,7 @@ export async function POST(req: NextRequest) {
                 validationErrors.push(`File ${index + 1} (${file.name}): ${validation.error}`);
             } else if (validation.limits) {
                 // Estimate content size
-                const estimatedChars = Math.floor(mockFile.size * 0.15); // Conservative estimate
+                const estimatedChars = Math.floor(mockFile.size * (file.content ? 1 : 0.15)); // Use 100% if already text, else 15%
                 totalEstimatedChars += estimatedChars;
             }
         });
@@ -49,7 +57,8 @@ export async function POST(req: NextRequest) {
         }
 
         // Check if total estimated content is too large for processing
-        const MAX_TOTAL_CHARS = 800000; // 800k characters total limit
+        // Gemini 2.5 Flash Lite supports 1M tokens (~4M chars)
+        const MAX_TOTAL_CHARS = 4000000;
         if (totalEstimatedChars > MAX_TOTAL_CHARS) {
             return NextResponse.json({
                 error: `Combined document size too large for processing. Estimated ${Math.round(totalEstimatedChars / 1000)}k characters, maximum ${Math.round(MAX_TOTAL_CHARS / 1000)}k allowed. Please split into smaller documents or reduce file sizes.`
@@ -66,7 +75,13 @@ export async function POST(req: NextRequest) {
             const file = files[i];
             try {
                 console.log(`Processing file ${i + 1}/${files.length}: ${file.name}`);
-                const text = await extractTextFromFile(file);
+
+                let text = "";
+                if (file.content) {
+                    text = file.content;
+                } else {
+                    text = await extractTextFromFile(file);
+                }
 
                 if (!text || text.trim().length < 50) {
                     processingErrors.push(`${file.name}: Document appears to be empty or unreadable`);
@@ -95,8 +110,9 @@ export async function POST(req: NextRequest) {
         const fullText = processedFiles.join("\n");
 
         // 2. Check if content is too large and implement smart chunking
-        // Gemini 2.5 Flash has ~1M token limit (~4M chars), but we use conservative limits
-        const CHAR_LIMIT = 150000; // Start chunking if > 150k chars (more generous than before)
+        // Gemini 2.5 Flash has ~1M token limit (~4M chars).
+        // We set a safe margin at 3.5M characters before we start chunking.
+        const CHAR_LIMIT = 3500000;
         const actualCharCount = fullText.length;
 
         console.log(`Total extracted content: ${actualCharCount} characters`);
@@ -111,15 +127,11 @@ export async function POST(req: NextRequest) {
         if (fullText.length > CHAR_LIMIT) {
             console.log(`Content length ${fullText.length} exceeds limit. Initiating intelligent chunking and summarization.`);
 
-            // Use smaller chunks for better quality
-            const chunks = chunkText(fullText, 40000); // 40k chars per chunk for better processing
+            // Use larger chunks since the model can handle it
+            const chunks = chunkText(fullText, 100000); // 100k chars per chunk
             console.log(`Split into ${chunks.length} chunks for processing.`);
 
-            if (chunks.length > 20) {
-                return NextResponse.json({
-                    error: `Document is too complex for processing (${chunks.length} chunks). Please split into smaller documents or reduce content size.`
-                }, { status: 400 });
-            }
+            // Removed arbitrary chunk limit since we are summarizing them anyway
 
             // Map: Summarize each chunk with improved error handling
             const summaries: string[] = [];
@@ -373,7 +385,7 @@ Key elements include: date and time, presenting problems, interventions used, pa
 ## Summary
 
 ✓ You can identify the purpose and structure of policy frameworks
-✓ You understand comprehensive documentation requirements and their importance  
+✓ You understand comprehensive documentation requirements and their importance
 ✓ You can explain why detailed record-keeping protects patients and providers
 
 NOW CREATE THE COURSE FROM THIS CONTENT:
@@ -383,13 +395,41 @@ NOW CREATE THE COURSE FROM THIS CONTENT:
 - NO over-summarization - teach thoroughly
 
 ${contextForGeneration}
+
+AND ALSO GENERATE 5-10 MULTIPLE CHOICE QUIZ QUESTIONS based on this content.
+
+CRITICAL: You MUST return the output as a valid JSON object with the following structure:
+{
+  "courseContent": "The full markdown course content here...",
+  "quizQuestions": [
+    {
+      "questionText": "Question 1...",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": 0, // Index of correct option (0-3)
+      "explanation": "Why this is correct..."
+    }
+  ]
+}
     `;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
 
-        return NextResponse.json({ content: text });
+        // Clean up potentially wrapped JSON (markdown code blocks)
+        const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        try {
+            const parsed = JSON.parse(cleanText);
+            return NextResponse.json({
+                content: parsed.courseContent,
+                questions: parsed.quizQuestions
+            });
+        } catch (e) {
+            console.error("Failed to parse JSON response:", e);
+            // Fallback: If it's just text, return it as content
+            return NextResponse.json({ content: text, questions: [] });
+        }
     } catch (error: any) {
         console.error("Error generating course:", error);
 

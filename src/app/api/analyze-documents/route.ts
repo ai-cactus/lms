@@ -103,7 +103,8 @@ IMPORTANT: Return ONLY valid JSON, no markdown formatting or code blocks.
                 );
             }
             return NextResponse.json(
-                { error: "API access denied. Please check your API configuration." },
+                // Return the actual upstream error message to help debugging
+                { error: `Vertex AI Access Denied: ${error.message}` },
                 { status: 403 }
             );
         }

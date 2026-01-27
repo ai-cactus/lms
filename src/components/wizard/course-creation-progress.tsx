@@ -41,9 +41,7 @@ export function CourseCreationProgress({ onComplete }: CourseCreationProgressPro
             ]);
         }, 4000);
 
-        // Step 3: Creating content (this takes the actual time for AI generation)
-        // We'll leave this as loading until the parent component tells us we're done
-        // For now, we'll simulate it finishing after 6 seconds
+        // Step 3: Creating content
         const timer3 = setTimeout(() => {
             setSteps(prev => [
                 prev[0],
@@ -61,8 +59,7 @@ export function CourseCreationProgress({ onComplete }: CourseCreationProgressPro
                 prev[2],
                 { ...prev[3], status: 'completed' },
             ]);
-            // Notify completion after a brief pause
-            setTimeout(onComplete, 1000);
+            // Do NOT call onComplete automatically. Parent controls flow.
         }, 10000);
 
         return () => {
@@ -71,7 +68,7 @@ export function CourseCreationProgress({ onComplete }: CourseCreationProgressPro
             clearTimeout(timer3);
             clearTimeout(timer4);
         };
-    }, [onComplete]);
+    }, []); // Remove onComplete dependency
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-white">
@@ -102,10 +99,10 @@ export function CourseCreationProgress({ onComplete }: CourseCreationProgressPro
                                     <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" />
                                 )}
                                 <span className={`text-base ${step.status === 'completed'
-                                        ? 'text-slate-700'
-                                        : step.status === 'loading'
-                                            ? 'text-slate-900 font-medium'
-                                            : 'text-slate-400'
+                                    ? 'text-slate-700'
+                                    : step.status === 'loading'
+                                        ? 'text-slate-900 font-medium'
+                                        : 'text-slate-400'
                                     }`}>
                                     {step.label}
                                 </span>
@@ -114,10 +111,24 @@ export function CourseCreationProgress({ onComplete }: CourseCreationProgressPro
                     </div>
                 </div>
 
-                {/* Info Message */}
-                <div className="text-center text-sm text-slate-500">
-                    <p>This process may take 1-2 minutes depending on document size.</p>
-                </div>
+                {/* Action Button */}
+                {steps[3].status === 'completed' && (
+                    <div className="text-center mt-6">
+                        <button
+                            onClick={onComplete}
+                            className="bg-[#4E61F6] text-white px-8 py-3 rounded-lg font-medium hover:bg-[#4E61F6]/90 transition-colors w-full max-w-[200px]"
+                        >
+                            Goto Dashboard
+                        </button>
+                    </div>
+                )}
+
+                {/* Info Message (Hide when complete) */}
+                {steps[3].status !== 'completed' && (
+                    <div className="text-center text-sm text-slate-500 mt-6">
+                        <p>This process may take 1-2 minutes depending on document size.</p>
+                    </div>
+                )}
             </div>
         </div>
     );

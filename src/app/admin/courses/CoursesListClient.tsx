@@ -8,6 +8,7 @@ import {
     Plus,
     Search,
     CheckCircle,
+    Check,
     ChevronRight,
     ChevronLeft,
     Clock,
@@ -225,11 +226,41 @@ function CoursesListContent() {
                     </div>
                 </div>
 
-                {/* Success Message */}
+                {/* Success Message - Original */}
                 {showSuccess && (
                     <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
                         <CheckCircle className="w-5 h-5 text-green-600" />
                         <p className="text-sm text-green-700">Course updated successfully!</p>
+                    </div>
+                )}
+
+                {/* Course Ready Notification - New */}
+                {searchParams.get("course_ready") === "true" && (
+                    <div className="mb-6 mx-4 sm:mx-0 p-4 bg-[#F0FDF4] border border-[#DCFCE7] rounded-lg flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-full bg-[#22C55E] flex items-center justify-center flex-shrink-0">
+                                <Check className="w-4 h-4 text-white" />
+                            </div>
+                            <p className="text-sm font-medium text-slate-900">
+                                Training resources for the course <span className="font-bold">"{searchParams.get("title")}"</span> is ready.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={() => router.push(`/admin/courses/create?draftId=${searchParams.get("draftId")}&resumeStep=5`)}
+                                className="px-5 py-2 bg-[#22C55E] hover:bg-[#16A34A] text-white text-sm font-semibold rounded-lg transition-colors"
+                            >
+                                View
+                            </button>
+                            <button
+                                onClick={() => router.replace("/admin/courses")}
+                                className="text-slate-400 hover:text-slate-600 p-1"
+                            >
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -413,8 +444,8 @@ function CoursesListContent() {
                                                         key={p}
                                                         onClick={() => goToPage(p)}
                                                         className={`w-8 h-8 rounded-lg text-sm font-medium transition-all ${currentPage === p
-                                                                ? "bg-brand-primary text-white shadow-sm"
-                                                                : "bg-white border border-gray-200 text-slate-600 hover:bg-gray-50"
+                                                            ? "bg-brand-primary text-white shadow-sm"
+                                                            : "bg-white border border-gray-200 text-slate-600 hover:bg-gray-50"
                                                             }`}
                                                     >
                                                         {p}

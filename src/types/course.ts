@@ -1,8 +1,9 @@
 export interface QuizQuestion {
     id: string;
-    question_text: string;
+    questionText: string;
     options: string[];
-    correct_answer: string;
+    correctAnswer: number;
+    explanation?: string;
 }
 
 export interface QuizConfig {
@@ -11,6 +12,8 @@ export interface QuizConfig {
     difficulty?: string;
     passMark?: string;
     attempts?: number;
+    questionType?: string;
+    estimatedDuration?: string;
 }
 
 export interface CourseData {

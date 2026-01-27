@@ -273,6 +273,13 @@ export default function CourseDetailsPage({ params }: { params: Promise<{ id: st
                         </div>
                         <div className="flex items-center gap-3">
                             <button
+                                onClick={() => setShowDeleteModal(true)}
+                                className="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors flex items-center gap-2"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Delete
+                            </button>
+                            <button
                                 onClick={() => router.push(`/admin/courses/${id}/preview`)}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
                             >

@@ -14,6 +14,8 @@ import {
     User,
     Edit3,
     Loader2,
+    ChevronLeft,
+    ChevronRight,
 } from "lucide-react";
 import AssignRetakeModal from "@/components/staff/AssignRetakeModal";
 import AssignCourseModal from "@/components/staff/AssignCourseModal";
@@ -189,11 +191,22 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
         }
     };
 
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(5); // Default to 5 for profile view to save space
+
     const filteredAssignments = searchQuery
         ? assignments.filter(a =>
             (a.course as any)?.title?.toLowerCase().includes(searchQuery.toLowerCase())
         )
         : assignments;
+
+    // Pagination logic
+    const totalPages = Math.ceil(filteredAssignments.length / itemsPerPage);
+    const paginatedAssignments = filteredAssignments.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
 
     const getProgressPercentage = (assignment: CourseAssignment) => {
         // Use actual progress_percentage from database
@@ -329,15 +342,14 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
                 <div className="flex gap-8">
 
                     {/* Left Column - Profile & Details */}
-                    <div style={{ boxShadow: "0 1px 2px 0 #E4E5E73D" }} className="lg:col-span-1 border border-[#EEEFF2] rounded-[17px] p-5 space-y-6">
-
-
-                        {/* Bio and Background Sections Removed as per request */}
+                    <div className="flex-1 min-w-0">
+                        {/* Stats Mobile View (Hidden on Desktop usually, but here Stats is right col) */}
 
                         {/* Courses Section */}
-                        <div className="mt-8">
+                        <div className="mt-0"> {/* Removed margin top to align with top of right col */}
 
-                            <div style={{ boxShadow: "0 1px 2px 0 #E4E5E73D" }} className="bg-white rounded-[12px] border border-gray-200 overflow-hidden">
+                            <div style={{ boxShadow: "0 1px 2px 0 #E4E5E73D" }} className="bg-white rounded-[12px] border border-gray-200 overflow-hidden flex flex-col h-full">
+                                {/* Added flex col h-full logic if we want strict height, but here auto height is better for card view */}
                                 <div className="p-6 border-b border-gray-200">
                                     <div className="flex items-center justify-between mb-4">
                                         <h2 className="text-xl font-bold text-slate-900">Courses</h2>
@@ -347,7 +359,10 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
                                                 <input
                                                     type="text"
                                                     value={searchQuery}
-                                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                                    onChange={(e) => {
+                                                        setSearchQuery(e.target.value);
+                                                        setCurrentPage(1); // Reset page on search
+                                                    }}
                                                     placeholder="Search for courses..."
                                                     className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                                                 />
@@ -374,7 +389,7 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                filteredAssignments.map((assignment) => {
+                                                paginatedAssignments.map((assignment) => {
                                                     const completion = (assignment as any).completion;
                                                     const passMark = (assignment.course as any).pass_mark || 80;
                                                     // Check if passed based on score
@@ -462,12 +477,81 @@ export default function StaffProfilePage({ params }: { params: Promise<{ id: str
                                         </tbody>
                                     </table>
                                 </div>
+
+                                {/* Pagination Footer */}
+                                {filteredAssignments.length > 0 && (
+                                    <div className="flex-none px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50 backdrop-blur-sm">
+                                        <div className="text-sm text-slate-500">
+                                            Showing <span className="font-medium text-slate-700">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium text-slate-700">{Math.min(currentPage * itemsPerPage, filteredAssignments.length)}</span> of <span className="font-medium text-slate-700">{filteredAssignments.length}</span> entries
+                                        </div>
+
+                                        {totalPages > 1 && (
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setCurrentPage(currentPage - 1)}
+                                                    disabled={currentPage === 1}
+                                                    className="p-2 border border-gray-200 rounded-lg text-slate-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed bg-white shadow-sm transition-all"
+                                                >
+                                                    <ChevronLeft className="w-4 h-4 ml-0" />
+                                                </button>
+
+                                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                                    let p = i + 1;
+                                                    if (totalPages > 5) {
+                                                        if (currentPage > 3) {
+                                                            p = currentPage - 2 + i;
+                                                        }
+                                                        if (p > totalPages) return null;
+                                                    }
+
+                                                    return (
+                                                        <button
+                                                            key={p}
+                                                            onClick={() => setCurrentPage(p)}
+                                                            className={`w-8 h-8 rounded-lg text-sm font-medium transition-all ${currentPage === p
+                                                                ? "bg-blue-600 text-white shadow-sm"
+                                                                : "bg-white border border-gray-200 text-slate-600 hover:bg-gray-50"
+                                                                }`}
+                                                        >
+                                                            {p}
+                                                        </button>
+                                                    );
+                                                }).filter(Boolean)}
+
+                                                <button
+                                                    onClick={() => setCurrentPage(currentPage + 1)}
+                                                    disabled={currentPage === totalPages}
+                                                    className="p-2 border border-gray-200 rounded-lg text-slate-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed bg-white shadow-sm transition-all"
+                                                >
+                                                    <ChevronRight className="w-4 h-4 mr-0" />
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm text-slate-500">Show</span>
+                                            <select
+                                                value={itemsPerPage}
+                                                onChange={(e) => {
+                                                    setItemsPerPage(Number(e.target.value));
+                                                    setCurrentPage(1);
+                                                }}
+                                                className="border border-gray-200 bg-white rounded-lg px-2 py-1.5 text-sm text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer"
+                                            >
+                                                <option value={5}>5</option>
+                                                <option value={10}>10</option>
+                                                <option value={20}>20</option>
+                                            </select>
+                                            <span className="text-sm text-slate-500">entries</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
 
                     {/* Right Column - Stats */}
-                    <div className="space-y-4 w-[40%]">
+                    <div className="space-y-4 w-[400px]"> {/* Fixed width for stats to be consistent */}
                         <div className="bg-[#E9ECF9] rounded-[12px] p-4 border border-[#9BA7E3]">
                             <div className="flex items-center gap-3 mb-2">
                                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">

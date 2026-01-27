@@ -15,7 +15,7 @@ interface Step6ReviewQuizProps {
 
 interface QuizQuestion {
     id: string;
-    text: string;
+    questionText: string;
     options: string[];
     correctAnswer: number;
     isCustom?: boolean;
@@ -31,7 +31,7 @@ export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, courseDif
 
     // Form state for adding/editing questions
     const [newQuestion, setNewQuestion] = useState({
-        text: "",
+        questionText: "",
         options: ["", "", "", ""],
         correctAnswer: 0
     });
@@ -89,7 +89,7 @@ export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, courseDif
 
     const handleAddQuestion = () => {
         setNewQuestion({
-            text: "",
+            questionText: "",
             options: ["", "", "", ""],
             correctAnswer: 0
         });
@@ -99,7 +99,7 @@ export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, courseDif
 
     const handleEditQuestion = (question: QuizQuestion) => {
         setNewQuestion({
-            text: question.text,
+            questionText: question.questionText,
             options: [...question.options],
             correctAnswer: question.correctAnswer
         });
@@ -112,7 +112,7 @@ export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, courseDif
     };
 
     const handleSaveQuestion = () => {
-        if (!newQuestion.text.trim() || newQuestion.options.some(opt => !opt.trim())) {
+        if (!newQuestion.questionText.trim() || newQuestion.options.some(opt => !opt.trim())) {
             alert("Please fill in all fields");
             return;
         }
@@ -128,7 +128,7 @@ export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, courseDif
             // Add new question
             const question: QuizQuestion = {
                 id: `custom-${Date.now()}`,
-                text: newQuestion.text,
+                questionText: newQuestion.questionText,
                 options: newQuestion.options,
                 correctAnswer: newQuestion.correctAnswer,
                 isCustom: true
@@ -203,7 +203,7 @@ export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, courseDif
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2 mb-2">
                                                     <span className="text-sm font-medium text-slate-900">
-                                                        {idx + 1}. {q.text}
+                                                        {idx + 1}. {q.questionText}
                                                     </span>
                                                     {q.isCustom && (
                                                         <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
@@ -302,8 +302,8 @@ export function Step6ReviewQuiz({ data, onNext, onBack, courseContent, courseDif
                                     Question
                                 </label>
                                 <textarea
-                                    value={newQuestion.text}
-                                    onChange={(e) => setNewQuestion({ ...newQuestion, text: e.target.value })}
+                                    value={newQuestion.questionText}
+                                    onChange={(e) => setNewQuestion({ ...newQuestion, questionText: e.target.value })}
                                     className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
                                     rows={3}
                                     placeholder="Enter your question here..."

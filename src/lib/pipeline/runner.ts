@@ -48,13 +48,7 @@ async function runStage(
         try {
             const model = getGeminiModel();
 
-            const result = await model.generateContent({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: config.temperature,
-                    maxOutputTokens: 8192
-                }
-            });
+            const result = await model.generateContent(prompt);
 
             const response = await result.response;
             const text = response.text();
@@ -211,6 +205,11 @@ export async function runFullPipeline(
         return { success: false, result: null, rawOutputs, stageErrors };
     }
 
+    if (!courseMeta) {
+        stageErrors.A = 'CourseMeta is null';
+        return { success: false, result: null, rawOutputs, stageErrors };
+    }
+
     // =========================================================================
     // STAGE B: Inspector
     // =========================================================================
@@ -246,6 +245,11 @@ export async function runFullPipeline(
         }
     } else {
         stageErrors.B = 'No quiz JSON found in Stage B output';
+        return { success: false, result: null, rawOutputs, stageErrors };
+    }
+
+    if (!quiz) {
+        stageErrors.B = 'Quiz is null';
         return { success: false, result: null, rawOutputs, stageErrors };
     }
 

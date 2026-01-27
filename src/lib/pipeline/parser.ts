@@ -108,6 +108,14 @@ export function repairJson(text: string): { repaired: string; wasRepaired: boole
         repairs.push('Escaped newlines in strings');
     }
 
+    // Fix missing commas between objects } { -> }, {
+    // We strictly look for closing brace, whitespace, opening brace
+    const missingCommaRegex = /}\s*{/g;
+    if (missingCommaRegex.test(repaired)) {
+        repaired = repaired.replace(missingCommaRegex, '}, {');
+        repairs.push('Added missing commas between objects');
+    }
+
     // Try to close unclosed brackets (truncation repair)
     const openBraces = (repaired.match(/{/g) || []).length;
     const closeBraces = (repaired.match(/}/g) || []).length;

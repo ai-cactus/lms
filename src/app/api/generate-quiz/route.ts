@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
         console.log('Running Prompt B (Inspector) for quiz generation...');
 
-        const result = await runPromptB(courseContent, meta, config);
+        const result = await runPromptB(courseContent, meta, numQuestions, config);
 
         if (!result.success) {
             return NextResponse.json(
@@ -54,13 +54,31 @@ export async function POST(req: NextRequest) {
         }
 
         // Parse quiz JSON from output
-        let quizJson = extractJsonBlock(result.output);
+        const extracted = extractJsonBlock(result.output);
+        let quizJsonString = extracted.json;
 
-        if (!quizJson) {
+        if (!quizJsonString) {
+            console.log('Quiz Generation Raw Output:', result.output);
+
             // Fallback: try to repair and parse
-            const repaired = repairJson(result.output);
-            if (repaired) {
-                quizJson = repaired;
+            // repairJson always returns a string in .repaired (it defaults to original if no repairs)
+            // But we should check if it looks like JSON if extraction failed.
+            // Actually repairJson returns { repaired, wasRepaired, repairs }
+
+            // If extraction failed, maybe repairJson can make it extractable? 
+            // Or maybe repairJson is meant to run ON the extracted JSON?
+            // "Attempt to repair common JSON defects" usually runs on the JSON string.
+            // If we don't have a JSON block, repairJson on the whole text might not work if it contains markdown.
+
+            // Let's try to repair the whole output and then extract again? 
+            // Or assume the whole output is meant to be JSON?
+
+            // For now, let's just error if we can't extract, unless repair finds something.
+            // Actually, let's trust the repair if it claims success, but parser.ts says: "Attempt to repair common JSON defects"
+
+            if (result.output.trim().startsWith('{') || result.output.trim().startsWith('[')) {
+                const repaired = repairJson(result.output);
+                quizJsonString = repaired.repaired;
             } else {
                 return NextResponse.json(
                     { error: 'Failed to parse quiz JSON from response', rawOutput: result.output },
@@ -70,7 +88,27 @@ export async function POST(req: NextRequest) {
         }
 
         // Parse and validate
-        const parsed = JSON.parse(quizJson);
+        let parsed: any;
+        try {
+            parsed = JSON.parse(quizJsonString!);
+        } catch (parseError) {
+            console.warn("Initial JSON parse failed, attempting repair:", parseError);
+            const repairResult = repairJson(quizJsonString!);
+            try {
+                parsed = JSON.parse(repairResult.repaired);
+                console.log("JSON successfully repaired");
+            } catch (repairError) {
+                console.error("JSON repair failed:", repairError);
+                return NextResponse.json(
+                    {
+                        error: 'Failed to parse quiz JSON',
+                        details: (repairError as Error).message,
+                        rawOutput: result.output
+                    },
+                    { status: 500 }
+                );
+            }
+        }
 
         // Handle both array format (legacy) and object format (new pipeline)
         let questions: QuizQuestion[];

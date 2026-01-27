@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { courseDraftManager, CourseDraft } from "@/lib/course-draft";
 
 interface InputQuizQuestion {
-    text: string;
+    questionText: string;
     options: string[];
     correctAnswer: number;
     explanation?: string;
@@ -21,6 +21,7 @@ function CreateCourseContent() {
     const policyIds = searchParams.get("policyIds");
     const draftId = searchParams.get("draftId");
     const newDraft = searchParams.get("newDraft") === "true";
+    const resumeStep = searchParams.get("resumeStep");
     const [loadingDraft, setLoadingDraft] = useState(!!draftId);
     const [draftData, setDraftData] = useState<CourseDraft | null>(null);
     const supabase = createClient();
@@ -30,6 +31,8 @@ function CreateCourseContent() {
             loadDraftById(draftId);
         }
     }, [draftId]);
+
+    // ... (rest of loadDraftById)
 
     const loadDraftById = async (id: string) => {
         try {
@@ -57,14 +60,28 @@ function CreateCourseContent() {
     };
 
     const handleClose = () => {
-        router.push("/admin/training-center");
+        router.push("/admin/courses");
+    };
+
+    const handleDraftReady = (id: string, title: string) => {
+        // Redirect to courses list with success banner info
+        const params = new URLSearchParams();
+        params.set("course_ready", "true");
+        params.set("title", title);
+        params.set("draftId", id);
+        router.push(`/admin/courses?${params.toString()}`);
     };
 
     const handleComplete = async (data: CourseData, files: File[], publishOptions?: {
-        deadline?: { dueDate: string; dueTime: string };
-        assignType: string;
-        selectedRoles?: string[];
-        emails?: string[];
+        assignType: "specific" | "all";
+        selectedUserIds: string[];
+        emailInvites: string[];
+        deadline?: {
+            enabled: boolean;
+            dueDate: string;
+            dueTime: string;
+            reminders: number[];
+        };
     }) => {
         try {
             // 1. Get current user
@@ -80,36 +97,30 @@ function CreateCourseContent() {
 
             if (!userData?.organization_id) throw new Error("Organization not found");
 
-            // Calculate deadline_days if deadline is provided
-            let deadlineDays = 30; // Default
-            if (publishOptions?.deadline?.dueDate) {
-                const start = new Date();
-                const end = new Date(publishOptions.deadline.dueDate);
-                const diffTime = Math.abs(end.getTime() - start.getTime());
-                deadlineDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            // Calculate deadline Date object
+            let deadlineDate: Date | null = null;
+            if (publishOptions?.deadline?.enabled && publishOptions.deadline.dueDate) {
+                const dateStr = publishOptions.deadline.dueDate;
+                const timeStr = publishOptions.deadline.dueTime || "23:59";
+                deadlineDate = new Date(`${dateStr}T${timeStr}`);
+            } else {
+                // Default 30 days if not specified but maybe we shouldn't set one if not enabled? 
+                // Legacy logic set it to 30 days. Let's keep it null if not enabled, or 30 days if "All Personnel" without specific deadline.
+                // Actually user can toggle it. If disabled, let's set it to null or far future. 
+                // Let's set it to null (no deadline) if disabled.
+                // Check if DB supports null deadline. Usually yes.
             }
 
             // 3. Insert Course
-            // Build lesson_notes with description, objectives, and generated content
             let lessonNotes = "";
-
-            // Add description if provided
-            if (data.description) {
-                lessonNotes += `## Course Description\n${data.description}\n\n`;
-            }
-
-            // Add objectives if provided
-            if (data.objectives && data.objectives.some(obj => obj.trim())) {
+            if (data.description) lessonNotes += `## Course Description\n${data.description}\n\n`;
+            if (data.objectives?.some(obj => obj.trim())) {
                 lessonNotes += `## What You'll Learn\n\n`;
                 data.objectives.forEach((obj, index) => {
-                    if (obj.trim()) {
-                        lessonNotes += `${index + 1}. ${obj}\n`;
-                    }
+                    if (obj.trim()) lessonNotes += `${index + 1}. ${obj}\n`;
                 });
                 lessonNotes += `\n`;
             }
-
-            // Add generated content
             lessonNotes += data.generatedContent || "";
 
             const { data: course, error: courseError } = await supabase
@@ -129,16 +140,13 @@ function CreateCourseContent() {
                 .select()
                 .single();
 
-            if (courseError) {
-                console.error("Course insert error:", courseError);
-                throw courseError;
-            }
+            if (courseError) throw courseError;
 
             // 4. Insert Quiz Questions
             if (data.questions && data.questions.length > 0) {
                 const questionsToInsert = data.questions.map((q: InputQuizQuestion) => ({
                     course_id: course.id,
-                    question_text: q.text,
+                    question_text: q.questionText,
                     options: q.options,
                     correct_answer: q.options[q.correctAnswer],
                     question_type: "multiple_choice",
@@ -149,61 +157,90 @@ function CreateCourseContent() {
                     .from("quiz_questions")
                     .insert(questionsToInsert);
 
-                if (quizError) {
-                    console.error("Quiz insert error:", quizError);
-                    throw quizError;
-                }
+                if (quizError) throw quizError;
             }
 
             // 5. Handle Assignments
-            if (publishOptions?.assignType === "All Personnel") {
-                // Fetch all users in the organization, excluding admins
-                const { data: orgUsers, error: usersError } = await supabase
+            let userIdsToAssign: string[] = [];
+
+            if (publishOptions?.assignType === "all") {
+                // Fetch all users
+                const { data: orgUsers } = await supabase
                     .from("users")
                     .select("id")
                     .eq("organization_id", userData.organization_id)
-                    .neq("role", "admin");  // Exclude admin users
+                    .neq("role", "admin");
 
-                if (usersError) {
-                    console.error("Error fetching users for assignment:", usersError);
-                } else if (orgUsers && orgUsers.length > 0) {
-                    // Calculate deadline based on deadline_days
-                    const deadlineDate = new Date();
-                    deadlineDate.setDate(deadlineDate.getDate() + deadlineDays);
+                if (orgUsers) {
+                    userIdsToAssign = orgUsers.map(u => u.id);
+                }
+            } else if (publishOptions?.assignType === "specific" && publishOptions.selectedUserIds) {
+                userIdsToAssign = publishOptions.selectedUserIds;
+            }
 
-                    const assignments = orgUsers.map(u => ({
-                        course_id: course.id,
-                        worker_id: u.id,
-                        assigned_by: user.id,
-                        status: "not_started",
-                        assigned_at: new Date().toISOString(),
-                        deadline: deadlineDate.toISOString()
-                    }));
+            if (userIdsToAssign.length > 0) {
+                const assignments = userIdsToAssign.map(workerId => ({
+                    course_id: course.id,
+                    worker_id: workerId,
+                    assigned_by: user.id,
+                    status: "not_started",
+                    assigned_at: new Date().toISOString(),
+                    deadline: deadlineDate ? deadlineDate.toISOString() : undefined // Pass undefined if no deadline
+                }));
 
-                    const { error: assignmentError } = await supabase
-                        .from("course_assignments")
-                        .insert(assignments);
+                const { error: assignmentError } = await supabase
+                    .from("course_assignments")
+                    .insert(assignments);
 
-                    if (assignmentError) {
-                        console.error("Error creating assignments:", assignmentError);
-                        console.error("Assignment error details:", JSON.stringify(assignmentError, null, 2));
-                        // Don't throw here, as the course is already created. Just log it.
-                        alert("Course created, but failed to assign users. Please try assigning manually.");
-                    }
+                if (assignmentError) {
+                    console.error("Assignment error:", assignmentError);
+                    alert("Course created but failed to assign some users.");
                 }
             }
 
-            // 5. Redirect
-            router.push("/admin/training-center");
+            // Handle Email Invites
+            if (publishOptions?.emailInvites && publishOptions.emailInvites.length > 0) {
+                // Get inviter name
+                const { data: inviterProfile } = await supabase
+                    .from("users")
+                    .select("first_name, last_name")
+                    .eq("id", user.id)
+                    .single();
 
-        } catch (error) {
+                const inviterName = inviterProfile
+                    ? `${inviterProfile.first_name || ''} ${inviterProfile.last_name || ''}`.trim()
+                    : "Theraptly Admin";
+
+                const formattedDeadline = deadlineDate
+                    ? deadlineDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : undefined;
+
+                // Send emails in background (don't block redirect ideally, but for now we await to ensure success logging)
+                // We'll use Promise.allSettled to ensure individual failures don't crash the whole flow
+                await Promise.allSettled(publishOptions.emailInvites.map(email =>
+                    fetch("/api/send-invite", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            email,
+                            courseTitle: data.title,
+                            inviterName,
+                            courseId: course.id,
+                            deadline: formattedDeadline
+                        })
+                    })
+                ));
+            }
+
+            // 6. Redirect
+            router.push("/admin/courses");
+
+        } catch (error: any) {
             console.error("Error saving course:", error);
-            console.error("Error details:", JSON.stringify(error, null, 2));
             alert(`Failed to save course: ${error.message || "Unknown error"}`);
         }
     };
 
-    // Parse policyIds if present, otherwise use single policyId
     const initialPolicyIds = policyIds
         ? policyIds.split(',')
         : policyId
@@ -225,9 +262,11 @@ function CreateCourseContent() {
         <WizardContainer
             onClose={handleClose}
             onComplete={handleComplete}
+            onDraftReady={handleDraftReady}
             initialPolicyIds={initialPolicyIds}
             initialDraft={draftData ?? undefined}
             forceNewDraft={newDraft}
+            initialStep={resumeStep ? parseInt(resumeStep) : undefined}
         />
     );
 }
