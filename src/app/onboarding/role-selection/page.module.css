@@ -1,0 +1,122 @@
+.wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding: 140px 110px;
+    /* Top margins from screenshot guides */
+}
+
+.container {
+    width: 100%;
+    max-width: 420px;
+    /* Or similar to keep it focused */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.header {
+    margin-bottom: 24px;
+}
+
+.title {
+    font-size: 26px;
+    /* 24-28px range */
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin-bottom: 40px;
+    line-height: 1.5;
+    max-width: 380px;
+}
+
+.roleCards {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    margin-bottom: 40px;
+}
+
+.roleCard {
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    text-align: left;
+    background: #FFFFFF;
+}
+
+.roleCard:hover {
+    border-color: #CBD5E0;
+}
+
+.roleCard.selected {
+    border-color: #2D4DDD;
+    background-color: #F8FAFF;
+    /* Very subtle blue tint */
+    box-shadow: 0 0 0 1px #2D4DDD;
+    /* Thicker border effect */
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.iconWrapper {
+    color: #4A5568;
+}
+
+.roleCard.selected .iconWrapper {
+    color: #2D4DDD;
+}
+
+.roleName {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.roleCard.selected .roleName {
+    color: #2D4DDD;
+}
+
+/* Radio Button Custom Styling */
+.radio {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1.5px solid #CBD5E0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.roleCard.selected .radio {
+    border-color: #2D4DDD;
+}
+
+.radioInner {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #2D4DDD;
+}
+
+.error {
+    color: var(--error);
+    margin-bottom: 16px;
+    font-size: 14px;
+}

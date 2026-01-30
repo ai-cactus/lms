@@ -1,0 +1,129 @@
+.container {
+    position: relative;
+    width: 100%;
+}
+
+.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.disabled .trigger {
+    background-color: #F7FAFC;
+    /* Gray background similar to readOnlyInput */
+    cursor: not-allowed;
+    border-color: #E2E8F0;
+}
+
+.disabled .trigger:hover {
+    border-color: #E2E8F0;
+}
+
+.trigger {
+    width: 100%;
+    height: 48px;
+    padding: 0 16px;
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    font-family: inherit;
+}
+
+.trigger:hover {
+    border-color: #CBD5E0;
+}
+
+.trigger:focus,
+.triggerOpen {
+    outline: none;
+    border-color: #2D4DDD;
+    /* Brand Blue Focus */
+    box-shadow: 0 0 0 3px rgba(45, 77, 221, 0.1);
+}
+
+.value {
+    color: #2D3748;
+    font-size: 16px;
+    font-weight: 400;
+}
+
+.placeholder {
+    color: #A0AEC0;
+    font-size: 16px;
+}
+
+.iconWrapper {
+    display: flex;
+    align-items: center;
+    color: #A0AEC0;
+}
+
+.chevron {
+    transition: transform 0.2s ease;
+}
+
+.dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 100%;
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    z-index: 50;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px;
+    animation: slideDown 0.15s ease-out;
+}
+
+.option {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 15px;
+    color: #4A5568;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background-color 0.1s;
+}
+
+.option:hover {
+    background-color: #EBF8FF;
+    /* Light Blue Hover */
+    color: #2B6CB0;
+}
+
+.selected {
+    background-color: #EBF8FF;
+    color: #2B6CB0;
+    font-weight: 500;
+}
+
+.checkIcon {
+    color: #2B6CB0;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

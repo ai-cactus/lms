@@ -1,0 +1,33 @@
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    user-select: none;
+}
+
+.logoText {
+    font-weight: 700;
+    line-height: 1;
+    font-family: var(--font-heading, sans-serif);
+}
+
+/* Variant: usually refers to the color theme of the logo */
+.light {
+    color: #2D3748;
+    /* Dark text for light backgrounds */
+}
+
+.dark {
+    color: #FFFFFF;
+    /* Light text for dark backgrounds */
+}
+
+.blue {
+    color: #2D4DDD;
+    /* Brand Blue */
+}
+
+/* Apply filter to image to make it blue (approximate for #2D4DDD) */
+.blue img {
+    filter: invert(24%) sepia(93%) saturate(1750%) hue-rotate(218deg) brightness(91%) contrast(96%);
+}

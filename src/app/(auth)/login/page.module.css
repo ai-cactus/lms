@@ -1,0 +1,302 @@
+.container {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+}
+
+/* Form Section - Left Side */
+.formSection {
+    flex: 0 0 50%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    background: #FFFFFF;
+}
+
+.formContent {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+}
+
+.formHeader {
+    text-align: center;
+    width: 100%;
+}
+
+.title {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+.form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.formOptions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: -8px;
+}
+
+.rememberMe {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.link {
+    font-size: 14px;
+    color: var(--primary);
+    font-weight: 500;
+    transition: color var(--transition-fast);
+}
+
+.link:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+.signupPrompt {
+    font-size: 16px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.signupLink {
+    color: var(--primary);
+    font-weight: 600;
+    transition: color var(--transition-fast);
+}
+
+.signupLink:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+/* Hero Section - Right Side (Figma: 713px × 1004px) */
+.heroSection {
+    flex: 0 0 50%;
+    display: none;
+    background: #2D4DDD;
+    position: relative;
+    overflow: hidden;
+    margin: 10px 10px 10px 0;
+    border-radius: 22px;
+}
+
+/* Background doodle decoration */
+.bgDoodle {
+    position: absolute;
+    top: -115px;
+    left: -85px;
+    width: 952px !important;
+    height: 1211px !important;
+    object-fit: contain;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 1;
+}
+
+/* Hero Content - Figma: content width 568px, centered both ways */
+.heroContent {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    padding: 60px;
+    max-width: 640px;
+    margin: 0 auto;
+}
+
+/* Header Section - Figma: Title + Bodytext frame */
+.heroHeader {
+    margin-bottom: 40px;
+    max-width: 568px;
+    /* Figma exact width */
+}
+
+/* Title - Figma: 34px, weight 700, line-height 42px */
+.heroTitle {
+    font-family: 'Inter', sans-serif;
+    font-size: 34px;
+    font-weight: 700;
+    color: #FFFFFF;
+    line-height: 42px;
+    margin-bottom: 12px;
+    /* Figma gap */
+}
+
+/* Subtitle - Figma: 18px, weight 500, line-height 31px */
+.heroSubtitle {
+    font-family: 'Inter', sans-serif;
+    font-size: 18px;
+    font-weight: 500;
+    color: #FFFFFF;
+    line-height: 31px;
+}
+
+/* Features Grid - Figma: 568px × 359px, 2x2 layout */
+.featuresGrid {
+    display: grid;
+    grid-template-columns: 234px 234px;
+    /* Figma: each card 234px */
+    column-gap: 100px;
+    /* ~100px to fill 568px width */
+    row-gap: 67px;
+    /* Figma gap between rows */
+    max-width: 568px;
+}
+
+.featureCard {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    /* Figma gap */
+    width: 234px;
+    /* Figma exact width */
+}
+
+/* Icon - Figma: 45px × 45px */
+.featureIcon {
+    width: 45px;
+    height: 45px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #2D4DDD;
+    margin-bottom: 20px;
+    /* Figma gap to title */
+}
+
+/* Feature Title - Figma: 19px, weight 600 */
+.featureTitle {
+    font-family: 'Inter', sans-serif;
+    font-size: 19px;
+    font-weight: 600;
+    color: #F7FAFC;
+    line-height: 19px;
+}
+
+/* Feature Description - Figma: 14px, weight 500, line-height 19px */
+.featureDesc {
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    color: #CFD9E0;
+    line-height: 19px;
+}
+
+/* Responsive */
+@media (min-width: 1024px) {
+    .heroSection {
+        display: block;
+    }
+}
+
+@media (max-width: 1400px) {
+    .heroContent {
+        padding: 50px;
+    }
+
+    .featuresGrid {
+        grid-template-columns: 1fr 1fr;
+        column-gap: 60px;
+        row-gap: 50px;
+    }
+
+    .featureCard {
+        width: auto;
+    }
+}
+
+@media (max-width: 1279px) {
+    .heroContent {
+        padding: 40px;
+    }
+
+    .heroTitle {
+        font-size: 28px;
+        line-height: 36px;
+    }
+
+    .heroSubtitle {
+        font-size: 15px;
+        line-height: 24px;
+    }
+
+    .featuresGrid {
+        column-gap: 40px;
+        row-gap: 40px;
+    }
+
+    .featureTitle {
+        font-size: 16px;
+    }
+
+    .featureDesc {
+        font-size: 13px;
+    }
+
+    .featureIcon {
+        width: 40px;
+        height: 40px;
+        margin-bottom: 16px;
+    }
+}
+
+@media (max-width: 1023px) {
+    .formSection {
+        flex: 1;
+    }
+
+    .heroSection {
+        margin: 0;
+        border-radius: 0;
+    }
+}
+
+@media (max-width: 640px) {
+    .formSection {
+        padding: 24px;
+    }
+
+    .title {
+        font-size: 28px;
+    }
+
+    .formContent {
+        gap: 24px;
+    }
+}

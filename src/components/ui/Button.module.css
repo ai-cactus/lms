@@ -1,0 +1,120 @@
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+}
+
+.button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Variants */
+.primary {
+    background: var(--primary);
+    color: var(--text-white);
+    border-radius: var(--radius-md);
+}
+
+.primary:hover:not(:disabled) {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.primary:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.secondary {
+    background: var(--background-secondary);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+}
+
+.secondary:hover:not(:disabled) {
+    background: var(--border);
+}
+
+.outline {
+    background: transparent;
+    color: var(--primary);
+    border: 2px solid var(--primary);
+    border-radius: var(--radius-md);
+}
+
+.outline:hover:not(:disabled) {
+    background: var(--primary);
+    color: var(--text-white);
+}
+
+.ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: var(--radius-md);
+}
+
+.ghost:hover:not(:disabled) {
+    background: var(--background-secondary);
+    color: var(--text-primary);
+}
+
+/* Sizes */
+.sm {
+    height: 36px;
+    padding: 0 16px;
+    font-size: 14px;
+}
+
+.md {
+    height: 48px;
+    padding: 0 24px;
+    font-size: 16px;
+}
+
+.lg {
+    height: 64px;
+    padding: 0 32px;
+    font-size: 18px;
+    border-radius: var(--radius-md);
+}
+
+/* Full Width */
+.fullWidth {
+    width: 100%;
+}
+
+/* Pill variant modifier - use with primary/secondary */
+.pill {
+    border-radius: var(--radius-full);
+}
+
+/* Loader */
+.loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}

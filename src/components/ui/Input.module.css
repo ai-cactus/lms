@@ -1,0 +1,109 @@
+.inputWrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
+
+.label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.inputContainer {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input {
+    width: 100%;
+    height: 56px;
+    padding: 0 16px;
+    font-family: var(--font-body);
+    font-size: 16px;
+    color: var(--text-primary);
+    background: var(--background);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+}
+
+.input::placeholder {
+    color: var(--text-muted);
+}
+
+.input:hover {
+    border-color: var(--text-muted);
+}
+
+.input:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px rgba(64, 93, 221, 0.1);
+}
+
+.hasError .input {
+    border-color: var(--error);
+}
+
+.hasError .input:focus {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+/* Icons */
+.leftIcon,
+.rightIcon {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.leftIcon {
+    left: 16px;
+}
+
+.rightIcon {
+    right: 16px;
+}
+
+.hasLeftIcon {
+    padding-left: 48px;
+}
+
+.hasRightIcon {
+    padding-right: 48px;
+}
+
+/* Password Toggle */
+.passwordToggle {
+    position: absolute;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: color var(--transition-fast);
+}
+
+.passwordToggle:hover {
+    color: var(--text-primary);
+}
+
+/* Error & Helper Text */
+.error {
+    font-size: 13px;
+    color: var(--error);
+}
+
+.helperText {
+    font-size: 13px;
+    color: var(--text-muted);
+}
