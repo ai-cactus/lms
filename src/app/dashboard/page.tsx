@@ -1,18 +1,19 @@
 import React from 'react';
 import styles from './page.module.css';
 import { Button } from '@/components/ui';
-import { createClient } from '@/utils/supabase/server';
+import { auth } from '@/auth';
+import { prisma } from '@/lib/prisma';
+import { redirect } from 'next/navigation';
 
 export default async function DashboardPage() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const session = await auth();
+    if (!session?.user) redirect('/login');
 
     // Fetch profile role
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user?.id)
-        .single();
+    const profile = await prisma.profile.findUnique({
+        where: { id: session.user.id },
+        select: { role: true }
+    });
 
     const role = profile?.role;
 

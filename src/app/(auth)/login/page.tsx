@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useActionState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Logo, Input, Button } from '@/components/ui';
-import { createClient } from '@/utils/supabase/client';
+import { authenticate } from '@/app/actions/auth';
 import styles from './page.module.css';
 
 // Feature data from Figma
@@ -58,7 +58,8 @@ const features = [
 
 export default function LoginPage() {
     const router = useRouter();
-    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, dispatch, isPending] = useActionState(authenticate, undefined);
+
     const [formData, setFormData] = useState({
         email: '',
         password: '',
@@ -98,29 +99,20 @@ export default function LoginPage() {
 
         if (!validateForm()) return;
 
-        setIsLoading(true);
         setErrors({});
+        // Construct FormData manually 
+        const form = new FormData();
+        form.append('email', formData.email);
+        form.append('password', formData.password);
 
-        try {
-            const supabase = createClient();
-            const { error } = await supabase.auth.signInWithPassword({
-                email: formData.email,
-                password: formData.password,
-            });
-
-            if (error) {
-                setErrors({ email: error.message }); // Use email field for general auth errors or error.message
-                return;
-            }
-
-            router.push('/dashboard');
-        } catch (error) {
-            console.error('Login error:', error);
-            setErrors({ email: 'An unexpected error occurred.' });
-        } finally {
-            setIsLoading(false);
-        }
+        dispatch(form);
     };
+
+    useEffect(() => {
+        if (errorMessage) {
+            setErrors(prev => ({ ...prev, email: errorMessage }));
+        }
+    }, [errorMessage]);
 
     return (
         <div className={styles.container}>
@@ -179,7 +171,7 @@ export default function LoginPage() {
                             type="submit"
                             size="lg"
                             fullWidth
-                            loading={isLoading}
+                            loading={isPending}
                         >
                             Login
                         </Button>

@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import styles from './Header.module.css';
-import { createClient } from '@/utils/supabase/client';
+import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -15,14 +15,11 @@ export default function Header({ userEmail, fullName }: HeaderProps) {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
-    const supabase = createClient();
 
     const toggleDropdown = () => setIsOpen(!isOpen);
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        router.refresh();
-        router.push('/login');
+        await signOut({ callbackUrl: '/login' });
     };
 
     // Close dropdown when clicking outside

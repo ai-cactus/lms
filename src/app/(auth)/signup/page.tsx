@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useActionState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Logo, Input, Button } from '@/components/ui';
-import { createClient } from '@/utils/supabase/client';
+import { signup, SignupResult } from '@/app/actions/auth';
 import styles from './page.module.css';
 
 // Feature data from Figma (same as login)
@@ -58,7 +58,8 @@ const features = [
 
 export default function SignupPage() {
     const router = useRouter();
-    const [isLoading, setIsLoading] = useState(false);
+    const [result, dispatch, isPending] = useActionState<SignupResult | undefined, FormData>(signup, undefined);
+
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
@@ -121,50 +122,29 @@ export default function SignupPage() {
         e.preventDefault();
 
         if (!validateForm()) return;
-
-        setIsLoading(true);
         setErrors({});
 
-        try {
-            const supabase = createClient();
-            const { data, error } = await supabase.auth.signUp({
-                email: formData.email,
-                password: formData.password,
-                options: {
-                    data: {
-                        first_name: formData.firstName,
-                        last_name: formData.lastName,
-                        full_name: `${formData.firstName} ${formData.lastName}`.trim(),
-                    },
-                },
-            });
+        // Construct FormData manually
+        const form = new FormData();
+        form.append('email', formData.email);
+        form.append('password', formData.password);
+        form.append('firstName', formData.firstName);
+        form.append('lastName', formData.lastName);
 
-            if (error) {
-                setErrors({ email: error.message });
-                return;
-            }
-
-            // Check if session was created (Email Confirmation might be ON)
-            if (data.user && !data.session) {
-                // Email confirmation is required.
-                // Show a success message telling them to check email.
-                setErrors({ email: 'Success! Please check your email to confirm your account.' });
-                // Alternatively, switch to a "Check Email" UI state.
-                return;
-            }
-
-            // Session exists (Email Confirmation OFF or Auto-Confirm)
-            if (data.session) {
-                router.push('/onboarding/role-selection');
-            }
-
-        } catch (error) {
-            console.error('Signup error:', error);
-            setErrors({ email: 'An unexpected error occurred. Please try again.' });
-        } finally {
-            setIsLoading(false);
-        }
+        dispatch(form);
     };
+
+    useEffect(() => {
+        if (result) {
+            if (result.success) {
+                // Redirect to role selection on successful signup
+                router.push('/onboarding/role-selection');
+            } else {
+                // Show error message
+                setErrors(prev => ({ ...prev, email: result.error }));
+            }
+        }
+    }, [result, router]);
 
     return (
         <div className={styles.container}>
@@ -262,7 +242,7 @@ export default function SignupPage() {
                             type="submit"
                             size="lg"
                             fullWidth
-                            loading={isLoading}
+                            loading={isPending}
                         >
                             Create Account
                         </Button>

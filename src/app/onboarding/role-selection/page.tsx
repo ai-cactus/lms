@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Logo, Button } from '@/components/ui';
-import { createClient } from '@/utils/supabase/client';
+import { updateRole } from '@/app/actions/user';
 import styles from './page.module.css';
 
 export default function RoleSelectionPage() {
@@ -18,35 +18,13 @@ export default function RoleSelectionPage() {
         setError('');
 
         try {
-            const supabase = createClient();
+            const result = await updateRole(selectedRole);
 
-            // Get current user
-            const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-            if (userError || !user) {
-                setError('User not found. Please log in.');
-                return;
+            if (result.success) {
+                router.push('/dashboard');
+            } else {
+                setError(result.error || 'Failed to update role');
             }
-
-            // Update profile table
-            const { error: updateError } = await supabase
-                .from('profiles')
-                .update({ role: selectedRole })
-                .eq('id', user.id);
-
-            if (updateError) {
-                console.error('Error updating role:', updateError);
-                setError('Failed to save role. Please try again.');
-                return;
-            }
-
-            // Also update metadata for faster access if needed, but profile is primary now
-            await supabase.auth.updateUser({
-                data: { role: selectedRole }
-            });
-
-            // Redirect to dashboard
-            router.push('/dashboard');
 
         } catch (err) {
             console.error('Unexpected error:', err);

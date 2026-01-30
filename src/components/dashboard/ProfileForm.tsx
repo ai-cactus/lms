@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import styles from './ProfileForm.module.css';
 import { Button, Input, Modal, Select } from '@/components/ui';
-import { createClient } from '@/utils/supabase/client';
+import { updateProfile } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -25,7 +25,6 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-    const supabase = createClient();
     const router = useRouter();
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -69,21 +68,13 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
         setIsLoading(true);
 
         try {
-            // Using upsert to handle cases where the profile row might not exist yet
-            // (e.g. if the signup trigger failed or user predates it)
-            const { error } = await supabase
-                .from('profiles')
-                .upsert({
-                    id: formData.id,
-                    first_name: formData.first_name,
-                    last_name: formData.last_name,
-                    role: formData.role,
-                    company_name: formData.company_name,
-                    updated_at: new Date().toISOString(),
-                })
-                .select();
+            const result = await updateProfile({
+                first_name: formData.first_name,
+                last_name: formData.last_name,
+                company_name: formData.company_name,
+            });
 
-            if (error) throw error;
+            if (!result.success) throw new Error(result.error);
 
             setMessage({ type: 'success', text: 'Profile updated successfully' });
             router.refresh();
