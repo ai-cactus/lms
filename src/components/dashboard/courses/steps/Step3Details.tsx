@@ -17,7 +17,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                 Start by uploading the policy or compliance document you want to turn into a course. This will help you analyze and generate lessons and quizzes automatically.
             </p>
 
-            <div style={{ width: '100%' }}>
+            <div className={styles.scrollableStepContent}>
                 {/* Course Title */}
                 <div className={styles.formRow}>
                     <label className={styles.formLabel}>Course Title</label>

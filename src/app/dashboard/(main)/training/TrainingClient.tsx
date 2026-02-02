@@ -14,19 +14,24 @@ interface TrainingClientProps {
     courses: CourseWithStats[];
 }
 
+import { useRouter } from 'next/navigation';
+
+// ... imports
+
 export default function TrainingClient({ stats, courses }: TrainingClientProps) {
+    const router = useRouter();
     // If user has courses, default to showing the dashboard.
     // Otherwise show the empty state / onboarding.
     const [showDashboard, setShowDashboard] = React.useState(courses.length > 0);
 
+    const handleCreateCourse = () => {
+        router.push('/dashboard/courses/create');
+    };
+
     if (showDashboard) {
         return (
             <TrainingDashboard
-                onCreateCourse={() => {
-                    // Navigate to wizard or show modal
-                    console.log('Create course clicked');
-                    // For now keeping client-side state, but ideally navigate to /create
-                }}
+                onCreateCourse={handleCreateCourse}
                 stats={stats}
                 courses={courses}
             />
@@ -46,6 +51,7 @@ export default function TrainingClient({ stats, courses }: TrainingClientProps) 
                 <div className={styles.cardContent}>
                     {/* Left Column: Illustration & CTA */}
                     <div className={styles.illustrationColumn}>
+                        {/* ... (illustration code unchanged) ... */}
                         <div className={styles.illustrationWrapper}>
                             <div className={styles.imageContainer}>
                                 <Image
@@ -70,7 +76,7 @@ export default function TrainingClient({ stats, courses }: TrainingClientProps) 
                             variant="primary"
                             size="lg"
                             className={styles.createButton}
-                            onClick={() => setShowDashboard(true)}
+                            onClick={handleCreateCourse}
                         >
                             Create your first course
                         </Button>
