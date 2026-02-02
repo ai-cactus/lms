@@ -5,22 +5,29 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { AuthError } from 'next-auth';
 
-export async function authenticate(prevState: string | undefined, formData: FormData) {
+// Define return type
+export type AuthState = {
+    error?: string;
+    success?: boolean;
+};
+
+export async function authenticate(prevState: AuthState | undefined, formData: FormData): Promise<AuthState> {
     try {
         await signIn('credentials', {
             ...Object.fromEntries(formData),
-            redirectTo: '/dashboard'
+            redirect: false, // Prevent server-side redirect to stop reload
         });
+        return { success: true };
     } catch (error) {
         if (error instanceof AuthError) {
             switch (error.type) {
                 case 'CredentialsSignin':
-                    return 'Invalid credentials.';
+                    return { error: 'Invalid credentials.' };
                 default:
-                    return 'Something went wrong.';
+                    return { error: 'Something went wrong.' };
             }
         }
-        throw error;  // Re-throw to allow Next.js redirect to work
+        throw error;
     }
 }
 

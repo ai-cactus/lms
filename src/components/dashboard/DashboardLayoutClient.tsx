@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import styles from '@/app/dashboard/layout.module.css';
+import styles from '@/app/dashboard/(main)/layout.module.css';
 import { Logo } from '@/components/ui';
 import Header from '@/components/dashboard/Header';
 import Link from 'next/link';

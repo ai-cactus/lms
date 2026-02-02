@@ -8,24 +8,124 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
+  id            String       @id @default(uuid())
+  email         String       @unique
   password      String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
   profile       Profile?
+  courses       Course[]     // Courses created by this user
+  enrollments   Enrollment[]
+  documents     Document[]
 }
 
 model Profile {
   id            String    @id // References User.id
   user          User      @relation(fields: [id], references: [id], onDelete: Cascade)
-  email         String    @unique // Added for ease of access
+  email         String    @unique
   firstName     String?
   lastName      String?
   fullName      String?
   role          String?   // 'admin' | 'worker'
+  jobTitle      String?   // E.g. 'Compliance Officer'
   companyName   String?
   avatarUrl     String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
+
+model Course {
+  id            String       @id @default(uuid())
+  title         String
+  description   String?
+  thumbnail     String?
+  difficulty    String       @default("beginner") // 'beginner' | 'intermediate' | 'advanced'
+  status        String       @default("draft") // 'draft' | 'published' | 'archived'
+  category      String?      // 'compliance' | 'safety' | 'hr' | 'custom'
+  duration      Int?         // estimated minutes
+  createdBy     String
+  creator       User         @relation(fields: [createdBy], references: [id])
+  lessons       Lesson[]
+  enrollments   Enrollment[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Lesson {
+  id          String   @id @default(uuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  content     String   @db.Text  // HTML/Markdown content
+  order       Int
+  duration    Int?     // minutes
+  quiz        Quiz?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Quiz {
+  id           String        @id @default(uuid())
+  lessonId     String        @unique
+  lesson       Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title        String
+  passingScore Int           @default(70)
+  questions    Question[]
+  attempts     QuizAttempt[]
+  createdAt    DateTime      @default(now())
+}
+
+model Question {
+  id            String   @id @default(uuid())
+  quizId        String
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  text          String
+  type          String   // 'multiple_choice' | 'true_false' | 'short_answer'
+  options       Json?    // Array of options for multiple choice
+  correctAnswer String
+  order         Int
+}
+
+model Enrollment {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  courseId     String
+  course       Course        @relation(fields: [courseId], references: [id])
+  status       String        @default("enrolled") // 'enrolled' | 'in_progress' | 'completed'
+  progress     Int           @default(0)  // percentage
+  score        Int?
+  startedAt    DateTime      @default(now())
+  completedAt  DateTime?
+  quizAttempts QuizAttempt[]
+
+  @@unique([userId, courseId])
+}
+
+model QuizAttempt {
+  id           String     @id @default(uuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  quizId       String
+  quiz         Quiz       @relation(fields: [quizId], references: [id])
+  answers      Json       // Array of { questionId, selectedAnswer }
+  score        Int
+  timeTaken    Int?       // seconds
+  completedAt  DateTime   @default(now())
+
+  @@unique([enrollmentId, quizId])
+}
+
+model Document {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  content      String?  @db.Text  // Extracted text content
+  createdAt    DateTime @default(now())
+}
+
+

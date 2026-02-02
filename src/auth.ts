@@ -43,5 +43,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         async jwt({ token }) {
             return token;
         }
+    },
+    // Fix for HTTP IP-based deployment (Loop issue):
+    // Force usage of insecure cookies since we are likely not on HTTPS
+    session: {
+        strategy: 'jwt',
+    },
+    cookies: {
+        sessionToken: {
+            name: `next-auth.session-token`,
+            options: {
+                httpOnly: true,
+                sameSite: 'lax',
+                path: '/',
+                secure: false, // Force false for HTTP IP access
+            },
+        },
     }
 });

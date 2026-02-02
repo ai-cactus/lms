@@ -1,0 +1,204 @@
+.container {
+    padding: 24px;
+    max-width: 1400px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+}
+
+.breadcrumbs {
+    font-size: 14px;
+    color: #718096;
+    margin-bottom: 8px;
+}
+
+.title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1A202C;
+}
+
+.createButton {
+    background-color: #4C6EF5;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.createButton:hover {
+    background-color: #2c5282;
+}
+
+.card {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 24px;
+}
+
+.searchContainer {
+    margin-bottom: 24px;
+}
+
+.searchInput {
+    width: 380px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.table thead tr {
+    background-color: #F8F9FB;
+}
+
+.table th {
+    text-align: left;
+    padding: 12px 16px;
+    color: #718096;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: none;
+}
+
+.table th:first-child {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.table th:last-child {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.table td {
+    padding: 16px;
+    color: #2D3748;
+    font-size: 15px;
+    font-weight: 500;
+    border-bottom: 1px dashed #E2E8F0;
+    vertical-align: middle;
+}
+
+.table tr:last-child td {
+    border-bottom: none;
+}
+
+.clickableRow {
+    transition: background-color 0.15s;
+}
+
+.clickableRow:hover {
+    background-color: #F7FAFC;
+}
+
+.courseInfo {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.courseIcon {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+}
+
+.courseName {
+    font-weight: 600;
+    font-size: 15px;
+    display: block;
+    color: #1A202C;
+}
+
+.courseSub {
+    font-size: 13px;
+    color: #718096;
+    margin-top: 2px;
+    text-transform: capitalize;
+}
+
+.actionButton {
+    cursor: pointer;
+    color: #A0AEC0;
+    padding: 8px;
+    border-radius: 4px;
+    transition: color 0.2s;
+}
+
+.actionButton:hover {
+    color: #4A5568;
+    background: #F7FAFC;
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #EDF2F7;
+}
+
+.paginationInfo {
+    font-size: 14px;
+    color: #718096;
+}
+
+.paginationCenter {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.paginationRight {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: #718096;
+}
+
+.pageButton {
+    min-width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid #E2E8F0;
+    color: #718096;
+    background: white;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.pageButton:hover:not(:disabled) {
+    background: #F7FAFC;
+    color: #2D3748;
+}
+
+.pageButton.active {
+    background: #4C6EF5;
+    color: white;
+    border-color: #4C6EF5;
+}
+
+.pageButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.entriesSelect {
+    margin: 0 8px;
+}

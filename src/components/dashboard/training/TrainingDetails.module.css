@@ -1,0 +1,336 @@
+.container {
+    padding: 24px;
+    max-width: 1400px;
+}
+
+.headerContainer {
+    margin-bottom: 32px;
+}
+
+.breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 14px;
+    color: #718096;
+    margin-bottom: 24px;
+}
+
+.separator {
+    color: #CBD5E0;
+}
+
+.activeBreadcrumb {
+    color: #3182CE;
+    font-weight: 600;
+}
+
+.backButton {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #4A5568;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.backButton:hover {
+    background: #F7FAFC;
+    color: #2D3748;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.titleSection {
+    flex: 1;
+}
+
+.title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1A202C;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.badgeActive {
+    background: #C6F6D5;
+    color: #22543D;
+}
+
+.metaLink {
+    font-size: 14px;
+    color: #718096;
+}
+
+.link {
+    color: #3182CE;
+    text-decoration: none;
+}
+
+.link:hover {
+    text-decoration: underline;
+}
+
+.actions {
+    display: flex;
+    gap: 12px;
+}
+
+.outlineButton {
+    background: white;
+    border: 1px solid #E2E8F0;
+    color: #4A5568;
+}
+
+/* Stats Cards */
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.statCard {
+    padding: 24px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+/* Specific Card Colors match the image approximately */
+/* Specific Card Colors match the image approximately */
+.cardBlue {
+    background-color: #DBEAFE;
+    border: 1px solid #BFDBFE;
+}
+
+.cardGreen {
+    background-color: #DCFCE7;
+    border: 1px solid #BBF7D0;
+}
+
+.cardRed {
+    background-color: #FEE2E2;
+    border: 1px solid #FECACA;
+}
+
+.cardYellow {
+    background-color: #FEF9C3;
+    border: 1px solid #FEF08A;
+}
+
+.iconBox {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.iconBlue {
+    background-color: #2B6CB0;
+}
+
+.iconGreen {
+    background-color: #2F855A;
+}
+
+.iconRed {
+    background-color: #C53030;
+}
+
+.iconYellow {
+    background-color: #D69E2E;
+}
+
+.statInfo h4 {
+    font-size: 14px;
+    color: #4A5568;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.statValue {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1A202C;
+}
+
+/* Staff Section */
+.staffSection {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 24px;
+}
+
+.searchContainer {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 24px;
+}
+
+.searchInput {
+    width: 400px;
+}
+
+.exportButton {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #3182CE;
+    border: 1px solid #3182CE;
+    background: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th {
+    text-align: left;
+    padding: 16px;
+    background: #F7FAFC;
+    color: #718096;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.table td {
+    padding: 16px;
+    border-bottom: 1px dashed #E2E8F0;
+    vertical-align: middle;
+}
+
+.staffProfile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #E2E8F0;
+    color: #4A5568;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+}
+
+.staffName {
+    font-weight: 600;
+    color: #2D3748;
+    display: block;
+}
+
+.staffRole {
+    font-size: 13px;
+    color: #718096;
+}
+
+.score {
+    font-weight: 700;
+    color: #2D3748;
+}
+
+.statusBadge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.passed {
+    background: #F0FFF4;
+    color: #2F855A;
+}
+
+.failed {
+    background: #FFF5F5;
+    color: #C53030;
+}
+
+.inProgress {
+    background: #FFFAF0;
+    color: #C05621;
+}
+
+.notStarted {
+    background: #EDF2F7;
+    color: #718096;
+}
+
+.viewButton {
+    padding: 6px 20px;
+    background: var(--primary);
+    /* Use project primary color */
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    /* Increased slightly for alignment */
+    font-family: var(--font-body);
+    /* Ensure Manrope/Inter */
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.viewButton:hover {
+    background: var(--primary-hover);
+}
+
+.viewButtonDisabled {
+    background: #CBD5E0;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.viewButtonDisabled:hover {
+    background: #CBD5E0;
+}
+
+.dotsButton {
+    padding: 8px;
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #718096;
+}

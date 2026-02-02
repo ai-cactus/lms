@@ -8,6 +8,11 @@ export default auth((req) => {
         if (isLoggedIn) return;
         return Response.redirect(new URL('/login', req.nextUrl)); // Redirect unauthenticated users to login page
     }
+
+    // Redirect logged-in users away from Auth pages
+    if (isLoggedIn && (req.nextUrl.pathname.startsWith('/login') || req.nextUrl.pathname.startsWith('/signup'))) {
+        return Response.redirect(new URL('/dashboard', req.nextUrl));
+    }
 });
 
 export const config = {

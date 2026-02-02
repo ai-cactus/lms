@@ -1,0 +1,458 @@
+.container {
+    padding: 24px 40px;
+    max-width: 1400px;
+    margin: 0 auto;
+    font-family: var(--font-body);
+}
+
+.backLink {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #718096;
+    font-size: 14px;
+    margin-bottom: 24px;
+    text-decoration: none;
+}
+
+.backLink span {
+    color: #CBD5E0;
+    margin: 0 8px;
+}
+
+.activeCrumb {
+    color: #4C6EF5;
+    font-weight: 500;
+}
+
+/* Header Section */
+.headerProfile {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 32px;
+}
+
+.profileInfo {
+    display: flex;
+    gap: 24px;
+}
+
+.avatarLarge {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background-color: #1A202C;
+    /* Dark background from design */
+    color: white;
+    /* If fallback */
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.avatarImage {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.infoContent {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.name {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1A202C;
+    margin: 0 0 4px 0;
+}
+
+.emailLine {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #718096;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.roleBadge {
+    display: inline-block;
+    background-color: #E6FFFA;
+    color: #2C7A7B;
+    /* Teal-ish green for the badge */
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    width: fit-content;
+}
+
+.headerActions {
+    display: flex;
+    gap: 12px;
+}
+
+.btnOutline {
+    background: white;
+    border: 1px solid #E2E8F0;
+    color: #4C6EF5;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-body);
+}
+
+.btnPrimary {
+    background: #4C6EF5;
+    border: 1px solid #4C6EF5;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-body);
+}
+
+/* Layout Grid */
+.layoutGrid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    /* 2/3 for content, 1/3 for stats */
+    gap: 24px;
+    align-items: start;
+}
+
+.leftColumn {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.rightColumn {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Info Cards (Bio / Background) */
+.infoCard {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 24px;
+    position: relative;
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.cardTitle {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1A202C;
+    margin: 0;
+}
+
+.editButton {
+    background: none;
+    border: 1px solid #E2E8F0;
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #718096;
+}
+
+.bioText {
+    font-size: 14px;
+    color: #4A5568;
+    line-height: 1.6;
+    margin-bottom: 8px;
+}
+
+.sectionRow {
+    display: flex;
+    align-items: flex-start;
+    /* Changed from center to accommodate multiline */
+    margin-bottom: 20px;
+    gap: 16px;
+    /* Space between label and content */
+}
+
+.sectionLabel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 140px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #2D3748;
+    flex-shrink: 0;
+}
+
+.tagsWrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tag {
+    background: #EDF2F7;
+    color: #4A5568;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.weaknessBox {
+    background: #EDF2F7;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #2D3748;
+    flex: 1;
+}
+
+/* Stats Cards */
+.statsCard {
+    padding: 20px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 80px;
+}
+
+.statsBlue {
+    background: #EBF8FF;
+    border: 1px solid #BEE3F8;
+}
+
+.iconBlue {
+    background: #2B6CB0;
+    color: white;
+}
+
+.statsGreen {
+    background: #F0FFF4;
+    border: 1px solid #C6F6D5;
+}
+
+.iconGreen {
+    background: #2F855A;
+    color: white;
+}
+
+.statsRed {
+    background: #FFF5F5;
+    border: 1px solid #FED7D7;
+}
+
+.iconRed {
+    background: #C53030;
+    color: white;
+}
+
+.statsYellow {
+    background: #FFFFF0;
+    border: 1px solid #FEFCBF;
+}
+
+.iconYellow {
+    background: #D69E2E;
+    color: white;
+}
+
+.statsIcon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.statsInfo {
+    display: flex;
+    flex-direction: column;
+}
+
+.statsLabel {
+    font-size: 13px;
+    color: #4A5568;
+    margin-bottom: 4px;
+}
+
+.statsValue {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1A202C;
+}
+
+/* Courses Section */
+.coursesSection {
+    margin-top: 24px;
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 24px 0;
+    /* Padding for header/footer, 0 for table to go edge to edge logic if needed, but here contained */
+}
+
+.coursesHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 24px 24px 24px;
+}
+
+.coursesTitle {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1A202C;
+    margin: 0;
+}
+
+.searchWrapper {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th {
+    text-align: left;
+    padding: 16px 24px;
+    background: #F9FAFB;
+    font-size: 13px;
+    font-weight: 500;
+    color: #718096;
+    border-bottom: 1px solid #E2E8F0;
+    border-top: 1px solid #E2E8F0;
+}
+
+.table td {
+    padding: 16px 24px;
+    border-bottom: 1px solid #EDF2F7;
+    vertical-align: middle;
+}
+
+.courseItem {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.courseThumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    background: #2D3748;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.courseName {
+    font-weight: 600;
+    font-size: 14px;
+    color: #1A202C;
+    display: block;
+}
+
+.courseLvl {
+    font-size: 12px;
+    color: #718096;
+}
+
+/* Progress Bar */
+.progressWrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 200px;
+}
+
+.bgBar {
+    flex: 1;
+    height: 6px;
+    background: #EDF2F7;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.fillBar {
+    height: 100%;
+    background: #4C6EF5;
+    border-radius: 3px;
+}
+
+.pctText {
+    font-size: 12px;
+    color: #718096;
+    width: 32px;
+}
+
+/* Badges */
+.badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.badgeFailed {
+    background: #FFF5F5;
+    color: #C53030;
+}
+
+.badgePassed {
+    background: #F0FFF4;
+    color: #2F855A;
+}
+
+.viewBtn {
+    background: #4C6EF5;
+    color: white;
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-body);
+}
+
+.viewBtn:hover {
+    background: #3B5BDB;
+}

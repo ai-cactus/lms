@@ -15,9 +15,24 @@ interface SelectProps {
     placeholder?: string;
     name?: string;
     disabled?: boolean;
+    size?: 'default' | 'sm';
+    className?: string;
+    dropdownClassName?: string;
+    direction?: 'up' | 'down';
 }
 
-export const Select = ({ value, onChange, options, placeholder = 'Select an option', name, disabled = false }: SelectProps) => {
+export const Select = ({
+    value,
+    onChange,
+    options,
+    placeholder = 'Select an option',
+    name,
+    disabled = false,
+    size = 'default',
+    className = '',
+    dropdownClassName = '',
+    direction = 'down' // Default to down
+}: SelectProps) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -45,10 +60,10 @@ export const Select = ({ value, onChange, options, placeholder = 'Select an opti
     }, [isOpen]);
 
     return (
-        <div className={`${styles.container} ${disabled ? styles.disabled : ''}`} ref={containerRef}>
+        <div className={`${styles.container} ${size === 'sm' ? styles.containerSmall : ''} ${disabled ? styles.disabled : ''} ${className}`} ref={containerRef}>
             <button
                 type="button"
-                className={`${styles.trigger} ${isOpen ? styles.triggerOpen : ''}`}
+                className={`${styles.trigger} ${size === 'sm' ? styles.triggerSmall : ''} ${isOpen ? styles.triggerOpen : ''}`}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 disabled={disabled}
             >
@@ -57,8 +72,8 @@ export const Select = ({ value, onChange, options, placeholder = 'Select an opti
                 </span>
                 <div className={styles.iconWrapper}>
                     <svg
-                        width="20"
-                        height="20"
+                        width={size === 'sm' ? "16" : "20"}
+                        height={size === 'sm' ? "16" : "20"}
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
@@ -74,7 +89,7 @@ export const Select = ({ value, onChange, options, placeholder = 'Select an opti
             </button>
 
             {isOpen && (
-                <div className={styles.dropdown}>
+                <div className={`${styles.dropdown} ${direction === 'up' ? styles.dropdownUp : ''} ${dropdownClassName}`}>
                     {options.map((option) => (
                         <button
                             key={option.value}

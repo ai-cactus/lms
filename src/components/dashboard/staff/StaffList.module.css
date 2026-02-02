@@ -1,0 +1,240 @@
+.container {
+    padding: 24px 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+}
+
+.titleSection {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1A202C;
+    margin: 0;
+}
+
+.subtitle {
+    font-size: 14px;
+    color: #718096;
+    margin: 0;
+}
+
+.addButton {
+    background-color: #ffffff;
+    color: #4C6EF5;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: var(--font-body);
+}
+
+.addButton:hover {
+    background-color: #F7FAFC;
+    border-color: #CBD5E0;
+}
+
+/* Card & Search */
+.card {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    /* Subtle shadow per design */
+    padding: 24px;
+    min-height: 600px;
+}
+
+.searchContainer {
+    margin-bottom: 24px;
+}
+
+.searchInput {
+    width: 100%;
+    max-width: 400px;
+    /* Or full width based on design? Design shows wide input */
+}
+
+/* Table */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th {
+    text-align: left;
+    padding: 16px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #4A5568;
+    background-color: #F7FAFC;
+    /* Light gray header per design */
+    border-bottom: 1px solid #E2E8F0;
+}
+
+.table td {
+    padding: 16px;
+    vertical-align: middle;
+    border-bottom: 1px solid #EDF2F7;
+    color: #2D3748;
+    font-size: 14px;
+}
+
+.clickableRow:hover {
+    background-color: #F7FAFC;
+}
+
+.userInfo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Fallback avatar styles matching Dashboard header */
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #E2E8F0;
+    color: #4A5568;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    flex-shrink: 0;
+    overflow: hidden;
+    /* Ensure image stays in circle */
+    font-size: 14px;
+    /* Ensure font size matches */
+}
+
+/* Remove separate avatarFallback class as we'll use avatar directly */
+.avatarImage {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.userDetails {
+    display: flex;
+    flex-direction: column;
+}
+
+.userName {
+    font-weight: 600;
+    color: #1A202C;
+    margin-bottom: 2px;
+}
+
+.userRole {
+    font-size: 13px;
+    color: #718096;
+}
+
+.statusDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #48BB78;
+    /* Green online dot */
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    border: 1px solid white;
+}
+
+.actionButton {
+    background: none;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #A0AEC0;
+    transition: all 0.2s;
+}
+
+.actionButton:hover {
+    color: #4A5568;
+    border-color: #CBD5E0;
+    background-color: #F7FAFC;
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid #EDF2F7;
+    color: #718096;
+    font-size: 13px;
+}
+
+.paginationCenter {
+    display: flex;
+    gap: 6px;
+}
+
+.pageButton {
+    min-width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid #E2E8F0;
+    background: white;
+    color: #4A5568;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: var(--font-body);
+}
+
+.pageButton:hover:not(:disabled) {
+    background-color: #F7FAFC;
+    border-color: #CBD5E0;
+}
+
+.pageButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pageButton.active {
+    background-color: #4C6EF5;
+    color: white;
+    border-color: #4C6EF5;
+}
+
+.paginationRight {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.entriesSelect {
+    width: 70px;
+}

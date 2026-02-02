@@ -58,7 +58,7 @@ const features = [
 
 export default function LoginPage() {
     const router = useRouter();
-    const [errorMessage, dispatch, isPending] = useActionState(authenticate, undefined);
+    const [state, dispatch, isPending] = useActionState(authenticate, undefined);
 
     const [formData, setFormData] = useState({
         email: '',
@@ -86,7 +86,7 @@ export default function LoginPage() {
 
         if (!formData.password) {
             newErrors.password = 'Password is required';
-        } else if (formData.password.length < 6) {
+        } else if ((formData.password || '').length < 6) {
             newErrors.password = 'Password must be at least 6 characters';
         }
 
@@ -109,10 +109,12 @@ export default function LoginPage() {
     };
 
     useEffect(() => {
-        if (errorMessage) {
-            setErrors(prev => ({ ...prev, email: errorMessage }));
+        if (state?.success) {
+            router.push('/dashboard');
+        } else if (state?.error) {
+            setErrors(prev => ({ ...prev, email: state.error }));
         }
-    }, [errorMessage]);
+    }, [state, router]);
 
     return (
         <div className={styles.container}>

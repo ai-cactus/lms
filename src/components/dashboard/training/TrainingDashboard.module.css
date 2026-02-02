@@ -58,17 +58,17 @@
     height: 160px;
 }
 
-.statCard.green {
+.statCard.cardGreen {
     background-color: #F0FFF4;
     border: 1px solid #C6F6D5;
 }
 
-.statCard.blue {
+.statCard.cardBlue {
     background-color: #EBF8FF;
     border: 1px solid #BEE3F8;
 }
 
-.statCard.red {
+.statCard.cardRed {
     background-color: #FFF5F5;
     border: 1px solid #FED7D7;
 }
@@ -84,15 +84,15 @@
     margin-bottom: 16px;
 }
 
-.green .iconWrapper {
+.cardGreen .iconWrapper {
     background-color: #38A169;
 }
 
-.blue .iconWrapper {
+.cardBlue .iconWrapper {
     background-color: #3182CE;
 }
 
-.red .iconWrapper {
+.cardRed .iconWrapper {
     background-color: #E53E3E;
 }
 
@@ -136,14 +136,35 @@
     color: #2D3748;
 }
 
-.filterSelect {
+.filterContainer {
+    display: flex;
+    background: #F1F5F9;
+    padding: 4px;
+    border-radius: 8px;
+    gap: 4px;
+}
+
+.filterButton {
     padding: 6px 12px;
-    border: 1px solid #E2E8F0;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    color: #64748B;
+    background: transparent;
+    border: none;
     border-radius: 6px;
-    font-size: 14px;
-    color: #4A5568;
-    background: white;
     cursor: pointer;
+    transition: all 0.2s;
+}
+
+.filterButton:hover {
+    color: #0F172A;
+}
+
+.filterButton.active {
+    background: white;
+    color: #0F172A;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* Bar Chart Implementation */

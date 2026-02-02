@@ -3,6 +3,12 @@
     width: 100%;
 }
 
+.containerSmall {
+    width: auto;
+    min-width: 70px;
+    display: inline-block;
+}
+
 .disabled {
     opacity: 0.6;
     cursor: not-allowed;
@@ -35,6 +41,13 @@
     font-family: inherit;
 }
 
+.triggerSmall {
+    height: 32px;
+    padding: 0 8px;
+    border-radius: 6px;
+    gap: 8px;
+}
+
 .trigger:hover {
     border-color: #CBD5E0;
 }
@@ -53,9 +66,18 @@
     font-weight: 400;
 }
 
+.triggerSmall .value {
+    font-size: 14px;
+    font-weight: 500;
+}
+
 .placeholder {
     color: #A0AEC0;
     font-size: 16px;
+}
+
+.triggerSmall .placeholder {
+    font-size: 14px;
 }
 
 .iconWrapper {
@@ -73,6 +95,7 @@
     top: calc(100% + 4px);
     left: 0;
     width: 100%;
+    min-width: 100%;
     background-color: #FFFFFF;
     border: 1px solid #E2E8F0;
     border-radius: 8px;
@@ -84,9 +107,16 @@
     animation: slideDown 0.15s ease-out;
 }
 
+.dropdownUp {
+    top: auto;
+    bottom: calc(100% + 4px);
+    box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06);
+    animation: slideUp 0.15s ease-out;
+}
+
 .option {
     width: 100%;
-    padding: 10px 12px;
+    padding: 10px 16px;
     font-size: 15px;
     color: #4A5568;
     background: none;
@@ -98,6 +128,7 @@
     align-items: center;
     justify-content: space-between;
     transition: background-color 0.1s;
+    font-weight: 500;
 }
 
 .option:hover {
@@ -109,7 +140,7 @@
 .selected {
     background-color: #EBF8FF;
     color: #2B6CB0;
-    font-weight: 500;
+    font-weight: 600;
 }
 
 .checkIcon {
@@ -120,6 +151,18 @@
     from {
         opacity: 0;
         transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
     }
 
     to {

@@ -1,0 +1,523 @@
+/* Main Page Background - Full White */
+.container {
+    height: 100vh;
+    min-height: 100vh;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    font-family: var(--font-body);
+    overflow: hidden;
+    /* Prevent page scroll */
+}
+
+/* Header Grid - Full Width */
+.header {
+    height: 80px;
+    display: flex;
+    border-bottom: 1px solid #E2E8F0;
+    width: 100%;
+    flex-shrink: 0;
+    background: white;
+    position: relative;
+    /* Ensure progress bar positions relative to this */
+}
+
+/* Logo Section - The "Tab" */
+.logoSection {
+    width: 250px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #E2E8F0;
+    position: relative;
+    /* Font styles handled by Logo component */
+}
+
+/* Progress Bar */
+.progressBar {
+    position: absolute;
+    bottom: 0;
+    /* Moved to bottom edge */
+    left: 0;
+    height: 4px;
+    background: #4C6EF5;
+    transition: width 0.3s ease;
+    z-index: 10;
+}
+
+/* Right Side of Header */
+.headerContent {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 40px;
+}
+
+.stepText {
+    font-size: 16px;
+    font-weight: 500;
+    color: #2D3748;
+}
+
+.exitButton {
+    background: none;
+    border: none;
+    font-weight: 700;
+    font-size: 16px;
+    color: #000;
+    cursor: pointer;
+    font-family: var(--font-body);
+}
+
+/* Main Content Area */
+.content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 20px;
+    position: relative;
+    padding-top: 40px;
+    /* Reduced padding */
+    overflow: hidden;
+    /* Prevent pushing footer */
+}
+
+/* Step Content Wrapper */
+.stepWrapper {
+    width: 100%;
+    max-width: 800px;
+    height: 100%;
+    /* Take full available height */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 0;
+    /* Allow shrinking */
+    min-height: 0;
+    /* Allow shrinking */
+}
+
+/* Centered Step Variant (for Step 1) */
+.centeredStep {
+    justify-content: flex-start;
+    padding-top: 140px;
+    /* Push down to sweet spot */
+}
+
+/* Remove the previous inputContainer override since we aren't flexing height now */
+
+
+.stepTitle {
+    font-size: 32px;
+    font-weight: 700;
+    color: #1A202C;
+    margin-bottom: 20px;
+    /* Reduced margin */
+    text-align: center;
+    font-family: var(--font-heading);
+    letter-spacing: -0.5px;
+    flex-shrink: 0;
+}
+
+.inputContainer {
+    width: 100%;
+    max-width: 500px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    /* Take remaining space */
+    min-height: 0;
+    /* Allow scrolling inside */
+}
+
+.helperText {
+    text-align: right;
+    font-size: 12px;
+    color: #4A5568;
+    margin-top: 10px;
+    font-weight: 500;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+/* Footer Buttons */
+.footer {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 800px;
+    margin-top: 20px;
+    /* Reduced margin */
+    margin-bottom: 40px;
+    padding: 0 20px;
+    flex-shrink: 0;
+    z-index: 20;
+}
+
+/* ... Buttons ... */
+.btnBack {
+    background: white;
+    border: 1px solid #E2E8F0;
+    color: #2D3748;
+    min-width: 120px;
+    height: 48px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btnNext {
+    background: #E2E8F0;
+    border: none;
+    color: #A0AEC0;
+    min-width: 120px;
+    height: 48px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: not-allowed;
+    transition: all 0.2s;
+}
+
+.btnNextEnabled {
+    background: #4C6EF5;
+    color: white;
+    cursor: pointer;
+}
+
+/* Step 2 Styles */
+.stepSubtitle {
+    text-align: center;
+    color: #4A5568;
+    max-width: 600px;
+    margin-bottom: 30px;
+    /* Reduced margin */
+    font-size: 16px;
+    line-height: 1.5;
+    flex-shrink: 0;
+}
+
+.label {
+    display: block;
+    margin-bottom: 8px;
+    color: #718096;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.fileList {
+    width: 100%;
+    flex: 1;
+    /* Fill remaining space */
+    overflow-y: auto;
+    padding-right: 8px;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: #CBD5E0 #F7FAFC;
+    max-height: none;
+    /* Override previous max-height */
+}
+
+/* Custom switch scrollbar */
+.fileList::-webkit-scrollbar {
+    width: 6px;
+}
+
+.fileList::-webkit-scrollbar-track {
+    background: #F7FAFC;
+}
+
+.fileList::-webkit-scrollbar-thumb {
+    background: #CBD5E0;
+    border-radius: 3px;
+}
+
+.fileItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 0;
+    border-bottom: 1px dotted #E2E8F0;
+}
+
+.fileItem:last-child {
+    border-bottom: none;
+}
+
+.fileLeft {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.checkbox {
+    width: 20px;
+    height: 20px;
+    accent-color: #4C6EF5;
+    cursor: pointer;
+}
+
+.fileIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fileInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fileName {
+    font-weight: 600;
+    color: #1A202C;
+    font-size: 14px;
+}
+
+.fileBadge {
+    display: inline-flex;
+    align-items: center;
+    background: #EBF8FF;
+    color: #2D3748;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    width: fit-content;
+}
+
+.btnPreview {
+    background: white;
+    border: 1px solid #4C6EF5;
+    color: #4C6EF5;
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btnPreview:hover {
+    background: #eff4ff;
+}
+
+.tallDropdown {
+    max-height: 350px !important;
+}
+
+/* Upload Zone Styles */
+.uploadZone {
+    width: 100%;
+    height: 180px;
+    /* Reduced to saved space */
+    border: 2px dashed #E2E8F0;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #FAFCFE;
+    /* Very subtle background from image might be white, using very light blue/gray */
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    /* Static - don't shrink */
+}
+
+.uploadZone:hover {
+    border-color: #4C6EF5;
+    background: #F8FAFC;
+}
+
+.uploadIconWrapper {
+    width: 64px;
+    height: 64px;
+    background: #718096;
+    /* Gray folder color base */
+    border-radius: 8px;
+    /* Approximate folder shape */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+/* Using SVG in component instead of pure CSS folder */
+
+.uploadText {
+    font-size: 16px;
+    font-weight: 500;
+    color: #1A202C;
+    margin-bottom: 8px;
+}
+
+.uploadLink {
+    color: #4C6EF5;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.uploadSubtext {
+    font-size: 14px;
+    color: #718096;
+}
+
+/* Scrollable Wrapper for Computer Mode */
+/* Scrollable Wrapper DELETED - moved mainly to uploadedFilesContainer */
+
+/* Uploaded Files List (Computer Mode) */
+.uploadedFilesContainer {
+    width: 100%;
+    margin-top: 24px;
+    border: 2px dashed #E2E8F0;
+    border-radius: 12px;
+    background: white;
+    padding: 8px 24px;
+
+    /* Flex Behavior to fill remaining space */
+    flex: 1;
+    min-height: 0;
+    /* Allow scrolling inside */
+    overflow-y: auto;
+
+    /* Scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: #CBD5E0 #F7FAFC;
+    max-height: none;
+}
+
+.uploadedFilesContainer::-webkit-scrollbar {
+    width: 6px;
+}
+
+.uploadedFilesContainer::-webkit-scrollbar-track {
+    background: #F7FAFC;
+}
+
+.uploadedFilesContainer::-webkit-scrollbar-thumb {
+    background: #CBD5E0;
+    border-radius: 3px;
+}
+
+.uploadedFileItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 0;
+    border-bottom: 1px solid #EDF2F7;
+}
+
+.uploadedFileItem:last-child {
+    border-bottom: none;
+}
+
+.uploadedFileInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.uploadedFileName {
+    font-weight: 600;
+    font-size: 14px;
+    color: #1A202C;
+}
+
+.uploadedFileSize {
+    font-size: 13px;
+    color: #718096;
+}
+
+.trashBtn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #4C6EF5;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+/* Step 3 Form Styles */
+.formRow {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 20px;
+    align-items: center;
+    /* Align vertically centered by default */
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+.formRowTop {
+    align-items: start;
+    /* For textarea or lists */
+}
+
+.formLabel {
+    font-size: 14px;
+    font-weight: 500;
+    color: #718096;
+}
+
+.formLabelTop {
+    padding-top: 12px;
+    /* Align with first line of input */
+}
+
+.textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 12px 16px;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 16px;
+    /* Match Input font size */
+    color: #2D3748;
+    resize: vertical;
+    transition: all 0.2s ease;
+}
+
+.textarea:focus {
+    outline: none;
+    border-color: #2D4DDD;
+    box-shadow: 0 0 0 3px rgba(45, 77, 221, 0.1);
+}
+
+.readOnlyBox {
+    width: 100%;
+    padding: 12px 16px;
+    background: #EDF2F7;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    color: #718096;
+    font-size: 16px;
+}
+
+.objectivesList {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.objectiveInput {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 16px;
+    color: #2D3748;
+    width: 100%;
+}
