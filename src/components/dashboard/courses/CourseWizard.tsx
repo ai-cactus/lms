@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import styles from './CourseWizard.module.css';
 import Step1Category from './steps/Step1Category';
 import Step2Documents from './steps/Step2Documents';
+import Step3Details from './steps/Step3Details';
+import Step4Quiz from './steps/Step4Quiz';
 import Step5Review from './steps/Step5Review';
 import Logo from '@/components/ui/Logo';
 
@@ -22,11 +24,44 @@ export default function CourseWizard() {
     const [isGenerating, setIsGenerating] = useState(false); // Track generation state
     const totalSteps = 7;
 
-    // ... (formData state remains same)
+    // Form Data
+    const [formData, setFormData] = useState({
+        category: '',
+        title: 'HIPAA Privacy and Security Training',
+        description: 'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
+        difficulty: 'moderate',
+        duration: '60',
+        contentType: 'notes',
+        notesCount: '5',
+        deadline: '30',
+        objectives: [
+            'To train staff on HIPAA compliance in behavioral health.',
+            'Learn how to handle PHI securely',
+            'Understand HIPAA privacy rules'
+        ],
+        // Step 4 Quiz Data
+        quizTitle: 'HIPAA Privacy and Security Quiz',
+        quizQuestionCount: '15',
+        quizDifficulty: 'moderate',
+        quizQuestionType: 'multiple_choice',
+        quizDuration: '15',
+        quizPassMark: '80%',
+        quizAttempts: '2'
+    });
 
-    // ... (documents state remains same)
+    // Mock Documents for Step 2
+    const [documents, setDocuments] = useState<Document[]>([
+        { id: '1', name: 'Patient Privacy Policy.pdf', type: 'pdf', status: 'analyzed', selected: true },
+        { id: '2', name: 'Patient Privacy Policy.docx', type: 'docx', status: 'analyzed', selected: false },
+        { id: '3', name: 'Patient Privacy Policy.pdf', type: 'pdf', status: 'analyzed', selected: false },
+        { id: '4', name: 'Patient Privacy Policy.pdf', type: 'pdf', status: 'analyzed', selected: true },
+    ]);
 
-    // ... (handleToggleSelect remains same)
+    const handleToggleSelect = (id: string) => {
+        setDocuments(docs => docs.map(doc =>
+            doc.id === id ? { ...doc, selected: !doc.selected } : doc
+        ));
+    };
 
     const handleNext = () => {
         if (currentStep < totalSteps) {
@@ -41,7 +76,13 @@ export default function CourseWizard() {
         }
     };
 
-    // ... (handleBack remains same)
+    const handleBack = () => {
+        if (currentStep > 1) {
+            setCurrentStep(currentStep - 1);
+        } else {
+            router.back();
+        }
+    };
 
     const renderStep = () => {
         switch (currentStep) {
