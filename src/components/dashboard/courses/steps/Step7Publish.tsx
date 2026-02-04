@@ -38,11 +38,22 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
         : [];
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (['Enter', 'Tab', ',', ' '].includes(e.key)) {
+        const val = inputValue.trim();
+        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+
+        if (e.key === ' ' || e.key === 'Spacebar') {
+            e.preventDefault(); // Always prevent space character
+            // Only create tag if it's a valid email
+            if (isValidEmail) {
+                addAssignment(val);
+            }
+            return;
+        }
+
+        if (['Enter', 'Tab', ','].includes(e.key)) {
             e.preventDefault();
-            const val = inputValue.trim();
             if (val) {
-                // If it looks like an email or just text, add it
+                // Enter/Tab always adds the tag (for names or emails)
                 addAssignment(val);
             }
         } else if (e.key === 'Backspace' && !inputValue && data.assignments?.length > 0) {

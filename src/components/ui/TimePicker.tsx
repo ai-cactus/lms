@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import TimeKeeper from 'react-timekeeper';
 import styles from './TimePicker.module.css';
 
@@ -13,23 +14,54 @@ interface TimePickerProps {
 export default function TimePicker({ value, onChange, placeholder = 'Select time' }: TimePickerProps) {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
 
     // Close on outside click
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+            // Check if click is inside the container OR inside the portal content (which we can't easily ref from here without more state, 
+            // but react-timekeeper stops propagation usually, or we can rely on its own overlay if it had one.
+            // Actually, for portals, checking containerRef is not enough.
+            // We'll rely on a click listener on window that checks if target is within container or popover.
+            // Since popover is in body, we need a ref for it too.
+            const popoverEl = document.getElementById('time-picker-popover');
+            if (
+                containerRef.current &&
+                !containerRef.current.contains(e.target as Node) &&
+                popoverEl &&
+                !popoverEl.contains(e.target as Node)
+            ) {
                 setIsOpen(false);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+
+        if (isOpen) {
+            window.addEventListener('mousedown', handleClickOutside);
+            // Update position on scroll/resize
+            const updatePosition = () => {
+                if (containerRef.current) {
+                    const rect = containerRef.current.getBoundingClientRect();
+                    setPosition({
+                        top: rect.bottom + window.scrollY,
+                        left: rect.left + window.scrollX,
+                        width: rect.width
+                    });
+                }
+            };
+            updatePosition();
+            window.addEventListener('scroll', updatePosition, true);
+            window.addEventListener('resize', updatePosition);
+
+            return () => {
+                window.removeEventListener('mousedown', handleClickOutside);
+                window.removeEventListener('scroll', updatePosition, true);
+                window.removeEventListener('resize', updatePosition);
+            };
+        }
+    }, [isOpen]);
 
     const handleTimeChange = (newTime: any) => {
         onChange(newTime.formatted24);
-        // Don't close immediately to allow minute selection if needed, 
-        // but react-timekeeper has a "Done" button usually or we can click outside.
-        // Or we can close on "formatted24" change if we want instant selection.
     };
 
     return (
@@ -49,16 +81,26 @@ export default function TimePicker({ value, onChange, placeholder = 'Select time
                 </div>
             </div>
 
-            {isOpen && (
-                <div className={styles.clockPopover}>
+            {isOpen && createPortal(
+                <div
+                    id="time-picker-popover"
+                    className={styles.clockPopover}
+                    style={{
+                        position: 'absolute', // Fixed might be better if we handle scroll diffs, but absolute works with page coords
+                        top: position.top + 8,
+                        left: position.left,
+                        zIndex: 9999
+                    }}
+                >
                     <TimeKeeper
                         time={value || '12:00'}
                         onChange={handleTimeChange}
                         switchToMinuteOnHourSelect
-                        onDoneClick={() => setIsOpen(false)}
+                        doneButton={() => <></>}
                         switchToMinuteOnHourDropdownSelect
                     />
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

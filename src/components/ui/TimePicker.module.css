@@ -58,6 +58,25 @@
     animation: fadeIn 0.2s ease-out;
 }
 
+/* Overrides for React Timekeeper to make it compact */
+.clockPopover :global(.react-timekeeper) {
+    box-shadow: none !important;
+}
+
+.clockPopover :global(.react-timekeeper__top-bar) {
+    height: 60px !important;
+    padding: 10px !important;
+}
+
+.clockPopover :global(.react-timekeeper__time-dropdown) {
+    top: 55px !important;
+}
+
+.clockPopover :global(.react-timekeeper__clock-wrapper) {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+
 .timeOption {
     padding: 8px 12px;
     font-size: 14px;

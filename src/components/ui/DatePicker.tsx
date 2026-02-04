@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import styles from './DatePicker.module.css';
 
 interface DatePickerProps {
@@ -13,6 +14,7 @@ interface DatePickerProps {
 export default function DatePicker({ value, onChange, placeholder = 'Select date' }: DatePickerProps) {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
 
     // Initialize calendar view state
     const today = new Date();
@@ -24,16 +26,43 @@ export default function DatePicker({ value, onChange, placeholder = 'Select date
         return today;
     });
 
-    // Close on outside click
+    // Close on outside click and position popover
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+            const popoverEl = document.getElementById('date-picker-popover');
+            if (
+                containerRef.current &&
+                !containerRef.current.contains(e.target as Node) &&
+                popoverEl &&
+                !popoverEl.contains(e.target as Node)
+            ) {
                 setIsOpen(false);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+
+        if (isOpen) {
+            window.addEventListener('mousedown', handleClickOutside);
+            const updatePosition = () => {
+                if (containerRef.current) {
+                    const rect = containerRef.current.getBoundingClientRect();
+                    setPosition({
+                        top: rect.bottom + window.scrollY,
+                        left: rect.left + window.scrollX,
+                        width: rect.width
+                    });
+                }
+            };
+            updatePosition();
+            window.addEventListener('scroll', updatePosition, true);
+            window.addEventListener('resize', updatePosition);
+
+            return () => {
+                window.removeEventListener('mousedown', handleClickOutside);
+                window.removeEventListener('scroll', updatePosition, true);
+                window.removeEventListener('resize', updatePosition);
+            };
+        }
+    }, [isOpen]);
 
     // Calendar Logic
     const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -95,8 +124,17 @@ export default function DatePicker({ value, onChange, placeholder = 'Select date
                 </div>
             </div>
 
-            {isOpen && (
-                <div className={styles.calendarPopover}>
+            {isOpen && createPortal(
+                <div
+                    id="date-picker-popover"
+                    className={styles.calendarPopover}
+                    style={{
+                        position: 'absolute',
+                        top: position.top + 8,
+                        left: position.left,
+                        zIndex: 9999
+                    }}
+                >
                     <div className={styles.header}>
                         <button className={styles.navButton} onClick={handlePrevMonth}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -152,7 +190,8 @@ export default function DatePicker({ value, onChange, placeholder = 'Select date
                             );
                         })}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
