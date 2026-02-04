@@ -1,0 +1,91 @@
+.container {
+    position: relative;
+    width: 100%;
+}
+
+.inputWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 12px 16px;
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.inputWrapper:hover {
+    border-color: #CBD5E0;
+    background: #FAFCFE;
+}
+
+.inputWrapper.active {
+    border-color: #4C6EF5;
+    box-shadow: 0 0 0 3px rgba(76, 110, 245, 0.1);
+}
+
+.inputText {
+    font-size: 14px;
+    color: #2D3748;
+    font-weight: 500;
+}
+
+.placeholder {
+    color: #A0AEC0;
+    font-weight: 400;
+}
+
+.icon {
+    color: #718096;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Clock Popover */
+.clockPopover {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 50;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-radius: 12px;
+    background: white;
+    /* React-Timekeeper has its own white bg, but good to have backup */
+    animation: fadeIn 0.2s ease-out;
+}
+
+.timeOption {
+    padding: 8px 12px;
+    font-size: 14px;
+    color: #4A5568;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.timeOption:hover {
+    background: #EDF2F7;
+    color: #1A202C;
+}
+
+.timeOption.selected {
+    background: #EBF8FF;
+    color: #4C6EF5;
+    font-weight: 600;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

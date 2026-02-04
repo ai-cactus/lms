@@ -8,6 +8,8 @@ import Step2Documents from './steps/Step2Documents';
 import Step3Details from './steps/Step3Details';
 import Step4Quiz from './steps/Step4Quiz';
 import Step5Review from './steps/Step5Review';
+import Step6QuizReview from './steps/Step6QuizReview';
+import Step7Publish from './steps/Step7Publish';
 import Logo from '@/components/ui/Logo';
 
 interface Document {
@@ -46,7 +48,11 @@ export default function CourseWizard() {
         quizQuestionType: 'multiple_choice',
         quizDuration: '15',
         quizPassMark: '80%',
-        quizAttempts: '2'
+        quizAttempts: '2',
+        // Step 7 Publish Data
+        assignments: [],
+        dueDate: '',
+        dueTime: ''
     });
 
     // Mock Documents for Step 2
@@ -73,6 +79,7 @@ export default function CourseWizard() {
         } else {
             // Submit
             console.log('Wizard Completed', formData);
+            router.push('/dashboard/courses');
         }
     };
 
@@ -120,6 +127,19 @@ export default function CourseWizard() {
                         onReady={() => setIsGenerating(false)}
                     />
                 );
+            case 6:
+                return (
+                    <Step6QuizReview
+                        data={formData}
+                    />
+                );
+            case 7:
+                return (
+                    <Step7Publish
+                        data={formData}
+                        onChange={(field, val) => setFormData(prev => ({ ...prev, [field]: val }))}
+                    />
+                );
             default:
                 return <div>Step {currentStep} Content</div>;
         }
@@ -130,6 +150,7 @@ export default function CourseWizard() {
         if (currentStep === 2 && !documents.some(d => d.selected)) return true;
         if (currentStep === 3 && !formData.title) return true;
         if (currentStep === 4 && !formData.quizTitle) return true;
+        // Step 7 validation optional? Or mandatory? Assuming optional for now unless specified.
         return false;
     };
 
@@ -169,7 +190,7 @@ export default function CourseWizard() {
                             onClick={handleNext}
                             disabled={isNextDisabled()}
                         >
-                            Next
+                            {currentStep === totalSteps ? 'Publish' : 'Next'}
                         </button>
                     </div>
                 )}

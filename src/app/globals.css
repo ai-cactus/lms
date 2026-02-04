@@ -61,6 +61,17 @@ body {
   overflow-x: hidden;
 }
 
+/* Ensure form elements inherit font settings */
+button,
+input,
+optgroup,
+select,
+textarea {
+  font-family: inherit;
+  font-feature-settings: inherit;
+  font-variation-settings: inherit;
+}
+
 body {
   color: var(--text-primary);
   background: var(--background);
