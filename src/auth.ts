@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 
+import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id"
+
 const loginSchema = z.object({
     email: z.string().email(),
     password: z.string().min(6),
@@ -11,6 +13,11 @@ const loginSchema = z.object({
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
     providers: [
+        MicrosoftEntraID({
+            clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
+            clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
+            issuer: `https://login.microsoftonline.com/${process.env.AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}/v2.0`,
+        }),
         Credentials({
             async authorize(credentials) {
                 const parsedCredentials = loginSchema.safeParse(credentials);

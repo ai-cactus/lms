@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Logo, Input, Button } from '@/components/ui';
 import { authenticate } from '@/app/actions/auth';
 import styles from './page.module.css';
-
+import { signIn } from 'next-auth/react';
 
 
 export default function LoginPage() {
@@ -20,6 +20,10 @@ export default function LoginPage() {
         rememberMe: false,
     });
     const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+
+    const handleMicrosoftLogin = () => {
+        signIn('microsoft-entra-id', { callbackUrl: '/dashboard' });
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = e.target;
@@ -85,7 +89,7 @@ export default function LoginPage() {
                     </div>
 
                     <div className={styles.socialLogin}>
-                        <button type="button" className={styles.microsoftButton} onClick={() => { }}>
+                        <button type="button" className={styles.microsoftButton} onClick={handleMicrosoftLogin}>
                             <Image
                                 src="/icons/microsoft.svg"
                                 alt="Microsoft"
