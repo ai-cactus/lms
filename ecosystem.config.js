@@ -11,8 +11,7 @@ module.exports = {
         },
         {
             name: "tunnel",
-            script: "/usr/bin/cloudflared",
-            args: "tunnel --url http://localhost:80",
+            script: "/home/homepc/lms2/start-tunnel.sh",
             interpreter: "none"
         }
     ]

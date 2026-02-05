@@ -4,6 +4,8 @@ import { signIn } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { AuthError } from 'next-auth';
+import { sendPasswordResetEmail } from '@/lib/email';
+import crypto from 'crypto';
 
 // Define return type
 export type AuthState = {
@@ -95,6 +97,70 @@ export async function signup(prevState: SignupResult | undefined, formData: Form
         // For other errors (like NEXT_REDIRECT), still return success since user was created
         return { success: true };
     }
+}
+
+export async function sendPasswordResetLink(email: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+        return { success: true }; // Security: Don't reveal user existence
+    }
+
+    // Generate secure UUID token
+    const token = crypto.randomUUID();
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Clean up old tokens for this user first
+    await prisma.verificationToken.deleteMany({
+        where: { identifier: email }
+    });
+
+    await prisma.verificationToken.create({
+        data: {
+            identifier: email,
+            token,
+            expires
+        }
+    });
+
+    const emailResult = await sendPasswordResetEmail(email, token);
+    if (!emailResult.success) {
+        return { success: false, error: "Failed to send email." };
+    }
+
+    return { success: true };
+}
+
+export async function resetPasswordWithToken(token: string, newPassword: string): Promise<AuthState> {
+    const verificationToken = await prisma.verificationToken.findFirst({
+        where: {
+            token, // Token is unique enough, but we should verify against user email if we had it in context, 
+            // but here the token proves possession of the link.
+            expires: { gt: new Date() }
+        }
+    });
+
+    if (!verificationToken) {
+        return { error: 'Invalid or expired reset link.' };
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+        where: { email: verificationToken.identifier },
+        data: { password: hashedPassword }
+    });
+
+    // delete used token
+    await prisma.verificationToken.delete({
+        where: {
+            identifier_token: {
+                identifier: verificationToken.identifier,
+                token: verificationToken.token
+            }
+        }
+    });
+
+    return { success: true };
 }
 
 
