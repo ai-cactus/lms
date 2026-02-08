@@ -27,12 +27,15 @@ export default function OnboardingStep1() {
     const router = useRouter();
     const { register, handleSubmit, control, formState: { errors } } = useForm<Step1FormData>();
 
+    const { data: session } = useSession();
+
     const onSubmit = async (data: Step1FormData) => {
         console.log('Step 1 Data VALIDATED:', data);
 
         try {
+            const userId = session?.user?.id;
             const { createOrganization } = await import('@/app/actions/organization');
-            const result = await createOrganization(data);
+            const result = await createOrganization(data, userId);
 
             if (result.success && result.organizationId) {
                 // Determine if window is defined (client-side)

@@ -16,10 +16,15 @@ export default async function ProfilePage() {
         where: { id: session.user.id },
     });
 
+    // Fetch user with organization
+    const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        include: { organization: true }
+    });
+
     const role = session?.user?.role || 'worker';
 
-
-    // Construct initial data
+    // Construct initial profile data
     const initialData = {
         id: session.user.id!,
         first_name: profile?.firstName || '',
@@ -29,7 +34,28 @@ export default async function ProfilePage() {
         company_name: profile?.companyName || ''
     };
 
+    // Construct organization data
+    const organizationData = user?.organization ? {
+        id: user.organization.id,
+        name: user.organization.name,
+        dba: user.organization.dba,
+        ein: user.organization.ein,
+        staffCount: user.organization.staffCount,
+        primaryContact: user.organization.primaryContact,
+        primaryEmail: user.organization.primaryEmail,
+        phone: user.organization.phone,
+        address: user.organization.address,
+        country: user.organization.country,
+        state: user.organization.state,
+        zipCode: user.organization.zipCode,
+        licenseNumber: user.organization.licenseNumber,
+        isHipaaCompliant: user.organization.isHipaaCompliant,
+    } : null;
+
     return (
-        <ProfileForm initialData={initialData} />
+        <ProfileForm
+            initialData={initialData}
+            organizationData={organizationData}
+        />
     );
 }

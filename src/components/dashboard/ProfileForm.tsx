@@ -6,25 +6,46 @@ import { Button, Input, Modal, Select } from '@/components/ui';
 import { updateProfile } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import OrganizationForm from './OrganizationForm';
 
 interface ProfileData {
     id: string;
     first_name: string;
     last_name: string;
-    email: string; // From auth.users, rendered as read-only or fetched from profile if replicated
+    email: string;
     role: 'admin' | 'worker';
     company_name?: string;
 }
 
-interface ProfileFormProps {
-    initialData: ProfileData;
+interface OrganizationData {
+    id: string;
+    name: string;
+    dba?: string | null;
+    ein?: string | null;
+    staffCount?: string | null;
+    primaryContact?: string | null;
+    primaryEmail?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    country?: string | null;
+    state?: string | null;
+    zipCode?: string | null;
+    city?: string | null;
+    licenseNumber?: string | null;
+    isHipaaCompliant?: boolean;
 }
 
-export default function ProfileForm({ initialData }: ProfileFormProps) {
+interface ProfileFormProps {
+    initialData: ProfileData;
+    organizationData?: OrganizationData | null;
+}
+
+export default function ProfileForm({ initialData, organizationData }: ProfileFormProps) {
+    const [activeTab, setActiveTab] = useState<'profile' | 'organization'>('profile');
     const [formData, setFormData] = useState(initialData);
     const [isLoading, setIsLoading] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const router = useRouter();
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -32,12 +53,10 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    // Sync initialData when it changes
     React.useEffect(() => {
         setFormData(initialData);
     }, [initialData]);
 
-    // Auto-dismiss message after 10 seconds
     React.useEffect(() => {
         if (message) {
             const timer = setTimeout(() => {
@@ -51,11 +70,7 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
         formData.first_name !== initialData.first_name ||
         formData.last_name !== initialData.last_name ||
         formData.role !== initialData.role ||
-        // Handle undefined/null vs empty string differences
         (formData.company_name || '') !== (initialData.company_name || '');
-
-    // Debug logging
-    console.log('Form State:', { active: isDirty, formData, initialData });
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -71,7 +86,7 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
             const result = await updateProfile({
                 first_name: formData.first_name,
                 last_name: formData.last_name,
-                company_name: formData.company_name,
+                company_name: formData.company_name
             });
 
             if (!result.success) throw new Error(result.error);
@@ -85,9 +100,6 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
         }
     };
 
-
-
-    // Validation Logic
     const validateEmail = (email: string) => {
         return String(email)
             .toLowerCase()
@@ -101,6 +113,8 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
         formData.last_name?.trim() !== '' &&
         formData.email?.trim() !== '' &&
         validateEmail(formData.email);
+
+    const isAdmin = initialData.role === 'admin';
 
     return (
         <div className={styles.container}>
@@ -116,100 +130,115 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
 
             <div className={styles.card}>
                 <div className={styles.tabs}>
-                    <button className={`${styles.tab} ${styles.activeTab}`}>EDIT PROFILE</button>
-                    <button className={styles.tab}>YOUR ORGANIZATION</button>
+                    <button
+                        className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
+                        onClick={() => setActiveTab('profile')}
+                    >
+                        EDIT PROFILE
+                    </button>
+                    <button
+                        className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
+                        onClick={() => setActiveTab('organization')}
+                    >
+                        YOUR ORGANIZATION
+                    </button>
                 </div>
 
-                <div className={styles.profileHeader}>
-                    <div className={styles.avatarLarge}>
-                        {formData.first_name ? formData.first_name[0] : 'U'}
-                        <button className={styles.editAvatarButton}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M12 20h9"></path>
-                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-
-                <form onSubmit={handleSubmit} className={styles.form}>
-                    <div className={styles.formGrid}>
-                        <div className={styles.fieldGroup}>
-                            <label className={styles.label}>First Name</label>
-                            <Input
-                                name="first_name"
-                                value={formData.first_name}
-                                onChange={handleChange}
-                                placeholder="Jane"
-                                error={!formData.first_name.trim() ? "First name is required" : undefined}
-                            />
+                {activeTab === 'profile' ? (
+                    <>
+                        <div className={styles.profileHeader}>
+                            <div className={styles.avatarLarge}>
+                                {formData.first_name ? formData.first_name[0] : 'U'}
+                                <button className={styles.editAvatarButton}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 20h9"></path>
+                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
-                        <div className={styles.fieldGroup}>
-                            <label className={styles.label}>Last Name</label>
-                            <Input
-                                name="last_name"
-                                value={formData.last_name}
-                                onChange={handleChange}
-                                placeholder="Doe"
-                                error={!formData.last_name.trim() ? "Last name is required" : undefined}
-                            />
-                        </div>
-                    </div>
 
-                    <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Company</label>
-                        <Input
-                            name="company_name"
-                            value={formData.company_name || ''}
-                            onChange={handleChange}
-                            placeholder="Enter your company name"
-                        />
-                    </div>
+                        <form onSubmit={handleSubmit} className={styles.form}>
+                            <div className={styles.formGrid}>
+                                <div className={styles.fieldGroup}>
+                                    <label className={styles.label}>First Name</label>
+                                    <Input
+                                        name="first_name"
+                                        value={formData.first_name}
+                                        onChange={handleChange}
+                                        placeholder="Jane"
+                                        error={!formData.first_name.trim() ? 'First name is required' : undefined}
+                                    />
+                                </div>
+                                <div className={styles.fieldGroup}>
+                                    <label className={styles.label}>Last Name</label>
+                                    <Input
+                                        name="last_name"
+                                        value={formData.last_name}
+                                        onChange={handleChange}
+                                        placeholder="Doe"
+                                        error={!formData.last_name.trim() ? 'Last name is required' : undefined}
+                                    />
+                                </div>
+                            </div>
 
-                    <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Email Address</label>
-                        <Input
-                            name="email"
-                            value={formData.email}
-                            disabled
-                            className={styles.readOnlyInput}
-                            // Although email is disabled/read-only in this form as per previous request, 
-                            // if it were editable, this error would show.
-                            // Since user asked for the rule, we implement it for completeness in case it becomes editable.
-                            error={!formData.email.trim() || !validateEmail(formData.email) ? "Terminates with valid email required" : undefined}
-                        />
-                    </div>
+                            <div className={styles.fieldGroup}>
+                                <label className={styles.label}>Company</label>
+                                <Input
+                                    name="company_name"
+                                    value={formData.company_name || ''}
+                                    onChange={handleChange}
+                                    placeholder="Enter your company name"
+                                />
+                            </div>
 
-                    <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Role</label>
-                        <Select
-                            value={formData.role}
-                            onChange={(value) => setFormData(prev => ({ ...prev, role: value as 'admin' | 'worker' }))}
-                            options={[
-                                { label: 'Compliance Professional (Admin)', value: 'admin' },
-                                { label: 'Worker', value: 'worker' }
-                            ]}
-                            disabled={true} // Role cannot be changed after signup
-                        />
-                    </div>
+                            <div className={styles.fieldGroup}>
+                                <label className={styles.label}>Email Address</label>
+                                <Input
+                                    name="email"
+                                    value={formData.email}
+                                    disabled
+                                    className={styles.readOnlyInput}
+                                />
+                            </div>
 
-                    {message && (
-                        <div className={`${styles.message} ${styles[message.type]}`}>
-                            {message.text}
-                        </div>
-                    )}
+                            <div className={styles.fieldGroup}>
+                                <label className={styles.label}>Role</label>
+                                <Select
+                                    value={formData.role}
+                                    onChange={(value) => setFormData(prev => ({ ...prev, role: value as 'admin' | 'worker' }))}
+                                    options={[
+                                        { label: 'Compliance Professional (Admin)', value: 'admin' },
+                                        { label: 'Worker', value: 'worker' }
+                                    ]}
+                                    disabled={true}
+                                />
+                            </div>
 
-                    <div className={styles.actions}>
-                        <Button
-                            variant="primary"
-                            type="submit"
-                            disabled={!isDirty || !isValid || isLoading}
-                            className={styles.saveButton}
-                        >
-                            {isLoading ? 'Saving...' : 'Save Changes'}
-                        </Button>
-                    </div>
-                </form>
+                            {message && (
+                                <div className={`${styles.message} ${styles[message.type]}`}>
+                                    {message.text}
+                                </div>
+                            )}
+
+                            <div className={styles.actions}>
+                                <Button
+                                    variant="primary"
+                                    type="submit"
+                                    disabled={!isDirty || !isValid || isLoading}
+                                    className={styles.saveButton}
+                                >
+                                    {isLoading ? 'Saving...' : 'Save Changes'}
+                                </Button>
+                            </div>
+                        </form>
+                    </>
+                ) : (
+                    <OrganizationForm
+                        initialData={organizationData || null}
+                        isAdmin={isAdmin}
+                    />
+                )}
             </div>
 
             {/* Confirmation Modal */}

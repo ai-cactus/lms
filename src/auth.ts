@@ -3,8 +3,8 @@ import Credentials from 'next-auth/providers/credentials';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id"
+import { authConfig } from './auth.config';
 
 const loginSchema = z.object({
     email: z.string().email(),
@@ -12,6 +12,7 @@ const loginSchema = z.object({
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+    ...authConfig,
     providers: [
         MicrosoftEntraID({
             clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
@@ -36,11 +37,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
         }),
     ],
-    pages: {
-        signIn: '/login',
-    },
-    trustHost: true,
+    // Overwrite callbacks to include database logic which is not safe for edge
     callbacks: {
+        ...authConfig.callbacks,
         async session({ session, token }) {
             if (token.sub && session.user) {
                 session.user.id = token.sub;
@@ -49,28 +48,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             }
             return session;
         },
-        async jwt({ token, user }) {
+        async jwt({ token, user, trigger, session }) {
             if (user) {
                 token.organizationId = user.organizationId;
                 token.role = user.role;
             }
+
+            // Always fetch fresh data on subsequent calls to keep session in sync
+            if (!user && token.sub) {
+                const freshUser = await prisma.user.findUnique({
+                    where: { id: token.sub },
+                    select: { organizationId: true, role: true }
+                });
+
+                if (freshUser) {
+                    token.organizationId = freshUser.organizationId;
+                    token.role = freshUser.role;
+                }
+            }
             return token;
         }
     },
-    // Fix for HTTP IP-based deployment (Loop issue):
-    // Force usage of insecure cookies since we are likely not on HTTPS
-    session: {
-        strategy: 'jwt',
-    },
-    cookies: {
-        sessionToken: {
-            name: `next-auth.session-token`,
-            options: {
-                httpOnly: true,
-                sameSite: 'lax',
-                path: '/',
-                secure: false, // Force false for HTTP IP access
-            },
-        },
-    }
 });
