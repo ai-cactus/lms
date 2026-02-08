@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useForm, Controller } from 'react-hook-form';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button, Input, Select } from '@/components/ui';
 import styles from '@/app/onboarding/onboarding.module.css';

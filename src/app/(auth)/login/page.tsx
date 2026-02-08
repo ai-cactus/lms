@@ -1,17 +1,19 @@
 'use client';
 
-import React, { useState, useActionState, useEffect } from 'react';
+import React, { useState, useActionState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Logo, Input, Button } from '@/components/ui';
 import { authenticate } from '@/app/actions/auth';
 import styles from './page.module.css';
 import { signIn } from 'next-auth/react';
 
-
-export default function LoginPage() {
+function LoginForm() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const joined = searchParams.get('joined');
+
     const [state, dispatch, isPending] = useActionState(authenticate, undefined);
 
     const [formData, setFormData] = useState({
@@ -75,81 +77,104 @@ export default function LoginPage() {
     }, [state, router]);
 
     return (
+        <div className={styles.formContent}>
+            <Logo size="md" />
+
+            <div className={styles.formHeader}>
+                <h1 className={styles.title}>Log in to your account</h1>
+                <p className={styles.subtitle}>
+                    Log in to your workspace and get back to what matters.
+                </p>
+            </div>
+
+            {joined && (
+                <div style={{
+                    backgroundColor: '#ECFDF5',
+                    color: '#065F46',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    marginBottom: '16px',
+                    border: '1px solid #A7F3D0',
+                    fontSize: '14px',
+                    textAlign: 'center'
+                }}>
+                    Account created successfully! Please log in.
+                </div>
+            )}
+
+            <div className={styles.socialLogin}>
+                <button type="button" className={styles.microsoftButton} onClick={handleMicrosoftLogin}>
+                    <Image
+                        src="/icons/microsoft.svg"
+                        alt="Microsoft"
+                        width={20}
+                        height={20}
+                    />
+                    <span>Log In with Microsoft</span>
+                </button>
+            </div>
+
+            <div className={styles.divider}>
+                <span>or continue with email</span>
+            </div>
+
+            <form onSubmit={handleSubmit} className={styles.form}>
+                <Input
+                    label="Email"
+                    type="email"
+                    name="email"
+                    placeholder="Enter your email address"
+                    value={formData.email}
+                    onChange={handleChange}
+                    error={errors.email}
+                    autoComplete="email"
+                />
+
+                <Input
+                    label="Password"
+                    type="password"
+                    name="password"
+                    placeholder="Enter your password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    error={errors.password}
+                    autoComplete="current-password"
+                />
+
+                <div className={styles.formOptions}>
+                    <Link href="/forgot-password" className={styles.link}>
+                        Forgot your password?
+                    </Link>
+                </div>
+
+                <Button
+                    type="submit"
+                    size="lg"
+                    fullWidth
+                    loading={isPending}
+                >
+                    Log in
+                </Button>
+            </form>
+
+            <p className={styles.signupPrompt}>
+                Don&apos;t have an account?{' '}
+                <Link href="/signup" className={styles.signupLink}>
+                    Sign Up
+                </Link>
+            </p>
+        </div>
+    );
+}
+
+export default function LoginPage() {
+    return (
         <div className={styles.container}>
             {/* Left Side - Form */}
             <div className={styles.formSection}>
-                <div className={styles.formContent}>
-                    <Logo size="md" />
-
-                    <div className={styles.formHeader}>
-                        <h1 className={styles.title}>Log in to your account</h1>
-                        <p className={styles.subtitle}>
-                            Log in to your workspace and get back to what matters.
-                        </p>
-                    </div>
-
-                    <div className={styles.socialLogin}>
-                        <button type="button" className={styles.microsoftButton} onClick={handleMicrosoftLogin}>
-                            <Image
-                                src="/icons/microsoft.svg"
-                                alt="Microsoft"
-                                width={20}
-                                height={20}
-                            />
-                            <span>Log In with Microsoft</span>
-                        </button>
-                    </div>
-
-                    <div className={styles.divider}>
-                        <span>or continue with email</span>
-                    </div>
-
-                    <form onSubmit={handleSubmit} className={styles.form}>
-                        <Input
-                            label="Email"
-                            type="email"
-                            name="email"
-                            placeholder="Enter your email address"
-                            value={formData.email}
-                            onChange={handleChange}
-                            error={errors.email}
-                            autoComplete="email"
-                        />
-
-                        <Input
-                            label="Password"
-                            type="password"
-                            name="password"
-                            placeholder="Enter your password"
-                            value={formData.password}
-                            onChange={handleChange}
-                            error={errors.password}
-                            autoComplete="current-password"
-                        />
-
-                        <div className={styles.formOptions}>
-                            <Link href="/forgot-password" className={styles.link}>
-                                Forgot your password?
-                            </Link>
-                        </div>
-
-                        <Button
-                            type="submit"
-                            size="lg"
-                            fullWidth
-                            loading={isPending}
-                        >
-                            Log in
-                        </Button>
-                    </form>
-
-                    <p className={styles.signupPrompt}>
-                        Don&apos;t have an account?{' '}
-                        <Link href="/signup" className={styles.signupLink}>
-                            Sign Up
-                        </Link>
-                    </p>
-                </div>
+                <Suspense fallback={<div>Loading...</div>}>
+                    <LoginForm />
+                </Suspense>
             </div>
 
             {/* Right Side - Hero Image */}

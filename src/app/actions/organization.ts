@@ -4,7 +4,8 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export async function createOrganization(data: any) {
+// Add userId to parameters
+export async function createOrganization(data: any, userId?: string) {
     try {
         // Basic validation
         if (!data.legalName || !data.primaryContactEmail) {
@@ -29,6 +30,17 @@ export async function createOrganization(data: any) {
                 isHipaaCompliant: false // Default
             }
         });
+
+        // If a userId is provided (the creator), link them to this new org as Admin
+        if (userId) {
+            await prisma.user.update({
+                where: { id: userId },
+                data: {
+                    organizationId: org.id,
+                    role: 'admin'
+                }
+            });
+        }
 
         return { success: true, organizationId: org.id };
     } catch (error) {
