@@ -37,7 +37,7 @@
     border-radius: 8px;
     padding: 10px 16px;
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -59,17 +59,11 @@
     /* Subtle shadow per design */
     padding: 24px;
     min-height: 600px;
+    display: flex;
+    flex-direction: column;
 }
 
-.searchContainer {
-    margin-bottom: 24px;
-}
-
-.searchInput {
-    width: 100%;
-    max-width: 400px;
-    /* Or full width based on design? Design shows wide input */
-}
+/* ... existing code ... */
 
 /* Table */
 .table {
@@ -80,13 +74,15 @@
 .table th {
     text-align: left;
     padding: 16px;
-    font-size: 12px;
+    font-size: 13px;
+    /* Slightly larger for better readability */
     font-weight: 600;
-    text-transform: uppercase;
-    color: #4A5568;
-    background-color: #F7FAFC;
-    /* Light gray header per design */
-    border-bottom: 1px solid #E2E8F0;
+    /* Medium weight, not too bold */
+    color: #1A202C;
+    /* Darker header text */
+    background-color: transparent;
+    /* Clean background */
+    border-bottom: 1px solid #EDF2F7;
 }
 
 .table td {
@@ -119,17 +115,28 @@
     justify-content: center;
     font-weight: 600;
     flex-shrink: 0;
-    overflow: hidden;
-    /* Ensure image stays in circle */
+    position: relative;
+    /* For Status Dot */
     font-size: 14px;
-    /* Ensure font size matches */
 }
 
-/* Remove separate avatarFallback class as we'll use avatar directly */
 .avatarImage {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 50%;
+}
+
+.statusDot {
+    width: 10px;
+    height: 10px;
+    background-color: #48BB78;
+    /* Green */
+    border: 2px solid white;
+    border-radius: 50%;
+    position: absolute;
+    bottom: 0;
+    right: 0;
 }
 
 .userDetails {
@@ -148,20 +155,8 @@
     color: #718096;
 }
 
-.statusDot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: #48BB78;
-    /* Green online dot */
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    border: 1px solid white;
-}
-
 .actionButton {
-    background: none;
+    background: transparent;
     border: 1px solid #E2E8F0;
     border-radius: 6px;
     width: 32px;
@@ -176,8 +171,8 @@
 
 .actionButton:hover {
     color: #4A5568;
-    border-color: #CBD5E0;
     background-color: #F7FAFC;
+    border-color: #CBD5E0;
 }
 
 /* Pagination */
@@ -185,12 +180,14 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 24px;
+    margin-top: auto;
     padding-top: 24px;
     border-top: 1px solid #EDF2F7;
     color: #718096;
     font-size: 13px;
 }
+
+
 
 .paginationCenter {
     display: flex;

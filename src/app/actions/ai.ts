@@ -172,7 +172,6 @@ export async function saveGeneratedCourse(
         data: {
             title: courseData.title,
             description: courseData.description,
-            difficulty: courseData.difficulty,
             category: category,
             duration: totalDuration,
             createdBy: session.user.id,

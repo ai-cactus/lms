@@ -1,0 +1,73 @@
+.container {
+    display: flex;
+    flex-direction: column;
+}
+
+.wrapper {
+    display: flex;
+    align-items: center;
+    /* Align checkbox and label vertically */
+    gap: 12px;
+    position: relative;
+    cursor: pointer;
+}
+
+.input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+.customCheckbox {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #E2E8F0;
+    /* Default border color */
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    /* Checkmark color */
+    background-color: white;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.input:checked+.customCheckbox {
+    background-color: #4C6EF5;
+    /* Brand color */
+    border-color: #4C6EF5;
+}
+
+.input:focus+.customCheckbox {
+    box-shadow: 0 0 0 3px rgba(76, 110, 245, 0.2);
+    /* Focus ring */
+}
+
+/* Hover state for better UX */
+.wrapper:hover .customCheckbox {
+    border-color: #CBD5E0;
+}
+
+.input:checked:hover+.customCheckbox {
+    border-color: #3B5BDB;
+    background-color: #3B5BDB;
+}
+
+.label {
+    font-size: 14px;
+    color: #2D3748;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+}
+
+.error {
+    font-size: 12px;
+    color: #E53E3E;
+    margin-top: 4px;
+}

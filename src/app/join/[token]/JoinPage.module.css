@@ -1,0 +1,109 @@
+.container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #F7FAFC;
+    padding: 24px;
+}
+
+.card {
+    background: white;
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    width: 100%;
+    max-width: 600px;
+    text-align: center;
+}
+
+.logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 24px;
+}
+
+.title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1A202C;
+    margin-bottom: 8px;
+}
+
+.title span {
+    color: #4C6EF5;
+    /* or bold/black depending on strict design matching */
+}
+
+.subtitle {
+    font-size: 20px;
+    font-weight: 600;
+    color: #4C6EF5;
+    margin-bottom: 32px;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    text-align: left;
+}
+
+.row {
+    display: flex;
+    gap: 16px;
+}
+
+.row>* {
+    flex: 1;
+}
+
+.disabledInput input {
+    background-color: #EDF2F7;
+    color: #718096;
+    cursor: not-allowed;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #2D3748;
+}
+
+.disabledBox {
+    background-color: #EDF2F7;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: #718096;
+    font-size: 14px;
+}
+
+.checkboxWrapper {
+    display: flex;
+    align-items: flex-start;
+    margin-top: 8px;
+}
+
+.errorBanner {
+    background-color: #FED7D7;
+    color: #C53030;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 24px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.submitButton {
+    width: 100%;
+    margin-top: 16px;
+    height: 48px;
+    font-size: 16px;
+}

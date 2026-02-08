@@ -19,6 +19,7 @@ interface SelectProps {
     className?: string;
     dropdownClassName?: string;
     direction?: 'up' | 'down';
+    error?: string; // Add error prop
 }
 
 export const Select = ({
@@ -31,7 +32,8 @@ export const Select = ({
     size = 'default',
     className = '',
     dropdownClassName = '',
-    direction = 'down' // Default to down
+    direction = 'down',
+    error
 }: SelectProps) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -64,6 +66,7 @@ export const Select = ({
             <button
                 type="button"
                 className={`${styles.trigger} ${size === 'sm' ? styles.triggerSmall : ''} ${isOpen ? styles.triggerOpen : ''}`}
+                style={error ? { borderColor: '#E53E3E' } : {}} // Inline style for error border
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 disabled={disabled}
             >
@@ -110,6 +113,7 @@ export const Select = ({
 
             {/* Hidden input for form submission compatibility if needed, though we use state */}
             {name && <input type="hidden" name={name} value={value} />}
+            {error && <span style={{ fontSize: '12px', color: '#E53E3E', marginTop: '4px', display: 'block' }}>{error}</span>}
         </div>
     );
 };

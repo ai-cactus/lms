@@ -1,0 +1,84 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dropzone {
+    border: 1px dashed #E2E8F0;
+    border-radius: 12px;
+    padding: 40px;
+    background-color: #F8FAFC;
+    /* Slightly lighter gray */
+    transition: all 0.2s ease;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.dropzone:hover {
+    border-color: #4C6EF5;
+    background-color: #F4F7FE;
+    /* Very light blue tint on hover */
+}
+
+.dropzone.active {
+    border-color: #4C6EF5;
+    background-color: #F4F7FE;
+    transform: scale(0.995);
+    /* Subtle press effect */
+}
+
+.dropzone.error {
+    border-color: #E53E3E;
+    background-color: #FFF5F5;
+}
+
+.hiddenInput {
+    display: none;
+}
+
+.content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+}
+
+.iconWrapper {
+    width: 48px;
+    height: 48px;
+    background-color: #EDF2F7;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4A5568;
+    margin-bottom: 8px;
+}
+
+.text {
+    font-size: 14px;
+    color: #4A5568;
+    font-weight: 500;
+}
+
+.link {
+    color: #4C6EF5;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.subtext {
+    font-size: 12px;
+    color: #A0AEC0;
+}
+
+.errorMessage {
+    font-size: 12px;
+    color: #E53E3E;
+    margin-left: 4px;
+}

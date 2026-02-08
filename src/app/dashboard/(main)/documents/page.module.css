@@ -1,0 +1,82 @@
+.container {
+    padding: 2rem;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.header h1 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.uploadBtn {
+    background: var(--primary);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--radius-md);
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.uploadBtn:hover {
+    background: var(--primary-hover);
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.table th,
+.table td {
+    padding: 1rem 1.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.table th {
+    background: var(--background-secondary);
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.table tr:last-child td {
+    border-bottom: none;
+}
+
+.table tr:hover {
+    background: var(--background-secondary);
+}
+
+.badgeSuccess {
+    background: #ECFDF5;
+    color: #059669;
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badgeWarning {
+    background: #FFFBEB;
+    color: #D97706;
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+}

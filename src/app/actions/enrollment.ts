@@ -28,7 +28,7 @@ export async function getAvailableUsers() {
         id: user.id,
         email: user.email,
         fullName: user.profile?.fullName || user.email,
-        role: user.profile?.role || 'worker',
+        role: user.role || 'worker',
         avatarUrl: user.profile?.avatarUrl,
     }));
 }

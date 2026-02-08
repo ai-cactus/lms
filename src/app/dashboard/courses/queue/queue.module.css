@@ -1,0 +1,67 @@
+.container {
+    padding: 2rem;
+}
+
+.header {
+    margin-bottom: 2rem;
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.jobCard {
+    background: white;
+    padding: 1.5rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.jobInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.jobType {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.jobMeta {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.status {
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-full);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.status_queued {
+    background: var(--background-secondary);
+    color: var(--text-secondary);
+}
+
+.status_processing {
+    background: #DBEAFE;
+    color: #1E40AF;
+}
+
+.status_completed {
+    background: #ECFDF5;
+    color: #059669;
+}
+
+.status_failed {
+    background: #FEF2F2;
+    color: #DC2626;
+}

@@ -1,0 +1,44 @@
+.container {
+    display: flex;
+    height: calc(100vh - 64px);
+    /* Adjust based on navbar */
+    overflow: hidden;
+}
+
+.documentPanel {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    background: var(--background-secondary);
+}
+
+.standardsPanel {
+    flex: 0 0 400px;
+    padding: 2rem;
+    overflow-y: auto;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.snippetCard {
+    background: white;
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    margin-bottom: 1rem;
+}
+
+.snippetText {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.mappingForm {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}

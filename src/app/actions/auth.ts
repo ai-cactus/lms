@@ -64,7 +64,6 @@ export async function signup(prevState: SignupResult | undefined, formData: Form
                     firstName,
                     lastName,
                     fullName: `${firstName} ${lastName}`,
-                    role: 'worker', // Default role
                 }
             })
         })

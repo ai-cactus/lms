@@ -1,0 +1,160 @@
+.container {
+    min-height: 100vh;
+    background-color: #F7FAFC;
+    display: flex;
+    flex-direction: column;
+}
+
+.header {
+    height: 60px;
+    padding: 0 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Center the content */
+    background: white;
+    border-bottom: 1px solid #EDF2F7;
+}
+
+.main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+}
+
+.stepContainer {
+    width: 100%;
+    width: 100%;
+    max-width: 1000px;
+    /* Wider form */
+}
+
+/* Stepper Styles */
+.stepper {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 60px;
+    position: relative;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    gap: 8px;
+}
+
+.stepCircle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: white;
+    border: 1px solid #E2E8F0;
+    color: #CBD5E0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.stepLabel {
+    font-size: 11px;
+    color: #A0AEC0;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.step.active .stepCircle,
+.step.completed .stepCircle {
+    background: #4C6EF5;
+    border-color: #4C6EF5;
+    color: white;
+    box-shadow: 0 0 0 4px rgba(76, 110, 245, 0.1);
+}
+
+.step.active .stepLabel,
+.step.completed .stepLabel {
+    color: #4C6EF5;
+}
+
+.connector {
+    position: absolute;
+    top: 16px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #EDF2F7;
+    z-index: 0;
+    transform: translateY(-50%);
+}
+
+.stepTitle {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1A202C;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.stepDescription {
+    font-size: 16px;
+    color: #718096;
+    text-align: center;
+    margin-bottom: 48px;
+}
+
+/* Form Styles */
+.form {
+    background: white;
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.formGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1A202C;
+}
+
+.required {
+    color: #4C6EF5;
+    margin-left: 2px;
+}
+
+.helperText {
+    font-size: 12px;
+    color: #A0AEC0;
+}
+
+.row {
+    display: flex;
+    gap: 24px;
+}
+
+.col {
+    flex: 1;
+}
+
+.actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 24px;
+}

@@ -1,0 +1,113 @@
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+
+.modal {
+    background: white;
+    padding: 2rem;
+    border-radius: var(--radius-lg);
+    width: 500px;
+    box-shadow: var(--shadow-lg);
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.closeBtn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.dropzone {
+    border: 2px dashed var(--border);
+    padding: 2rem;
+    text-align: center;
+    border-radius: var(--radius-md);
+    position: relative;
+}
+
+.dropzone input {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.agreement {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+.cancelBtn {
+    background: none;
+    border: 1px solid var(--border);
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+
+.uploadBtn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+
+.uploadBtn:disabled {
+    opacity: 0.5;
+}
+
+.error {
+    color: var(--error);
+    background: #FEF2F2;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+}
+
+.warning {
+    color: var(--warning);
+    background: #FFFBEB;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+}
+
+.success {
+    color: var(--success);
+    background: #ECFDF5;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+}

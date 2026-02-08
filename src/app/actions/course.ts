@@ -9,7 +9,6 @@ export type CourseWithStats = {
     title: string;
     description: string | null;
     thumbnail: string | null;
-    difficulty: string;
     status: string;
     category: string | null;
     duration: number | null;
@@ -41,7 +40,6 @@ export async function getCourses(): Promise<CourseWithStats[]> {
         title: course.title,
         description: course.description,
         thumbnail: course.thumbnail,
-        difficulty: course.difficulty,
         status: course.status,
         category: course.category,
         duration: course.duration,
@@ -99,7 +97,6 @@ export async function createCourse(data: {
     title: string;
     description?: string;
     category?: string;
-    difficulty?: string;
 }) {
     const session = await auth();
     if (!session?.user?.id) {
@@ -111,7 +108,6 @@ export async function createCourse(data: {
             title: data.title,
             description: data.description || null,
             category: data.category || null,
-            difficulty: data.difficulty || 'beginner',
             createdBy: session.user.id,
         },
     });
@@ -127,7 +123,6 @@ export async function updateCourse(
         title?: string;
         description?: string;
         thumbnail?: string;
-        difficulty?: string;
         category?: string;
         duration?: number;
     }

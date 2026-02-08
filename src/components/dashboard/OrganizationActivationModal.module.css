@@ -1,0 +1,151 @@
+/* Overlay */
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    padding: 16px;
+}
+
+/* Modal Card */
+.card {
+    background-color: #FFFFFF;
+    border-radius: 16px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    width: 100%;
+    max-width: 900px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+@media (min-width: 768px) {
+    .card {
+        flex-direction: row;
+    }
+}
+
+/* Content Section */
+.content {
+    flex: 1;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+@media (min-width: 768px) {
+    .content {
+        padding: 48px;
+    }
+}
+
+.logoWrapper {
+    margin-bottom: 24px;
+}
+
+.title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 16px;
+    line-height: 1.25;
+}
+
+@media (min-width: 768px) {
+    .title {
+        font-size: 30px;
+    }
+}
+
+.description {
+    color: #4B5563;
+    font-size: 16px;
+    line-height: 1.6;
+    margin-bottom: 32px;
+}
+
+.actions {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+    width: 100%;
+}
+
+.primaryButton {
+    background-color: #4730F7;
+    color: white;
+    font-weight: 600;
+    padding: 12px 32px;
+    border-radius: 9999px;
+    /* Full rounded */
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    font-size: 16px;
+    width: 100%;
+    text-align: center;
+}
+
+@media (min-width: 768px) {
+    .primaryButton {
+        width: auto;
+    }
+}
+
+.primaryButton:hover {
+    background-color: #3724C4;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.secondaryButton {
+    background: none;
+    border: none;
+    color: #4730F7;
+    font-weight: 500;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    width: 100%;
+    text-align: left;
+}
+
+@media (min-width: 768px) {
+    .secondaryButton {
+        width: auto;
+        text-align: center;
+    }
+}
+
+.secondaryButton:hover {
+    color: #3724C4;
+    text-decoration: underline;
+}
+
+/* Image Section */
+.imageSection {
+    display: none;
+    width: 50%;
+    position: relative;
+    min-height: 400px;
+}
+
+@media (min-width: 768px) {
+    .imageSection {
+        display: block;
+    }
+}
+
+.image {
+    object-fit: cover;
+}

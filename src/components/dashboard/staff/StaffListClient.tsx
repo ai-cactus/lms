@@ -15,11 +15,15 @@ interface User {
     dateInvited: Date;
 }
 
+import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
+
 interface StaffListClientProps {
     users: User[];
+    hasOrganization: boolean;
 }
 
-export default function StaffListClient({ users: initialUsers }: StaffListClientProps) {
+export default function StaffListClient({ users: initialUsers, hasOrganization }: StaffListClientProps) {
+    const [showFeatureGate, setShowFeatureGate] = useState(false);
     const router = useRouter();
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -74,13 +78,19 @@ export default function StaffListClient({ users: initialUsers }: StaffListClient
                 </div>
                 <button
                     className={styles.addButton}
-                    onClick={() => console.log('Add New Staff Clicked')}
+                    onClick={() => {
+                        if (!hasOrganization) {
+                            setShowFeatureGate(true);
+                        } else {
+                            console.log('Add New Staff Clicked');
+                        }
+                    }}
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19"></line>
                         <line x1="5" y1="12" x2="19" y2="12"></line>
                     </svg>
-                    Add New Staff
+                    Add Worker
                 </button>
             </div>
 
@@ -109,8 +119,9 @@ export default function StaffListClient({ users: initialUsers }: StaffListClient
                 <table className={styles.table}>
                     <thead>
                         <tr>
-                            <th style={{ width: '40%' }}>Name</th>
-                            <th style={{ width: '20%' }}>Date Invited</th>
+                            <th style={{ width: '60%', paddingLeft: '24px' }}>Name</th>
+                            <th style={{ width: '30%', textAlign: 'right' }}>Date Invited</th>
+                            <th style={{ width: '10%' }}></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -119,10 +130,9 @@ export default function StaffListClient({ users: initialUsers }: StaffListClient
                                 <tr
                                     key={user.id}
                                     onClick={() => router.push(`/dashboard/staff/${user.id}`)}
-                                    style={{ cursor: 'pointer' }}
                                     className={styles.clickableRow}
                                 >
-                                    <td>
+                                    <td style={{ paddingLeft: '24px' }}>
                                         <div className={styles.userInfo}>
                                             <div className={styles.avatar}>
                                                 {user.avatarUrl ? (
@@ -134,7 +144,7 @@ export default function StaffListClient({ users: initialUsers }: StaffListClient
                                                 ) : (
                                                     (user.name.charAt(0) || user.email.charAt(0)).toUpperCase()
                                                 )}
-                                                {/* Removed statusDot as it wasn't in the other design */}
+                                                <div className={styles.statusDot}></div>
                                             </div>
                                             <div className={styles.userDetails}>
                                                 <div className={styles.userName}>{user.name}</div>
@@ -142,13 +152,39 @@ export default function StaffListClient({ users: initialUsers }: StaffListClient
                                             </div>
                                         </div>
                                     </td>
-                                    <td>{getRelativeTime(user.dateInvited)}</td>
+                                    <td style={{ textAlign: 'right', color: '#718096' }}>
+                                        {getRelativeTime(user.dateInvited)}
+                                    </td>
+                                    <td style={{ textAlign: 'right', paddingRight: '24px' }}>
+                                        <button className={styles.actionButton} onClick={(e) => {
+                                            e.stopPropagation();
+                                            console.log('Menu clicked');
+                                        }}>
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <circle cx="12" cy="12" r="1"></circle>
+                                                <circle cx="12" cy="5" r="1"></circle>
+                                                <circle cx="12" cy="19" r="1"></circle>
+                                            </svg>
+                                        </button>
+                                    </td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={2} style={{ textAlign: 'center', padding: '40px', color: '#718096' }}>
-                                    No staff found.
+                                <td colSpan={3} style={{ textAlign: 'center', padding: '60px', color: '#718096' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                                        {/* Empty state icon */}
+                                        <div style={{ color: '#CBD5E0' }}>
+                                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                                <circle cx="9" cy="7" r="4"></circle>
+                                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                            </svg>
+                                        </div>
+                                        <p style={{ fontSize: '16px', fontWeight: 600, color: '#2D3748' }}>No staff members found</p>
+                                        <p style={{ fontSize: '14px', color: '#718096' }}>Get started by adding a new staff member to your organization.</p>
+                                    </div>
                                 </td>
                             </tr>
                         )}
@@ -214,6 +250,13 @@ export default function StaffListClient({ users: initialUsers }: StaffListClient
                     </div>
                 </div>
             </div>
+            {/* Feature Gate Modal */}
+            <OrganizationActivationModal
+                hasOrganization={hasOrganization}
+                mode="feature_gate"
+                isOpen={showFeatureGate}
+                onClose={() => setShowFeatureGate(false)}
+            />
         </div>
     );
 }

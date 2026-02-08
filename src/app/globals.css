@@ -3,14 +3,14 @@
 
 :root {
   /* Primary Colors */
-  --primary: #405DDD;
-  --primary-hover: #3548B8;
-  --primary-light: #4758E0;
+  --primary: #4730F7;
+  --primary-hover: #3724C4;
+  --primary-light: #6A56F9;
 
   /* Background Colors */
   --background: #FFFFFF;
   --background-secondary: #F9FAFB;
-  --background-hero: linear-gradient(135deg, #405DDD 0%, #6366F1 100%);
+  --background-hero: linear-gradient(135deg, #4730F7 0%, #6366F1 100%);
 
   /* Text Colors */
   --text-primary: #101010;
@@ -21,7 +21,7 @@
   /* Border Colors */
   --border: #E5E7EB;
   --border-light: #F3F4F6;
-  --border-focus: #405DDD;
+  --border-focus: #4730F7;
 
   /* Status Colors */
   --error: #EF4444;
@@ -34,8 +34,8 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
   /* Typography */
-  --font-heading: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-body: 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Switzer', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-body: 'Geist', 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
   --font-logo: 'Roboto', system-ui, sans-serif;
 
   /* Spacing */

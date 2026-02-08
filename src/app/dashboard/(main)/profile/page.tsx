@@ -16,6 +16,8 @@ export default async function ProfilePage() {
         where: { id: session.user.id },
     });
 
+    const role = session?.user?.role || 'worker';
+
 
     // Construct initial data
     const initialData = {
@@ -23,7 +25,7 @@ export default async function ProfilePage() {
         first_name: profile?.firstName || '',
         last_name: profile?.lastName || '',
         email: session.user.email || '',
-        role: (profile?.role as 'admin' | 'worker') || 'worker',
+        role: role as 'admin' | 'worker',
         company_name: profile?.companyName || ''
     };
 

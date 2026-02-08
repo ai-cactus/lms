@@ -47,7 +47,7 @@ export async function getStaffDetails(userId: string) {
                 name: user.profile?.fullName || user.email.split('@')[0],
                 email: user.email,
                 avatarUrl: user.profile?.avatarUrl ?? null,
-                role: user.profile?.role || 'user',
+                role: user.role || 'worker',
                 jobTitle: user.profile?.jobTitle || 'Staff Member',
             },
             stats: {
@@ -66,7 +66,7 @@ export async function getStaffDetails(userId: string) {
                 score: e.score,
                 enrolledAt: e.startedAt,
                 completedAt: e.completedAt,
-                difficulty: e.course.difficulty,
+
             }))
         };
     } catch (error) {

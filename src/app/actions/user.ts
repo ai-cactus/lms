@@ -15,9 +15,7 @@ export async function getStaffUsers() {
     try {
         const users = await prisma.user.findMany({
             where: {
-                profile: {
-                    role: { not: 'admin' }
-                }
+                role: { not: 'admin' }
             },
             include: {
                 profile: true,
@@ -32,7 +30,7 @@ export async function getStaffUsers() {
             name: user.profile?.fullName || user.email.split('@')[0],
             email: user.email,
             avatarUrl: user.profile?.avatarUrl || null,
-            role: user.profile?.role || 'user',
+            role: user.role || 'worker',
             jobTitle: user.profile?.jobTitle || 'Staff Member',
             dateInvited: user.createdAt,
         }));
@@ -52,19 +50,12 @@ export async function updateRole(role: 'admin' | 'worker') {
     }
 
     try {
-        // Upsert profile to ensure it exists
-        await prisma.profile.upsert({
+        // Update User role
+        await prisma.user.update({
             where: {
                 email: session.user.email,
             },
-            update: {
-                role: role,
-            },
-            create: {
-                id: session.user.id,
-                email: session.user.email,
-                role: role,
-            }
+            data: { role }
         });
 
         revalidatePath('/dashboard');

@@ -1,0 +1,90 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    min-height: 48px;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    background-color: white;
+    cursor: text;
+    transition: all 0.2s;
+}
+
+.wrapper:focus-within {
+    border-color: #4C6EF5;
+    box-shadow: 0 0 0 1px #4C6EF5;
+}
+
+.wrapper.hasError {
+    border-color: #E53E3E;
+}
+
+.wrapper.hasError:focus-within {
+    box-shadow: 0 0 0 1px #E53E3E;
+}
+
+.input {
+    border: none;
+    outline: none;
+    font-size: 16px;
+    color: #2D3748;
+    flex: 1;
+    min-width: 120px;
+    padding: 4px 0;
+}
+
+.input::placeholder {
+    color: #A0AEC0;
+}
+
+.tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background-color: #EDF2F7;
+    color: #2D3748;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.tag.invalidTag {
+    background-color: #FED7D7;
+    color: #C53030;
+}
+
+.removeButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    color: #718096;
+    cursor: pointer;
+    padding: 0;
+}
+
+.removeButton:hover {
+    color: #4A5568;
+}
+
+.errorMessage {
+    font-size: 12px;
+    color: #E53E3E;
+    margin-top: 4px;
+}
+
+.hint {
+    font-size: 12px;
+    color: #A0AEC0;
+    margin-top: 4px;
+}

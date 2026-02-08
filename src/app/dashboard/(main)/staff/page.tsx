@@ -4,8 +4,14 @@ import StaffListClient from '@/components/dashboard/staff/StaffListClient';
 
 export const dynamic = 'force-dynamic';
 
-export default async function StaffPage() {
-    const users = await getStaffUsers();
+import { auth } from '@/auth';
 
-    return <StaffListClient users={users} />;
+export default async function StaffPage() {
+    const session = await auth();
+    const hasOrganization = !!(session?.user as any)?.organizationId;
+
+    // Only fetch users if org exists, otherwise empty list
+    const users = hasOrganization ? await getStaffUsers() : [];
+
+    return <StaffListClient users={users} hasOrganization={hasOrganization} />;
 }

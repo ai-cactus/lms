@@ -1,154 +1,165 @@
 .container {
-    max-width: 900px;
+    padding: 24px 40px;
+    max-width: 1400px;
     margin: 0 auto;
-    height: 100%;
     display: flex;
     flex-direction: column;
+    gap: 32px;
 }
 
-/* Header */
 .header {
-    text-align: center;
-    margin-bottom: 40px;
-    margin-top: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.titleSection {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .title {
     font-size: 28px;
     font-weight: 700;
-    color: #2D4DDD;
-    /* Brand Blue */
-    margin-bottom: 8px;
+    color: #1A202C;
+    margin: 0;
 }
 
 .subtitle {
     font-size: 16px;
     color: #718096;
+    margin: 0;
 }
 
-/* Upload Area */
-.uploadArea {
-    flex: 1;
-    /* Take available space */
-    border: 2px dashed #CBD5E0;
+/* Metrics Grid */
+.metricsGrid {
+    display: grid;
+    grid-template-columns: repeat(1, 1fr);
+    gap: 24px;
+}
+
+@media (min-width: 768px) {
+    .metricsGrid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.metricCard {
     border-radius: 16px;
-    background-color: #FFFFFF;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 400px;
-    transition: all 0.2s ease;
-}
-
-.uploadArea.dragging {
-    border-color: #2D4DDD;
-    background-color: #F8FAFF;
-}
-
-.uploadContent {
+    padding: 24px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 16px;
+    justify-content: space-between;
+    min-height: 160px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 
-.iconWrapper {
-    width: 80px;
-    height: 80px;
-    background-color: #EFF4FF;
-    /* Very light blue */
-    border-radius: 50%;
+.metricIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #2D4DDD;
-    margin-bottom: 8px;
+    color: white;
+    margin-bottom: 24px;
 }
 
-.uploadTitle {
-    font-size: 18px;
-    font-weight: 700;
-    color: #2D3748;
-}
-
-.uploadMeta {
+.metricLabel {
     font-size: 14px;
-    color: #A0AEC0;
-}
-
-.divider {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    gap: 12px;
-    color: #CBD5E0;
-    font-size: 14px;
-    margin: 8px 0;
-}
-
-.divider::before,
-.divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background-color: transparent;
-    /* No lines in design? Check image. Assuming just 'or' text centered */
-}
-
-/* Re-checking image: "or" is just text, no visible lines. */
-
-.selectButton {
-    background-color: #4C6FFF;
-    /* Slightly lighter/brighter blue from image */
-    padding: 12px 32px;
-    text-transform: uppercase;
     font-weight: 600;
-    letter-spacing: 0.05em;
-    border-radius: 8px;
-    min-width: 160px;
+    color: #4A5568;
+    margin-bottom: 4px;
 }
 
-/* Footer */
-.footer {
+.metricValue {
+    font-size: 36px;
+    font-weight: 700;
+    color: #1A202C;
+}
+
+/* Charts Section */
+.chartsGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+}
+
+@media (min-width: 1024px) {
+    .chartsGrid {
+        grid-template-columns: 2fr 1fr;
+    }
+}
+
+.chartCard {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #E2E8F0;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+}
+
+.chartHeader {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 40px;
-    padding-bottom: 20px;
+    margin-bottom: 24px;
 }
 
-.helpLink {
+.chartTitle {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1A202C;
+}
+
+.periodSelect {
+    padding: 6px 12px;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #4A5568;
+    background: white;
+    cursor: pointer;
+}
+
+/* Legend Styles */
+.legend {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.legendItem {
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: #718096;
-    background: none;
-    border: none;
-    cursor: pointer;
+    justify-content: space-between;
     font-size: 14px;
 }
 
-.actions {
+.legendLabel {
     display: flex;
-    gap: 16px;
+    align-items: center;
+    gap: 8px;
+    color: #4A5568;
 }
 
-.cancelButton {
-    padding: 10px 24px;
-    background: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-radius: 8px;
-    color: #2D3748;
-    font-weight: 600;
-    cursor: pointer;
+.legendDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
 }
 
-.previewButton {
-    padding: 10px 24px;
-    background: #E2E8F0;
-    border: none;
-    border-radius: 8px;
-    color: #A0AEC0;
+.legendValue {
     font-weight: 600;
-    cursor: not-allowed;
+    color: #1A202C;
+}
+
+/* My Courses placeholder */
+.coursesSection {
+    margin-top: 24px;
 }

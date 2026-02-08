@@ -378,7 +378,7 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
                                             </div>
                                             <div>
                                                 <span className={styles.courseName}>{course.title}</span>
-                                                <div className={styles.courseSub}>{course.difficulty}</div>
+
                                             </div>
                                         </div>
                                     </td>

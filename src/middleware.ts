@@ -3,15 +3,34 @@ import { auth } from '@/auth';
 
 export default auth((req) => {
     const isLoggedIn = !!req.auth;
+
+    // cast user to any to avoid ts errors in middleware file before types are picked up globally
+    const user = req.auth?.user as any;
+    const hasOrg = !!user?.organizationId;
+
     const isOnDashboard = req.nextUrl.pathname.startsWith('/dashboard');
+    const isOnOnboarding = req.nextUrl.pathname.startsWith('/onboarding');
+    const isOnAuth = req.nextUrl.pathname.startsWith('/login') || req.nextUrl.pathname.startsWith('/signup');
+
     if (isOnDashboard) {
-        if (isLoggedIn) return;
-        return Response.redirect(new URL('/login', req.nextUrl)); // Redirect unauthenticated users to login page
+        if (!isLoggedIn) return Response.redirect(new URL('/login', req.nextUrl));
+        // Strict org check removed for flexible onboarding
+        // if (!hasOrg) return Response.redirect(new URL('/onboarding', req.nextUrl));
+        return;
     }
 
-    // Redirect logged-in users away from Auth pages
-    if (isLoggedIn && (req.nextUrl.pathname.startsWith('/login') || req.nextUrl.pathname.startsWith('/signup'))) {
-        return Response.redirect(new URL('/dashboard', req.nextUrl));
+    if (isOnOnboarding) {
+        if (!isLoggedIn) return Response.redirect(new URL('/login', req.nextUrl));
+        if (hasOrg) return Response.redirect(new URL('/dashboard', req.nextUrl));
+        return;
+    }
+
+    if (isOnAuth) {
+        if (isLoggedIn) {
+            // Always go to dashboard, modal will handle org creation prompt
+            return Response.redirect(new URL('/dashboard', req.nextUrl));
+        }
+        return;
     }
 });
 
