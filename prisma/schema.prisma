@@ -9,25 +9,29 @@ datasource db {
 
 
 model Organization {
-  id               String   @id @default(uuid())
-  name             String
-  slug             String   @unique
-  dba              String?
-  ein              String?
-  staffCount       String?
-  primaryContact   String?
-  primaryEmail     String?
-  phone            String?
-  address          String?
-  country          String?
-  state            String?
-  zipCode          String?
-  licenseNumber    String?
-  isHipaaCompliant Boolean  @default(false)
-  users            User[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  invites          Invite[]
+  id                      String   @id @default(uuid())
+  name                    String
+  slug                    String   @unique
+  dba                     String?
+  ein                     String?
+  staffCount              String?
+  primaryContact          String?
+  primaryEmail            String?
+  phone                   String?
+  address                 String?
+  city                    String?
+  country                 String?
+  state                   String?
+  zipCode                 String?
+  licenseNumber           String?
+  isHipaaCompliant        Boolean  @default(false)
+  primaryBusinessType     String?
+  additionalBusinessTypes String[] @default([])
+  programServices         String[] @default([])
+  users                   User[]
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  invites                 Invite[]
 }
 
 model Invite {
