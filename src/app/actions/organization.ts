@@ -58,11 +58,15 @@ export async function updateOrganization(data: OrganizationUpdateData) {
                 primaryEmail: data.primaryEmail,
                 phone: data.phone,
                 address: data.address,
+                city: data.city,
                 country: data.country,
                 state: data.state,
                 zipCode: data.zipCode,
                 licenseNumber: data.licenseNumber,
                 isHipaaCompliant: data.isHipaaCompliant,
+                primaryBusinessType: data.primaryBusinessType,
+                additionalBusinessTypes: data.additionalBusinessTypes || [],
+                programServices: data.programServices || [],
             }
         });
 

@@ -334,3 +334,100 @@
     border-radius: 8px;
     border: 1px dashed #E2E8F0;
 }
+
+/* Required indicator */
+.required {
+    color: #E53E3E;
+}
+
+.optional {
+    color: #718096;
+    font-weight: 400;
+}
+
+/* Tag selection for additional business types */
+.tagContainer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid #E2E8F0;
+    background-color: #F7FAFC;
+    color: #4A5568;
+    transition: all 0.2s ease;
+}
+
+.tag:hover:not(:disabled) {
+    border-color: #2D4DDD;
+    color: #2D4DDD;
+}
+
+.tagSelected {
+    background-color: #2D4DDD;
+    color: white;
+    border-color: #2D4DDD;
+}
+
+.tagSelected:hover:not(:disabled) {
+    background-color: #2338AA;
+    color: white;
+}
+
+.tagClose {
+    font-size: 16px;
+    margin-left: 4px;
+}
+
+.tag:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Checkbox grid for program services */
+.checkboxGrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.checkboxLabel {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: #2D3748;
+    cursor: pointer;
+}
+
+.checkboxLabel input:disabled+span {
+    color: #A0AEC0;
+}
+
+.checkbox {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #CBD5E0;
+    border-radius: 4px;
+    cursor: pointer;
+    accent-color: #2D4DDD;
+}
+
+.checkbox:checked {
+    background-color: #2D4DDD;
+    border-color: #2D4DDD;
+}
+
+.checkbox:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}

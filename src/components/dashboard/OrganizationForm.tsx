@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './ProfileForm.module.css';
-import { Button, Input, Select } from '@/components/ui';
+import { Button, Input, Select, Checkbox } from '@/components/ui';
 import { updateOrganization } from '@/app/actions/organization';
 import { useRouter } from 'next/navigation';
 
@@ -22,6 +22,9 @@ interface OrganizationData {
     city?: string | null;
     licenseNumber?: string | null;
     isHipaaCompliant?: boolean;
+    primaryBusinessType?: string | null;
+    additionalBusinessTypes?: string[];
+    programServices?: string[];
 }
 
 interface OrganizationFormProps {
@@ -29,41 +32,56 @@ interface OrganizationFormProps {
     isAdmin: boolean;
 }
 
+// Exact options from onboarding/step1
 const STAFF_COUNT_OPTIONS = [
     { label: '1-10', value: '1-10' },
     { label: '11-49', value: '11-49' },
-    { label: '1-50', value: '1-50' },
     { label: '50-499', value: '50-499' },
     { label: '500+', value: '500+' }
 ];
 
 const COUNTRY_OPTIONS = [
-    { label: 'USA', value: 'US' },
+    { label: 'United States', value: 'US' },
     { label: 'Canada', value: 'CA' },
     { label: 'United Kingdom', value: 'UK' }
 ];
 
 const STATE_OPTIONS = [
     { label: 'California', value: 'CA' },
-    { label: 'Colorado', value: 'CO' },
-    { label: 'Florida', value: 'FL' },
     { label: 'New York', value: 'NY' },
-    { label: 'North Carolina', value: 'NC' },
     { label: 'Texas', value: 'TX' }
 ];
 
-const CITY_OPTIONS = [
-    { label: 'Denver', value: 'Denver' },
-    { label: 'Los Angeles', value: 'Los Angeles' },
-    { label: 'Miami', value: 'Miami' },
-    { label: 'New York', value: 'New York' },
-    { label: 'Raleigh', value: 'Raleigh' },
-    { label: 'San Francisco', value: 'San Francisco' }
+// Exact options from onboarding/step2
+const HIPAA_OPTIONS = [
+    { label: 'Yes', value: 'yes' },
+    { label: 'No', value: 'no' }
 ];
 
-const HIPAA_OPTIONS = [
-    { label: 'Yes', value: 'true' },
-    { label: 'No', value: 'false' }
+// Exact options from onboarding/step3
+const PRIMARY_BUSINESS_TYPES = [
+    { label: 'Solo / Independent Provider', value: 'solo' },
+    { label: 'Group Practice', value: 'group' },
+    { label: 'Clinic', value: 'clinic' },
+    { label: 'Hospital', value: 'hospital' }
+];
+
+const ADDITIONAL_BUSINESS_TYPES = [
+    { label: 'None', value: 'none' },
+    { label: 'Non-Profit', value: 'non-profit' },
+    { label: 'Private', value: 'private' },
+    { label: 'Public', value: 'public' }
+];
+
+// Exact program services from onboarding/step3
+const PROGRAM_SERVICES = [
+    { id: 'aging', label: 'Aging Services' },
+    { id: 'behavioral', label: 'Behavioral Health' },
+    { id: 'child-youth', label: 'Child & Youth Services' },
+    { id: 'employment', label: 'Employment & Community Services' },
+    { id: 'medical-rehab', label: 'Medical Rehabilitation' },
+    { id: 'opioid', label: 'Opioid Treatment Program' },
+    { id: 'vision', label: 'Vision Rehabilitation Services' },
 ];
 
 export default function OrganizationForm({ initialData, isAdmin }: OrganizationFormProps) {
@@ -83,7 +101,10 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             zipCode: '',
             city: '',
             licenseNumber: '',
-            isHipaaCompliant: false
+            isHipaaCompliant: false,
+            primaryBusinessType: '',
+            additionalBusinessTypes: [],
+            programServices: []
         }
     );
     const [isLoading, setIsLoading] = useState(false);
@@ -92,7 +113,11 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
     useEffect(() => {
         if (initialData) {
-            setFormData(initialData);
+            setFormData({
+                ...initialData,
+                additionalBusinessTypes: initialData.additionalBusinessTypes || [],
+                programServices: initialData.programServices || []
+            });
         }
     }, [initialData]);
 
@@ -105,6 +130,17 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleProgramServiceToggle = (serviceId: string) => {
+        setFormData(prev => {
+            const current = prev.programServices || [];
+            if (current.includes(serviceId)) {
+                return { ...prev, programServices: current.filter(s => s !== serviceId) };
+            } else {
+                return { ...prev, programServices: [...current, serviceId] };
+            }
+        });
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!isAdmin) return;
@@ -113,6 +149,9 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         setMessage(null);
 
         try {
+            // Get first value from additionalBusinessTypes array or empty string
+            const additionalBizType = (formData.additionalBusinessTypes || [])[0] || '';
+
             const result = await updateOrganization({
                 name: formData.name,
                 dba: formData.dba || undefined,
@@ -122,12 +161,15 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                 primaryEmail: formData.primaryEmail || undefined,
                 phone: formData.phone || undefined,
                 address: formData.address || undefined,
+                city: formData.city || undefined,
                 country: formData.country || undefined,
                 state: formData.state || undefined,
                 zipCode: formData.zipCode || undefined,
-                city: formData.city || undefined,
                 licenseNumber: formData.licenseNumber || undefined,
-                isHipaaCompliant: formData.isHipaaCompliant
+                isHipaaCompliant: formData.isHipaaCompliant,
+                primaryBusinessType: formData.primaryBusinessType || undefined,
+                additionalBusinessTypes: additionalBizType ? [additionalBizType] : [],
+                programServices: formData.programServices || []
             });
 
             if (result.success) {
@@ -145,7 +187,11 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
     const handleDiscard = () => {
         if (initialData) {
-            setFormData(initialData);
+            setFormData({
+                ...initialData,
+                additionalBusinessTypes: initialData.additionalBusinessTypes || [],
+                programServices: initialData.programServices || []
+            });
         }
         setMessage(null);
     };
@@ -160,7 +206,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
     return (
         <form onSubmit={handleSubmit} className={styles.orgForm}>
-            {/* Section 1: Basic Organization Information */}
+            {/* Section 1: Basic Organization Information - matches onboarding/step1 */}
             <div className={styles.section}>
                 <div className={styles.sectionHeader}>
                     <span className={styles.sectionNumber}>1.</span>
@@ -168,40 +214,40 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                 </div>
 
                 <div className={styles.fieldGroup}>
-                    <label className={styles.label}>Legal Business Name</label>
+                    <label className={styles.label}>Legal Business Name <span className={styles.required}>*</span></label>
                     <Input
                         name="name"
                         value={formData.name || ''}
                         onChange={handleChange}
-                        placeholder="Enter legal business name"
+                        placeholder="e.g. Zenco Healthcare Ltd"
                         disabled={!isAdmin}
                     />
                 </div>
 
                 <div className={styles.fieldGroup}>
-                    <label className={styles.label}>Doing Business As (DBA)</label>
+                    <label className={styles.label}>Doing Business As (DBA) <span className={styles.required}>*</span></label>
                     <Input
                         name="dba"
                         value={formData.dba || ''}
                         onChange={handleChange}
-                        placeholder="Enter DBA if applicable"
+                        placeholder="Enter business name (if applicable)"
                         disabled={!isAdmin}
                     />
                 </div>
 
                 <div className={styles.formGrid}>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Employer Identification Number (EIN)</label>
+                        <label className={styles.label}>Employer Identification Number (EIN) <span className={styles.optional}>(optional)</span></label>
                         <Input
                             name="ein"
                             value={formData.ein || ''}
                             onChange={handleChange}
-                            placeholder="e.g. 47-8912564"
+                            placeholder="Enter your EIN (if applicable)"
                             disabled={!isAdmin}
                         />
                     </div>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Number of Staff</label>
+                        <label className={styles.label}>Number of Staff <span className={styles.required}>*</span></label>
                         <Select
                             value={formData.staffCount || ''}
                             onChange={(value) => handleSelectChange('staffCount', value)}
@@ -214,22 +260,22 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
                 <div className={styles.formGrid}>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Primary Contact Name</label>
+                        <label className={styles.label}>Primary Contact Name <span className={styles.required}>*</span></label>
                         <Input
                             name="primaryContact"
                             value={formData.primaryContact || ''}
                             onChange={handleChange}
-                            placeholder="Enter contact name"
+                            placeholder="Enter the full name of the main contact"
                             disabled={!isAdmin}
                         />
                     </div>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Primary Contact Email</label>
+                        <label className={styles.label}>Primary Contact Email <span className={styles.required}>*</span></label>
                         <Input
                             name="primaryEmail"
                             value={formData.primaryEmail || ''}
                             onChange={handleChange}
-                            placeholder="Enter contact email"
+                            placeholder="Enter the email address of the main contact"
                             type="email"
                             disabled={!isAdmin}
                         />
@@ -238,7 +284,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
                 <div className={styles.formGrid}>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Country</label>
+                        <label className={styles.label}>Country <span className={styles.required}>*</span></label>
                         <Select
                             value={formData.country || ''}
                             onChange={(value) => handleSelectChange('country', value)}
@@ -248,12 +294,12 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                         />
                     </div>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Phone Number</label>
+                        <label className={styles.label}>Phone Number <span className={styles.required}>*</span></label>
                         <Input
                             name="phone"
                             value={formData.phone || ''}
                             onChange={handleChange}
-                            placeholder="Enter phone number"
+                            placeholder="Enter the phone number"
                             disabled={!isAdmin}
                         />
                     </div>
@@ -261,17 +307,17 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
                 <div className={styles.formGrid}>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Street Address</label>
+                        <label className={styles.label}>Street Address <span className={styles.optional}>(optional)</span></label>
                         <Input
                             name="address"
                             value={formData.address || ''}
                             onChange={handleChange}
-                            placeholder="Enter street address"
+                            placeholder="Enter business street address"
                             disabled={!isAdmin}
                         />
                     </div>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Zip Code</label>
+                        <label className={styles.label}>Zip Code <span className={styles.optional}>(optional)</span></label>
                         <Input
                             name="zipCode"
                             value={formData.zipCode || ''}
@@ -284,17 +330,17 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
                 <div className={styles.formGrid}>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>City</label>
-                        <Select
+                        <label className={styles.label}>City <span className={styles.optional}>(optional)</span></label>
+                        <Input
+                            name="city"
                             value={formData.city || ''}
-                            onChange={(value) => handleSelectChange('city', value)}
-                            options={CITY_OPTIONS}
-                            placeholder="Select an option"
+                            onChange={handleChange}
+                            placeholder="Enter city"
                             disabled={!isAdmin}
                         />
                     </div>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>State</label>
+                        <label className={styles.label}>State <span className={styles.optional}>(optional)</span></label>
                         <Select
                             value={formData.state || ''}
                             onChange={(value) => handleSelectChange('state', value)}
@@ -306,7 +352,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                 </div>
             </div>
 
-            {/* Section 2: Credentialing & Documentation */}
+            {/* Section 2: Credentialing & Documentation - matches onboarding/step2 */}
             <div className={styles.section}>
                 <div className={styles.sectionHeader}>
                     <span className={styles.sectionNumber}>2.</span>
@@ -315,43 +361,84 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
                 <div className={styles.formGrid}>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>State Healthcare License Number</label>
+                        <label className={styles.label}>State Healthcare License Number <span className={styles.optional}>(optional)</span></label>
                         <Input
                             name="licenseNumber"
                             value={formData.licenseNumber || ''}
                             onChange={handleChange}
-                            placeholder="e.g. CO-TL-9078"
+                            placeholder="Enter your official license number"
                             disabled={!isAdmin}
                         />
                     </div>
                     <div className={styles.fieldGroup}>
-                        <label className={styles.label}>HIPAA Compliance Confirmation:</label>
+                        <label className={styles.label}>HIPAA Compliance Confirmation <span className={styles.required}>*</span></label>
                         <Select
-                            value={formData.isHipaaCompliant ? 'true' : 'false'}
-                            onChange={(value) => setFormData(prev => ({ ...prev, isHipaaCompliant: value === 'true' }))}
+                            value={formData.isHipaaCompliant ? 'yes' : 'no'}
+                            onChange={(value) => setFormData(prev => ({ ...prev, isHipaaCompliant: value === 'yes' }))}
                             options={HIPAA_OPTIONS}
+                            placeholder="Select an option"
                             disabled={!isAdmin}
                         />
                     </div>
                 </div>
 
-                {/* Placeholder for uploaded documents */}
+                {/* Placeholder for uploaded documents - matches step2 file upload */}
                 <div className={styles.fieldGroup}>
-                    <label className={styles.label}>Uploaded compliance certifications:</label>
+                    <label className={styles.label}>Upload your compliance certifications <span className={styles.optional}>(optional)</span></label>
                     <div className={styles.uploadedDocsList}>
-                        <p className={styles.placeholder}>Document uploads will be displayed here when available.</p>
+                        <p className={styles.placeholder}>Document uploads will be available in a future update.</p>
                     </div>
                 </div>
             </div>
 
-            {/* Section 3: Organization Services */}
+            {/* Section 3: Organization Services - matches onboarding/step3 */}
             <div className={styles.section}>
                 <div className={styles.sectionHeader}>
                     <span className={styles.sectionNumber}>3.</span>
                     <span>Organization Services</span>
                 </div>
 
-                <p className={styles.placeholder}>Service configuration (Primary Business Type, Additional Business Types, Program Services) will be displayed here when available.</p>
+                <div className={styles.formGrid}>
+                    <div className={styles.fieldGroup}>
+                        <label className={styles.label}>Primary Business Type <span className={styles.required}>*</span></label>
+                        <Select
+                            value={formData.primaryBusinessType || ''}
+                            onChange={(value) => handleSelectChange('primaryBusinessType', value)}
+                            options={PRIMARY_BUSINESS_TYPES}
+                            placeholder="Select an option"
+                            disabled={!isAdmin}
+                        />
+                    </div>
+                    <div className={styles.fieldGroup}>
+                        <label className={styles.label}>Additional Business Type <span className={styles.required}>*</span></label>
+                        <Select
+                            value={(formData.additionalBusinessTypes || [])[0] || ''}
+                            onChange={(value) => setFormData(prev => ({ ...prev, additionalBusinessTypes: value ? [value] : [] }))}
+                            options={ADDITIONAL_BUSINESS_TYPES}
+                            placeholder="Select an option"
+                            disabled={!isAdmin}
+                        />
+                    </div>
+                </div>
+
+                <div className={styles.fieldGroup}>
+                    <label className={styles.label} style={{ marginBottom: '16px', display: 'block' }}>Program Services</label>
+                    <div className={styles.checkboxGrid}>
+                        {PROGRAM_SERVICES.map((service) => (
+                            <Checkbox
+                                key={service.id}
+                                label={service.label}
+                                checked={(formData.programServices || []).includes(service.id)}
+                                onChange={(e) => {
+                                    if (isAdmin) {
+                                        handleProgramServiceToggle(service.id);
+                                    }
+                                }}
+                                disabled={!isAdmin}
+                            />
+                        ))}
+                    </div>
+                </div>
             </div>
 
             {message && (

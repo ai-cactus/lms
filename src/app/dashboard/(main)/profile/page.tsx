@@ -45,11 +45,15 @@ export default async function ProfilePage() {
         primaryEmail: user.organization.primaryEmail,
         phone: user.organization.phone,
         address: user.organization.address,
+        city: user.organization.city,
         country: user.organization.country,
         state: user.organization.state,
         zipCode: user.organization.zipCode,
         licenseNumber: user.organization.licenseNumber,
         isHipaaCompliant: user.organization.isHipaaCompliant,
+        primaryBusinessType: user.organization.primaryBusinessType,
+        additionalBusinessTypes: user.organization.additionalBusinessTypes || [],
+        programServices: user.organization.programServices || [],
     } : null;
 
     return (
