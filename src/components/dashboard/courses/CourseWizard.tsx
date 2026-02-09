@@ -18,6 +18,7 @@ interface Document {
     type: 'pdf' | 'docx';
     status: 'analyzed';
     selected: boolean;
+    file?: File; // Store the actual file object
 }
 
 export default function CourseWizard() {
@@ -55,18 +56,20 @@ export default function CourseWizard() {
         dueTime: ''
     });
 
-    // Mock Documents for Step 2
-    const [documents, setDocuments] = useState<Document[]>([
-        { id: '1', name: 'Patient Privacy Policy.pdf', type: 'pdf', status: 'analyzed', selected: true },
-        { id: '2', name: 'Patient Privacy Policy.docx', type: 'docx', status: 'analyzed', selected: false },
-        { id: '3', name: 'Patient Privacy Policy.pdf', type: 'pdf', status: 'analyzed', selected: false },
-        { id: '4', name: 'Patient Privacy Policy.pdf', type: 'pdf', status: 'analyzed', selected: true },
-    ]);
+    // Documents State
+    const [documents, setDocuments] = useState<Document[]>([]);
 
     const handleToggleSelect = (id: string) => {
         setDocuments(docs => docs.map(doc =>
             doc.id === id ? { ...doc, selected: !doc.selected } : doc
         ));
+    };
+
+    const [generatedContent, setGeneratedContent] = useState<any>(null);
+
+    const handleGenerationComplete = (content: any) => {
+        setGeneratedContent(content);
+        setIsGenerating(false);
     };
 
     const handleNext = () => {
@@ -91,6 +94,18 @@ export default function CourseWizard() {
         }
     };
 
+    const handleUpload = (files: File[]) => {
+        const newDocs = files.map((file, i) => ({
+            id: `new-${Date.now()}-${i}`,
+            name: file.name,
+            type: file.name.endsWith('.pdf') ? 'pdf' : 'docx' as any,
+            status: 'analyzed' as any,
+            selected: true,
+            file: file
+        }));
+        setDocuments(prev => [...prev, ...newDocs]);
+    };
+
     const renderStep = () => {
         switch (currentStep) {
             case 1:
@@ -105,6 +120,7 @@ export default function CourseWizard() {
                     <Step2Documents
                         documents={documents}
                         onToggleSelect={handleToggleSelect}
+                        onUpload={handleUpload}
                     />
                 );
             case 3:
@@ -124,13 +140,16 @@ export default function CourseWizard() {
             case 5:
                 return (
                     <Step5Review
-                        onReady={() => setIsGenerating(false)}
+                        data={formData}
+                        documents={documents}
+                        onComplete={handleGenerationComplete}
                     />
                 );
             case 6:
                 return (
                     <Step6QuizReview
                         data={formData}
+                        quiz={generatedContent?.quiz}
                     />
                 );
             case 7:

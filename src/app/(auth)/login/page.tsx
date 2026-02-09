@@ -102,6 +102,44 @@ function LoginForm() {
                 </div>
             )}
 
+            {searchParams.get('verified') && (
+                <div style={{
+                    backgroundColor: '#ECFDF5',
+                    color: '#065F46',
+                    padding: '16px 20px',
+                    borderRadius: '12px',
+                    marginBottom: '24px',
+                    border: '1px solid #A7F3D0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    width: '100%'
+                }}>
+                    <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '50%',
+                        backgroundColor: '#10B981',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                    }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '2px' }}>
+                            Email verified successfully!
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#047857' }}>
+                            Please log in to continue to your account.
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className={styles.socialLogin}>
                 <button type="button" className={styles.microsoftButton} onClick={handleMicrosoftLogin}>
                     <Image

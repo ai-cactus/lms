@@ -4,7 +4,7 @@ import React, { forwardRef } from 'react';
 import styles from './Checkbox.module.css';
 
 interface CheckboxProps extends React.InputHTMLAttributes<HTMLInputElement> {
-    label?: string;
+    label?: React.ReactNode;
     error?: string;
 }
 

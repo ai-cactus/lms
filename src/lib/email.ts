@@ -78,3 +78,45 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
         return { success: false, error };
     }
 };
+
+export const sendEmailVerification = async (email: string, token: string) => {
+    // Use APP_URL for server-side, fallback to NEXT_PUBLIC_APP_URL
+    const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://staging-lms.theraptly.com';
+    const verifyLink = `${baseUrl}/api/auth/verify?token=${token}`;
+    const appName = "Theraptly";
+
+    const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="color: #4C6EF5; font-size: 28px; margin: 0;">Verify your email</h1>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Thank you for signing up for <strong>${appName}</strong>! 
+                Please verify your email address by clicking the button below.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${verifyLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Verify Email</a>
+            </div>
+            <p style="color: #718096; font-size: 14px; text-align: center;">
+                This link expires in <strong>5 minutes</strong>.
+            </p>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                If you didn't create an account with ${appName}, you can safely ignore this email.
+            </p>
+        </div>
+    `;
+
+    try {
+        const info = await transporter.sendMail({
+            from: `"Theraptly" <${process.env.SMTP_USER}>`,
+            to: email,
+            subject: `Verify your email - ${appName}`,
+            html,
+        });
+        console.log('Email verification sent: %s', info.messageId);
+        return { success: true };
+    } catch (error) {
+        console.error('Error sending email verification:', error);
+        return { success: false, error };
+    }
+};

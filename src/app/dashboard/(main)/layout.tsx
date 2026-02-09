@@ -23,13 +23,19 @@ export default async function DashboardLayout({
         select: { fullName: true }
     });
 
+    // Fetch fresh user data from DB to get current organizationId (session may be stale after onboarding)
+    const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { organizationId: true, role: true }
+    });
+
     const fullName = profile?.fullName || session.user.name || session.user.email || 'User';
     // User role should be in session or fetched from User model if needed. 
     // For now we rely on session.
     // User role should be in session or fetched from User model if needed. 
     // For now we rely on session.
-    const role = session.user.role;
-    const organizationId = (session.user as any).organizationId; // Cast to any to avoid type error if d.ts not set up
+    const role = user?.role || session.user.role;
+    const organizationId = user?.organizationId; // Fetch from DB for freshest data
 
     return (
         <>

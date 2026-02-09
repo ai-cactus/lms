@@ -1,0 +1,169 @@
+/* Container - Split layout like login/signup */
+.container {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+}
+
+/* Form Section - Left Side */
+.formSection {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    background: #FFFFFF;
+    min-width: 0;
+}
+
+.formContent {
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+/* Hero Section - Right Side (matches login page) */
+.heroSection {
+    flex: 1;
+    display: none;
+    background: #F7FAFC;
+    position: relative;
+    overflow: hidden;
+    margin: 16px;
+    margin-left: 0;
+    border-radius: 24px;
+}
+
+.heroImage {
+    object-fit: cover;
+    border-radius: 24px;
+}
+
+/* Hero Overlay (matches login page gradient) */
+.heroOverlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    padding: 60px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 40px;
+    background: linear-gradient(180deg, rgba(16, 16, 16, 0) 53.5%, rgba(16, 16, 16, 1) 100%);
+}
+
+.heroTextContent {
+    max-width: 540px;
+    color: #FFFFFF;
+}
+
+.heroTitle {
+    font-family: 'Inter Tight', 'Inter', sans-serif;
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 16px;
+}
+
+.heroSubtitle {
+    font-size: 18px;
+    line-height: 1.5;
+    opacity: 0.9;
+    font-weight: 400;
+}
+
+/* Progress Bar */
+.progressBarContainer {
+    display: flex;
+    gap: 8px;
+}
+
+.progressSegment {
+    width: 48px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+
+.progressSegment.active {
+    background: #FFFFFF;
+}
+
+/* Icon */
+.iconWrapper {
+    margin: 32px 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100px;
+    height: 100px;
+    background: #F7FAFC;
+    border-radius: 50%;
+}
+
+/* Text */
+.title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #172B4D;
+    margin-bottom: 12px;
+}
+
+.subtitle {
+    font-size: 15px;
+    color: #7A869A;
+    line-height: 1.6;
+    margin-bottom: 8px;
+}
+
+.expiry {
+    font-size: 14px;
+    color: #4C6EF5;
+    font-weight: 500;
+    margin-bottom: 32px;
+}
+
+/* Actions */
+.actions {
+    width: 100%;
+    margin-bottom: 16px;
+}
+
+.link {
+    color: #4C6EF5;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    margin-top: 16px;
+}
+
+.link:hover {
+    text-decoration: underline;
+}
+
+/* Messages */
+.error {
+    color: #EF4444;
+    font-size: 14px;
+    margin-top: 12px;
+}
+
+.success {
+    color: #10B981;
+    font-size: 14px;
+    margin-top: 12px;
+}
+
+/* Responsive - Show hero on desktop (matches login) */
+@media (min-width: 1024px) {
+    .heroSection {
+        display: block;
+    }
+}

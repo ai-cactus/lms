@@ -1,205 +1,339 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styles from '../CourseWizard.module.css';
+import { generateCourseAI } from '@/app/actions/course-ai';
 
 interface Step5ReviewProps {
-    onReady: () => void; // Call when generation is done to enable parent "Next" if needed
+    data: any;
+    documents: any[];
+    onComplete: (content: any) => void;
 }
 
-export default function Step5Review({ onReady }: Step5ReviewProps) {
+export default function Step5Review({ data, documents, onComplete }: Step5ReviewProps) {
     const [isGenerating, setIsGenerating] = useState(true);
     const [checklistStep, setChecklistStep] = useState(0);
+    const [generatedContent, setGeneratedContent] = useState<any>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    // UI State
+    const [activeModuleIndex, setActiveModuleIndex] = useState(0);
+    const [sidebarTab, setSidebarTab] = useState<'modules' | 'source'>('modules');
+    const [activeCitationId, setActiveCitationId] = useState<number | null>(null);
+    const sourceViewRef = useRef<HTMLDivElement>(null);
+
+    // Edit Mode State
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedModules, setEditedModules] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (generatedContent?.modules) {
+            setEditedModules(generatedContent.modules);
+        }
+    }, [generatedContent]);
+
+    const handleSaveEdit = () => {
+        setIsEditing(false);
+        setGeneratedContent((prev: any) => ({
+            ...prev,
+            modules: editedModules
+        }));
+    };
+
+    const handleModuleChange = (index: number, field: 'title' | 'content', value: string) => {
+        const newModules = [...editedModules];
+        newModules[index] = { ...newModules[index], [field]: value };
+        setEditedModules(newModules);
+    };
+
+    const hasStartedRef = useRef(false);
 
     const checklistItems = [
-        'Analyzing policy and procedure',
-        'Extract course input data',
-        'Create course content and quiz',
-        'Finalize all modules'
+        'Reading source document',
+        'Extracting key concepts',
+        'Generating course structure',
+        'Creating quiz questions',
+        'Finalizing citations'
     ];
 
-    // Animation Effect
+    // AI Generation Effect
     useEffect(() => {
-        if (!isGenerating) return;
+        if (hasStartedRef.current) return;
+        hasStartedRef.current = true;
 
-        const interval = setInterval(() => {
-            setChecklistStep((prev) => {
-                if (prev < checklistItems.length) {
-                    return prev + 1;
+        const generate = async () => {
+            try {
+                // Simulate checklist progress
+                let step = 0;
+                const interval = setInterval(() => {
+                    if (step < checklistItems.length - 1) {
+                        step++;
+                        setChecklistStep(step);
+                    }
+                }, 1500);
+
+                // Prepare FormData with File
+                const formData = new FormData();
+                formData.append('data', JSON.stringify(data));
+
+                // Find the selected file
+                const selectedDoc = documents.find(d => d.selected && d.file);
+                if (selectedDoc?.file) {
+                    formData.append('file', selectedDoc.file);
                 }
+
+                const result = await generateCourseAI(formData);
+
                 clearInterval(interval);
-                return prev;
-            });
-        }, 1500); // 1.5s per item
+                setChecklistStep(checklistItems.length);
 
-        return () => clearInterval(interval);
-    }, [isGenerating, checklistItems.length]);
+                if (result.error) {
+                    setError(result.error);
+                } else {
+                    setGeneratedContent(result);
+                    onComplete(result);
+                    // Switch to source tab if citations exist to show off the feature? 
+                    // No, stick to modules first.
+                }
+                setIsGenerating(false);
+            } catch (err) {
+                console.error("Generation failed", err);
+                setError("An unexpected error occurred during generation.");
+                setIsGenerating(false);
+            }
+        };
 
-    const isComplete = checklistStep >= checklistItems.length;
+        generate();
+    }, [data, documents, onComplete]);
 
-    const handleContinue = () => {
-        setIsGenerating(false);
-        onReady(); // Notify parent that we are ready to proceed (optional depending on wizard logic)
+    // Handle Citation Click
+    const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        const target = e.target as HTMLElement;
+        if (target.dataset.citationId) {
+            const id = parseInt(target.dataset.citationId, 10);
+            setActiveCitationId(id);
+            setSidebarTab('source');
+
+            // Scroll to highlight (allow render first)
+            setTimeout(() => {
+                const mark = sourceViewRef.current?.querySelector(`mark[data-id="${id}"]`);
+                if (mark) {
+                    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+        }
     };
+
+    // Process Content to inject clickable spans for [1]
+    const processContent = (html: string) => {
+        if (!html) return '';
+        // Replace [1], [2] etc with <span ...>
+        return html.replace(/\[(\d+)\]/g, (match, id) => {
+            const numId = parseInt(id, 10);
+            const isActive = activeCitationId === numId;
+            return `<span class="${styles.citationBadge} ${isActive ? styles.citationActive : ''}" data-citation-id="${id}">${match}</span>`;
+        });
+    };
+
+    // Render Source Text with Highlights
+    const renderSourceText = () => {
+        if (!generatedContent?.sourceText) return <p className={styles.emptyState}>No source text available.</p>;
+
+        const text = generatedContent.sourceText;
+        const citations = generatedContent.citations || [];
+
+        // We need to highlight parts of the text.
+        // Simple approach: Split text by quotes. 
+        // Note: This is fragile if quotes overlap or repeat. V1 implementation.
+
+        // Let's create a map of ranges or just replace first occurrence?
+        // Replacing is safer for display.
+
+        let processedHtml = text.replace(/\n/g, '<br/>'); // Preserve line breaks
+
+        citations.forEach((cit: any) => {
+            if (cit.quote) {
+                // Escape regex special chars in quote
+                const escapedQuote = cit.quote.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                // Wrap first occurrence in mark
+                const regex = new RegExp(`(${escapedQuote})`, '');
+                processedHtml = processedHtml.replace(regex, `<mark data-id="${cit.id}" class="${activeCitationId === cit.id ? styles.markActive : ''}">$1</mark>`);
+            }
+        });
+
+        return <div dangerouslySetInnerHTML={{ __html: processedHtml }} />;
+    };
+
+    if (error) {
+        return (
+            <div className={styles.stepWrapper}>
+                <div className={styles.generationContainer}>
+                    <h2 className={styles.stepTitle} style={{ color: '#E53E3E' }}>Generation Failed</h2>
+                    <p className={styles.stepSubtitle}>{error}</p>
+                    <button className={styles.btnDashboard} onClick={() => window.location.reload()}>Try Again</button>
+                </div>
+            </div>
+        );
+    }
 
     if (isGenerating) {
         return (
             <div className={styles.stepWrapper}>
                 <div className={styles.generationContainer}>
-                    <h2 className={styles.stepTitle} style={{ marginBottom: 10 }}>
-                        Your course is being created...
-                    </h2>
-                    <p className={styles.stepSubtitle}>
-                        We're reviewing your document to create the course.<br />
-                        You'll receive an email notification once the course is complete and ready for review.
-                    </p>
-
+                    <h2 className={styles.stepTitle}>Analysis & Generation</h2>
+                    <p className={styles.stepSubtitle}>AI agent is reading your documents and designing the course.</p>
                     <div className={styles.processingCard}>
                         <div className={styles.checklist}>
                             {checklistItems.map((item, index) => {
                                 const isDone = checklistStep > index;
                                 const isCurrent = checklistStep === index;
-
                                 return (
-                                    <div
-                                        key={index}
-                                        className={`${styles.checklistItem} ${isDone ? styles.completed : ''} ${isCurrent ? styles.active : ''}`}
-                                    >
+                                    <div key={index} className={`${styles.checklistItem} ${isDone ? styles.completed : ''} ${isCurrent ? styles.active : ''}`}>
                                         <div className={styles.iconWrapper}>
-                                            {isDone ? (
-                                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                                    <circle cx="10" cy="10" r="10" fill="#48BB78" />
-                                                    <path d="M6 10L9 13L14 8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                </svg>
-                                            ) : isCurrent ? (
-                                                <svg className={styles.spinner} width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                                    <circle cx="12" cy="12" r="10" stroke="#CBD5E0" strokeWidth="3" />
-                                                    <path d="M12 2C6.47715 2 2 6.47715 2 12" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
-                                                </svg>
-                                            ) : (
-                                                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#CBD5E0' }} />
-                                            )}
+                                            {isDone ? <div className={styles.checkIcon}>✓</div> : isCurrent ? <div className={styles.spinner} /> : <div className={styles.dot} />}
                                         </div>
                                         <span>{item}</span>
                                     </div>
                                 );
                             })}
                         </div>
-
-                        {isComplete && (
-                            <button className={styles.btnDashboard} onClick={handleContinue}>
-                                Continue
-                            </button>
-                        )}
                     </div>
                 </div>
             </div>
         );
     }
 
-    // Review Content View
+    const currentModule = isEditing ? editedModules[activeModuleIndex] : generatedContent?.modules?.[activeModuleIndex];
+
     return (
         <div className={styles.stepWrapper}>
-            <h2 className={styles.stepTitle}>Review Course Content</h2>
-            <p className={styles.stepSubtitle}>
-                Start by uploading the policy or compliance document you want to turn into a course. This will help you analyze and generate lessons and quizzes automatically.
-            </p>
+            <div className={styles.reviewHeader}>
+                <h2 className={styles.stepTitle}>Review Course Content</h2>
+                <p className={styles.stepSubtitle}>Review generated modules and verify citations against the source.</p>
+            </div>
 
             <div className={styles.reviewContainer}>
                 {/* Main Article */}
                 <div className={styles.reviewMain}>
-                    <div className={styles.articleTitle}>
-                        10 Fundamental CARF Principles You Need to Know
-                    </div>
-
-                    <div className={styles.articleMeta}>
-                        <span>Last update: Jan 12, 2024</span>
-                        <span>•</span>
-                        <span>10 min read</span>
-                    </div>
-
-                    <div className={styles.articleContent}>
-                        <h3>Benefits of CARF Principles</h3>
-                        <p>
-                            As remote work has become the new normal, teams are challenged to find new ways to collaborate and hold meetings. Remote workshops are your best bet if your team members are scattered worldwide or you're limited on time and budget
-                        </p>
-                        <p>
-                            On the flip side, during remote workshops, participants experience screen fatigue symptoms and get easily distracted. For a remote workshop to be successful and efficient, you must define the goals, prepare the agenda, decide on the participants' list, plan icebreakers, and schedule sufficient breaks.
-                        </p>
-                        <p>
-                            One of the most important parts is finding the right tools that allow you to run a productive workshop and gather valuable insights.
-                        </p>
-
-                        <h3>How does CARF applies to Healthcare Sectors</h3>
-                        <p>
-                            Remote workshops are a great solution to gather all necessary people in one digital room regardless of geographical limits. However, there are also some potential pitfalls:
-                        </p>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                            <div style={{ display: 'flex', gap: 12 }}>
-                                <div style={{ minWidth: 24, height: 24, background: '#EDF2F7', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#4A5568' }}>1</div>
-                                <div>
-                                    <strong>Poor choice of a digital tool and insufficient preparation:</strong> Avoid using tools unfamiliar to your team that might take more time to master. Instead, select the tools everyone on your team uses daily for communication.
+                    {isEditing ? (
+                        <div className={styles.editMode}>
+                            <input
+                                type="text"
+                                className={styles.editTitleInput}
+                                value={currentModule?.title || ''}
+                                onChange={(e) => handleModuleChange(activeModuleIndex, 'title', e.target.value)}
+                            />
+                            <div className={styles.articleMeta}>
+                                <span>{currentModule?.duration || '10 min'} read</span>
+                                <span className={styles.badge}>Editing</span>
+                            </div>
+                            <textarea
+                                className={styles.editContentInput}
+                                value={currentModule?.content || ''}
+                                onChange={(e) => handleModuleChange(activeModuleIndex, 'content', e.target.value)}
+                            />
+                            <button className={styles.btnSave} onClick={handleSaveEdit}>Save Changes</button>
+                        </div>
+                    ) : (
+                        <>
+                            <div className={styles.articleHeader}>
+                                <div className={styles.articleTitle}>{currentModule?.title}</div>
+                                <div className={styles.articleMeta}>
+                                    <span>{currentModule?.duration || '10 min'} read</span>
+                                    <span className={styles.badge}>AI Generated</span>
                                 </div>
                             </div>
-                            <div style={{ display: 'flex', gap: 12 }}>
-                                <div style={{ minWidth: 24, height: 24, background: '#EDF2F7', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#4A5568' }}>2</div>
-                                <div>
-                                    <strong>Bad planning for workshop activities:</strong> Cutting back on warmups, icebreakers, or team-building activities because you're short on time won't result in a productive session.
-                                </div>
-                            </div>
-                            <div style={{ display: 'flex', gap: 12 }}>
-                                <div style={{ minWidth: 24, height: 24, background: '#EDF2F7', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#4A5568' }}>3</div>
-                                <div>
-                                    <strong>Failure to define workshop goals and instructions:</strong> It's much harder for facilitators to have everyone's full attention and prevent participants from getting distracted during remote workshops.
-                                </div>
-                            </div>
-                        </div>
 
-                        <div className={styles.tipBox}>
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                <path d="M10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18Z" stroke="currentColor" strokeWidth="1.5" />
-                                <path d="M10 6V10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                                <circle cx="10" cy="14" r="1" fill="currentColor" />
-                            </svg>
-                            Tip! Test the selected tool before the workshop to discover limitations in advance.
-                        </div>
+                            <div
+                                className={styles.articleContent}
+                                onClick={handleContentClick}
+                                dangerouslySetInnerHTML={{ __html: processContent(currentModule?.content) }}
+                            />
+                        </>
+                    )}
 
-                        <div className={styles.navButtons}>
-                            <button className={styles.navBtn}>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
-                                Previous Lesson
-                            </button>
-                            <button className={styles.navBtn}>
-                                Next Lesson
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
-                            </button>
-                        </div>
+                    {/* Navigation Buttons */}
+                    <div className={styles.moduleNav}>
+                        <button
+                            className={styles.navBtn}
+                            disabled={activeModuleIndex === 0}
+                            onClick={() => setActiveModuleIndex(i => i - 1)}
+                        >
+                            ← Previous Lesson
+                        </button>
+                        <button
+                            className={styles.navBtn}
+                            disabled={activeModuleIndex === (generatedContent?.modules?.length || 0) - 1}
+                            onClick={() => setActiveModuleIndex(i => i + 1)}
+                        >
+                            Next Lesson →
+                        </button>
                     </div>
                 </div>
 
                 {/* Sidebar */}
                 <div className={styles.reviewSidebar}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        <button className={`${styles.sidebarBtn} ${styles.sidebarBtnOutline}`}>
-                            Edit
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                        </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                        {!isEditing ? (
+                            <button 
+                                className={`${styles.sidebarBtn} ${styles.sidebarBtnOutline}`}
+                                onClick={() => setIsEditing(true)}
+                            >
+                                Edit Module
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                            </button>
+                        ) : (
+                            <button 
+                                className={`${styles.sidebarBtn} ${styles.sidebarBtnPrimary}`}
+                                onClick={handleSaveEdit}
+                            >
+                                Save Changes
+                            </button>
+                        )}
                         <button className={`${styles.sidebarBtn} ${styles.sidebarBtnPrimary}`}>
                             View as Slides
                         </button>
                     </div>
 
-                    <div className={styles.tocCard}>
-                        <div className={styles.tocTitle}>Table of Content</div>
-                        <div className={styles.tocList}>
-                            <div className={styles.tocItem} style={{ color: '#4C6EF5' }}>Benefits of remote worksop</div>
-                            <div className={styles.tocItem}>Challenges for remote workshops</div>
-                            <div className={styles.tocItem}>What goes into a successful remote work...</div>
-                            <div className={styles.tocItem}>Best practices for a remote workshop</div>
-                            <div className={styles.tocItem}>Common remote workshop mistakes</div>
-                            <div className={styles.tocItem}>Tools needed for remote workshops</div>
-                        </div>
+                    <div className={styles.sidebarTabs}>
+                        <button
+                            className={`${styles.tab} ${sidebarTab === 'modules' ? styles.activeTab : ''}`}
+                            onClick={() => setSidebarTab('modules')}
+                        >
+                            Modules
+                        </button>
+                        <button
+                            className={`${styles.tab} ${sidebarTab === 'source' ? styles.activeTab : ''}`}
+                            onClick={() => setSidebarTab('source')}
+                        >
+                            Source Ref
+                        </button>
+                    </div>
+
+                    <div className={styles.sidebarContent}>
+                        {sidebarTab === 'modules' ? (
+                            <div className={styles.tocList}>
+                                {generatedContent?.modules?.map((mod: any, i: number) => (
+                                    <div
+                                        key={i}
+                                        className={`${styles.tocItem} ${i === activeModuleIndex ? styles.tocItemActive : ''}`}
+                                        onClick={() => setActiveModuleIndex(i)}
+                                    >
+                                        <span className={styles.tocNum}>{i + 1}</span>
+                                        {mod.title}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className={styles.sourceView} ref={sourceViewRef}>
+                                <div className={styles.sourceHeader}>
+                                    Generated from {documents.find(d => d.selected)?.name || 'Uploaded Document'}
+                                </div>
+                                <div className={styles.sourceText}>
+                                    {renderSourceText()}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

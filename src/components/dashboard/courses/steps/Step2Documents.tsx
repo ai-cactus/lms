@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import styles from '../CourseWizard.module.css';
 import { Select } from '@/components/ui';
 
@@ -10,20 +10,36 @@ interface Document {
     type: 'pdf' | 'docx';
     status: 'analyzed';
     selected: boolean;
+    file?: File;
 }
 
 interface Step2DocumentsProps {
     documents: Document[];
     onToggleSelect: (id: string) => void;
+    onUpload?: (files: File[]) => void;
 }
 
-export default function Step2Documents({ documents, onToggleSelect }: Step2DocumentsProps) {
+export default function Step2Documents({ documents, onToggleSelect, onUpload }: Step2DocumentsProps) {
     const [source, setSource] = React.useState('uploaded');
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const sourceOptions = [
         { label: 'Uploaded documents', value: 'uploaded' },
         { label: 'Browse Computer', value: 'computer' }
     ];
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0 && onUpload) {
+            onUpload(Array.from(e.target.files));
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onUpload) {
+            onUpload(Array.from(e.dataTransfer.files));
+        }
+    };
 
     return (
         <div className={styles.stepWrapper}>
@@ -45,7 +61,20 @@ export default function Step2Documents({ documents, onToggleSelect }: Step2Docum
 
                 {source === 'computer' ? (
                     <div className={styles.scrollableContent}>
-                        <div className={styles.uploadZone}>
+                        <div
+                            className={styles.uploadZone}
+                            onClick={() => fileInputRef.current?.click()}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={handleDrop}
+                        >
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                style={{ display: 'none' }}
+                                onChange={handleFileChange}
+                                accept=".pdf,.docx"
+                                multiple
+                            />
                             <div className={styles.uploadIconWrapper}>
                                 {/* Folder Icon SVG */}
                                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -63,109 +92,47 @@ export default function Step2Documents({ documents, onToggleSelect }: Step2Docum
                             </p>
                         </div>
 
-                        {/* Mock Uploaded Files List */}
+                        {/* Uploaded Files List */}
                         <div className={styles.uploadedFilesContainer}>
-                            <div className={styles.uploadedFileItem}>
-                                <div className={styles.fileLeft}>
-                                    <div className={styles.fileIcon}>
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M14 2V8H20" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M16 13H8" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M16 17H8" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M10 9H8" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                        </svg>
+                            {documents.map((doc) => (
+                                <div key={doc.id} className={styles.uploadedFileItem}>
+                                    <div className={styles.fileLeft}>
+                                        <div className={styles.fileIcon}>
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={doc.name.endsWith('.pdf') ? '#F56565' : '#4299E1'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" />
+                                            </svg>
+                                        </div>
+                                        <div className={styles.uploadedFileInfo}>
+                                            <span className={styles.uploadedFileName}>{doc.name}</span>
+                                            <span className={styles.uploadedFileSize}>{doc.file ? `${(doc.file.size / 1024 / 1024).toFixed(2)} MB` : 'Mock File'}</span>
+                                        </div>
                                     </div>
-                                    <div className={styles.uploadedFileInfo}>
-                                        <span className={styles.uploadedFileName}>North Carolina Division of Health Service Regulation - Mental Health Facility License.pdf</span>
-                                        <span className={styles.uploadedFileSize}>1.8 MB</span>
-                                    </div>
-                                </div>
-                                <button className={styles.trashBtn}>
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M2.5 4H13.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M6.5 7V11" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M9.5 7V11" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M3.5 4L4.5 13C4.5 13.55 4.95 14 5.5 14H10.5C11.05 14 11.5 13.55 11.5 13L12.5 4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M6 4V2.5C6 2.22386 6.22386 2 6.5 2H9.5C9.77614 2 10 2.22386 10 2.5V4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                </button>
-                            </div>
 
-                            <div className={styles.uploadedFileItem}>
-                                <div className={styles.fileLeft}>
-                                    <div className={styles.fileIcon}>
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M14 2V8H20" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M16 13H8" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M16 17H8" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M10 9H8" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                        </svg>
-                                    </div>
-                                    <div className={styles.uploadedFileInfo}>
-                                        <span className={styles.uploadedFileName}>HIPAA Privacy & Security Compliance Certificate.docx</span>
-                                        <span className={styles.uploadedFileSize}>1.8 MB</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={doc.selected}
+                                            onChange={() => onToggleSelect(doc.id)}
+                                            className={styles.checkbox}
+                                        />
+                                        <button className={styles.trashBtn}>
+                                            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M2.5 4H13.5" />
+                                                <path d="M6.5 7V11" />
+                                                <path d="M9.5 7V11" />
+                                                <path d="M3.5 4L4.5 13C4.5 13.55 4.95 14 5.5 14H10.5C11.05 14 11.5 13.55 11.5 13L12.5 4" />
+                                                <path d="M6 4V2.5C6 2.22386 6.22386 2 6.5 2H9.5C9.77614 2 10 2.22386 10 2.5V4" />
+                                            </svg>
+                                        </button>
                                     </div>
                                 </div>
-                                <button className={styles.trashBtn}>
-                                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M2.5 4H13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M6.5 7V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M9.5 7V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M3.5 4L4.5 13C4.5 13.55 4.95 14 5.5 14H10.5C11.05 14 11.5 13.55 11.5 13L12.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M6 4V2.5C6 2.22386 6.22386 2 6.5 2H9.5C9.77614 2 10 2.22386 10 2.5V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                </button>
-                            </div>
+                            ))}
                         </div>
                     </div>
                 ) : (
                     <div className={styles.fileList}>
-                        {documents.map((doc) => (
-                            <div key={doc.id} className={styles.fileItem}>
-                                <div className={styles.fileLeft}>
-                                    <input
-                                        type="checkbox"
-                                        checked={doc.selected}
-                                        onChange={() => onToggleSelect(doc.id)}
-                                        className={styles.checkbox}
-                                    />
-                                    <div className={styles.fileIcon}>
-                                        {doc.type === 'pdf' ? (
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                <path d="M14 2V8H20" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                <path d="M16 13H8" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                <path d="M16 17H8" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                <path d="M10 9H8" stroke="#F56565" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            </svg>
-                                        ) : (
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                <path d="M14 2V8H20" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                <path d="M16 13H8" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                <path d="M16 17H8" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                <path d="M10 9H8" stroke="#4299E1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            </svg>
-                                        )}
-                                    </div>
-                                    <div className={styles.fileInfo}>
-                                        <span className={styles.fileName}>{doc.name}</span>
-                                        <span className={styles.fileBadge}>
-                                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: 4 }}>
-                                                <circle cx="6" cy="6" r="6" fill="#4C6EF5" />
-                                                <path d="M3.5 6L5 7.5L8.5 4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                            </svg>
-                                            Analyzed
-                                        </span>
-                                    </div>
-                                </div>
-                                <button className={styles.btnPreview}>
-                                    Preview
-                                </button>
-                            </div>
-                        ))}
+                        {/* Placeholder for 'Uploaded Documents' tab if needed */}
+                        <p style={{ textAlign: 'center', color: '#718096', marginTop: 40 }}>No previously uploaded documents found.</p>
                     </div>
                 )}
             </div>

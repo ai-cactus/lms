@@ -79,10 +79,9 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
                 <table className={styles.table}>
                     <thead>
                         <tr>
-                            <th style={{ width: '40%' }}>Course Name</th>
+                            <th style={{ width: '50%' }}>Course Name</th>
                             <th style={{ width: '25%' }}>Assigned Staff</th>
-                            <th style={{ width: '20%' }}>Completion %</th>
-                            <th style={{ width: '15%' }}>Date Created</th>
+                            <th style={{ width: '25%' }}>Date Created</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -111,7 +110,6 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
                                         </div>
                                     </td>
                                     <td>{course.enrollmentsCount}</td>
-                                    <td>{course.completionRate}%</td>
                                     <td>
                                         {new Date(course.createdAt).toLocaleDateString('en-US', {
                                             month: 'short',
@@ -123,7 +121,7 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: '#718096' }}>
+                                <td colSpan={3} style={{ textAlign: 'center', padding: '40px', color: '#718096' }}>
                                     No courses found.
                                 </td>
                             </tr>

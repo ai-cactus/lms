@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
 export default async function JoinPage({ params }: { params: { token: string } }) {
     const { token } = params;
 
-    const invite = await prisma.invite.findUnique({
+    const invite = await prisma.invite.findFirst({
         where: { token, status: 'pending' },
         include: { organization: true }
     });

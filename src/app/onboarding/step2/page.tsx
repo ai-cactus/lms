@@ -18,9 +18,22 @@ export default function OnboardingStep2() {
     const [files, setFiles] = useState<File[]>([]);
 
     const onSubmit = async (data: Step2FormData) => {
-        console.log('Step 2 Data:', { ...data, files });
-        // TODO: Upload files and save data
-        router.push('/onboarding/step3');
+        try {
+            const { updateOrganization } = await import('@/app/actions/organization');
+            const result = await updateOrganization({
+                licenseNumber: data.licenseNumber,
+                isHipaaCompliant: data.hipaaCompliant === 'yes'
+            });
+
+            if (result.success) {
+                router.push('/onboarding/step3');
+            } else {
+                console.error('Failed to update organization:', result.error);
+                // Handle error (could add a toast or form error)
+            }
+        } catch (error) {
+            console.error('Submission error:', error);
+        }
     };
 
     const handleFilesSelected = (newFiles: File[]) => {

@@ -4,7 +4,7 @@ import React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Select } from '@/components/ui';
+import { Button, Input, Select, PhoneInput } from '@/components/ui';
 import styles from '@/app/onboarding/onboarding.module.css';
 import Stepper from '@/components/onboarding/Stepper';
 
@@ -168,10 +168,18 @@ export default function OnboardingStep1() {
                     </div>
                     <div className={`${styles.formGroup} ${styles.col}`}>
                         <label className={styles.label}>Phone Number <span className={styles.required}>*</span></label>
-                        <Input
-                            {...register('phone', { required: "Phone Number is required" })}
-                            placeholder="Enter the phone number"
-                            error={getError('phone')}
+                        <Controller
+                            name="phone"
+                            control={control}
+                            rules={{ required: "Phone Number is required" }}
+                            render={({ field }) => (
+                                <PhoneInput
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    placeholder="Enter the phone number of the main contact"
+                                    error={getError('phone')}
+                                />
+                            )}
                         />
                     </div>
                 </div>

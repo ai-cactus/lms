@@ -28,6 +28,8 @@ model Organization {
   primaryBusinessType     String?
   additionalBusinessTypes String[] @default([])
   programServices         String[] @default([])
+  joinCode                String?  @unique
+  joinCodeExpiresAt       DateTime?
   users                   User[]
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
@@ -57,6 +59,7 @@ model User {
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
   role           String        @default("worker") // 'admin' | 'worker'
+  emailVerified  Boolean       @default(false)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   profile        Profile?
@@ -241,7 +244,14 @@ model QuizAttempt {
 model VerificationToken {
   identifier String
   token      String
+  type       String   @default("password_reset") // 'email_verification' | 'password_reset'
   expires    DateTime
+  
+  // For email_verification: store pending user data until verified
+  password   String?  // hashed password
+  firstName  String?
+  lastName   String?
+  role       String?  // 'admin' | 'worker'
 
   @@unique([identifier, token])
 }

@@ -1,0 +1,150 @@
+.container {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1A202C;
+    margin: 0;
+}
+
+.searchContainer {
+    width: 300px;
+}
+
+.searchInput {
+    width: 100%;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table thead tr {
+    background: #EBF5FF;
+}
+
+.table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #4A5568;
+    border-bottom: 1px solid #E2E8F0;
+}
+
+.table th:first-child {
+    border-radius: 8px 0 0 8px;
+}
+
+.table th:last-child {
+    border-radius: 0 8px 8px 0;
+}
+
+.table td {
+    padding: 16px;
+    font-size: 14px;
+    color: #2D3748;
+    border-bottom: 1px solid #E2E8F0;
+    vertical-align: middle;
+}
+
+.table tbody tr:hover {
+    background-color: #F7FAFC;
+}
+
+.clickableRow {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.courseInfo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.courseIcon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #EBF5FF;
+}
+
+.courseIcon img {
+    object-fit: cover;
+}
+
+.courseName {
+    display: block;
+    font-weight: 600;
+    color: #1A202C;
+}
+
+.courseLevel {
+    display: block;
+    font-size: 12px;
+    color: #718096;
+    margin-top: 2px;
+}
+
+.viewLink {
+    color: #4730F7;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.viewLink:hover {
+    text-decoration: underline;
+}
+
+.emptyState {
+    text-align: center;
+    padding: 40px !important;
+    color: #718096;
+}
+
+.viewAllContainer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #E2E8F0;
+}
+
+.viewAllButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #4A5568;
+    text-decoration: none;
+    background: white;
+    transition: all 0.2s;
+}
+
+.viewAllButton:hover {
+    background: #F7FAFC;
+    border-color: #CBD5E0;
+}

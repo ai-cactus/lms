@@ -6,6 +6,7 @@ import { Button, FileUpload, TagInput } from '@/components/ui';
 import { Modal } from '@/components/ui/Modal';
 import styles from '@/app/onboarding/onboarding.module.css';
 import Stepper from '@/components/onboarding/Stepper';
+import * as XLSX from 'xlsx';
 
 export default function OnboardingStep5() {
     const router = useRouter();
@@ -14,6 +15,8 @@ export default function OnboardingStep5() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [attemptedSkip, setAttemptedSkip] = useState(false);
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [csvEmails, setCsvEmails] = useState<string[]>([]);
 
     const validateEmail = (email: string) => {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -23,7 +26,9 @@ export default function OnboardingStep5() {
         e.preventDefault();
         setError('');
 
-        const hasData = emails.length > 0 || csvFile !== null;
+        // Combine manual emails and CSV emails
+        const allEmails = [...emails, ...csvEmails];
+        const hasData = allEmails.length > 0;
 
         if (!hasData) {
             if (!attemptedSkip) {
@@ -31,57 +36,99 @@ export default function OnboardingStep5() {
                 setError('Please add at least one worker. Click Next again to skip.');
                 return;
             }
-            // If already attempted, let them pass (skip)
             router.push('/onboarding/complete');
             return;
         }
 
-        console.log('Step 5 Data:', { emails, csvFile });
+        setIsLoading(true);
 
-        // Call the server action
         try {
             const { createInvites } = await import('@/app/actions/invite');
 
-            // Retrieve actual Organization ID from localStorage (set in Step 1)
             let organizationId = '';
             if (typeof window !== 'undefined') {
                 organizationId = localStorage.getItem('onboarding_org_id') || '';
             }
 
             if (!organizationId) {
-                console.error('Real Life Check: No Organization ID found in storage. Please restart onboarding from Step 1.');
                 setError('Organization ID missing. Please restart onboarding from Step 1.');
+                setIsLoading(false);
                 return;
             }
 
-            const result = await createInvites(emails, 'worker', organizationId);
+            const result = await createInvites(allEmails, 'worker', organizationId);
             if (!result.success) {
-                // Non-blocking error for now
-                console.error('Invite failed:', result.error);
                 setError(result.error || 'Failed to send invites');
+                setIsLoading(false);
                 return;
             }
         } catch (e) {
             console.error('Error sending invites', e);
             setError('System error sending invites');
+            setIsLoading(false);
             return;
         }
 
         router.push('/onboarding/complete');
     };
 
-    const handleCsvUpload = (files: File[]) => {
-        if (files.length > 0) {
-            setCsvFile(files[0]);
+    const handleCsvUpload = async (files: File[]) => {
+        if (files.length === 0) return;
+
+        const file = files[0];
+        setIsLoading(true);
+        setError('');
+
+        try {
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data, { type: 'array' });
+
+            // Get first sheet
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+
+            // Convert to JSON
+            const jsonData = XLSX.utils.sheet_to_json<any>(sheet, { header: 1 });
+
+            // Find email column (look for header or just use first column with emails)
+            const extractedEmails: string[] = [];
+
+            for (const row of jsonData) {
+                if (Array.isArray(row)) {
+                    for (const cell of row) {
+                        if (typeof cell === 'string' && validateEmail(cell.trim())) {
+                            extractedEmails.push(cell.trim().toLowerCase());
+                        }
+                    }
+                }
+            }
+
+            // Remove duplicates
+            const uniqueEmails = [...new Set(extractedEmails)];
+
+            if (uniqueEmails.length === 0) {
+                setError('No valid emails found in the file. Please check the file format.');
+                setIsLoading(false);
+                return;
+            }
+
+            setCsvFile(file);
+            setCsvEmails(uniqueEmails);
             setIsModalOpen(false);
             setEmails([]); // Clear manual input if CSV is used
             setAttemptedSkip(false);
-            setError('');
+
+        } catch (err) {
+            console.error('Error parsing file:', err);
+            setError('Failed to parse file. Please check the format.');
         }
+
+        setIsLoading(false);
     };
 
     const removeCsv = () => {
         setCsvFile(null);
+        setCsvEmails([]);
     };
 
     return (
@@ -169,7 +216,7 @@ export default function OnboardingStep5() {
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontSize: '14px', fontWeight: 500, color: '#2D3748' }}>{csvFile.name}</span>
-                                <span style={{ fontSize: '12px', color: '#A0AEC0' }}>{(csvFile.size / 1024).toFixed(2)} KB</span>
+                                <span style={{ fontSize: '12px', color: '#10B981' }}>{csvEmails.length} email{csvEmails.length !== 1 ? 's' : ''} found</span>
                             </div>
                         </div>
                         <button

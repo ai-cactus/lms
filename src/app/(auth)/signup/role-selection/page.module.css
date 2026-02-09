@@ -1,10 +1,11 @@
-/* Main Containers (Same as Login) */
+/* Container - Split layout like login/signup */
 .container {
     display: flex;
     min-height: 100vh;
     width: 100%;
 }
 
+/* Form Section - Left Side */
 .formSection {
     flex: 1;
     display: flex;
@@ -12,127 +13,138 @@
     justify-content: center;
     align-items: center;
     padding: 40px;
-    background: #ffffff;
+    background: #FFFFFF;
+    min-width: 0;
 }
 
 .formContent {
     width: 100%;
-    max-width: 440px;
+    max-width: 420px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    /* Center logo and content */
+    align-items: flex-start;
+    gap: 24px;
 }
 
-/* Header */
 .formHeader {
-    margin-top: 32px;
-    margin-bottom: 32px;
-    text-align: center;
-    /* Center text */
+    width: 100%;
+    text-align: left;
 }
 
 .title {
-    font-size: 30px;
-    font-weight: 700;
+    font-size: 24px;
+    font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 8px;
 }
 
 .subtitle {
-    font-size: 16px;
-    color: var(--text-secondary);
-}
-
-/* Form */
-.form {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-/* New Name Row Style */
-.nameRow {
-    display: flex;
-    gap: 20px;
-}
-
-/* Ensure inputs inside row take equal width */
-.nameRow>* {
-    flex: 1;
-}
-
-/* Checkbox & Terms */
-.termsCheckbox {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    align-items: center;
-    /* Center horizontally */
-    margin-top: 10px;
-}
-
-.checkboxLabel {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    cursor: pointer;
-}
-
-.checkbox {
-    width: 20px;
-    height: 20px;
-    accent-color: var(--primary);
-    cursor: pointer;
-    margin: 0;
-    border-radius: 6px;
-    /* 4px-6px for rounded corners */
-    /* Note: appearance: none might be needed for full control, 
-       but keeping accent-color for native feel first */
-}
-
-.checkboxText {
     font-size: 14px;
     color: var(--text-secondary);
     line-height: 1.5;
 }
 
-.link {
-    color: var(--primary);
-    text-decoration: none;
-    font-weight: 500;
+/* Role Cards */
+.roleCards {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
-.link:hover {
-    text-decoration: underline;
+.roleCard {
+    width: 100%;
+    padding: 20px;
+    border: 2px solid #E2E8F0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: white;
+}
+
+.roleCard:hover {
+    border-color: #CBD5E1;
+}
+
+.roleCard.selected {
+    border-color: #4C6EF5;
+    background: #F7F9FF;
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.iconWrapper {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #F1F5F9;
+    border-radius: 8px;
+    color: #64748B;
+}
+
+.roleCard.selected .iconWrapper {
+    background: #EEF2FF;
+    color: #4C6EF5;
+}
+
+.radio {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #CBD5E1;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.roleCard.selected .radio {
+    border-color: #4C6EF5;
+}
+
+.radioInner {
+    width: 10px;
+    height: 10px;
+    background: #4C6EF5;
+    border-radius: 50%;
+}
+
+.roleName {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1E293B;
+    margin: 0;
 }
 
 .error {
-    font-size: 12px;
-    color: var(--error);
-    margin-left: 30px;
-    /* Align with text */
-}
-
-/* Login Link */
-.loginPrompt {
-    margin-top: 24px;
-    text-align: center;
+    color: #EF4444;
     font-size: 14px;
-    color: var(--text-secondary);
+    margin: 0;
 }
 
-.loginLink {
-    color: var(--primary);
+.backLink {
+    text-align: center;
+    width: 100%;
+    margin-top: 8px;
+}
+
+.backLink a {
+    color: #4C6EF5;
+    font-size: 14px;
     text-decoration: none;
-    font-weight: 600;
 }
 
-.loginLink:hover {
+.backLink a:hover {
     text-decoration: underline;
 }
 
-/* Hero Section - Right Side (Same as Login) */
+/* Hero Section - Right Side */
 .heroSection {
     flex: 1;
     display: none;
@@ -149,7 +161,6 @@
     border-radius: 24px;
 }
 
-/* Hero Overlay */
 .heroOverlay {
     position: absolute;
     bottom: 0;
@@ -206,17 +217,5 @@
 @media (min-width: 1024px) {
     .heroSection {
         display: block;
-    }
-}
-
-@media (max-width: 1023px) {
-    .nameRow {
-        flex-direction: column;
-        gap: 20px;
-    }
-
-    .heroSection {
-        margin: 0;
-        border-radius: 0;
     }
 }

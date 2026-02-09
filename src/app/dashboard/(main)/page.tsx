@@ -4,13 +4,31 @@ import { Button } from '@/components/ui';
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import DashboardCharts from '@/components/dashboard/DashboardCharts';
+import MyCoursesTable from '@/components/dashboard/MyCoursesTable';
 import Link from 'next/link';
+import { getCourses } from '@/app/actions/course';
+import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
 
 export default async function DashboardPage() {
     const session = await auth();
     if (!session?.user) redirect('/login');
 
     const role = session.user.role;
+
+    // Fetch courses for the current user
+    let courses: any[] = [];
+    try {
+        courses = await getCourses();
+    } catch (error) {
+        console.error('Error fetching courses:', error);
+    }
+
+    // Calculate real metrics from courses data
+    const totalCourses = courses.length;
+    const totalStaffAssigned = courses.reduce((sum, c) => sum + c.enrollmentsCount, 0);
+    const averageGrade = courses.length > 0
+        ? Math.round(courses.reduce((sum, c) => sum + c.completionRate, 0) / courses.length)
+        : 0;
 
     return (
         <div className={styles.container}>
@@ -44,7 +62,7 @@ export default async function DashboardPage() {
                         </div>
                         <p className={styles.metricLabel}>Total Courses</p>
                     </div>
-                    <p className={styles.metricValue}>15</p>
+                    <p className={styles.metricValue}>{totalCourses}</p>
                 </div>
 
                 {/* Total Staff - Blue */}
@@ -60,7 +78,7 @@ export default async function DashboardPage() {
                         </div>
                         <p className={styles.metricLabel}>Total Staff Assigned</p>
                     </div>
-                    <p className={styles.metricValue}>220</p>
+                    <p className={styles.metricValue}>{totalStaffAssigned}</p>
                 </div>
 
                 {/* Average Grade - Red */}
@@ -74,21 +92,18 @@ export default async function DashboardPage() {
                         </div>
                         <p className={styles.metricLabel}>Average Grade</p>
                     </div>
-                    <p className={styles.metricValue}>40%</p>
+                    <p className={styles.metricValue}>{averageGrade}%</p>
                 </div>
             </div>
 
             {/* Charts */}
             <DashboardCharts />
 
-            {/* My Courses - Placeholder for now to look like bottom section */}
-            <div className={styles.coursesSection}>
-                <div className={styles.header} style={{ marginBottom: 16 }}>
-                    <h3 style={{ fontSize: 20, fontWeight: 700 }}>My Courses</h3>
-                    <Link href="/dashboard/courses" style={{ color: '#4730F7', fontWeight: 600 }}>See All</Link>
-                </div>
-                {/* We can leave this empty or add a placeholder list later if requested */}
-            </div>
+            {/* My Courses Table */}
+            <MyCoursesTable courses={courses} maxItems={5} />
+
+            {/* Empty State Modal */}
+            <DashboardEmptyState isOpen={totalCourses === 0} />
         </div>
     );
 }

@@ -6,21 +6,14 @@
 
 /* Form Section - Left Side */
 .formSection {
-    flex: 0 0 50%;
-    /* Adjusted for Figma proportions */
+    flex: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     padding: 40px;
     background: #FFFFFF;
-}
-
-@media (min-width: 1440px) {
-    .formSection {
-        flex: 0 0 600px;
-        /* Locked width from Figma approx */
-    }
+    min-width: 0;
 }
 
 .formContent {

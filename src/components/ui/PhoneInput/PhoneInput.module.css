@@ -1,0 +1,223 @@
+.container {
+    position: relative;
+    width: 100%;
+}
+
+.inputWrapper {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 48px;
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.inputWrapper:hover {
+    border-color: #CBD5E1;
+}
+
+.inputWrapper:focus-within {
+    border-color: #4C6EF5;
+    box-shadow: 0 0 0 3px rgba(76, 110, 245, 0.1);
+}
+
+.inputWrapper.hasError {
+    border-color: #EF4444;
+}
+
+.inputWrapper.hasError:focus-within {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+/* Country Selector Button */
+.countrySelector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    height: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #64748B;
+    transition: background 0.2s;
+    border-radius: 8px 0 0 8px;
+}
+
+.countrySelector:hover {
+    background: #F8FAFC;
+}
+
+.flag {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.chevron {
+    transition: transform 0.2s ease;
+    color: #94A3B8;
+}
+
+.chevronOpen {
+    transform: rotate(180deg);
+}
+
+/* Divider */
+.divider {
+    width: 1px;
+    height: 24px;
+    background: #E2E8F0;
+}
+
+/* Phone Input */
+.phoneInput {
+    flex: 1;
+    height: 100%;
+    padding: 0 16px;
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: #1E293B;
+    outline: none;
+}
+
+.phoneInput::placeholder {
+    color: #94A3B8;
+}
+
+/* Dropdown */
+.dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 320px;
+    max-height: 360px;
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+    z-index: 1000;
+    overflow: hidden;
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Search Container */
+.searchContainer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #E2E8F0;
+}
+
+.searchIcon {
+    color: #94A3B8;
+    flex-shrink: 0;
+}
+
+.searchInput {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 14px;
+    color: #1E293B;
+    background: none;
+}
+
+.searchInput::placeholder {
+    color: #94A3B8;
+}
+
+/* Country List */
+.countryList {
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 8px 0;
+}
+
+.countryList::-webkit-scrollbar {
+    width: 6px;
+}
+
+.countryList::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.countryList::-webkit-scrollbar-thumb {
+    background: #E2E8F0;
+    border-radius: 3px;
+}
+
+.countryList::-webkit-scrollbar-thumb:hover {
+    background: #CBD5E1;
+}
+
+/* Country Option */
+.countryOption {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 16px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.countryOption:hover {
+    background: #F8FAFC;
+}
+
+.countryOption.selected {
+    background: #EEF2FF;
+}
+
+.optionFlag {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.optionName {
+    flex: 1;
+    font-size: 14px;
+    color: #1E293B;
+    font-weight: 500;
+}
+
+.optionDialCode {
+    font-size: 13px;
+    color: #64748B;
+    font-weight: 500;
+}
+
+/* No Results */
+.noResults {
+    padding: 16px;
+    text-align: center;
+    color: #94A3B8;
+    font-size: 14px;
+}
+
+/* Error Message */
+.errorMessage {
+    display: block;
+    margin-top: 6px;
+    font-size: 13px;
+    color: #EF4444;
+}

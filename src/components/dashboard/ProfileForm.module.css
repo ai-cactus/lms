@@ -1,433 +1,429 @@
 .container {
     max-width: 1000px;
     margin: 0 auto;
-    width: 100%;
+    padding: 24px;
 }
 
 .header {
-    margin-bottom: 20px;
-    margin-top: 20px;
-    /* Added spacing from top */
-    padding-top: 10px;
+    margin-bottom: 24px;
 }
 
 .backLink {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #4A5568;
+    color: var(--text-secondary);
     text-decoration: none;
-    font-size: 14px;
     font-weight: 500;
+    font-size: 14px;
 }
 
 .backLink:hover {
-    color: #2D3748;
+    color: var(--primary);
 }
 
 .card {
-    background: #FFFFFF;
-    border-radius: 16px;
-    padding: 40px 100px;
-    /* High horizontal padding as per screenshot */
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    /* Subtle shadow */
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
 }
 
-/* Tabs */
 .tabs {
     display: flex;
-    gap: 32px;
-    border-bottom: 1px solid #E2E8F0;
-    margin-bottom: 40px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
 }
 
 .tab {
+    padding: 16px 24px;
     background: none;
     border: none;
-    padding: 12px 0;
-    font-size: 14px;
+    border-bottom: 2px solid transparent;
     font-weight: 600;
-    color: #A0AEC0;
+    font-size: 14px;
+    color: var(--text-secondary);
     cursor: pointer;
-    position: relative;
-    letter-spacing: 0.05em;
+    transition: all 0.2s;
     text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tab:hover {
+    color: var(--text-primary);
+    background: rgba(0, 0, 0, 0.02);
 }
 
 .activeTab {
-    color: #2D3748;
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    background: white;
 }
 
-.activeTab::after {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 0;
-    width: 100%;
-    height: 3px;
-    background-color: #2D4DDD;
-    /* Brand Blue */
-    border-radius: 3px 3px 0 0;
-}
-
-/* Profile Header (Avatar) */
 .profileHeader {
+    padding: 32px;
     display: flex;
-    align-items: center;
-    gap: 24px;
-    margin-bottom: 32px;
+    justify-content: center;
+    border-bottom: 1px solid var(--border-color);
+    background: white;
 }
 
 .avatarLarge {
-    width: 96px;
-    height: 96px;
+    width: 100px;
+    height: 100px;
     border-radius: 50%;
-    background-color: #A3B8CC;
-    /* Placeholder Color */
+    background: var(--primary);
+    color: white;
+    font-size: 36px;
+    font-weight: 600;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 36px;
-    color: white;
-    font-weight: 600;
     position: relative;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .editAvatarButton {
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 28px;
-    height: 28px;
-    background-color: #2D4DDD;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
-    border: 3px solid white;
+    background: var(--primary-dark, #2563eb);
+    border: 2px solid white;
+    color: white;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    transition: all 0.2s;
 }
 
-/* Form */
+.editAvatarButton:hover {
+    transform: scale(1.1);
+}
+
 .form {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
+    width: 100%;
 }
 
 .formGrid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 24px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+    .formGrid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .fieldGroup {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    margin-bottom: 24px;
 }
 
 .label {
+    display: block;
     font-size: 14px;
-    font-weight: 600;
-    color: #2D3748;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 8px;
 }
 
 .readOnlyInput {
-    background-color: #F7FAFC;
-    color: #718096;
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
     cursor: not-allowed;
 }
 
-/* Select Styling - Handled by Custom Select Component now */
-/* Removed native select styles */
-
-/* Actions */
-.actions {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 24px;
-    margin-top: 16px;
-}
-
-.discardButton {
-    background: none;
-    border: none;
-    color: #4299E1;
-    /* Blue Text */
-    font-weight: 600;
-    font-size: 15px;
-    cursor: pointer;
-}
-
-.discardButton:hover {
-    text-decoration: underline;
-}
-
-.saveButton {
-    background-color: #E2E8F0;
-    /* Default Gray (Disabled-ish look in design) */
-    color: #A0AEC0;
-    border: none;
-    padding: 10px 24px;
-}
-
-/* Wait, screenshot shows 'Save Changes' as gray. 
-   Usually active when dirty. For now let's make it look active/primary 
-   to imply functionality, or match mockup exactly (gray). 
-   Let's use slight gray but readable.
-*/
-/* Button is specific to this form's need for a neutral disabled state */
-.saveButton:disabled {
-    background-color: #E2E8F0 !important;
-    color: #A0AEC0 !important;
-    cursor: not-allowed;
-    opacity: 1;
-    /* Override default opacity since we set color explicitly */
-}
-
-/* When active (not disabled), it will use the default Button variant="primary" (Blue) */
-/* Force active state to be Blue to ensure no conflicts */
-.saveButton:not(:disabled) {
-    background-color: #2D4DDD !important;
-    color: white !important;
-    cursor: pointer;
-    box-shadow: 0 4px 6px -1px rgba(45, 77, 221, 0.2);
-}
-
-.saveButton:not(:disabled):hover {
-    background-color: #2338AA !important;
-    /* Darker blue on hover */
-}
-
-/* Message */
 .message {
     padding: 12px;
     border-radius: 8px;
+    margin-bottom: 24px;
     font-size: 14px;
-    font-weight: 500;
-    text-align: center;
 }
 
-.success {
-    background-color: #C6F6D5;
-    color: #22543D;
+.message.success {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
-.error {
-    background-color: #FED7D7;
-    color: #822727;
+.message.error {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--error);
+    border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
-/* Modal Content Styles */
-.modalContent {
+.actions {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 32px;
+    justify-content: flex-end;
+    gap: 12px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 24px;
+}
+
+.saveButton {
+    min-width: 120px;
+}
+
+/* Modal styles */
+.modalContent {
     text-align: center;
+    padding: 24px;
 }
 
 .modalIcon {
     width: 64px;
     height: 64px;
-    background-color: #F0FFF4;
-    /* Light Green */
     border-radius: 50%;
+    background-color: rgba(245, 158, 11, 0.1);
+    color: var(--warning);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #38A169;
-    /* Green Check */
-    margin-bottom: 24px;
+    margin: 0 auto 16px;
 }
 
 .modalTitle {
     font-size: 20px;
-    font-weight: 700;
-    color: #2D3748;
-    margin-bottom: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
 }
 
 .modalText {
-    font-size: 16px;
-    color: #718096;
-    margin-bottom: 32px;
+    color: var(--text-secondary);
+    margin-bottom: 24px;
     line-height: 1.5;
 }
 
 .modalActions {
     display: flex;
-    gap: 16px;
-    width: 100%;
+    gap: 12px;
     justify-content: center;
 }
 
-.modalCancel {
-    border: 1px solid #E2E8F0;
-    width: 100%;
-    justify-content: center;
-    color: #4A5568 !important;
-}
-
+.modalCancel,
 .modalConfirm {
-    width: 100%;
-    justify-content: center;
-    background-color: #4C6EF5 !important;
-    /* Bright Blue from screenshot */
+    min-width: 100px;
 }
 
 /* Organization Form Styles */
 .orgForm {
-    display: flex;
-    flex-direction: column;
-    gap: 32px;
+    width: 100%;
+    max-width: 800px;
+}
+
+.emptyState {
+    text-align: center;
+    padding: 48px;
+    color: var(--text-secondary);
 }
 
 .section {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
 }
 
 .sectionHeader {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    background-color: #EBF5FF;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: 600;
-    color: #2D4DDD;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #E2E8F0;
+    font-weight: 700;
+    font-size: 18px;
+    color: #2D3748;
 }
 
 .sectionNumber {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: #EBF8FF;
+    color: #2C5282;
+    border-radius: 50%;
+    font-size: 16px;
     font-weight: 700;
+    flex-shrink: 0;
+}
+
+.required {
+    color: var(--error);
+    margin-left: 4px;
+}
+
+.optional {
+    color: var(--text-tertiary);
+    font-weight: 400;
+    font-size: 13px;
+    margin-left: 4px;
+}
+
+.checkboxGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+.uploadedDocsList {
+    padding: 24px;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    text-align: center;
+}
+
+.placeholder {
+    color: var(--text-tertiary);
+    font-size: 14px;
 }
 
 .orgActions {
     display: flex;
     justify-content: flex-end;
     gap: 16px;
-    padding-top: 16px;
-    border-top: 1px solid #E2E8F0;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-color);
 }
 
-.emptyState {
-    text-align: center;
-    padding: 48px;
-    color: #718096;
-}
-
-.placeholder {
-    color: #A0AEC0;
-    font-size: 14px;
-    font-style: italic;
-}
-
-.uploadedDocsList {
-    padding: 16px;
-    background-color: #F7FAFC;
+/* Code Generator Styles */
+.codeGenWrapper {
+    background: var(--bg-secondary);
     border-radius: 8px;
-    border: 1px dashed #E2E8F0;
+    padding: 20px;
+    border: 1px solid var(--border-color);
 }
 
-/* Required indicator */
-.required {
-    color: #E53E3E;
-}
-
-.optional {
-    color: #718096;
-    font-weight: 400;
-}
-
-/* Tag selection for additional business types */
-.tagContainer {
+.generateStart {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
 }
 
-.tag {
-    display: inline-flex;
+.generateHelp {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.codeDisplay {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.codeDisplay.expired .code {
+    text-decoration: line-through;
+    color: var(--text-tertiary);
+}
+
+.codeBox {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.code {
+    font-family: monospace;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--primary);
+}
+
+.copyButton {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    transition: all 0.2s;
+}
+
+.copyButton:hover {
+    color: var(--primary);
+    background: var(--primary-light);
+}
+
+.codeMeta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.expiredBadge {
+    display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 16px;
-    border-radius: 20px;
+    color: var(--error);
     font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid #E2E8F0;
-    background-color: #F7FAFC;
-    color: #4A5568;
-    transition: all 0.2s ease;
+    font-weight: 600;
+    background: rgba(239, 68, 68, 0.1);
+    padding: 4px 8px;
+    border-radius: 4px;
 }
 
-.tag:hover:not(:disabled) {
-    border-color: #2D4DDD;
-    color: #2D4DDD;
+.expiresText {
+    color: var(--text-secondary);
+    font-size: 13px;
 }
 
-.tagSelected {
-    background-color: #2D4DDD;
-    color: white;
-    border-color: #2D4DDD;
-}
-
-.tagSelected:hover:not(:disabled) {
-    background-color: #2338AA;
-    color: white;
-}
-
-.tagClose {
-    font-size: 16px;
-    margin-left: 4px;
-}
-
-.tag:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-/* Checkbox grid for program services */
-.checkboxGrid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-}
-
-.checkboxLabel {
+.regenerateButton {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 14px;
-    color: #2D3748;
-    cursor: pointer;
+    gap: 6px;
 }
 
-.checkboxLabel input:disabled+span {
-    color: #A0AEC0;
+.spinning {
+    animation: spin 1s linear infinite;
 }
 
-.checkbox {
-    width: 18px;
-    height: 18px;
-    border: 2px solid #CBD5E0;
-    border-radius: 4px;
-    cursor: pointer;
-    accent-color: #2D4DDD;
+.errorText {
+    color: var(--error);
+    font-size: 13px;
+    margin-top: 8px;
 }
 
-.checkbox:checked {
-    background-color: #2D4DDD;
-    border-color: #2D4DDD;
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
-.checkbox:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
+@media (max-width: 600px) {
+    .codeDisplay {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .codeMeta {
+        width: 100%;
+        justify-content: space-between;
+    }
 }

@@ -15,15 +15,17 @@ interface User {
     dateInvited: Date;
 }
 
-import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
+import InviteStaffModal from './InviteStaffModal';
 
 interface StaffListClientProps {
     users: User[];
     hasOrganization: boolean;
+    organizationId: string;
 }
 
-export default function StaffListClient({ users: initialUsers, hasOrganization }: StaffListClientProps) {
+export default function StaffListClient({ users: initialUsers, hasOrganization, organizationId }: StaffListClientProps) {
     const [showFeatureGate, setShowFeatureGate] = useState(false);
+    const [showInviteModal, setShowInviteModal] = useState(false);
     const router = useRouter();
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -82,7 +84,7 @@ export default function StaffListClient({ users: initialUsers, hasOrganization }
                         if (!hasOrganization) {
                             setShowFeatureGate(true);
                         } else {
-                            console.log('Add New Staff Clicked');
+                            setShowInviteModal(true);
                         }
                     }}
                 >
@@ -119,9 +121,8 @@ export default function StaffListClient({ users: initialUsers, hasOrganization }
                 <table className={styles.table}>
                     <thead>
                         <tr>
-                            <th style={{ width: '60%', paddingLeft: '24px' }}>Name</th>
-                            <th style={{ width: '30%', textAlign: 'right' }}>Date Invited</th>
-                            <th style={{ width: '10%' }}></th>
+                            <th style={{ width: '70%', paddingLeft: '24px' }}>Name</th>
+                            <th style={{ width: '30%', textAlign: 'right', paddingRight: '24px' }}>Date Invited</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -152,26 +153,14 @@ export default function StaffListClient({ users: initialUsers, hasOrganization }
                                             </div>
                                         </div>
                                     </td>
-                                    <td style={{ textAlign: 'right', color: '#718096' }}>
+                                    <td style={{ textAlign: 'right', color: '#718096', paddingRight: '24px' }}>
                                         {getRelativeTime(user.dateInvited)}
-                                    </td>
-                                    <td style={{ textAlign: 'right', paddingRight: '24px' }}>
-                                        <button className={styles.actionButton} onClick={(e) => {
-                                            e.stopPropagation();
-                                            console.log('Menu clicked');
-                                        }}>
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <circle cx="12" cy="12" r="1"></circle>
-                                                <circle cx="12" cy="5" r="1"></circle>
-                                                <circle cx="12" cy="19" r="1"></circle>
-                                            </svg>
-                                        </button>
                                     </td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={3} style={{ textAlign: 'center', padding: '60px', color: '#718096' }}>
+                                <td colSpan={2} style={{ textAlign: 'center', padding: '60px', color: '#718096' }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                                         {/* Empty state icon */}
                                         <div style={{ color: '#CBD5E0' }}>
@@ -256,6 +245,12 @@ export default function StaffListClient({ users: initialUsers, hasOrganization }
                 mode="feature_gate"
                 isOpen={showFeatureGate}
                 onClose={() => setShowFeatureGate(false)}
+            />
+            {/* Invite Staff Modal */}
+            <InviteStaffModal
+                isOpen={showInviteModal}
+                onClose={() => setShowInviteModal(false)}
+                organizationId={organizationId}
             />
         </div>
     );

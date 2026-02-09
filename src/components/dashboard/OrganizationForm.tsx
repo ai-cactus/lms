@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './ProfileForm.module.css';
-import { Button, Input, Select, Checkbox } from '@/components/ui';
 import { updateOrganization } from '@/app/actions/organization';
+import { generateOrganizationCode, getOrganizationCode } from '@/app/actions/organization-code';
 import { useRouter } from 'next/navigation';
+import { Button, Input, Select, Checkbox } from '@/components/ui';
 
 interface OrganizationData {
     id: string;
@@ -83,6 +84,126 @@ const PROGRAM_SERVICES = [
     { id: 'opioid', label: 'Opioid Treatment Program' },
     { id: 'vision', label: 'Vision Rehabilitation Services' },
 ];
+
+function OrgCodeGenerator() {
+    const [code, setCode] = useState<string | null>(null);
+    const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        loadCode();
+    }, []);
+
+    async function loadCode() {
+        try {
+            const result = await getOrganizationCode();
+            if (result.success && result.code) {
+                setCode(result.code);
+                setExpiresAt(result.expiresAt ? new Date(result.expiresAt) : null);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async function handleGenerate() {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await generateOrganizationCode();
+            if (result.success && result.code) {
+                setCode(result.code);
+                setExpiresAt(result.expiresAt ? new Date(result.expiresAt) : null);
+            } else {
+                setError(result.error || 'Failed to generate code');
+            }
+        } catch (err) {
+            setError('An error occurred');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const isExpired = expiresAt && new Date() > expiresAt;
+    const timeLeft = expiresAt ? Math.max(0, Math.floor((expiresAt.getTime() - new Date().getTime()) / 60000)) : 0;
+    const hoursLeft = Math.floor(timeLeft / 60);
+    const minsLeft = timeLeft % 60;
+
+    const copyToClipboard = () => {
+        if (code) {
+            navigator.clipboard.writeText(code);
+            // Could add a toast here
+        }
+    };
+
+    return (
+        <div className={styles.codeGenWrapper}>
+            {code ? (
+                <div className={`${styles.codeDisplay} ${isExpired ? styles.expired : ''}`}>
+                    <div className={styles.codeBox}>
+                        <span className={styles.code}>{code}</span>
+                        {!isExpired && (
+                            <button type="button" onClick={copyToClipboard} className={styles.copyButton} title="Copy Code">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
+                        )}
+                    </div>
+
+                    <div className={styles.codeMeta}>
+                        {isExpired ? (
+                            <span className={styles.expiredBadge}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                </svg> Expired
+                            </span>
+                        ) : (
+                            <span className={styles.expiresText}>
+                                Expires in {hoursLeft}h {minsLeft}m
+                            </span>
+                        )}
+
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleGenerate}
+                            disabled={loading}
+                            className={styles.regenerateButton}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? styles.spinning : ''}>
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                            {isExpired ? 'Regenerate' : 'Generate New'}
+                        </Button>
+                    </div>
+                </div>
+            ) : (
+                <div className={styles.generateStart}>
+                    <p className={styles.generateHelp}>
+                        Generate a temporary 6-digit code for workers to join your organization.
+                    </p>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handleGenerate}
+                        loading={loading}
+                    >
+                        Generate Code
+                    </Button>
+                </div>
+            )}
+            {error && <p className={styles.errorText}>{error}</p>}
+        </div>
+    );
+}
 
 export default function OrganizationForm({ initialData, isAdmin }: OrganizationFormProps) {
     const [formData, setFormData] = useState<OrganizationData>(
@@ -440,6 +561,27 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                     </div>
                 </div>
             </div>
+
+            {/* Section: Worker Onboarding Code */}
+            {isAdmin && (
+                <div className={styles.section}>
+                    <div className={styles.sectionHeader}>
+                        <span className={styles.sectionNumber}>4.</span>
+                        <span>Worker Onboarding</span>
+                    </div>
+
+                    <div className={styles.fieldGroup}>
+                        <label className={styles.label}>
+                            Organization Join Code
+                            <span className={styles.optional}> (Share this code with your workers)</span>
+                        </label>
+
+                        <div className={styles.codeContainer}>
+                            <OrgCodeGenerator />
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {message && (
                 <div className={`${styles.message} ${styles[message.type]}`}>

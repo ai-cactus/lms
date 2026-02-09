@@ -36,65 +36,77 @@ export async function authenticate(prevState: AuthState | undefined, formData: F
 export type SignupResult = { success: true } | { success: false; error: string };
 
 export async function signup(prevState: SignupResult | undefined, formData: FormData): Promise<SignupResult> {
+    // Legacy function - kept for backwards compatibility
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
     const firstName = formData.get('firstName') as string;
     const lastName = formData.get('lastName') as string;
 
+    return signupWithRole({
+        email,
+        password,
+        firstName,
+        lastName,
+        role: 'worker' // Default role
+    });
+}
+
+interface SignupWithRoleData {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    role: 'admin' | 'worker';
+}
+
+export async function signupWithRole(data: SignupWithRoleData): Promise<SignupResult> {
+    const { email, password, firstName, lastName, role } = data;
+
     // Basic validation
-    if (!email || !password) {
-        return { success: false, error: 'Missing fields' };
+    if (!email || !password || !firstName || !lastName || !role) {
+        return { success: false, error: 'All fields are required' };
     }
 
     try {
+        // Check if user already exists
+        const existingUser = await prisma.user.findUnique({ where: { email } });
+        if (existingUser) {
+            return { success: false, error: 'Account with this email already exists.' };
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        await prisma.$transaction(async (tx) => {
-            const user = await tx.user.create({
-                data: {
-                    email,
-                    password: hashedPassword,
-                }
-            });
+        // Clean up any existing verification tokens for this email
+        await prisma.verificationToken.deleteMany({
+            where: { identifier: email, type: 'email_verification' }
+        });
 
-            await tx.profile.create({
-                data: {
-                    id: user.id,
-                    email: user.email,
-                    firstName,
-                    lastName,
-                    fullName: `${firstName} ${lastName}`,
-                }
-            })
-        })
+        // Create verification token with pending user data including role (5 minute expiry)
+        const token = crypto.randomUUID();
+        const expires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+        await prisma.verificationToken.create({
+            data: {
+                identifier: email,
+                token,
+                type: 'email_verification',
+                expires,
+                password: hashedPassword,
+                firstName,
+                lastName,
+                role
+            }
+        });
+
+        // Send verification email
+        const { sendEmailVerification } = await import('@/lib/email');
+        await sendEmailVerification(email, token);
+
+        return { success: true };
 
     } catch (error: any) {
         console.error("Signup error:", error);
-        if (error.code === 'P2002') {
-            return { success: false, error: 'Account with this email already exists.' };
-        }
         return { success: false, error: 'Failed to create account.' };
-    }
-
-    // Attempt Login after signup
-    try {
-        await signIn('credentials', {
-            email,
-            password,
-            redirect: false  // Don't redirect from server, let client handle it
-        });
-        return { success: true };
-    } catch (error) {
-        if (error instanceof AuthError) {
-            switch (error.type) {
-                case 'CredentialsSignin':
-                    return { success: false, error: 'Signup successful but auto-login failed.' };
-                default:
-                    return { success: false, error: 'Something went wrong.' };
-            }
-        }
-        // For other errors (like NEXT_REDIRECT), still return success since user was created
-        return { success: true };
     }
 }
 

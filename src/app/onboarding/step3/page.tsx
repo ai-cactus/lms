@@ -32,9 +32,22 @@ export default function OnboardingStep3() {
     });
 
     const onSubmit = async (data: Step3FormData) => {
-        console.log('Step 3 Data:', data);
-        // TODO: Save data
-        router.push('/onboarding/step4');
+        try {
+            const { updateOrganization } = await import('@/app/actions/organization');
+            const result = await updateOrganization({
+                primaryBusinessType: data.primaryBusinessType,
+                additionalBusinessTypes: data.additionalBusinessType ? [data.additionalBusinessType] : [],
+                programServices: data.services
+            });
+
+            if (result.success) {
+                router.push('/onboarding/step4');
+            } else {
+                console.error('Failed to update organization:', result.error);
+            }
+        } catch (error) {
+            console.error('Submission error:', error);
+        }
     };
 
     const getError = (fieldName: keyof Step3FormData) => {
