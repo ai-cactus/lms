@@ -129,20 +129,23 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
             </div>
 
             <div className={styles.card}>
-                <div className={styles.tabs}>
-                    <button
-                        className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
-                        onClick={() => setActiveTab('profile')}
-                    >
-                        EDIT PROFILE
-                    </button>
-                    <button
-                        className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
-                        onClick={() => setActiveTab('organization')}
-                    >
-                        YOUR ORGANIZATION
-                    </button>
-                </div>
+                {/* Only show tabs for admins */}
+                {isAdmin && (
+                    <div className={styles.tabs}>
+                        <button
+                            className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
+                            onClick={() => setActiveTab('profile')}
+                        >
+                            EDIT PROFILE
+                        </button>
+                        <button
+                            className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
+                            onClick={() => setActiveTab('organization')}
+                        >
+                            YOUR ORGANIZATION
+                        </button>
+                    </div>
+                )}
 
                 {activeTab === 'profile' ? (
                     <>
@@ -182,13 +185,16 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                                 </div>
                             </div>
 
+                            {/* Company - Read-only from organization for workers */}
                             <div className={styles.fieldGroup}>
                                 <label className={styles.label}>Company</label>
                                 <Input
                                     name="company_name"
-                                    value={formData.company_name || ''}
-                                    onChange={handleChange}
-                                    placeholder="Enter your company name"
+                                    value={organizationData?.name || formData.company_name || ''}
+                                    onChange={isAdmin ? handleChange : undefined}
+                                    disabled={!isAdmin}
+                                    className={!isAdmin ? styles.readOnlyInput : undefined}
+                                    placeholder="Your organization name"
                                 />
                             </div>
 
@@ -202,18 +208,55 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                                 />
                             </div>
 
-                            <div className={styles.fieldGroup}>
-                                <label className={styles.label}>Role</label>
-                                <Select
-                                    value={formData.role}
-                                    onChange={(value) => setFormData(prev => ({ ...prev, role: value as 'admin' | 'worker' }))}
-                                    options={[
-                                        { label: 'Compliance Professional (Admin)', value: 'admin' },
-                                        { label: 'Worker', value: 'worker' }
-                                    ]}
-                                    disabled={true}
-                                />
-                            </div>
+                            {/* State & Zip Code - Read-only from organization for workers */}
+                            {!isAdmin && organizationData && (
+                                <div className={styles.formGrid}>
+                                    <div className={styles.fieldGroup}>
+                                        <label className={styles.label}>State</label>
+                                        <Input
+                                            value={organizationData.state || ''}
+                                            disabled
+                                            className={styles.readOnlyInput}
+                                        />
+                                    </div>
+                                    <div className={styles.fieldGroup}>
+                                        <label className={styles.label}>Zip Code</label>
+                                        <Input
+                                            value={organizationData.zipCode || ''}
+                                            disabled
+                                            className={styles.readOnlyInput}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Business Address - Read-only from organization for workers */}
+                            {!isAdmin && organizationData && (
+                                <div className={styles.fieldGroup}>
+                                    <label className={styles.label}>Business Address</label>
+                                    <Input
+                                        value={organizationData.address || ''}
+                                        disabled
+                                        className={styles.readOnlyInput}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Role field - only for admins */}
+                            {isAdmin && (
+                                <div className={styles.fieldGroup}>
+                                    <label className={styles.label}>Role</label>
+                                    <Select
+                                        value={formData.role}
+                                        onChange={(value) => setFormData(prev => ({ ...prev, role: value as 'admin' | 'worker' }))}
+                                        options={[
+                                            { label: 'Compliance Professional (Admin)', value: 'admin' },
+                                            { label: 'Worker', value: 'worker' }
+                                        ]}
+                                        disabled={true}
+                                    />
+                                </div>
+                            )}
 
                             {message && (
                                 <div className={`${styles.message} ${styles[message.type]}`}>
@@ -222,6 +265,14 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                             )}
 
                             <div className={styles.actions}>
+                                <Button
+                                    variant="outline"
+                                    type="button"
+                                    onClick={() => setFormData(initialData)}
+                                    disabled={!isDirty}
+                                >
+                                    Discard
+                                </Button>
                                 <Button
                                     variant="primary"
                                     type="submit"

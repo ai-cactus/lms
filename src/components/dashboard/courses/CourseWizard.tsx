@@ -11,6 +11,7 @@ import Step5Review from './steps/Step5Review';
 import Step6QuizReview from './steps/Step6QuizReview';
 import Step7Publish from './steps/Step7Publish';
 import Logo from '@/components/ui/Logo';
+import { createFullCourse } from '@/app/actions/course';
 
 interface Document {
     id: string;
@@ -72,7 +73,11 @@ export default function CourseWizard() {
         setIsGenerating(false);
     };
 
-    const handleNext = () => {
+
+    const [isPublishing, setIsPublishing] = useState(false);
+    const [publishError, setPublishError] = useState<string | null>(null);
+
+    const handleNext = async () => {
         if (currentStep < totalSteps) {
             // If entering Step 5, set generating mode
             if (currentStep === 4) {
@@ -80,9 +85,60 @@ export default function CourseWizard() {
             }
             setCurrentStep(currentStep + 1);
         } else {
+            // Validate before submit
+            if (!formData.title?.trim()) {
+                setPublishError('Please enter a course title');
+                return;
+            }
+            if (!generatedContent?.modules || generatedContent.modules.length === 0) {
+                setPublishError('No course content generated. Please go back to Step 5.');
+                return;
+            }
+
             // Submit
-            console.log('Wizard Completed', formData);
-            router.push('/dashboard/courses');
+            setIsPublishing(true);
+            setPublishError(null);
+
+            try {
+                const result = await createFullCourse({
+                    title: formData.title,
+                    description: formData.description,
+                    category: formData.category,
+                    difficulty: formData.difficulty,
+                    duration: formData.duration,
+                    modules: generatedContent?.modules || [],
+                    quiz: generatedContent?.quiz || [],
+                    assignments: formData.assignments || [],
+                    dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,
+                    dueTime: formData.dueTime,
+                    // Quiz settings from Step 4
+                    quizTitle: formData.quizTitle,
+                    quizPassMark: formData.quizPassMark,
+                    quizQuestionType: formData.quizQuestionType
+                });
+
+                if (result.success) {
+                    console.log('Course Created:', result.courseId);
+                    console.log('Invite Results:', result.inviteResults);
+
+                    // Log any issues for debugging
+                    if (result.inviteResults?.failed?.length > 0) {
+                        console.warn('Failed to invite:', result.inviteResults.failed);
+                    }
+                    if (result.inviteResults?.skipped?.length > 0) {
+                        console.warn('Skipped (invalid or in other org):', result.inviteResults.skipped);
+                    }
+
+                    router.push('/dashboard/training');
+                } else {
+                    setPublishError('Failed to create course. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error submitting course:', error);
+                setPublishError('An unexpected error occurred. Please try again.');
+            } finally {
+                setIsPublishing(false);
+            }
         }
     };
 
@@ -201,16 +257,21 @@ export default function CourseWizard() {
                 {/* Hide footer during generation phase of Step 5 */}
                 {(!isGenerating || currentStep !== 5) && (
                     <div className={styles.footer}>
-                        <button className={styles.btnBack} onClick={handleBack}>
-                            Back
-                        </button>
-                        <button
-                            className={`${styles.btnNext} ${!isNextDisabled() ? styles.btnNextEnabled : ''}`}
-                            onClick={handleNext}
-                            disabled={isNextDisabled()}
-                        >
-                            {currentStep === totalSteps ? 'Publish' : 'Next'}
-                        </button>
+                        {publishError && (
+                            <div className={styles.errorMessage}>{publishError}</div>
+                        )}
+                        <div className={styles.footerButtons}>
+                            <button className={styles.btnBack} onClick={handleBack} disabled={isPublishing}>
+                                Back
+                            </button>
+                            <button
+                                className={`${styles.btnNext} ${!isNextDisabled() && !isPublishing ? styles.btnNextEnabled : ''}`}
+                                onClick={handleNext}
+                                disabled={isNextDisabled() || isPublishing}
+                            >
+                                {isPublishing ? 'Publishing...' : currentStep === totalSteps ? 'Publish' : 'Next'}
+                            </button>
+                        </div>
                     </div>
                 )}
             </main>

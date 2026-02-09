@@ -120,3 +120,55 @@ export const sendEmailVerification = async (email: string, token: string) => {
         return { success: false, error };
     }
 };
+
+export const sendCourseInviteEmail = async (
+    email: string,
+    password: string,
+    courseName: string,
+    orgName: string
+) => {
+    const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://staging-lms.theraptly.com';
+    const loginLink = `${baseUrl}/login`;
+    const appName = "Theraptly";
+
+    const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="color: #4C6EF5; font-size: 28px; margin: 0;">You've been assigned a course!</h1>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                <strong>${orgName}</strong> has assigned you the course: <strong>${courseName}</strong>
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                An account has been created for you. Use the credentials below to log in and start your training:
+            </p>
+            <div style="background: #f7fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
+                <p style="margin: 0 0 8px 0; color: #4a5568;"><strong>Email:</strong> ${email}</p>
+                <p style="margin: 0; color: #4a5568;"><strong>Temporary Password:</strong> <code style="background: #edf2f7; padding: 4px 8px; border-radius: 4px;">${password}</code></p>
+            </div>
+            <p style="color: #718096; font-size: 14px;">
+                We recommend changing your password after your first login.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${loginLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Log In to Start Training</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                If you have questions, please contact your administrator.
+            </p>
+        </div>
+    `;
+
+    try {
+        const info = await transporter.sendMail({
+            from: `"${appName}" <${process.env.SMTP_USER}>`,
+            to: email,
+            subject: `You've been assigned: ${courseName} - ${appName}`,
+            html,
+        });
+        console.log('Course invite email sent: %s', info.messageId);
+        return { success: true };
+    } catch (error) {
+        console.error('Error sending course invite email:', error);
+        return { success: false, error };
+    }
+};

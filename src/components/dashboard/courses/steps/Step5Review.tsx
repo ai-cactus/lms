@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styles from '../CourseWizard.module.css';
 import { generateCourseAI } from '@/app/actions/course-ai';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Step5ReviewProps {
     data: any;
@@ -18,11 +19,11 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
 
     // UI State
     const [activeModuleIndex, setActiveModuleIndex] = useState(0);
-    const [sidebarTab, setSidebarTab] = useState<'modules' | 'source'>('modules');
     const [activeCitationId, setActiveCitationId] = useState<number | null>(null);
     const sourceViewRef = useRef<HTMLDivElement>(null);
 
-    // Edit Mode State
+    // View Mode State
+    const [viewMode, setViewMode] = useState<'article' | 'slides' | 'split'>('split'); // Default to split for admin review
     const [isEditing, setIsEditing] = useState(false);
     const [editedModules, setEditedModules] = useState<any[]>([]);
 
@@ -32,12 +33,30 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
         }
     }, [generatedContent]);
 
+    // Auto-scroll source text when slide changes or citation clicked
+    useEffect(() => {
+        if (viewMode === 'split' && generatedContent?.citations) {
+            // Find citations relevant to current module or active citation
+            // For now, let's just highlight the active citation if present
+            if (activeCitationId) {
+                const mark = sourceViewRef.current?.querySelector(`mark[data-id="${activeCitationId}"]`);
+                if (mark) {
+                    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        }
+    }, [activeCitationId, viewMode, activeModuleIndex]);
+
     const handleSaveEdit = () => {
         setIsEditing(false);
-        setGeneratedContent((prev: any) => ({
-            ...prev,
+        const newContent = {
+            ...generatedContent,
             modules: editedModules
-        }));
+        };
+        setGeneratedContent(newContent);
+        if (onComplete) {
+            onComplete(newContent);
+        }
     };
 
     const handleModuleChange = (index: number, field: 'title' | 'content', value: string) => {
@@ -56,14 +75,12 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
         'Finalizing citations'
     ];
 
-    // AI Generation Effect
     useEffect(() => {
         if (hasStartedRef.current) return;
         hasStartedRef.current = true;
 
         const generate = async () => {
             try {
-                // Simulate checklist progress
                 let step = 0;
                 const interval = setInterval(() => {
                     if (step < checklistItems.length - 1) {
@@ -72,11 +89,9 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
                     }
                 }, 1500);
 
-                // Prepare FormData with File
                 const formData = new FormData();
                 formData.append('data', JSON.stringify(data));
 
-                // Find the selected file
                 const selectedDoc = documents.find(d => d.selected && d.file);
                 if (selectedDoc?.file) {
                     formData.append('file', selectedDoc.file);
@@ -92,8 +107,6 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
                 } else {
                     setGeneratedContent(result);
                     onComplete(result);
-                    // Switch to source tab if citations exist to show off the feature? 
-                    // No, stick to modules first.
                 }
                 setIsGenerating(false);
             } catch (err) {
@@ -106,28 +119,16 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
         generate();
     }, [data, documents, onComplete]);
 
-    // Handle Citation Click
     const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
         const target = e.target as HTMLElement;
         if (target.dataset.citationId) {
             const id = parseInt(target.dataset.citationId, 10);
             setActiveCitationId(id);
-            setSidebarTab('source');
-
-            // Scroll to highlight (allow render first)
-            setTimeout(() => {
-                const mark = sourceViewRef.current?.querySelector(`mark[data-id="${id}"]`);
-                if (mark) {
-                    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }, 100);
         }
     };
 
-    // Process Content to inject clickable spans for [1]
     const processContent = (html: string) => {
         if (!html) return '';
-        // Replace [1], [2] etc with <span ...>
         return html.replace(/\[(\d+)\]/g, (match, id) => {
             const numId = parseInt(id, 10);
             const isActive = activeCitationId === numId;
@@ -135,27 +136,15 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
         });
     };
 
-    // Render Source Text with Highlights
     const renderSourceText = () => {
         if (!generatedContent?.sourceText) return <p className={styles.emptyState}>No source text available.</p>;
 
-        const text = generatedContent.sourceText;
+        let processedHtml = generatedContent.sourceText.replace(/\n/g, '<br/>');
         const citations = generatedContent.citations || [];
-
-        // We need to highlight parts of the text.
-        // Simple approach: Split text by quotes. 
-        // Note: This is fragile if quotes overlap or repeat. V1 implementation.
-
-        // Let's create a map of ranges or just replace first occurrence?
-        // Replacing is safer for display.
-
-        let processedHtml = text.replace(/\n/g, '<br/>'); // Preserve line breaks
 
         citations.forEach((cit: any) => {
             if (cit.quote) {
-                // Escape regex special chars in quote
                 const escapedQuote = cit.quote.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                // Wrap first occurrence in mark
                 const regex = new RegExp(`(${escapedQuote})`, '');
                 processedHtml = processedHtml.replace(regex, `<mark data-id="${cit.id}" class="${activeCitationId === cit.id ? styles.markActive : ''}">$1</mark>`);
             }
@@ -181,7 +170,7 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
             <div className={styles.stepWrapper}>
                 <div className={styles.generationContainer}>
                     <h2 className={styles.stepTitle}>Analysis & Generation</h2>
-                    <p className={styles.stepSubtitle}>AI agent is reading your documents and designing the course.</p>
+                    <p className={styles.stepSubtitle}>AI user is reading your documents and designing the course.</p>
                     <div className={styles.processingCard}>
                         <div className={styles.checklist}>
                             {checklistItems.map((item, index) => {
@@ -208,135 +197,126 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
     return (
         <div className={styles.stepWrapper}>
             <div className={styles.reviewHeader}>
-                <h2 className={styles.stepTitle}>Review Course Content</h2>
-                <p className={styles.stepSubtitle}>Review generated modules and verify citations against the source.</p>
+                <div className={styles.headerTitle}>
+                    <h2 className={styles.stepTitle}>Review Course Content</h2>
+                    <p className={styles.stepSubtitle}>Review generated modules and verify citations against the source.</p>
+                </div>
+                <div className={styles.viewControls}>
+                    <button
+                        className={`${styles.viewBtn} ${viewMode === 'split' ? styles.viewBtnActive : ''}`}
+                        onClick={() => setViewMode('split')}
+                    >
+                        Split View
+                    </button>
+                    <button
+                        className={`${styles.viewBtn} ${viewMode === 'slides' ? styles.viewBtnActive : ''}`}
+                        onClick={() => setViewMode('slides')}
+                    >
+                        Slides
+                    </button>
+                    <button
+                        className={`${styles.viewBtn} ${viewMode === 'article' ? styles.viewBtnActive : ''}`}
+                        onClick={() => setViewMode('article')}
+                    >
+                        Article
+                    </button>
+                </div>
             </div>
 
-            <div className={styles.reviewContainer}>
-                {/* Main Article */}
-                <div className={styles.reviewMain}>
-                    {isEditing ? (
-                        <div className={styles.editMode}>
-                            <input
-                                type="text"
-                                className={styles.editTitleInput}
-                                value={currentModule?.title || ''}
-                                onChange={(e) => handleModuleChange(activeModuleIndex, 'title', e.target.value)}
-                            />
-                            <div className={styles.articleMeta}>
-                                <span>{currentModule?.duration || '10 min'} read</span>
-                                <span className={styles.badge}>Editing</span>
-                            </div>
-                            <textarea
-                                className={styles.editContentInput}
-                                value={currentModule?.content || ''}
-                                onChange={(e) => handleModuleChange(activeModuleIndex, 'content', e.target.value)}
-                            />
-                            <button className={styles.btnSave} onClick={handleSaveEdit}>Save Changes</button>
-                        </div>
-                    ) : (
-                        <>
-                            <div className={styles.articleHeader}>
-                                <div className={styles.articleTitle}>{currentModule?.title}</div>
-                                <div className={styles.articleMeta}>
-                                    <span>{currentModule?.duration || '10 min'} read</span>
-                                    <span className={styles.badge}>AI Generated</span>
+            <div className={`${styles.contentContainer} ${styles[viewMode]}`}>
+                {/* Left Side: Slide/Content */}
+                <div className={styles.mainContent}>
+                    <div className={styles.slideCardWrapper}>
+                        <AnimatePresence mode='wait'>
+                            <motion.div
+                                key={activeModuleIndex}
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                transition={{ duration: 0.3 }}
+                                className={styles.slideCard}
+                            >
+                                <div className={styles.slideHeader}>
+                                    <span className={styles.moduleBadge}>Module {activeModuleIndex + 1}</span>
+                                    <span className={styles.durationBadge}>{currentModule?.duration || '10 min'}</span>
                                 </div>
-                            </div>
 
-                            <div
-                                className={styles.articleContent}
-                                onClick={handleContentClick}
-                                dangerouslySetInnerHTML={{ __html: processContent(currentModule?.content) }}
-                            />
-                        </>
-                    )}
+                                {isEditing ? (
+                                    <div className={styles.editMode}>
+                                        <input
+                                            type="text"
+                                            className={styles.editTitleInput}
+                                            value={currentModule?.title || ''}
+                                            onChange={(e) => handleModuleChange(activeModuleIndex, 'title', e.target.value)}
+                                        />
+                                        <textarea
+                                            className={styles.editContentInput}
+                                            value={currentModule?.content || ''}
+                                            onChange={(e) => handleModuleChange(activeModuleIndex, 'content', e.target.value)}
+                                        />
+                                        <button className={styles.btnSave} onClick={handleSaveEdit}>Save Changes</button>
+                                    </div>
+                                ) : ( // View Mode
+                                    <>
+                                        <h3 className={styles.slideTitle}>{currentModule?.title}</h3>
+                                        <div
+                                            className={styles.slideBody}
+                                            onClick={handleContentClick}
+                                            dangerouslySetInnerHTML={{ __html: processContent(currentModule?.content) }}
+                                        />
+                                    </>
+                                )}
+                            </motion.div>
+                        </AnimatePresence>
 
-                    {/* Navigation Buttons */}
-                    <div className={styles.moduleNav}>
-                        <button
-                            className={styles.navBtn}
-                            disabled={activeModuleIndex === 0}
-                            onClick={() => setActiveModuleIndex(i => i - 1)}
-                        >
-                            ← Previous Lesson
-                        </button>
-                        <button
-                            className={styles.navBtn}
-                            disabled={activeModuleIndex === (generatedContent?.modules?.length || 0) - 1}
-                            onClick={() => setActiveModuleIndex(i => i + 1)}
-                        >
-                            Next Lesson →
-                        </button>
-                    </div>
-                </div>
-
-                {/* Sidebar */}
-                <div className={styles.reviewSidebar}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
-                        {!isEditing ? (
-                            <button 
-                                className={`${styles.sidebarBtn} ${styles.sidebarBtnOutline}`}
-                                onClick={() => setIsEditing(true)}
+                        <div className={styles.slideNavigation}>
+                            <button
+                                className={styles.navBtn}
+                                disabled={activeModuleIndex === 0}
+                                onClick={() => setActiveModuleIndex(i => i - 1)}
                             >
-                                Edit Module
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                ← Prev
                             </button>
-                        ) : (
-                            <button 
-                                className={`${styles.sidebarBtn} ${styles.sidebarBtnPrimary}`}
-                                onClick={handleSaveEdit}
-                            >
-                                Save Changes
-                            </button>
-                        )}
-                        <button className={`${styles.sidebarBtn} ${styles.sidebarBtnPrimary}`}>
-                            View as Slides
-                        </button>
-                    </div>
-
-                    <div className={styles.sidebarTabs}>
-                        <button
-                            className={`${styles.tab} ${sidebarTab === 'modules' ? styles.activeTab : ''}`}
-                            onClick={() => setSidebarTab('modules')}
-                        >
-                            Modules
-                        </button>
-                        <button
-                            className={`${styles.tab} ${sidebarTab === 'source' ? styles.activeTab : ''}`}
-                            onClick={() => setSidebarTab('source')}
-                        >
-                            Source Ref
-                        </button>
-                    </div>
-
-                    <div className={styles.sidebarContent}>
-                        {sidebarTab === 'modules' ? (
-                            <div className={styles.tocList}>
-                                {generatedContent?.modules?.map((mod: any, i: number) => (
+                            <div className={styles.slideIndicators}>
+                                {generatedContent?.modules?.map((_: any, i: number) => (
                                     <div
                                         key={i}
-                                        className={`${styles.tocItem} ${i === activeModuleIndex ? styles.tocItemActive : ''}`}
+                                        className={`${styles.indicator} ${i === activeModuleIndex ? styles.indicatorActive : ''}`}
                                         onClick={() => setActiveModuleIndex(i)}
-                                    >
-                                        <span className={styles.tocNum}>{i + 1}</span>
-                                        {mod.title}
-                                    </div>
+                                    />
                                 ))}
                             </div>
-                        ) : (
-                            <div className={styles.sourceView} ref={sourceViewRef}>
-                                <div className={styles.sourceHeader}>
-                                    Generated from {documents.find(d => d.selected)?.name || 'Uploaded Document'}
-                                </div>
-                                <div className={styles.sourceText}>
-                                    {renderSourceText()}
-                                </div>
-                            </div>
+                            <button
+                                className={styles.navBtn}
+                                disabled={activeModuleIndex === (generatedContent?.modules?.length || 0) - 1}
+                                onClick={() => setActiveModuleIndex(i => i + 1)}
+                            >
+                                Next →
+                            </button>
+                        </div>
+
+                        {!isEditing && (
+                            <button className={styles.editBtnFloating} onClick={() => setIsEditing(true)}>
+                                Edit Content
+                            </button>
                         )}
                     </div>
                 </div>
+
+                {/* Right Side: Source Reference (Visible in Split Mode) */}
+                {viewMode === 'split' && (
+                    <div className={styles.sourcePanel}>
+                        <div className={styles.sourceHeader}>
+                            <h3>Ref Image / Source Text</h3>
+                            <span className={styles.sourceBadge}>{documents.find(d => d.selected)?.name || 'Document'}</span>
+                        </div>
+                        <div className={styles.sourceContent} ref={sourceViewRef}>
+                            {renderSourceText()}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
 }
+

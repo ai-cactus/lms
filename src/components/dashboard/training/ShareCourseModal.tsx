@@ -14,7 +14,7 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
     const [emails, setEmails] = React.useState<string[]>([]);
     const [inputValue, setInputValue] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(false);
-    const [result, setResult] = React.useState<{ success: string[]; alreadyEnrolled: string[]; notFound: string[] } | null>(null);
+    const [result, setResult] = React.useState<{ success: string[]; alreadyEnrolled: string[]; newInvited: string[]; failed: string[] } | null>(null);
 
     if (!isOpen) return null;
 
@@ -53,8 +53,8 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
                 setEmails(remainingEmails);
             }
 
-            // Auto-close if all successful
-            if (res.success.length === emails.length) {
+            // Auto-close if all successful or invited
+            if (res.success.length + res.newInvited.length === emails.length) {
                 setTimeout(() => {
                     onClose();
                     setEmails([]);
@@ -122,14 +122,19 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
                                 ✓ Enrolled: {result.success.join(', ')}
                             </div>
                         )}
+                        {result.newInvited.length > 0 && (
+                            <div className={styles.resultInvited}>
+                                📧 Invited & Enrolled: {result.newInvited.join(', ')}
+                            </div>
+                        )}
                         {result.alreadyEnrolled.length > 0 && (
                             <div className={styles.resultWarning}>
                                 Already enrolled: {result.alreadyEnrolled.join(', ')}
                             </div>
                         )}
-                        {result.notFound.length > 0 && (
+                        {result.failed.length > 0 && (
                             <div className={styles.resultError}>
-                                User not found: {result.notFound.join(', ')}
+                                Failed: {result.failed.join(', ')}
                             </div>
                         )}
                     </div>

@@ -237,6 +237,14 @@ input:checked+.slider::before {
     margin-bottom: 8px;
 }
 
+.resultInvited {
+    color: #4F46E5;
+    padding: 8px 12px;
+    background: #EEF2FF;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
 .resultWarning {
     color: #D97706;
     padding: 8px 12px;

@@ -10,6 +10,13 @@ interface Step7PublishProps {
     onChange: (field: string, value: any) => void;
 }
 
+import { searchStaffUsers } from '@/app/actions/user';
+
+interface Step7PublishProps {
+    data: any;
+    onChange: (field: string, value: any) => void;
+}
+
 interface Worker {
     id: string;
     name: string;
@@ -17,35 +24,56 @@ interface Worker {
     initials: string;
 }
 
-const MOCK_WORKERS: Worker[] = [
-    { id: '1', name: 'Sarah Wilson', email: 'sarah@theraptly.com', initials: 'SW' },
-    { id: '2', name: 'James Rodriguez', email: 'james@theraptly.com', initials: 'JR' },
-    { id: '3', name: 'Emily Chen', email: 'emily@theraptly.com', initials: 'EC' },
-    { id: '4', name: 'David Kim', email: 'david@theraptly.com', initials: 'DK' },
-];
-
 export default function Step7Publish({ data, onChange }: Step7PublishProps) {
     const [inputValue, setInputValue] = useState('');
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [suggestions, setSuggestions] = useState<Worker[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [knownEmails, setKnownEmails] = useState<Set<string>>(new Set()); // Track existing org members
     const wrapperRef = useRef<HTMLDivElement>(null);
 
-    // Filter suggestions based on input
-    const suggestions = inputValue
-        ? MOCK_WORKERS.filter(w =>
-            w.name.toLowerCase().includes(inputValue.toLowerCase()) ||
-            w.email.toLowerCase().includes(inputValue.toLowerCase())
-        ).filter(w => !data.assignments?.includes(w.email)) // Exclude already added
-        : [];
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(async () => {
+            if (inputValue.length >= 2) {
+                setIsLoading(true);
+                try {
+                    const results = await searchStaffUsers(inputValue);
+                    // Track known emails from search results
+                    setKnownEmails(prev => {
+                        const updated = new Set(prev);
+                        results.forEach((w: Worker) => updated.add(w.email));
+                        return updated;
+                    });
+                    // Filter out already assigned
+                    const available = results.filter((w: any) => !data.assignments?.includes(w.email));
+                    setSuggestions(available);
+                } catch (err) {
+                    console.error("Failed to search staff", err);
+                } finally {
+                    setIsLoading(false);
+                }
+            } else {
+                setSuggestions([]);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [inputValue, data.assignments]);
+
+    const [validationError, setValidationError] = useState('');
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         const val = inputValue.trim();
         const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
 
         if (e.key === ' ' || e.key === 'Spacebar') {
-            e.preventDefault(); // Always prevent space character
-            // Only create tag if it's a valid email
+            e.preventDefault();
             if (isValidEmail) {
                 addAssignment(val);
+                setValidationError('');
+            } else if (val) {
+                setValidationError('Please enter a valid email address');
             }
             return;
         }
@@ -53,13 +81,18 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
         if (['Enter', 'Tab', ','].includes(e.key)) {
             e.preventDefault();
             if (val) {
-                // Enter/Tab always adds the tag (for names or emails)
-                addAssignment(val);
+                if (isValidEmail) {
+                    addAssignment(val);
+                    setValidationError('');
+                } else {
+                    setValidationError('Please enter a valid email address');
+                }
             }
         } else if (e.key === 'Backspace' && !inputValue && data.assignments?.length > 0) {
             const newAssignments = [...(data.assignments || [])];
             newAssignments.pop();
             onChange('assignments', newAssignments);
+            setValidationError('');
         }
     };
 
@@ -71,6 +104,7 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
         }
         setInputValue('');
         setShowSuggestions(false);
+        setSuggestions([]);
     };
 
     const removeAssignment = (index: number) => {
@@ -102,17 +136,21 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
                 <div style={{ marginBottom: 32 }}>
                     <label className={styles.label}>Assign to</label>
                     <div className={styles.chipInputWrapper} ref={wrapperRef} onClick={() => document.getElementById('assign-input')?.focus()}>
-                        {(data.assignments || []).map((item: string, index: number) => (
-                            <div key={index} className={styles.chip}>
-                                {item}
-                                <button className={styles.removeChip} onClick={(e) => { e.stopPropagation(); removeAssignment(index); }}>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                                    </svg>
-                                </button>
-                            </div>
-                        ))}
+                        {(data.assignments || []).map((item: string, index: number) => {
+                            const isNewInvite = !knownEmails.has(item);
+                            return (
+                                <div key={index} className={`${styles.chip} ${isNewInvite ? styles.chipInvite : ''}`}>
+                                    {item}
+                                    {isNewInvite && <span className={styles.inviteBadge}>New</span>}
+                                    <button className={styles.removeChip} onClick={(e) => { e.stopPropagation(); removeAssignment(index); }}>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                                        </svg>
+                                    </button>
+                                </div>
+                            );
+                        })}
                         <input
                             id="assign-input"
                             className={styles.chipInput}
@@ -127,25 +165,34 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
                         />
 
                         {/* Autocomplete Dropdown */}
-                        {showSuggestions && suggestions.length > 0 && (
+                        {showSuggestions && (inputValue.length >= 2 || suggestions.length > 0) && (
                             <div className={styles.autocompleteDropdown}>
-                                {suggestions.map(worker => (
-                                    <div
-                                        key={worker.id}
-                                        className={styles.autocompleteItem}
-                                        onClick={() => addAssignment(worker.email)}
-                                    >
-                                        <div className={styles.userAvatar}>{worker.initials}</div>
-                                        <div className={styles.userInfo}>
-                                            <span className={styles.userName}>{worker.name}</span>
-                                            <span className={styles.userEmail}>{worker.email}</span>
+                                {isLoading ? (
+                                    <div style={{ padding: '10px', color: '#718096', fontSize: '14px' }}>Searching...</div>
+                                ) : suggestions.length > 0 ? (
+                                    suggestions.map(worker => (
+                                        <div
+                                            key={worker.id}
+                                            className={styles.autocompleteItem}
+                                            onClick={() => addAssignment(worker.email)}
+                                        >
+                                            <div className={styles.userAvatar}>{worker.initials}</div>
+                                            <div className={styles.userInfo}>
+                                                <span className={styles.userName}>{worker.name}</span>
+                                                <span className={styles.userEmail}>{worker.email}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))
+                                ) : (
+                                    inputValue.length >= 2 && <div style={{ padding: '10px', color: '#718096', fontSize: '14px' }}>No staff found</div>
+                                )}
                             </div>
                         )}
                     </div>
-                    <div className={styles.helperText}>Suggested: Team members from your list</div>
+                    <div className={styles.helperText}>Type an email and press Enter. New emails will receive an invite with login credentials.</div>
+                    {validationError && (
+                        <div style={{ color: '#E53E3E', fontSize: '13px', marginTop: '6px' }}>{validationError}</div>
+                    )}
                 </div>
 
                 {/* Due Date & Time Section */}

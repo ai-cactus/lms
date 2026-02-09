@@ -36,6 +36,7 @@ export async function getAvailableUsers() {
 /**
  * Enroll users in a course by their email addresses.
  * Creates enrollment records for each valid email.
+ * For emails not in the system, creates new user accounts and sends invite emails.
  */
 export async function enrollUsers(courseId: string, emails: string[]) {
     const session = await auth();
@@ -52,21 +53,75 @@ export async function enrollUsers(courseId: string, emails: string[]) {
         throw new Error('Course not found');
     }
 
+    // Get organization info for new user creation
+    const currentUser = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        include: { organization: true }
+    });
+
     const results = {
         success: [] as string[],
         alreadyEnrolled: [] as string[],
-        notFound: [] as string[],
+        newInvited: [] as string[],
+        failed: [] as string[],
     };
 
+    const bcrypt = await import('bcryptjs');
+    const crypto = await import('crypto');
+    const { sendCourseInviteEmail } = await import('@/lib/email');
+
     for (const email of emails) {
+        const normalizedEmail = email.toLowerCase().trim();
+
+        // Validate email format
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+            results.failed.push(email);
+            continue;
+        }
+
         // Find user by email
-        const user = await prisma.user.findUnique({
-            where: { email: email.toLowerCase().trim() },
+        let user = await prisma.user.findUnique({
+            where: { email: normalizedEmail },
         });
 
+        // If user not found, create a new one with invite
         if (!user) {
-            results.notFound.push(email);
-            continue;
+            try {
+                // Generate temporary password
+                const tempPassword = crypto.randomBytes(8).toString('hex');
+                const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+                // Create new user
+                user = await prisma.user.create({
+                    data: {
+                        email: normalizedEmail,
+                        name: normalizedEmail.split('@')[0],
+                        password: hashedPassword,
+                        role: 'worker',
+                        emailVerified: true,
+                        organizationId: currentUser?.organizationId || null,
+                    }
+                });
+
+                // Send invite email with credentials
+                try {
+                    await sendCourseInviteEmail(
+                        normalizedEmail,
+                        tempPassword,
+                        course.title,
+                        currentUser?.organization?.name || 'Your Organization'
+                    );
+                    results.newInvited.push(email);
+                } catch (emailErr) {
+                    console.error(`Failed to send invite email to ${email}:`, emailErr);
+                    // User created but email failed - still count as invited
+                    results.newInvited.push(email);
+                }
+            } catch (createErr) {
+                console.error(`Failed to create user for ${email}:`, createErr);
+                results.failed.push(email);
+                continue;
+            }
         }
 
         // Check if already enrolled
@@ -80,7 +135,10 @@ export async function enrollUsers(courseId: string, emails: string[]) {
         });
 
         if (existing) {
-            results.alreadyEnrolled.push(email);
+            // Don't double-count if we just created them
+            if (!results.newInvited.includes(email)) {
+                results.alreadyEnrolled.push(email);
+            }
             continue;
         }
 
@@ -94,7 +152,10 @@ export async function enrollUsers(courseId: string, emails: string[]) {
             },
         });
 
-        results.success.push(email);
+        // Add to success if not already in newInvited
+        if (!results.newInvited.includes(email)) {
+            results.success.push(email);
+        }
     }
 
     revalidatePath(`/dashboard/training/courses/${courseId}`);

@@ -8,13 +8,24 @@ import { revalidatePath } from 'next/cache';
 
 export async function getStaffUsers() {
     const session = await auth();
-    if (!session?.user) {
+    if (!session?.user?.id) {
         throw new Error('Unauthorized');
+    }
+
+    // Get current user's org ID
+    const currentUser = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { organizationId: true }
+    });
+
+    if (!currentUser?.organizationId) {
+        return [];
     }
 
     try {
         const users = await prisma.user.findMany({
             where: {
+                organizationId: currentUser.organizationId,
                 role: { not: 'admin' }
             },
             include: {
@@ -36,6 +47,53 @@ export async function getStaffUsers() {
         }));
     } catch (error) {
         console.error('Failed to fetch staff users:', error);
+        return [];
+    }
+}
+
+export async function searchStaffUsers(query: string) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        return [];
+    }
+
+    // Get current user's org ID
+    const currentUser = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { organizationId: true }
+    });
+
+    if (!currentUser?.organizationId) {
+        return [];
+    }
+
+    if (!query || query.length < 2) return [];
+
+    try {
+        const users = await prisma.user.findMany({
+            where: {
+                organizationId: currentUser.organizationId,
+                role: { not: 'admin' },
+                OR: [
+                    { email: { contains: query, mode: 'insensitive' } },
+                    { profile: { fullName: { contains: query, mode: 'insensitive' } } }
+                ]
+            },
+            include: {
+                profile: true,
+            },
+            take: 5
+        });
+
+        return users.map(user => ({
+            id: user.id,
+            name: user.profile?.fullName || user.email.split('@')[0],
+            email: user.email,
+            initials: (user.profile?.fullName || user.email).slice(0, 2).toUpperCase(),
+            role: user.role || 'worker',
+        }));
+    } catch (error) {
+        console.error('Failed to search staff:', error);
         return [];
     }
 }

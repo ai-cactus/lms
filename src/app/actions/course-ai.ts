@@ -11,10 +11,17 @@ interface CourseData {
     difficulty: string;
     duration: string;
     contentType: string;
+    notesCount: string;
+    deadline: string;
     objectives: string[];
     // Quiz data
+    quizTitle: string;
     quizQuestionCount: string;
-    quizType: string;
+    quizQuestionType: string;
+    quizDifficulty: string;
+    quizDuration: string;
+    quizPassMark: string;
+    quizAttempts: string;
 }
 
 // Zod Schemas
@@ -85,13 +92,18 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
     const prompt = `
         You are an expert instructional designer. Create a comprehensive course outline and quiz for a Learning Management System.
         
-        INPUT DATA:
+        COURSE INFORMATION:
         Topic/Title: ${data.title}
         Category: ${data.category}
         Description: ${data.description}
-        Target Audience Difficulty: ${data.difficulty}
-        Estimated Duration: ${data.duration} minutes
-        Learning Objectives: ${data.objectives.join(', ')}
+        Target Audience Level: ${data.difficulty} (adjust content complexity accordingly)
+        Estimated Course Duration: ${data.duration} minutes total
+        Content Format: ${data.contentType === 'slides' ? 'Slide-style (concise bullet points)' : 'Notes-style (detailed paragraphs)'}
+        Number of Modules/Sections: ${data.notesCount || '5'} modules
+        Completion Deadline Context: ${data.deadline} days (design content to be completable within this timeframe)
+        
+        LEARNING OBJECTIVES (users should achieve these by course end):
+        ${data.objectives.map((obj, i) => `${i + 1}. ${obj}`).join('\n        ')}
         
         SOURCE MATERIAL:
         ${sourceText ? `Use the following text as the GROUND TRUTH for the course content. 
@@ -104,24 +116,30 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
         ${sourceText}
         SOURCE TEXT END` : 'No source document provided. Generate content based on general knowledge.'}
         
-        QUIZ REQUIREMENTS:
+        QUIZ CONFIGURATION:
+        Quiz Title: ${data.quizTitle}
         Number of Questions: ${data.quizQuestionCount}
-        Question Type: ${data.quizType || 'Multiple Choice'}
+        Question Type: ${data.quizQuestionType || 'Multiple Choice'}
+        Difficulty Level: ${data.quizDifficulty} (${data.quizDifficulty === 'easy' ? 'basic recall questions' : data.quizDifficulty === 'moderate' ? 'application and understanding questions' : 'analysis and critical thinking questions'})
+        Estimated Quiz Duration: ${data.quizDuration} minutes
+        Passing Score Target: ${data.quizPassMark} (design questions so this pass rate is achievable but meaningful)
 
         CRITICAL OUTPUT INSTRUCTIONS:
         1. Return ONLY a valid JSON object. No markdown formatting (no \`\`\`json), no introductory text.
-        2. The JSON must strictly match this schema:
+        2. Create EXACTLY ${data.notesCount || '5'} modules to match user's preference.
+        3. Design quiz with EXACTLY ${data.quizQuestionCount} questions at ${data.quizDifficulty} difficulty.
+        4. The JSON must strictly match this schema:
         {
             "modules": [
                 {
                     "title": "Module Title",
-                    "content": "Detailed HTML content (use <h3>, <p>, <ul>, <li>). Minimum 300 words per module. Include [1] markers.",
-                    "duration": "10 min"
+                    "content": "Detailed HTML content (use <h3>, <p>, <ul>, <li>). ${data.contentType === 'slides' ? 'Use bullet points, keep concise.' : 'Write detailed paragraphs, minimum 300 words per module.'} Include [1] markers for citations.",
+                    "duration": "X min"
                 }
             ],
             "quiz": [
                 {
-                    "question": "Question text",
+                    "question": "Question text appropriate for ${data.quizDifficulty} difficulty",
                     "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
                     "answer": 0 // 0-based index of the correct option
                 }
@@ -134,8 +152,8 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
                 }
             ]
         }
-        3. Create enough modules to fill the ${data.duration} minute duration.
-        4. Ensure the quiz has exactly ${data.quizQuestionCount} questions.
+        5. Total module durations should add up to approximately ${data.duration} minutes.
+        6. Ensure the quiz tests the learning objectives listed above.
     `;
 
     let attempts = 0;
@@ -147,7 +165,7 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
             console.log(`AI Generation Attempt ${attempts}/${maxAttempts}`);
 
             const response = await fetch(
-                `https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

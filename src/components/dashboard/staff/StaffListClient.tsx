@@ -15,6 +15,7 @@ interface User {
     dateInvited: Date;
 }
 
+import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
 import InviteStaffModal from './InviteStaffModal';
 
 interface StaffListClientProps {

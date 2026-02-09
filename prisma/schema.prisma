@@ -220,9 +220,14 @@ model Enrollment {
   status       String        @default("enrolled") // 'enrolled' | 'in_progress' | 'completed'
   progress     Int           @default(0) // percentage
   score        Int?
-  startedAt    DateTime      @default(now())
-  completedAt  DateTime?
-  quizAttempts QuizAttempt[]
+  startedAt            DateTime      @default(now())
+  completedAt          DateTime?
+  quizAttempts         QuizAttempt[]
+  
+  // Attestation Fields
+  attestedAt           DateTime?
+  attestationSignature String?
+  attestationRole      String?
 
   @@unique([userId, courseId])
 }
