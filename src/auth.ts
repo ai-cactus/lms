@@ -40,14 +40,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Overwrite callbacks to include database logic which is not safe for edge
     callbacks: {
         ...authConfig.callbacks,
-        async session({ session, token }) {
-            if (token.sub && session.user) {
-                session.user.id = token.sub;
-                session.user.organizationId = token.organizationId as string | undefined;
-                session.user.role = token.role as string | undefined;
-            }
-            return session;
-        },
         async jwt({ token, user, trigger, session }) {
             if (user) {
                 token.organizationId = user.organizationId;

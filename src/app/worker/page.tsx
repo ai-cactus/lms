@@ -60,7 +60,7 @@ export default async function LearnerDashboard() {
                                 </div>
 
                                 <div className={styles.cardActions}>
-                                    <Link href={`/dashboard/courses/${enrollment.courseId}/learn`} className={styles.actionBtn}>
+                                    <Link href={`/learn/${enrollment.courseId}`} className={styles.actionBtn}>
                                         {enrollment.status === 'completed' ? 'Sign Attestation' :
                                             enrollment.progress > 0 ? 'Continue' : 'Start'}
                                     </Link>

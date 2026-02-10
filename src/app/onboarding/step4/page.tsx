@@ -35,62 +35,23 @@ export default function OnboardingStep4() {
         name: "invites"
     });
 
-    const onSubmit = async (data: Step4FormData) => {
+    const onSubmit = (data: Step4FormData) => {
         setError('');
         // Filter out empty invites
         const validInvites = data.invites.filter(invite => invite.email && invite.role);
         console.log('Step 4 Data (Valid Invites):', validInvites);
 
-        if (validInvites.length === 0) {
-            router.push('/onboarding/step5');
-            return;
-        }
-
         try {
-            // Retrieve actual Organization ID from localStorage (set in Step 1)
-            let organizationId = '';
             if (typeof window !== 'undefined') {
-                organizationId = localStorage.getItem('onboarding_org_id') || '';
+                const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
+                const updated = { ...existing, step4: { invites: validInvites } };
+                localStorage.setItem('onboarding_data', JSON.stringify(updated));
             }
-
-            if (!organizationId) {
-                console.error('Real Life Check: No Organization ID found in storage.');
-                setError('Organization ID missing. Please restart onboarding from Step 1.');
-                return;
-            }
-
-            const { createInvites } = await import('@/app/actions/invite');
-
-            // Group invites by role to minimize API calls
-            const invitesByRole: Record<string, string[]> = {};
-            validInvites.forEach(invite => {
-                if (!invitesByRole[invite.role]) {
-                    invitesByRole[invite.role] = [];
-                }
-                invitesByRole[invite.role].push(invite.email);
-            });
-
-            // Send invites for each role
-            const results = await Promise.all(
-                Object.entries(invitesByRole).map(async ([role, emails]) => {
-                    return createInvites(emails, role, organizationId);
-                })
-            );
-
-            // Check for failures
-            const failures = results.filter(r => !r.success);
-            if (failures.length > 0) {
-                console.error('Some invites failed:', failures);
-                setError('Some invites failed to send. Please try again.');
-                return;
-            }
-
-            console.log('All Step 4 invites sent successfully');
             router.push('/onboarding/step5');
 
         } catch (err) {
             console.error('Error in Step 4 submission:', err);
-            setError('An error occurred while sending invites.');
+            setError('An error occurred while saving.');
         }
     };
 

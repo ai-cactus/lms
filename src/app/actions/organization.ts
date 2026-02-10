@@ -27,6 +27,8 @@ interface OrganizationUpdateData {
 export async function updateOrganization(data: OrganizationUpdateData) {
     try {
         const session = await auth();
+        console.log('[updateOrganization] Session:', session?.user);
+
         if (!session?.user?.id) {
             return { success: false, error: 'Not authenticated' };
         }
@@ -36,8 +38,10 @@ export async function updateOrganization(data: OrganizationUpdateData) {
             where: { id: session.user.id },
             select: { organizationId: true, role: true }
         });
+        console.log('[updateOrganization] Fetched User:', user);
 
         if (!user?.organizationId) {
+            console.error('[updateOrganization] No org ID found for user', session.user.id);
             return { success: false, error: 'No organization found' };
         }
 
@@ -101,10 +105,21 @@ export async function getOrganization() {
 }
 
 // Create a new organization (used during onboarding Step 1)
-export async function createOrganization(data: any, userId?: string) {
+export async function createOrganization(data: any) {
+    console.log('[createOrganization] Start', data);
     try {
+        const session = await auth();
+        console.log('[createOrganization] Session User:', session?.user);
+
+        if (!session?.user?.id) {
+            console.error('[createOrganization] No authenticated user');
+            return { success: false, error: 'Not authenticated' };
+        }
+        const userId = session.user.id;
+
         // Basic validation
         if (!data.legalName || !data.primaryContactEmail) {
+            console.error('[createOrganization] Missing fields');
             return { success: false, error: 'Missing required fields' };
         }
 
@@ -125,17 +140,17 @@ export async function createOrganization(data: any, userId?: string) {
                 isHipaaCompliant: false
             }
         });
+        console.log('[createOrganization] Organization created:', org.id);
 
-        // If a userId is provided (the creator), link them to this new org as Admin
-        if (userId) {
-            await prisma.user.update({
-                where: { id: userId },
-                data: {
-                    organizationId: org.id,
-                    role: 'admin'
-                }
-            });
-        }
+        // Link user to this new org as Admin
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                organizationId: org.id,
+                role: 'admin'
+            }
+        });
+        console.log('[createOrganization] User updated with Org ID:', updatedUser.id, updatedUser.organizationId);
 
         return { success: true, organizationId: org.id };
     } catch (error) {

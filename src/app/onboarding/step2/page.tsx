@@ -17,22 +17,18 @@ export default function OnboardingStep2() {
     const { register, handleSubmit, control, formState: { errors } } = useForm<Step2FormData>();
     const [files, setFiles] = useState<File[]>([]);
 
-    const onSubmit = async (data: Step2FormData) => {
+    const onSubmit = (data: Step2FormData) => {
+        console.log('Step 2 Data Saved Locally:', data);
         try {
-            const { updateOrganization } = await import('@/app/actions/organization');
-            const result = await updateOrganization({
-                licenseNumber: data.licenseNumber,
-                isHipaaCompliant: data.hipaaCompliant === 'yes'
-            });
-
-            if (result.success) {
-                router.push('/onboarding/step3');
-            } else {
-                console.error('Failed to update organization:', result.error);
-                // Handle error (could add a toast or form error)
+            // Save to localStorage
+            if (typeof window !== 'undefined') {
+                const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
+                const updated = { ...existing, step2: data };
+                localStorage.setItem('onboarding_data', JSON.stringify(updated));
             }
+            router.push('/onboarding/step3');
         } catch (error) {
-            console.error('Submission error:', error);
+            console.error('Local save error:', error);
         }
     };
 

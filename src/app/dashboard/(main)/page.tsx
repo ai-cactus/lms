@@ -14,6 +14,7 @@ export default async function DashboardPage() {
     if (!session?.user) redirect('/login');
 
     const role = session.user.role;
+    if (role === 'worker') redirect('/dashboard/learner');
 
     // Fetch courses for the current user
     let courses: any[] = [];

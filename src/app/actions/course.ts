@@ -571,7 +571,13 @@ export async function attestCourse(enrollmentId: string, signature: string, role
 
     const enrollment = await prisma.enrollment.findUnique({
         where: { id: enrollmentId },
-        include: { user: true }
+        include: {
+            user: {
+                include: {
+                    profile: true
+                }
+            }
+        }
     });
 
     if (!enrollment) {
@@ -584,7 +590,7 @@ export async function attestCourse(enrollmentId: string, signature: string, role
 
     // Verify signature matches authenticated user name (case-insensitive for better UX?)
     // Requirement says "must match their account name exactly"
-    const userName = session.user.name || enrollment.user.name || '';
+    const userName = enrollment.user.profile?.fullName || enrollment.user.email || '';
     if (signature.trim() !== userName) {
         throw new Error(`Signature must match your account name: ${userName}`);
     }
@@ -599,7 +605,7 @@ export async function attestCourse(enrollmentId: string, signature: string, role
         }
     });
 
-    revalidatePath('/dashboard/learner');
-    revalidatePath(`/dashboard/courses/${enrollment.courseId}/learn`);
+    revalidatePath('/worker');
+    revalidatePath(`/learn/${enrollment.courseId}`);
     return { success: true };
 }

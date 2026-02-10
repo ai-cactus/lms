@@ -248,7 +248,7 @@ export default function LearnPage() {
             <div className={styles.container}>
                 <header className={styles.header}>
                     <div className={styles.headerProgress}>
-                        <button className={styles.backLink} onClick={() => router.push('/dashboard/learner')}>
+                        <button className={styles.backLink} onClick={() => router.back()}>
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
                         </button>
                         <div className={styles.progressInfo}>
@@ -281,7 +281,7 @@ export default function LearnPage() {
                         ) : (
                             <button className={styles.attestBtn} style={{ background: '#4C6EF5', color: 'white', border: 'none', padding: '12px 32px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }} onClick={() => setShowAttestation(true)}>Attestate</button>
                         )}
-                        {!quizResults.passed && <button className={styles.backBtn} onClick={() => router.push('/dashboard/learner')}>Back to Dashboard</button>}
+                        {!quizResults.passed && <button className={styles.backBtn} onClick={() => router.push('/worker')}>Back to Dashboard</button>}
                     </div>
                 </div>
                 {course && enrollment && userData && (
@@ -423,7 +423,7 @@ export default function LearnPage() {
         return (
             <div className={styles.container}>
                 <header className={styles.header}>
-                    <button className={styles.backLink} onClick={() => router.push('/dashboard/learner')}>← Back</button>
+                    <button className={styles.backLink} onClick={() => router.push('/worker')}>← Back</button>
                     <h1>{course.title}</h1>
                     <div className={styles.progressBar}>
                         <div className={styles.progressFill} style={{ width: `${progress}%` }}></div>

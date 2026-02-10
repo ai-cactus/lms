@@ -28,48 +28,47 @@ export default function OnboardingStep5() {
 
         // Combine manual emails and CSV emails
         const allEmails = [...emails, ...csvEmails];
-        const hasData = allEmails.length > 0;
-
-        if (!hasData) {
-            if (!attemptedSkip) {
-                setAttemptedSkip(true);
-                setError('Please add at least one worker. Click Next again to skip.');
-                return;
-            }
-            router.push('/onboarding/complete');
-            return;
-        }
+        // If empty, but attempted skip or explicit skip logic matches original, handle usage:
 
         setIsLoading(true);
 
         try {
-            const { createInvites } = await import('@/app/actions/invite');
-
-            let organizationId = '';
+            // 1. Gather all data
+            let allData: any = {};
             if (typeof window !== 'undefined') {
-                organizationId = localStorage.getItem('onboarding_org_id') || '';
+                allData = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
             }
 
-            if (!organizationId) {
-                setError('Organization ID missing. Please restart onboarding from Step 1.');
-                setIsLoading(false);
-                return;
-            }
+            // Add Step 5 data
+            allData.step5 = { workerEmails: allEmails };
 
-            const result = await createInvites(allEmails, 'worker', organizationId);
+            console.log('Submitting Full Onboarding Data:', allData);
+
+            // 2. Call Server Action
+            const { completeOnboarding } = await import('@/app/actions/onboarding-complete');
+            const result = await completeOnboarding(allData);
+
             if (!result.success) {
-                setError(result.error || 'Failed to send invites');
+                setError(result.error || 'Failed to complete onboarding');
                 setIsLoading(false);
                 return;
             }
+
+            // 3. Clear Storage
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('onboarding_data');
+                // Remove old keys if any
+                localStorage.removeItem('onboarding_org_id');
+            }
+
+            router.push('/onboarding/complete');
+
         } catch (e) {
-            console.error('Error sending invites', e);
-            setError('System error sending invites');
+            console.error('Error completing onboarding', e);
+            setError('System error completing onboarding');
             setIsLoading(false);
             return;
         }
-
-        router.push('/onboarding/complete');
     };
 
     const handleCsvUpload = async (files: File[]) => {

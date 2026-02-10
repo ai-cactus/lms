@@ -26,7 +26,7 @@ export default function BadgeSuccessModal({
     if (!isOpen) return null;
 
     const handleDashboard = () => {
-        router.push('/dashboard/learner');
+        router.push('/worker');
     };
 
     return (
@@ -64,7 +64,7 @@ export default function BadgeSuccessModal({
                     </button>
 
                     <div className={styles.startNewLink}>
-                        or <span onClick={() => router.push('/dashboard/learner')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>start a new course here</span>
+                        or <span onClick={() => router.push('/worker')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>start a new course here</span>
                     </div>
                 </div>
 

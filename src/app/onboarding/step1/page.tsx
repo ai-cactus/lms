@@ -29,26 +29,18 @@ export default function OnboardingStep1() {
 
     const { data: session } = useSession();
 
-    const onSubmit = async (data: Step1FormData) => {
-        console.log('Step 1 Data VALIDATED:', data);
-
+    const onSubmit = (data: Step1FormData) => {
+        console.log('Step 1 Data Saved Locally:', data);
         try {
-            const userId = session?.user?.id;
-            const { createOrganization } = await import('@/app/actions/organization');
-            const result = await createOrganization(data, userId);
-
-            if (result.success && result.organizationId) {
-                // Determine if window is defined (client-side)
-                if (typeof window !== 'undefined') {
-                    localStorage.setItem('onboarding_org_id', result.organizationId);
-                }
-                router.push('/onboarding/step2');
-            } else {
-                console.error('Failed to create org:', result.error);
-                // Optionally set form error here
+            // Save to localStorage
+            if (typeof window !== 'undefined') {
+                const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
+                const updated = { ...existing, step1: data };
+                localStorage.setItem('onboarding_data', JSON.stringify(updated));
             }
+            router.push('/onboarding/step2');
         } catch (error) {
-            console.error('Submission error:', error);
+            console.error('Local save error:', error);
         }
     };
 

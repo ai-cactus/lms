@@ -31,20 +31,14 @@ export default function OnboardingStep3() {
         }
     });
 
-    const onSubmit = async (data: Step3FormData) => {
+    const onSubmit = (data: Step3FormData) => {
         try {
-            const { updateOrganization } = await import('@/app/actions/organization');
-            const result = await updateOrganization({
-                primaryBusinessType: data.primaryBusinessType,
-                additionalBusinessTypes: data.additionalBusinessType ? [data.additionalBusinessType] : [],
-                programServices: data.services
-            });
-
-            if (result.success) {
-                router.push('/onboarding/step4');
-            } else {
-                console.error('Failed to update organization:', result.error);
+            if (typeof window !== 'undefined') {
+                const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
+                const updated = { ...existing, step3: data };
+                localStorage.setItem('onboarding_data', JSON.stringify(updated));
             }
+            router.push('/onboarding/step4');
         } catch (error) {
             console.error('Submission error:', error);
         }

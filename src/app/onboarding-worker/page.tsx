@@ -52,7 +52,7 @@ export default function WorkerOnboardingPage() {
         try {
             const result = await joinOrganization(code);
             if (result.success) {
-                router.push('/dashboard');
+                router.push('/worker');
             } else {
                 setError(result.error || 'Failed to join organization');
             }
