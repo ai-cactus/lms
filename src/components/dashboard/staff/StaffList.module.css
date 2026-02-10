@@ -1,7 +1,11 @@
 .container {
     padding: 24px 40px;
-    max-width: 1200px;
+    width: 100%;
     margin: 0 auto;
+}
+
+.searchContainer {
+    margin-bottom: 24px;
 }
 
 .header {
@@ -82,13 +86,14 @@
     /* Darker header text */
     background-color: transparent;
     /* Clean background */
-    border-bottom: 1px solid #EDF2F7;
+    /* Clean background */
+    /* border-bottom: 1px solid #EDF2F7; Removed for cleaner look */
 }
 
 .table td {
     padding: 16px;
     vertical-align: middle;
-    border-bottom: 1px solid #EDF2F7;
+    /* border-bottom: 1px solid #EDF2F7; Removed for cleaner look */
     color: #2D3748;
     font-size: 14px;
 }
@@ -180,9 +185,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    align-items: center;
     margin-top: auto;
     padding-top: 24px;
-    border-top: 1px solid #EDF2F7;
+    /* border-top: 1px solid #EDF2F7; Removed for cleaner look */
     color: #718096;
     font-size: 13px;
 }

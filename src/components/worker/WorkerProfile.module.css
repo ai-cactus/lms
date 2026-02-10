@@ -1,0 +1,207 @@
+/* WorkerProfile.module.css */
+.container {
+    padding: 1.5rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.backLink {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #4A5568;
+    text-decoration: none;
+    font-size: 0.875rem;
+    margin-bottom: 2rem;
+    font-weight: 500;
+}
+
+.backLink:hover {
+    color: #2D3748;
+}
+
+.card {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    position: relative;
+    padding-top: 3.5rem;
+    /* Space for avatar overlap */
+}
+
+.avatarWrapper {
+    position: absolute;
+    top: -3rem;
+    /* Partially above card */
+    left: 2rem;
+    width: 6rem;
+    height: 6rem;
+    border-radius: 50%;
+    border: 4px solid white;
+    background: #EDF2F7;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.avatarImage {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.avatarFallback {
+    font-size: 2rem;
+    font-weight: 600;
+    color: #718096;
+}
+
+.editAvatarBtn {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: #3182CE;
+    border: 2px solid white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.editAvatarBtn:hover {
+    background: #2B6CB0;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.fieldGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #2D3748;
+}
+
+.input {
+    padding: 0.75rem 1rem;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: #2D3748;
+    transition: all 0.2s;
+}
+
+.input:focus {
+    outline: none;
+    border-color: #3182CE;
+    box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+}
+
+.input:disabled {
+    background: #F7FAFC;
+    color: #718096;
+    cursor: not-allowed;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #EDF2F7;
+}
+
+.discardBtn {
+    padding: 0.5rem 1rem;
+    color: #718096;
+    background: none;
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.discardBtn:hover {
+    color: #4A5568;
+}
+
+.saveBtn {
+    padding: 0.5rem 1.5rem;
+    background: #CBD5E0;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: not-allowed;
+    font-size: 0.875rem;
+    transition: background 0.2s;
+}
+
+.saveBtn.active {
+    background: #3182CE;
+    cursor: pointer;
+}
+
+.saveBtn.active:hover {
+    background: #2B6CB0;
+}
+
+.message {
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+}
+
+.success {
+    background: #C6F6D5;
+    color: #22543D;
+}
+
+.error {
+    background: #FED7D7;
+    color: #822727;
+}
+
+@media (max-width: 640px) {
+    .row {
+        grid-template-columns: 1fr;
+    }
+
+    .avatarWrapper {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .card {
+        padding-top: 4rem;
+        text-align: center;
+    }
+
+    .form {
+        text-align: left;
+    }
+}

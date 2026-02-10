@@ -22,14 +22,18 @@ export default async function ProfilePage() {
         include: { organization: true }
     });
 
-    const role = session?.user?.role || 'worker';
+    const role = user?.role || 'worker';
+
+    console.log('ProfilePage Session:', session?.user?.id);
+    console.log('ProfilePage Profile:', profile);
+    console.log('ProfilePage User:', user);
 
     // Construct initial profile data
     const initialData = {
         id: session.user.id!,
         first_name: profile?.firstName || '',
         last_name: profile?.lastName || '',
-        email: session.user.email || '',
+        email: user?.email || session.user.email || '',
         role: role as 'admin' | 'worker',
         company_name: profile?.companyName || ''
     };

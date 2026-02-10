@@ -111,8 +111,10 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
     const isValid =
         formData.first_name?.trim() !== '' &&
         formData.last_name?.trim() !== '' &&
-        formData.email?.trim() !== '' &&
-        validateEmail(formData.email);
+        formData.first_name?.trim() !== '' &&
+        formData.last_name?.trim() !== '';
+    // Email is read-only, so we won't block saving if it's missing/invalid from the DB side,
+    // though it ideally should be there.
 
     const isAdmin = initialData.role === 'admin';
 
@@ -129,27 +131,24 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
             </div>
 
             <div className={styles.card}>
-                {/* Only show tabs for admins */}
-                {isAdmin && (
-                    <div className={styles.tabs}>
-                        <button
-                            className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
-                            onClick={() => setActiveTab('profile')}
-                        >
-                            EDIT PROFILE
-                        </button>
-                        <button
-                            className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
-                            onClick={() => setActiveTab('organization')}
-                        >
-                            YOUR ORGANIZATION
-                        </button>
-                    </div>
-                )}
+                <div className={styles.tabs}>
+                    <button
+                        className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
+                        onClick={() => setActiveTab('profile')}
+                    >
+                        EDIT PROFILE
+                    </button>
+                    <button
+                        className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
+                        onClick={() => setActiveTab('organization')}
+                    >
+                        YOUR ORGANIZATION
+                    </button>
+                </div>
 
                 {activeTab === 'profile' ? (
-                    <>
-                        <div className={styles.profileHeader}>
+                    <div className={styles.profileContent}>
+                        <div className={styles.avatarSection}>
                             <div className={styles.avatarLarge}>
                                 {formData.first_name ? formData.first_name[0] : 'U'}
                                 <button className={styles.editAvatarButton}>
@@ -266,10 +265,14 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
 
                             <div className={styles.actions}>
                                 <Button
-                                    variant="outline"
+                                    variant="ghost"
                                     type="button"
-                                    onClick={() => setFormData(initialData)}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        setFormData({ ...initialData });
+                                    }}
                                     disabled={!isDirty}
+                                    className={styles.discardButton}
                                 >
                                     Discard
                                 </Button>
@@ -283,7 +286,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                                 </Button>
                             </div>
                         </form>
-                    </>
+                    </div>
                 ) : (
                     <OrganizationForm
                         initialData={organizationData || null}

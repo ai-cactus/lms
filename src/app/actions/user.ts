@@ -138,11 +138,24 @@ export async function updateProfile(data: {
     try {
         const fullName = `${data.first_name} ${data.last_name}`.trim();
 
-        await prisma.profile.update({
+        if (!session.user.id) {
+            return { success: false, error: 'User ID missing' };
+        }
+
+        await prisma.profile.upsert({
             where: {
-                email: session.user.email,
+                id: session.user.id,
             },
-            data: {
+            update: {
+                firstName: data.first_name,
+                lastName: data.last_name,
+                fullName: fullName,
+                companyName: data.company_name,
+                email: session.user.email, // Ensure email is synced if changed
+            },
+            create: {
+                id: session.user.id,
+                email: session.user.email,
                 firstName: data.first_name,
                 lastName: data.last_name,
                 fullName: fullName,
@@ -151,6 +164,7 @@ export async function updateProfile(data: {
         });
 
         revalidatePath('/dashboard/profile');
+        revalidatePath('/worker/profile');
         return { success: true };
     } catch (error) {
         console.error('Failed to update profile:', error);

@@ -1,0 +1,478 @@
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.welcome {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1A202C;
+    margin: 0 0 4px 0;
+}
+
+.sub {
+    color: #718096;
+    margin: 0;
+}
+
+.actionBtn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 14px;
+    text-decoration: none;
+    transition: all 0.2s;
+    background: white;
+    color: #4A5568;
+    border: 1px solid #E2E8F0;
+}
+
+.actionBtn:hover {
+    background: #F7FAFC;
+    color: #1A202C;
+}
+
+/* Metrics */
+.metricsGrid {
+    display: grid;
+    grid-template-columns: repeat(1, 1fr);
+    gap: 24px;
+}
+
+@media (min-width: 768px) {
+    .metricsGrid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.metricCard {
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 160px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.metricIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    margin-bottom: 16px;
+}
+
+.metricLabel {
+    font-size: 14px;
+    font-weight: 600;
+    color: #4A5568;
+    margin-bottom: 4px;
+}
+
+.metricValue {
+    font-size: 32px;
+    font-weight: 700;
+    color: #1A202C;
+}
+
+/* Course List */
+.sectionTitle {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1A202C;
+    margin-bottom: 16px;
+}
+
+.tableContainer {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: 1px solid #E2E8F0;
+}
+
+.tableHeader {
+    display: flex;
+    padding: 12px 24px;
+    background: #F7FAFC;
+    border-bottom: 1px solid #E2E8F0;
+    font-weight: 600;
+    color: #4A5568;
+    font-size: 13px;
+}
+
+.tableRow {
+    display: flex;
+    padding: 16px 24px;
+    border-bottom: 1px solid #E2E8F0;
+    align-items: center;
+    transition: background 0.15s;
+}
+
+.tableRow:last-child {
+    border-bottom: none;
+}
+
+.tableRow:hover {
+    background: #FAFAFA;
+}
+
+.colName {
+    flex: 2;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.colProgress {
+    flex: 1.5;
+    padding-right: 24px;
+}
+
+.colDeadline {
+    flex: 1;
+    color: #E53E3E;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.colStatus {
+    flex: 1;
+}
+
+.colAction {
+    flex: 0.5;
+    text-align: right;
+}
+
+.courseIcon {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: #2D3748;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+
+.courseNameText {
+    font-weight: 500;
+    color: #1A202C;
+    font-size: 14px;
+}
+
+/* Progress Bar */
+.progressContainer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.progressBarTrack {
+    flex: 1;
+    height: 6px;
+    background: #E2E8F0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progressBarFill {
+    height: 100%;
+    background: #4730F7;
+    border-radius: 3px;
+}
+
+.progressText {
+    font-size: 12px;
+    color: #718096;
+    width: 32px;
+    text-align: right;
+}
+
+/* Status Badges */
+.statusBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.statusInProgress {
+    background: #FFFBEB;
+    color: #D97706;
+}
+
+.statusCompleted {
+    background: #EBF8FF;
+    color: #3182CE;
+}
+
+.statusAttested {
+    background: #DEF7EC;
+    color: #03543F;
+}
+
+.statusFailed {
+    background: #FEF2F2;
+    color: #E53E3E;
+}
+
+/* Action Buttons */
+.viewLink {
+    color: #4730F7;
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+}
+
+.viewLink:hover {
+    text-decoration: underline;
+}
+
+.retryLink {
+    color: #E53E3E;
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+}
+
+/* Badges Section */
+.badgesList {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    border: 1px solid #E2E8F0;
+}
+
+.badgeItem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid #EDF2F7;
+}
+
+.badgeItem:last-child {
+    border-bottom: none;
+}
+
+.badgeContent {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.badgeIcon {
+    width: 40px;
+    height: 40px;
+}
+
+.badgeTitle {
+    font-weight: 600;
+    color: #1A202C;
+    font-size: 14px;
+    margin-bottom: 2px;
+}
+
+.verifyBtn {
+    color: #4730F7;
+    font-weight: 600;
+    font-size: 13px;
+    background: none;
+    border: 1px solid #4730F7;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.verifyBtn:hover {
+    background: #EEF2FF;
+}
+
+
+/* Refined Empty State - Matching WorkerWelcomeModal */
+.emptyStateCard {
+    background: white;
+    border-radius: 20px;
+    display: flex;
+    overflow: hidden;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border: 1px solid #E2E8F0;
+    min-height: 500px;
+}
+
+.leftPanel {
+    flex: 1;
+    background: #E6FFFA;
+    /* Light teal/green background */
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.blob {
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    background: #38B2AC;
+    opacity: 0.1;
+    border-radius: 50%;
+    top: -50px;
+    left: -50px;
+    z-index: 0;
+}
+
+.illustration {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 30px;
+    width: 280px;
+    height: auto;
+    object-fit: contain;
+}
+
+.welcomeTitle {
+    font-size: 28px;
+    font-weight: 800;
+    color: #065F46;
+    /* Dark Green */
+    margin-bottom: 16px;
+    line-height: 1.2;
+    z-index: 1;
+}
+
+.welcomeText {
+    font-size: 16px;
+    color: #2C7A7B;
+    margin-bottom: 32px;
+    max-width: 320px;
+    line-height: 1.5;
+    z-index: 1;
+}
+
+.startButton {
+    background: #047857;
+    /* Emerald 700 */
+    color: white;
+    padding: 14px 28px;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 16px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    z-index: 1;
+    box-shadow: 0 4px 6px rgba(4, 120, 87, 0.2);
+    text-decoration: none;
+    display: inline-block;
+}
+
+.startButton:hover {
+    background: #065F46;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(4, 120, 87, 0.3);
+}
+
+.rightPanel {
+    flex: 1;
+    padding: 60px 50px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.stepsTitle {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1A202C;
+    margin-bottom: 40px;
+}
+
+.stepsList {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.stepItem {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 0;
+    /* Reset previous style */
+    padding-left: 0;
+    /* Reset previous style */
+}
+
+.stepNumber {
+    font-size: 18px;
+    font-weight: 800;
+    color: #1A202C;
+    line-height: 1.2;
+    background: transparent;
+    /* Reset previous style */
+    width: auto;
+    height: auto;
+    display: block;
+    margin: 0;
+}
+
+.stepContent {
+    flex: 1;
+}
+
+.stepHeading {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1A202C;
+    margin-bottom: 6px;
+}
+
+.stepDesc {
+    font-size: 14px;
+    color: #718096;
+    line-height: 1.5;
+    margin: 0;
+}
+
+@media (max-width: 900px) {
+    .emptyStateCard {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .leftPanel,
+    .rightPanel {
+        padding: 30px;
+    }
+}

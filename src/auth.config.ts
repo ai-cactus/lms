@@ -24,76 +24,75 @@ export const authConfig = {
             const isOnOnboardingWorker = nextUrl.pathname.startsWith('/onboarding-worker');
             const isOnLearn = nextUrl.pathname.startsWith('/learn');
             const isOnAuth = nextUrl.pathname.startsWith('/login') || nextUrl.pathname.startsWith('/signup');
+            const isWorkerPath = nextUrl.pathname.startsWith('/worker');
 
             if (isLoggedIn) {
-                // @ts-ignore - organizationId is added in auth.ts
+                // @ts-ignore
                 const hasOrg = !!auth.user?.organizationId;
-                // @ts-ignore - role is added in auth.ts
+                // @ts-ignore
                 const role = auth.user?.role;
 
-                if (isOnDashboard) {
-                    return true;
-                }
-
-                // Redirect new workers to code entry
-                if (role === 'worker' && !hasOrg && !isOnOnboardingWorker) {
-                    return Response.redirect(new URL('/onboarding-worker', nextUrl));
-                }
-
-                // Redirect new admins to onboarding
-                if (role === 'admin' && !hasOrg && !isOnOnboarding) {
-                    return Response.redirect(new URL('/onboarding', nextUrl));
-                }
-
-                // Prevent access to onboarding if already has org
-                if (hasOrg && (isOnOnboarding || isOnOnboardingWorker)) {
-                    if (role === 'worker') {
-                        return Response.redirect(new URL('/worker', nextUrl));
+                // 1. Worker Redirection Logic
+                if (role === 'worker') {
+                    // If worker has no org, they MUST go to onboarding-worker
+                    if (!hasOrg) {
+                        if (isOnOnboardingWorker) return true; // Allow access
+                        return Response.redirect(new URL('/onboarding-worker', nextUrl));
                     }
-                    return Response.redirect(new URL('/dashboard', nextUrl));
-                }
 
-                // Role-based Route Protection
-                if (isOnDashboard) {
-                    const path = nextUrl.pathname;
-
-                    if (role === 'worker') {
-                        // Workers should not be in dashboard at all
-                        return Response.redirect(new URL('/worker', nextUrl));
+                    // If worker HAS org, they MUST go to /worker (or /learn if implemented)
+                    if (hasOrg) {
+                        if (isOnOnboardingWorker || isOnAuth) {
+                            return Response.redirect(new URL('/worker', nextUrl));
+                        }
+                        // Workers cannot access dashboard
+                        if (isOnDashboard) {
+                            return Response.redirect(new URL('/worker', nextUrl));
+                        }
                     }
+
+                    // Allow access to /worker routes
+                    if (isWorkerPath) return true;
                 }
 
-                // Protect Worker Routes
-                if (nextUrl.pathname.startsWith('/worker')) {
-                    if (role !== 'worker') {
-                        return Response.redirect(new URL('/dashboard', nextUrl));
-                    }
-                }
-
+                // 2. Admin Redirection Logic
                 if (role === 'admin') {
-                    // Block Worker Routes for Admins
-                    if (nextUrl.pathname.startsWith('/worker')) {
-                        return Response.redirect(new URL('/dashboard', nextUrl));
+                    // If admin has no org, they MUST go to onboarding
+                    if (!hasOrg) {
+                        if (isOnOnboarding) return true;
+                        return Response.redirect(new URL('/onboarding', nextUrl));
+                    }
+
+                    // If admin HAS org
+                    if (hasOrg) {
+                        if (isOnOnboarding || isOnAuth) {
+                            return Response.redirect(new URL('/dashboard', nextUrl));
+                        }
+                        // Admins cannot access worker onboarding or worker routes? 
+                        // (Maybe they can view, but for now redirect to dashboard)
+                        if (isOnOnboardingWorker || isWorkerPath) {
+                            return Response.redirect(new URL('/dashboard', nextUrl));
+                        }
                     }
                 }
-            } else if (isOnDashboard) {
-                return false; // Redirect to login
-            }
 
-            if (isOnOnboarding || isOnOnboardingWorker || isOnLearn) {
-                if (!isLoggedIn) return false;
-                return true;
+                // Allow dashboard access for admins (implicit)
+                if (isOnDashboard) return true;
+
+            } else {
+                // Not logged in
+                if (isOnDashboard || isOnOnboarding || isOnOnboardingWorker || isOnLearn || isWorkerPath) {
+                    return false; // Redirect to login
+                }
             }
 
             if (isOnAuth) {
                 if (isLoggedIn) {
-                    // Logic for where to send them is complicated without user object here
-                    // But typically straight to dashboard, and let dashboard redirect if needed?
-                    // Or let's try to be smart if we can access session token properties
                     return Response.redirect(new URL('/dashboard', nextUrl));
                 }
                 return true;
             }
+
             return true;
         },
     },

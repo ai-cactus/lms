@@ -320,7 +320,22 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     if (!initialData) {
         return (
             <div className={styles.emptyState}>
-                <p>No organization found. Please complete onboarding first.</p>
+                <div className={styles.emptyStateContent}>
+                    <div className={styles.emptyStateIcon}>
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 21h18" />
+                            <path d="M5 21V7l8-4 8 4v14" />
+                            <path d="M9 10a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v11H9V10z" />
+                        </svg>
+                    </div>
+                    <h3 className={styles.emptyStateTitle}>No Organization Found</h3>
+                    <p className={styles.emptyStateText}>
+                        You haven't set up an organization profile yet. Complete the onboarding process to unlock all features.
+                    </p>
+                    <Button onClick={() => router.push('/onboarding/step1')} style={{ marginTop: '8px' }}>
+                        Complete Onboarding
+                    </Button>
+                </div>
             </div>
         );
     }

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Logo, Input, Button } from '@/components/ui';
+import { useSession } from 'next-auth/react';
 import { verifyOrganizationCode, joinOrganization } from '@/app/actions/organization-code';
 import styles from './page.module.css';
 
@@ -12,6 +13,9 @@ interface OrgDetails {
     name: string;
     type?: string | null;
     services: string[];
+    country?: string | null;
+    phone?: string | null;
+    contactName?: string | null;
 }
 
 export default function WorkerOnboardingPage() {
@@ -45,6 +49,8 @@ export default function WorkerOnboardingPage() {
         }
     };
 
+    const { update } = useSession();
+
     const handleJoin = async () => {
         setLoading(true);
         setError('');
@@ -52,7 +58,10 @@ export default function WorkerOnboardingPage() {
         try {
             const result = await joinOrganization(code);
             if (result.success) {
+                // Force session update to reflect new role/org
+                await update();
                 router.push('/worker');
+                router.refresh(); // Ensure server components refresh
             } else {
                 setError(result.error || 'Failed to join organization');
             }
@@ -111,14 +120,45 @@ export default function WorkerOnboardingPage() {
                         </form>
                     ) : (
                         <div className={styles.card}>
-                            <h3 className={styles.orgName}>{orgDetails.name}</h3>
-                            <span className={styles.orgType}>{orgDetails.type ? orgDetails.type : 'Healthcare Organization'}</span>
+                            <div className={styles.cardHeader}>
+                                <div className={styles.orgIcon}>
+                                    {orgDetails.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <h3 className={styles.orgName}>{orgDetails.name}</h3>
+                                    <span className={styles.orgType}>{orgDetails.type || 'Healthcare Organization'}</span>
+                                </div>
+                            </div>
+
+                            <div className={styles.detailsGrid}>
+                                {orgDetails.contactName && (
+                                    <div className={styles.detailItem}>
+                                        <span className={styles.detailLabel}>Contact Person</span>
+                                        <span className={styles.detailValue}>{orgDetails.contactName}</span>
+                                    </div>
+                                )}
+                                {orgDetails.phone && (
+                                    <div className={styles.detailItem}>
+                                        <span className={styles.detailLabel}>Phone Number</span>
+                                        <a href={`tel:${orgDetails.phone}`} className={styles.detailLink}>{orgDetails.phone}</a>
+                                    </div>
+                                )}
+                                {orgDetails.country && (
+                                    <div className={styles.detailItem}>
+                                        <span className={styles.detailLabel}>Location</span>
+                                        <span className={styles.detailValue}>{orgDetails.country}</span>
+                                    </div>
+                                )}
+                            </div>
 
                             {orgDetails.services.length > 0 && (
-                                <div className={styles.servicesList}>
-                                    {orgDetails.services.map(s => (
-                                        <span key={s} className={styles.serviceTag}>{s}</span>
-                                    ))}
+                                <div className={styles.servicesSection}>
+                                    <span className={styles.detailLabel}>Services Provided</span>
+                                    <div className={styles.servicesList}>
+                                        {orgDetails.services.map(s => (
+                                            <span key={s} className={styles.serviceTag}>{s}</span>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 

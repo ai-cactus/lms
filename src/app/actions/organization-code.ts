@@ -93,8 +93,11 @@ export async function verifyOrganizationCode(code: string) {
                 id: true,
                 name: true,
                 joinCodeExpiresAt: true,
-                programServices: true, // Optional: show services to worker?
-                primaryBusinessType: true // Optional
+                programServices: true,
+                primaryBusinessType: true,
+                country: true,
+                phone: true,
+                primaryContact: true
             }
         });
 
@@ -112,7 +115,10 @@ export async function verifyOrganizationCode(code: string) {
                 id: org.id,
                 name: org.name,
                 type: org.primaryBusinessType,
-                services: org.programServices
+                services: org.programServices,
+                country: org.country,
+                phone: org.phone,
+                contactName: org.primaryContact
             }
         };
     } catch (error) {

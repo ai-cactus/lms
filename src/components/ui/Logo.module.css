@@ -27,7 +27,4 @@
     /* Brand Blue */
 }
 
-/* Apply filter to image to make it blue (approximate for #2D4DDD) */
-.blue img {
-    filter: invert(24%) sepia(93%) saturate(1750%) hue-rotate(218deg) brightness(91%) contrast(96%);
-}
+/* Filter removed as we use currentColor in inline SVG */
