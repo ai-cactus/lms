@@ -57,26 +57,8 @@ export default async function LearnerDashboard() {
     }));
 
     // Check if completely empty (onboarding state)
-    // If no enrollments at all, show empty state.
-    if (allEnrollments.length === 0) {
-        return (
-            <div className={styles.container}>
-                <header className={styles.header}>
-                    <div>
-                        <h1 className={styles.welcome}>Welcome back, {session?.user?.name || 'Learner'}</h1>
-                        <p className={styles.sub}>Here is an overview of your training.</p>
-                    </div>
-                </header>
-
-                <WorkerEmptyState />
-
-                <WorkerWelcomeModal
-                    courseCount={0}
-                    firstCourseId={undefined}
-                />
-            </div>
-        );
-    }
+    // If no enrollments at all, show empty state MODAL on top of the dashboard.
+    const showWelcomeModal = allEnrollments.length === 0;
 
     return (
         <div className={styles.container}>
@@ -96,6 +78,8 @@ export default async function LearnerDashboard() {
             <WorkerCourseList courses={activeCourses} />
 
             <WorkerBadges badges={badges} />
+
+            {showWelcomeModal && <WorkerEmptyState />}
 
             <WorkerWelcomeModal
                 courseCount={allEnrollments.length}

@@ -17,9 +17,12 @@ interface Step2DocumentsProps {
     documents: Document[];
     onToggleSelect: (id: string) => void;
     onUpload?: (files: File[]) => void;
+    isAnalyzing?: boolean;
+    progress?: number;
+    error?: string | null;
 }
 
-export default function Step2Documents({ documents, onToggleSelect, onUpload }: Step2DocumentsProps) {
+export default function Step2Documents({ documents, onToggleSelect, onUpload, isAnalyzing = false, progress = 0, error }: Step2DocumentsProps) {
     const [source, setSource] = React.useState('uploaded');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,9 +66,10 @@ export default function Step2Documents({ documents, onToggleSelect, onUpload }: 
                     <div className={styles.scrollableContent}>
                         <div
                             className={styles.uploadZone}
-                            onClick={() => fileInputRef.current?.click()}
+                            onClick={() => !isAnalyzing && fileInputRef.current?.click()}
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={handleDrop}
+                            style={{ opacity: isAnalyzing ? 0.7 : 1, pointerEvents: isAnalyzing ? 'none' : 'auto' }}
                         >
                             <input
                                 type="file"
@@ -73,24 +77,40 @@ export default function Step2Documents({ documents, onToggleSelect, onUpload }: 
                                 style={{ display: 'none' }}
                                 onChange={handleFileChange}
                                 accept=".pdf,.docx"
-                                multiple
                             />
                             <div className={styles.uploadIconWrapper}>
-                                {/* Folder Icon SVG */}
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H13L11 5H5C3.89543 5 3 5.89543 3 7Z" fill="#718096" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                    <circle cx="12" cy="12" r="6" fill="white" />
-                                    <path d="M12 15V9" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                    <path d="M9 12L12 9L15 12" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
+                                {isAnalyzing ? (
+                                    <div style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#3182CE', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                ) : (
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H13L11 5H5C3.89543 5 3 5.89543 3 7Z" fill="#718096" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                        <circle cx="12" cy="12" r="6" fill="white" />
+                                        <path d="M12 15V9" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                        <path d="M9 12L12 9L15 12" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                )}
                             </div>
                             <p className={styles.uploadText}>
-                                Drop your files here or <span className={styles.uploadLink}>Click to upload</span>
+                                {isAnalyzing ? 'Check the parsing...' : (
+                                    <>Drop your file here or <span className={styles.uploadLink}>Click to upload</span></>
+                                )}
                             </p>
                             <p className={styles.uploadSubtext}>
-                                PDF, DOCX. You may upload multiple files.
+                                {isAnalyzing ? 'Analyzing document structure and content...' : 'PDF, DOCX. Single file upload.'}
                             </p>
+
+                            {isAnalyzing && (
+                                <div style={{ width: '60%', height: '4px', background: '#E2E8F0', borderRadius: '2px', marginTop: '16px', overflow: 'hidden' }}>
+                                    <div style={{ width: `${progress}%`, height: '100%', background: '#3182CE', transition: 'width 0.3s ease' }} />
+                                </div>
+                            )}
                         </div>
+
+                        {error && (
+                            <div style={{ marginTop: 16, padding: '12px', background: '#FED7D7', color: '#C53030', borderRadius: '8px', fontSize: '14px', textAlign: 'center', border: '1px solid #F56565' }}>
+                                <strong>Upload Failed:</strong> {error}
+                            </div>
+                        )}
 
                         {/* Uploaded Files List */}
                         <div className={styles.uploadedFilesContainer}>
@@ -114,8 +134,9 @@ export default function Step2Documents({ documents, onToggleSelect, onUpload }: 
                                             checked={doc.selected}
                                             onChange={() => onToggleSelect(doc.id)}
                                             className={styles.checkbox}
+                                            disabled={isAnalyzing}
                                         />
-                                        <button className={styles.trashBtn}>
+                                        <button className={styles.trashBtn} disabled={isAnalyzing}>
                                             <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                                 <path d="M2.5 4H13.5" />
                                                 <path d="M6.5 7V11" />

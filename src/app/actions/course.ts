@@ -367,7 +367,7 @@ export async function createFullCourse(data: {
     difficulty: string;
     duration: string;
     modules: { title: string; content: string; duration: string }[];
-    quiz: { question: string; options: string[]; answer: number }[];
+    quiz: { question: string; options: string[]; answer: number; type?: string }[];
     assignments: string[];
     dueDate?: Date;
     dueTime?: string;
@@ -375,6 +375,9 @@ export async function createFullCourse(data: {
     quizTitle?: string;
     quizPassMark?: string;
     quizQuestionType?: string;
+    quizAttempts?: string;
+    quizDuration?: string;
+    quizDifficulty?: string;
 }) {
     const session = await auth();
     if (!session?.user?.id) {
@@ -410,10 +413,13 @@ export async function createFullCourse(data: {
                         create: {
                             title: data.quizTitle || 'Course Quiz',
                             passingScore: parseInt(data.quizPassMark?.replace('%', '') || '70'),
+                            allowedAttempts: (data.quizAttempts === 'unlimited' || !data.quizAttempts) ? null : parseInt(data.quizAttempts),
+                            timeLimit: parseInt(data.quizDuration?.replace(/\D/g, '') || '15'),
+                            difficulty: data.quizDifficulty || 'moderate',
                             questions: {
                                 create: data.quiz.map((q, qIndex) => ({
                                     text: q.question,
-                                    type: data.quizQuestionType || 'multiple_choice',
+                                    type: q.type || data.quizQuestionType || 'multiple_choice',
                                     options: q.options,
                                     correctAnswer: q.options[q.answer],
                                     order: qIndex

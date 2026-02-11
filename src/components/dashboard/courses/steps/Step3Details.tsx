@@ -39,32 +39,9 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                     />
                 </div>
 
-                {/* Category */}
-                <div className={styles.formRow}>
-                    <label className={styles.formLabel}>Category</label>
-                    <Select
-                        value={data.category}
-                        onChange={(val) => onChange('category', val)}
-                        options={[
-                            { label: 'Cybersecurity and Technology', value: 'cybersecurity' },
-                            { label: 'Health and Safety', value: 'health_safety' }
-                        ]}
-                    />
-                </div>
 
-                {/* Difficulty Level */}
-                <div className={styles.formRow}>
-                    <label className={styles.formLabel}>Difficulty Level</label>
-                    <Select
-                        value={data.difficulty}
-                        onChange={(val) => onChange('difficulty', val)}
-                        options={[
-                            { label: 'Beginner', value: 'beginner' },
-                            { label: 'Moderate', value: 'moderate' },
-                            { label: 'Advanced', value: 'advanced' }
-                        ]}
-                    />
-                </div>
+
+
 
                 {/* Estimated Duration */}
                 <div className={styles.formRow}>
@@ -80,19 +57,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                     />
                 </div>
 
-                {/* Content Type */}
-                <div className={styles.formRow}>
-                    <label className={styles.formLabel}>Content Type</label>
-                    <Select
-                        value={data.contentType}
-                        onChange={(val) => onChange('contentType', val)}
-                        options={[
-                            { label: 'Notes', value: 'notes' },
-                            { label: 'Video', value: 'video' },
-                            { label: 'Hybrid', value: 'hybrid' }
-                        ]}
-                    />
-                </div>
+
 
                 {/* No of Notes / Slides */}
                 <div className={styles.formRow}>
@@ -108,19 +73,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                     />
                 </div>
 
-                {/* Deadline */}
-                <div className={styles.formRow}>
-                    <label className={styles.formLabel}>Deadline to Complete Course</label>
-                    <Select
-                        value={data.deadline}
-                        onChange={(val) => onChange('deadline', val)}
-                        options={[
-                            { label: '15 days', value: '15' },
-                            { label: '30 days', value: '30' },
-                            { label: '45 days', value: '45' }
-                        ]}
-                    />
-                </div>
+
 
                 <hr style={{ margin: '40px 0', border: 'none', borderTop: '1px solid #EDF2F7' }} />
 

@@ -1,7 +1,10 @@
 .container {
-    max-width: 1200px;
+    width: 100%;
+    max-width: 1600px;
+    /* Increased from 1200px */
     margin: 0 auto;
-    padding: 24px;
+    padding: 0;
+    /* Removed 24px padding (layout already has 40px) */
     display: flex;
     flex-direction: column;
     gap: 32px;
@@ -103,6 +106,10 @@
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     border: 1px solid #E2E8F0;
+    min-height: 60vh;
+    /* Force substantial vertical height */
+    display: flex;
+    flex-direction: column;
 }
 
 .tableHeader {
@@ -315,7 +322,7 @@
 }
 
 
-/* Refined Empty State - Matching WorkerWelcomeModal */
+/* Refined Empty State - Matching Figma Design */
 .emptyStateCard {
     background: white;
     border-radius: 20px;
@@ -323,13 +330,19 @@
     overflow: hidden;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     border: 1px solid #E2E8F0;
-    min-height: 500px;
+    position: relative;
+    /* Ensure close button is positioned relative to card */
+    width: 100%;
+    max-width: 1000px;
+    /* Constrain width */
+    margin: 20px;
+    /* Add margin for mobile safety */
 }
 
 .leftPanel {
     flex: 1;
-    background: #E6FFFA;
-    /* Light teal/green background */
+    background: #D3F5EE;
+    /* Reference: rgb(211, 245, 238) */
     padding: 40px;
     display: flex;
     flex-direction: column;
@@ -362,45 +375,106 @@
 }
 
 .welcomeTitle {
-    font-size: 28px;
-    font-weight: 800;
-    color: #065F46;
-    /* Dark Green */
-    margin-bottom: 16px;
-    line-height: 1.2;
+    font-size: 39px;
+    /* Figma: 39.5px */
+    font-weight: 700;
+    font-family: var(--font-dm-sans), sans-serif;
+    /* Figma: DM Sans */
+    color: #007D45;
+    /* Reference: rgb(0, 125, 69) */
+    margin-bottom: 14px;
+    line-height: 1.15;
+    /* Figma: 45px / 39.5px ~ 1.14 */
     z-index: 1;
 }
 
 .welcomeText {
-    font-size: 16px;
-    color: #2C7A7B;
+    font-size: 17px;
+    /* Figma: 16.9px */
+    font-family: var(--font-geist-sans), sans-serif;
+    /* Figma: Inter Medium */
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.7);
+    /* Reference: 70% opacity black */
     margin-bottom: 32px;
-    max-width: 320px;
+    max-width: 360px;
+    /* From Figma bounding box */
     line-height: 1.5;
     z-index: 1;
 }
 
 .startButton {
-    background: #047857;
-    /* Emerald 700 */
+    background: #007D45;
+    /* Reference: rgb(0, 125, 69) */
     color: white;
     padding: 14px 28px;
     border-radius: 50px;
     font-weight: 600;
     font-size: 16px;
+    /* Figma: 15.6px */
     border: none;
     cursor: pointer;
     transition: all 0.2s;
     z-index: 1;
-    box-shadow: 0 4px 6px rgba(4, 120, 87, 0.2);
+    box-shadow: 0 4px 6px rgba(0, 125, 69, 0.2);
     text-decoration: none;
     display: inline-block;
 }
 
 .startButton:hover {
-    background: #065F46;
+    background: #006336;
     transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(4, 120, 87, 0.3);
+    box-shadow: 0 6px 12px rgba(0, 125, 69, 0.3);
+}
+
+
+/* Modal Overlay */
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    /* Semi-transparent black */
+    display: flex;
+    /* Flexbox for centering */
+    align-items: center;
+    /* Center vertically */
+    justify-content: center;
+    /* Center horizontally */
+    z-index: 1000;
+    /* High z-index to be on top */
+    padding: 20px;
+    /* Padding for mobile */
+}
+
+.closeButtonContainer {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 10;
+}
+
+.closeButton {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s;
+    color: #4A5568;
+}
+
+.closeButton:hover {
+    background: #F7FAFC;
+    transform: scale(1.05);
+    color: #2D3748;
 }
 
 .rightPanel {
@@ -409,13 +483,19 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
+    position: relative;
+    /* For absolute positioning inside if needed */
 }
 
 .stepsTitle {
-    font-size: 24px;
+    font-size: 30px;
+    /* Figma: 29.6px */
     font-weight: 700;
-    color: #1A202C;
+    font-family: var(--font-geist-sans), sans-serif;
+    /* Figma: Inter Bold */
+    color: #000000;
     margin-bottom: 40px;
+    letter-spacing: -0.6px;
 }
 
 .stepsList {

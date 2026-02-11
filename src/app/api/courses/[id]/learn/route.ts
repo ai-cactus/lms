@@ -62,11 +62,15 @@ export async function GET(
 
         // Extract quiz from last lesson (where it's attached)
         const lastLesson = course.lessons[course.lessons.length - 1];
-        const quiz = lastLesson?.quiz ? {
-            id: lastLesson.quiz.id,
-            title: lastLesson.quiz.title,
-            passingScore: lastLesson.quiz.passingScore,
-            questions: lastLesson.quiz.questions.map(q => ({
+        const quizData = lastLesson?.quiz as any;
+
+        const quiz = quizData ? {
+            id: quizData.id,
+            title: quizData.title,
+            passingScore: quizData.passingScore,
+            allowedAttempts: quizData.allowedAttempts,
+            timeLimit: quizData.timeLimit,
+            questions: quizData.questions.map((q: any) => ({
                 id: q.id,
                 text: q.text,
                 type: q.type,
@@ -98,7 +102,8 @@ export async function GET(
                 id: enrollment.id,
                 progress: enrollment.progress,
                 status: enrollment.status,
-                score: enrollment.score
+                score: enrollment.score,
+                quizAttempts: enrollment.quizAttempts
             },
             user: {
                 name: user?.profile?.fullName || user?.email || '',

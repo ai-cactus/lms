@@ -95,7 +95,6 @@ export async function enrollUsers(courseId: string, emails: string[]) {
                 user = await prisma.user.create({
                     data: {
                         email: normalizedEmail,
-                        name: normalizedEmail.split('@')[0],
                         password: hashedPassword,
                         role: 'worker',
                         emailVerified: true,

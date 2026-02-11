@@ -33,11 +33,9 @@ export default function CourseWizard() {
         category: '',
         title: 'HIPAA Privacy and Security Training',
         description: 'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
-        difficulty: 'moderate',
+        difficulty: 'moderate', // default fallback if needed by DB, or remove if unused
         duration: '60',
-        contentType: 'notes',
         notesCount: '5',
-        deadline: '30',
         objectives: [
             'To train staff on HIPAA compliance in behavioral health.',
             'Learn how to handle PHI securely',
@@ -114,7 +112,10 @@ export default function CourseWizard() {
                     // Quiz settings from Step 4
                     quizTitle: formData.quizTitle,
                     quizPassMark: formData.quizPassMark,
-                    quizQuestionType: formData.quizQuestionType
+                    quizQuestionType: formData.quizQuestionType,
+                    quizAttempts: formData.quizAttempts,
+                    quizDuration: formData.quizDuration,
+                    quizDifficulty: formData.quizDifficulty
                 });
 
                 if (result.success) {
@@ -150,16 +151,82 @@ export default function CourseWizard() {
         }
     };
 
-    const handleUpload = (files: File[]) => {
-        const newDocs = files.map((file, i) => ({
-            id: `new-${Date.now()}-${i}`,
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analysisProgress, setAnalysisProgress] = useState(0);
+    const [uploadError, setUploadError] = useState<string | null>(null);
+
+    const handleUpload = async (files: File[]) => {
+        setUploadError(null); // Clear previous errors
+
+        // Enforce single file - take only the first one
+        const file = files[0];
+        if (!file) return;
+
+        const newDoc: Document = {
+            id: `new-${Date.now()}`,
             name: file.name,
-            type: file.name.endsWith('.pdf') ? 'pdf' : 'docx' as any,
-            status: 'analyzed' as any,
+            type: file.name.endsWith('.pdf') ? 'pdf' : 'docx',
+            status: 'analyzed',
             selected: true,
             file: file
-        }));
-        setDocuments(prev => [...prev, ...newDocs]);
+        };
+
+        // Replace existing documents with the new single file
+        setDocuments([newDoc]);
+
+        // Start Analysis immediately
+        setIsAnalyzing(true);
+        setAnalysisProgress(10); // Start progress
+
+        // Simulate progress for UX while waiting
+        const progressInterval = setInterval(() => {
+            setAnalysisProgress(prev => {
+                if (prev >= 90) {
+                    clearInterval(progressInterval);
+                    return 90;
+                }
+                return prev + 10;
+            });
+        }, 500);
+
+        try {
+            // Import dynamically to avoid server-side issues if any
+            const { analyzeDocument } = await import('@/app/actions/course-ai');
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const result = await analyzeDocument(formData);
+
+            clearInterval(progressInterval);
+            setAnalysisProgress(100);
+
+            if (result.error) {
+                console.error("Analysis Error:", result.error);
+                setUploadError(result.error);
+                setDocuments([]); // Remove the failed file
+            } else {
+                // Populate Step 3 Data
+                setFormData(prev => ({
+                    ...prev,
+                    title: result.title,
+                    description: result.description,
+                    objectives: result.objectives,
+                    duration: result.duration,
+                    quizTitle: result.quizTitle
+                }));
+            }
+        } catch (err: any) {
+            console.error("Analysis Failed:", err);
+            clearInterval(progressInterval);
+            setUploadError(`Analysis failed: ${err.message || "Unknown error"}. Please try a different file.`);
+            setDocuments([]); // Reset on error
+        } finally {
+            setTimeout(() => {
+                setIsAnalyzing(false);
+                setAnalysisProgress(0);
+            }, 500);
+        }
     };
 
     const renderStep = () => {
@@ -177,6 +244,9 @@ export default function CourseWizard() {
                         documents={documents}
                         onToggleSelect={handleToggleSelect}
                         onUpload={handleUpload}
+                        isAnalyzing={isAnalyzing}
+                        progress={analysisProgress}
+                        error={uploadError}
                     />
                 );
             case 3:
@@ -256,7 +326,7 @@ export default function CourseWizard() {
 
                 {/* Hide footer during generation phase of Step 5 */}
                 {(!isGenerating || currentStep !== 5) && (
-                    <div className={styles.footer}>
+                    <div className={`${styles.footer} ${currentStep === 5 ? styles.footerWide : ''}`}>
                         {publishError && (
                             <div className={styles.errorMessage}>{publishError}</div>
                         )}

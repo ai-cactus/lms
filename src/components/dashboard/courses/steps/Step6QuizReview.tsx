@@ -7,6 +7,7 @@ interface QuizQuestion {
     question: string;
     options: string[];
     answer: number;
+    type?: string;
 }
 
 interface Step6QuizReviewProps {
@@ -50,7 +51,21 @@ export default function Step6QuizReview({ data, quiz }: Step6QuizReviewProps) {
                             <div key={index} className={styles.questionCard}>
                                 <div className={styles.questionHeader}>
                                     <div className={styles.questionText}>
-                                        {index + 1}. {q.question}
+                                        <span style={{ fontWeight: 'bold', marginRight: 8 }}>{index + 1}.</span>
+                                        {q.question}
+                                        {q.type && (
+                                            <span style={{
+                                                marginLeft: 10,
+                                                fontSize: 11,
+                                                padding: '2px 6px',
+                                                borderRadius: 4,
+                                                background: q.type === 'true_false' ? '#E9D8FD' : '#EBF8FF',
+                                                color: q.type === 'true_false' ? '#6B46C1' : '#3182CE',
+                                                textTransform: 'capitalize'
+                                            }}>
+                                                {q.type.replace('_', ' ')}
+                                            </span>
+                                        )}
                                     </div>
                                     <button className={styles.btnEdit}>Edit</button>
                                 </div>

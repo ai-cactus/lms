@@ -18,7 +18,7 @@ interface WorkerCourseListProps {
 }
 
 export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
-    if (courses.length === 0) return null;
+    // if (courses.length === 0) return null; // Always render section
 
     return (
         <section>
@@ -57,87 +57,98 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                 </div>
 
                 {/* Rows */}
-                {courses.map(course => (
-                    <div key={course.id} className={styles.tableRow}>
-                        {/* Name */}
-                        <div className={styles.colName}>
-                            <div className={styles.courseIcon}>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-                                </svg>
-                            </div>
-                            <span className={styles.courseNameText}>{course.title}</span>
-                        </div>
-
-                        {/* Progress */}
-                        <div className={styles.colProgress}>
-                            <div className={styles.progressContainer}>
-                                <div className={styles.progressBarTrack}>
-                                    <div
-                                        className={styles.progressBarFill}
-                                        style={{ width: `${course.progress}%` }}
-                                    />
-                                </div>
-                                <span className={styles.progressText}>{course.progress}%</span>
-                            </div>
-                        </div>
-
-                        {/* Deadline */}
-                        <div className={styles.colDeadline}>
-                            {course.deadline ? (
-                                <>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <polyline points="12 6 12 12 16 14"></polyline>
+                {courses.length > 0 ? (
+                    courses.map(course => (
+                        <div key={course.id} className={styles.tableRow}>
+                            {/* Name */}
+                            <div className={styles.colName}>
+                                <div className={styles.courseIcon}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
                                     </svg>
-                                    {new Date(course.deadline).toLocaleDateString()}
-                                </>
-                            ) : (
-                                <span style={{ color: '#A0AEC0' }}>No Deadline</span>
-                            )}
-                        </div>
+                                </div>
+                                <span className={styles.courseNameText}>{course.title}</span>
+                            </div>
 
-                        {/* Status */}
-                        <div className={styles.colStatus}>
-                            <span className={`${styles.statusBadge} ${course.status === 'in_progress' ? styles.statusInProgress :
+                            {/* Progress */}
+                            <div className={styles.colProgress}>
+                                <div className={styles.progressContainer}>
+                                    <div className={styles.progressBarTrack}>
+                                        <div
+                                            className={styles.progressBarFill}
+                                            style={{ width: `${course.progress}%` }}
+                                        />
+                                    </div>
+                                    <span className={styles.progressText}>{course.progress}%</span>
+                                </div>
+                            </div>
+
+                            {/* Deadline */}
+                            <div className={styles.colDeadline}>
+                                {course.deadline ? (
+                                    <>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                        {new Date(course.deadline).toLocaleDateString()}
+                                    </>
+                                ) : (
+                                    <span style={{ color: '#A0AEC0' }}>No Deadline</span>
+                                )}
+                            </div>
+
+                            {/* Status */}
+                            <div className={styles.colStatus}>
+                                <span className={`${styles.statusBadge} ${course.status === 'in_progress' ? styles.statusInProgress :
                                     course.status === 'completed' ? styles.statusCompleted :
                                         course.status === 'attested' ? styles.statusAttested :
                                             course.status === 'failed' ? styles.statusFailed : ''
-                                }`}>
-                                {course.status === 'in_progress' && (
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <polyline points="12 6 12 12 16 14"></polyline>
-                                    </svg>
+                                    }`}>
+                                    {course.status === 'in_progress' && (
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                    )}
+                                    {course.status === 'attested' ? 'Attested' :
+                                        course.status === 'in_progress' ? 'In progress' :
+                                            course.status.charAt(0).toUpperCase() + course.status.slice(1).replace('_', ' ')}
+                                </span>
+                            </div>
+
+                            {/* Action */}
+                            <div className={styles.colAction}>
+                                {course.status === 'failed' ? (
+                                    <Link href={`/learn/${course.id}`} className={styles.retryLink}>Retry</Link>
+                                ) : (
+                                    <Link href={`/learn/${course.id}`} className={styles.viewLink}>
+                                        {course.progress > 0 && course.status !== 'attested' ? 'Continue' : 'View'}
+                                    </Link>
                                 )}
-                                {course.status === 'attested' ? 'Attested' :
-                                    course.status === 'in_progress' ? 'In progress' :
-                                        course.status.charAt(0).toUpperCase() + course.status.slice(1).replace('_', ' ')}
-                            </span>
-                        </div>
 
-                        {/* Action */}
-                        <div className={styles.colAction}>
-                            {course.status === 'failed' ? (
-                                <Link href={`/learn/${course.id}`} className={styles.retryLink}>Retry</Link>
-                            ) : (
-                                <Link href={`/learn/${course.id}`} className={styles.viewLink}>
-                                    {course.progress > 0 && course.status !== 'attested' ? 'Continue' : 'View'}
-                                </Link>
-                            )}
-
-                            {/* Simple kebab menu icon placeholder */}
-                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', marginLeft: '12px', color: '#A0AEC0' }}>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="1"></circle>
-                                    <circle cx="12" cy="5" r="1"></circle>
-                                    <circle cx="12" cy="19" r="1"></circle>
-                                </svg>
-                            </button>
+                                {/* Simple kebab menu icon placeholder */}
+                                <button style={{ background: 'none', border: 'none', cursor: 'pointer', marginLeft: '12px', color: '#A0AEC0' }}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <circle cx="12" cy="12" r="1"></circle>
+                                        <circle cx="12" cy="5" r="1"></circle>
+                                        <circle cx="12" cy="19" r="1"></circle>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
+                    ))
+                ) : (
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#718096', flexDirection: 'column' }}>
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '16px', opacity: 0.5 }}>
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line>
+                            <line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        <p>No active courses found.</p>
                     </div>
-                ))}
+                )}
             </div>
         </section>
     );

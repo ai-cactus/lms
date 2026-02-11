@@ -6,6 +6,8 @@
     flex: 1;
     display: flex;
     flex-direction: column;
+    min-height: 50vh;
+    /* Force substantial vertical height */
 }
 
 .header {

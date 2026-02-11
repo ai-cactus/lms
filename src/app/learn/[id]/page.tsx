@@ -27,7 +27,11 @@ interface Question {
 interface Quiz {
     id: string;
     title: string;
+    id: string;
+    title: string;
     passingScore: number;
+    allowedAttempts: number | null;
+    timeLimit: number | null;
     questions: Question[];
 }
 
@@ -44,6 +48,7 @@ interface EnrollmentData {
     progress: number;
     status: string;
     score?: number;
+    quizAttempts?: any[];
 }
 
 interface UserData {
@@ -157,7 +162,12 @@ export default function LearnPage() {
     const handleStartQuiz = () => {
         setViewMode('quiz_active');
         setCurrentQuestionIndex(0);
-        setTimeLeft(course?.quiz?.questions.length ? course.quiz.questions.length * 60 : 300); // 1 min per question default
+        // Prioritize explicit timeLimit. If null/0, fallback to question count estimate (1 min/q) or default 5 mins
+        const limitSeconds = course?.quiz?.timeLimit
+            ? course.quiz.timeLimit * 60
+            : (course?.quiz?.questions.length ? course.quiz.questions.length * 60 : 300);
+
+        setTimeLeft(limitSeconds);
         setQuizAnswers({});
     };
 
@@ -277,7 +287,21 @@ export default function LearnPage() {
                     </div>
                     <div className={styles.resultsActions}>
                         {!quizResults.passed ? (
-                            <button className={styles.retakeBtn} onClick={handleRetakeQuiz}>Retake Quiz</button>
+                            (() => {
+                                const attemptsUsed = (enrollment?.quizAttempts?.length || 0) + 1; // +1 because we just finished one but maybe state not updated yet? 
+                                // Actually enrollment state might be stale until re-fetch. But let's use safe check.
+                                // Better to trust backend, but for UI feedback:
+                                const allowed = course.quiz?.allowedAttempts;
+                                const hasRemaining = allowed === null || (enrollment?.quizAttempts?.length || 0) < allowed;
+                                // Wait, simple logic: if we just failed, can we retake?
+                                // We need accurate count. Let's rely on what we have.
+
+                                return hasRemaining ? (
+                                    <button className={styles.retakeBtn} onClick={handleRetakeQuiz}>Retake Quiz</button>
+                                ) : (
+                                    <button className={styles.retakeBtn} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>No Attempts Left</button>
+                                );
+                            })()
                         ) : (
                             <button className={styles.attestBtn} style={{ background: '#4C6EF5', color: 'white', border: 'none', padding: '12px 32px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }} onClick={() => setShowAttestation(true)}>Attestate</button>
                         )}
@@ -387,18 +411,40 @@ export default function LearnPage() {
                         <h1 className={styles.introTitle} style={{ textAlign: 'left', marginBottom: 8 }}>Quiz 1: {course.quiz.title}</h1>
                         <span style={{ color: '#718096', fontSize: 14, display: 'block', marginBottom: 32 }}>({course.quiz.questions.length} Questions)</span>
 
-                        <div className={styles.gradeBox}>
-                            <div className={styles.gradeItem}>
-                                <h4>Pass Grade</h4>
-                                <p style={{ color: '#4F46E5' }}>{course.quiz.passingScore}% or higher</p>
-                            </div>
-                            <div className={styles.gradeItem} style={{ textAlign: 'right' }}>
-                                <h4>Your Grade</h4>
-                                <p>-</p>
-                            </div>
-                        </div>
+                        {(() => {
+                            const attemptsUsed = enrollment?.quizAttempts?.length || 0;
+                            const allowed = course.quiz.allowedAttempts;
+                            const hasRemaining = allowed === null || attemptsUsed < allowed;
 
-                        <button className={styles.startQuizBtn} onClick={handleStartQuiz} style={{ width: 'fit-content', padding: '12px 32px' }}>Start Quiz</button>
+                            return (
+                                <div style={{ marginBottom: 24 }}>
+                                    <div className={styles.gradeBox} style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                                        <div className={styles.gradeItem}>
+                                            <h4>Pass Grade</h4>
+                                            <p style={{ color: '#4F46E5' }}>{course.quiz.passingScore}%</p>
+                                        </div>
+                                        <div className={styles.gradeItem}>
+                                            <h4>Time Limit</h4>
+                                            <p>{course.quiz.timeLimit ? `${course.quiz.timeLimit} min` : 'None'}</p>
+                                        </div>
+                                        <div className={styles.gradeItem} style={{ textAlign: 'right' }}>
+                                            <h4>Attempts</h4>
+                                            <p>{allowed === null ? 'Unlimited' : `${attemptsUsed} / ${allowed}`}</p>
+                                        </div>
+                                    </div>
+
+                                    {!hasRemaining ? (
+                                        <div style={{ marginTop: 24, padding: 16, background: '#FFF5F5', color: '#C53030', borderRadius: 8, textAlign: 'center' }}>
+                                            Maximum attempts reached.
+                                        </div>
+                                    ) : (
+                                        <button className={styles.startQuizBtn} onClick={handleStartQuiz} style={{ width: 'fit-content', padding: '12px 32px', marginTop: 24 }}>
+                                            Start Quiz
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     <aside className={styles.quizIntroSidebar}>

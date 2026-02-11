@@ -8,26 +8,24 @@ interface CourseData {
     category: string;
     title: string;
     description: string;
-    difficulty: string;
     duration: string;
-    contentType: string;
     notesCount: string;
-    deadline: string;
     objectives: string[];
     // Quiz data
     quizTitle: string;
     quizQuestionCount: string;
     quizQuestionType: string;
-    quizDifficulty: string;
     quizDuration: string;
     quizPassMark: string;
     quizAttempts: string;
+    quizDifficulty: string;
 }
 
 // Zod Schemas
 const QuizOptionSchema = z.string();
 const QuizQuestionSchema = z.object({
     question: z.string(),
+    type: z.enum(['multiple_choice', 'true_false']).optional(),
     options: z.array(z.string()).min(2),
     answer: z.number().min(0)
 });
@@ -96,11 +94,8 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
         Topic/Title: ${data.title}
         Category: ${data.category}
         Description: ${data.description}
-        Target Audience Level: ${data.difficulty} (adjust content complexity accordingly)
         Estimated Course Duration: ${data.duration} minutes total
-        Content Format: ${data.contentType === 'slides' ? 'Slide-style (concise bullet points)' : 'Notes-style (detailed paragraphs)'}
         Number of Modules/Sections: ${data.notesCount || '5'} modules
-        Completion Deadline Context: ${data.deadline} days (design content to be completable within this timeframe)
         
         LEARNING OBJECTIVES (users should achieve these by course end):
         ${data.objectives.map((obj, i) => `${i + 1}. ${obj}`).join('\n        ')}
@@ -120,40 +115,49 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
         Quiz Title: ${data.quizTitle}
         Number of Questions: ${data.quizQuestionCount}
         Question Type: ${data.quizQuestionType || 'Multiple Choice'}
-        Difficulty Level: ${data.quizDifficulty} (${data.quizDifficulty === 'easy' ? 'basic recall questions' : data.quizDifficulty === 'moderate' ? 'application and understanding questions' : 'analysis and critical thinking questions'})
         Estimated Quiz Duration: ${data.quizDuration} minutes
         Passing Score Target: ${data.quizPassMark} (design questions so this pass rate is achievable but meaningful)
+        Difficulty Level: ${data.quizDifficulty || 'Moderate'} (Adjust question complexity accordingly)
 
+        QUESTION TYPE INSTRUCTIONS:
+        - If Question Type is "Multiple Choice": Provide 4 options for each question. Start options with capital letters.
+        - If Question Type is "True / False": Provide EXACTLY 2 options: ["True", "False"].
+        - If Question Type is "Mixed": Generate a mix of "Multiple Choice" and "True / False" questions. Roughly 50/50 mix.
+        
         CRITICAL OUTPUT INSTRUCTIONS:
         1. Return ONLY a valid JSON object. No markdown formatting (no \`\`\`json), no introductory text.
-        2. Create EXACTLY ${data.notesCount || '5'} modules to match user's preference.
-        3. Design quiz with EXACTLY ${data.quizQuestionCount} questions at ${data.quizDifficulty} difficulty.
-        4. The JSON must strictly match this schema:
+        2. **Output MINIFIED JSON (single line)** to avoid formatting errors.
+        3. **ESCAPE ALL newlines** within string values as \\n. Do not use literal control characters.
+        4. Create EXACTLY ${data.notesCount || '5'} modules to match user's preference.
+        5. Design quiz with EXACTLY ${data.quizQuestionCount} questions.
+        6. The JSON must strictly match this schema:
         {
             "modules": [
                 {
                     "title": "Module Title",
-                    "content": "Detailed HTML content (use <h3>, <p>, <ul>, <li>). ${data.contentType === 'slides' ? 'Use bullet points, keep concise.' : 'Write detailed paragraphs, minimum 300 words per module.'} Include [1] markers for citations.",
+                    "content": "Detailed HTML content...",
                     "duration": "X min"
                 }
             ],
             "quiz": [
                 {
-                    "question": "Question text appropriate for ${data.quizDifficulty} difficulty",
+                    "question": "Question text",
+                    "type": "multiple_choice" | "true_false",
                     "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-                    "answer": 0 // 0-based index of the correct option
+                    "answer": 0
                 }
             ],
             "citations": [
                 {
                     "id": 1,
-                    "quote": "Exact text from source used for citation 1",
-                    "comment": "Optional explanation"
+                    "quote": "Exact text...",
+                    "comment": "Optional"
                 }
             ]
         }
-        5. Total module durations should add up to approximately ${data.duration} minutes.
-        6. Ensure the quiz tests the learning objectives listed above.
+        7. Total module durations should add up to approximately ${data.duration} minutes.
+        8. Ensure the quiz tests the learning objectives.
+        9. DO NOT USE PLACEHOLDERS.
     `;
 
     let attempts = 0;
@@ -164,8 +168,12 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
             attempts++;
             console.log(`AI Generation Attempt ${attempts}/${maxAttempts}`);
 
+            const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
+            const location = process.env.GOOGLE_LOCATION || 'us-central1';
+            const modelId = 'gemini-2.5-flash-lite';
+
             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+                `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:generateContent?key=${apiKey}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -173,14 +181,18 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
                         contents: [{
                             role: "user",
                             parts: [{ text: prompt }]
-                        }]
+                        }],
+                        generationConfig: {
+                            temperature: 0.7,
+                            maxOutputTokens: 8192,
+                        }
                     })
                 }
             );
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`Gemini API Error: ${response.status} ${response.statusText} - ${errorText}`);
+                throw new Error(`Vertex AI Error: ${response.status} ${response.statusText} - ${errorText}`);
             }
 
             const json = await response.json();
@@ -191,7 +203,7 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
                 throw new Error("No content generated in response");
             }
 
-            // Cleanup potential markdown
+            // Cleanup potential markdown and bad characters
             let cleanText = textPart.trim();
             if (cleanText.startsWith('```json')) {
                 cleanText = cleanText.replace(/```json\n?/, '').replace(/```$/, '');
@@ -199,8 +211,24 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
                 cleanText = cleanText.replace(/```\n?/, '').replace(/```$/, '');
             }
 
+            // Remove potential bad control characters (0x00-0x1F) except valid JSON whitespace (BS, HT, LF, FF, CR)
+            // JSON valid whitespace: \b (08), \t (09), \n (0A), \f (0C), \r (0D)
+            // Actually, inside strings they must be escaped. Outside, they are whitespace.
+            // If the AI outputs a literal tab inside a string, it's invalid.
+            // A simple approach is to use a regex to strip non-printable chars if they cause issues,
+            // but strict parsing is better. The Prompt fix (MINIFIED JSON) is the primary defense.
+
             // Parse JSON
-            const parsedData = JSON.parse(cleanText);
+            let parsedData;
+            try {
+                parsedData = JSON.parse(cleanText);
+            } catch (jsonErr) {
+                console.warn("Initial JSON parse failed, attempting to repair...", jsonErr);
+                // Fallback: dangerous replace of unescaped newlines?
+                // Or typically, just removing newlines that break the string.
+                // For now, let's rely on the prompt improvement.
+                throw jsonErr;
+            }
 
             // Validate with Zod
             const validationResult = CourseContentSchema.safeParse(parsedData);
@@ -212,7 +240,7 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
 
             return {
                 ...validationResult.data,
-                sourceText: sourceText // Return raw text so client can display it for highlighting
+                sourceText: sourceText
             };
 
         } catch (error: any) {
@@ -231,4 +259,127 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
     }
 
     return { modules: [], quiz: [], error: "Unknown error" };
+}
+
+// Schema for document analysis
+const CourseMetadataSchema = z.object({
+    title: z.string(),
+    description: z.string(),
+    objectives: z.array(z.string()).min(3),
+    duration: z.string().describe("Estimated duration in minutes, e.g. '60'"),
+    quizTitle: z.string().describe("A catching title for the quiz"),
+});
+
+export type AnalyzedMetadata = z.infer<typeof CourseMetadataSchema> & { error?: string };
+
+export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetadata> {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!apiKey) return { title: '', description: '', objectives: [], duration: '', quizTitle: '', error: "Missing API Key" };
+
+    const file = formData.get('file') as File | null;
+    if (!file) return { title: '', description: '', objectives: [], duration: '', quizTitle: '', error: "No file provided" };
+
+    try {
+        console.log(`Analyzing file: ${file.name} (${file.type}, ${file.size} bytes)`); // Debug log
+        const sourceText = await extractTextFromFile(file);
+        console.log(`Source text length for analysis: ${sourceText.length}`); // Debug log
+
+        if (!sourceText || sourceText.length < 50) {
+            console.error(`Extraction failed: Text length is ${sourceText?.length || 0}`);
+            throw new Error(`Could not extract enough text (${sourceText?.length || 0} characters) from the file to analyze. Please ensure the PDF contains selectable text, not just images. If you cannot select the text with your mouse, it is likely an image scan.`);
+        }
+
+        // Truncate for analysis speed & cost (50k chars is plenty for metadata)
+        const truncatedText = sourceText.length > 50000 ? sourceText.substring(0, 50000) + "..." : sourceText;
+
+        const systemPrompt = `
+            You are an expert instructional designer. Analyze the following document text and extract key course metadata.
+            
+            DOCUMENT TEXT START:
+            ${truncatedText}
+            DOCUMENT TEXT END
+            `;
+
+        const prompt = `
+            ${systemPrompt}
+
+            Output a valid JSON object with the following fields:
+            - title: A professional, engaging title for a training course based on this content.
+            - description: A concise (2-3 sentences) summary of what this course covers.
+            - objectives: An array of 3-5 distinct learning objectives (start with action verbs).
+            - duration: Estimated time in minutes to read/complete this content (just the number, e.g. "45").
+            - quizTitle: A relevant title for the assessment quiz (e.g. "Knowledge Check: [Topic]").
+
+            Return ONLY valid JSON.
+        `;
+
+        const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
+        const location = process.env.GOOGLE_LOCATION || 'us-central1';
+        const modelId = 'gemini-2.5-flash-lite'; // Fallback to 1.5-flash for stability, user can change if needed
+
+        const response = await fetch(
+            `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:generateContent?key=${apiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.7,
+                        maxOutputTokens: 8192,
+                    }
+                })
+            }
+        );
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Vertex AI Request Failed: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const json = await response.json();
+        let textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!textPart) throw new Error("No content generated");
+
+        console.log("Raw AI Response:", textPart); // Debug log
+
+        // Robust JSON extraction: Find the first '{' and last '}'
+        const firstOpenBrace = textPart.indexOf('{');
+        const lastCloseBrace = textPart.lastIndexOf('}');
+
+        if (firstOpenBrace !== -1 && lastCloseBrace !== -1 && lastCloseBrace > firstOpenBrace) {
+            textPart = textPart.substring(firstOpenBrace, lastCloseBrace + 1);
+        } else {
+            console.error("No JSON block found in response.");
+            throw new Error("AI response did not contain valid JSON.");
+        }
+
+        const parsedData = JSON.parse(textPart);
+        const result = CourseMetadataSchema.safeParse(parsedData);
+
+        if (result.success) {
+            return result.data;
+        } else {
+            console.error("Analysis Schema Validation Failed:", result.error);
+            // Fallback with partial data if possible
+            return {
+                title: parsedData.title || file.name.replace(/\.[^/.]+$/, ""),
+                description: parsedData.description || "Generated from uploaded document.",
+                objectives: parsedData.objectives || ["Understand the document content."],
+                duration: parsedData.duration || "30",
+                quizTitle: parsedData.quizTitle || `Quiz: ${file.name.replace(/\.[^/.]+$/, "")}`,
+            };
+        }
+
+    } catch (error: any) {
+        console.error("Document Analysis Error:", error);
+        return {
+            title: file.name,
+            description: "Failed to analyze document automatically.",
+            objectives: ["Review the document content."],
+            duration: "30",
+            quizTitle: `Quiz: ${file.name}`,
+            error: error.message
+        };
+    }
 }

@@ -195,6 +195,9 @@ model Quiz {
   lesson       Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   title        String
   passingScore Int           @default(70)
+  allowedAttempts Int?       @default(1) // null for unlimited
+  timeLimit      Int?        // minutes
+  difficulty     String?     // beginner, moderate, etc.
   questions    Question[]
   attempts     QuizAttempt[]
   createdAt    DateTime      @default(now())
