@@ -27,8 +27,6 @@ interface Question {
 interface Quiz {
     id: string;
     title: string;
-    id: string;
-    title: string;
     passingScore: number;
     allowedAttempts: number | null;
     timeLimit: number | null;
@@ -292,7 +290,7 @@ export default function LearnPage() {
                                 // Actually enrollment state might be stale until re-fetch. But let's use safe check.
                                 // Better to trust backend, but for UI feedback:
                                 const allowed = course.quiz?.allowedAttempts;
-                                const hasRemaining = allowed === null || (enrollment?.quizAttempts?.length || 0) < allowed;
+                                const hasRemaining = allowed === null || allowed === undefined || (enrollment?.quizAttempts?.length || 0) < allowed;
                                 // Wait, simple logic: if we just failed, can we retake?
                                 // We need accurate count. Let's rely on what we have.
 
