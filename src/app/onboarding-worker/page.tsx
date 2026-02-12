@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Logo, Input, Button } from '@/components/ui';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import { verifyOrganizationCode, joinOrganization } from '@/app/actions/organization-code';
 import styles from './page.module.css';
 
@@ -183,6 +183,26 @@ export default function WorkerOnboardingPage() {
                             </div>
                         </div>
                     )}
+
+                    <div style={{ marginTop: '32px', textAlign: 'center' }}>
+                        <p style={{ fontSize: '14px', color: '#718096', marginBottom: '8px' }}>
+                            Wrong account?
+                        </p>
+                        <button
+                            onClick={() => signOut({ callbackUrl: '/login' })}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#4C6EF5',
+                                fontSize: '14px',
+                                fontWeight: 500,
+                                cursor: 'pointer',
+                                textDecoration: 'underline'
+                            }}
+                        >
+                            Log Out
+                        </button>
+                    </div>
                 </div>
             </div>
 

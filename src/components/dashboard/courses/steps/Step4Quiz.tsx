@@ -92,26 +92,61 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
                 {/* Pass Mark */}
                 <div className={styles.formRow}>
                     <label className={styles.formLabel}>Pass Mark:</label>
-                    <Input
-                        value={data.quizPassMark}
-                        onChange={(e) => onChange('quizPassMark', e.target.value)}
-                        placeholder="e.g. 80%"
-                    />
+                    <div className={styles.percentageInputWrapper}>
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            className={styles.percentageInput}
+                            value={data.quizPassMark?.replace('%', '') || ''}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === '' || (Number(val) >= 0 && Number(val) <= 100)) {
+                                    onChange('quizPassMark', val);
+                                }
+                            }}
+                            placeholder="80"
+                        />
+                        <span className={styles.percentageSuffix}>%</span>
+                    </div>
                 </div>
 
                 {/* Attempts */}
                 <div className={styles.formRow}>
                     <label className={styles.formLabel}>Attempts</label>
-                    <Select
-                        value={data.quizAttempts}
-                        onChange={(val) => onChange('quizAttempts', val)}
-                        options={[
-                            { label: '1', value: '1' },
-                            { label: '2', value: '2' },
-                            { label: '3', value: '3' },
-                            { label: 'Unlimited', value: 'unlimited' }
-                        ]}
-                    />
+                    <div className={styles.attemptsControlGroup}>
+                        <div className={styles.toggleWrapper}>
+                            <label className={styles.switch}>
+                                <input
+                                    type="checkbox"
+                                    checked={data.quizAttempts === 'unlimited'}
+                                    onChange={(e) => {
+                                        if (e.target.checked) {
+                                            onChange('quizAttempts', 'unlimited');
+                                        } else {
+                                            onChange('quizAttempts', '1');
+                                        }
+                                    }}
+                                />
+                                <span className={styles.slider}></span>
+                            </label>
+                            <span className={styles.toggleLabel}>Unlimited Retakes</span>
+                        </div>
+
+                        {data.quizAttempts !== 'unlimited' && (
+                            <div className={styles.attemptsInputContainer}>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="10"
+                                    className={styles.attemptsInput}
+                                    value={data.quizAttempts}
+                                    onChange={(e) => onChange('quizAttempts', e.target.value)}
+                                />
+                                <span className={styles.attemptsLabel}>allowable attempts</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

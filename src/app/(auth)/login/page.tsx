@@ -65,7 +65,9 @@ function LoginForm() {
         form.append('email', formData.email);
         form.append('password', formData.password);
 
-        dispatch(form);
+        React.startTransition(() => {
+            dispatch(form);
+        });
     };
 
     useEffect(() => {

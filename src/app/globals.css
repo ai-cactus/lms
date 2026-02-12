@@ -125,3 +125,34 @@ h6 {
   background: var(--primary);
   color: var(--text-white);
 }
+
+/* Global Sleek Scrollbar */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background: #CBD5E0;
+  /* Show on hover */
+}
+
+/* Specific override for visible on hover behavior */
+/* We need to ensure the thumb is hidden by default but still exists */
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0);
+  transition: background-color 0.2s;
+}
+
+:hover::-webkit-scrollbar-thumb {
+  background-color: #CBD5E0;
+}

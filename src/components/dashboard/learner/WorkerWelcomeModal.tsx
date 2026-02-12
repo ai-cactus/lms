@@ -32,7 +32,7 @@ export default function WorkerWelcomeModal({ courseCount, firstCourseId }: Worke
     const handleStart = () => {
         handleClose();
         if (firstCourseId) {
-            router.push(`/dashboard/courses/${firstCourseId}/learn`);
+            router.push(`/learn/${firstCourseId}`);
         }
     };
 

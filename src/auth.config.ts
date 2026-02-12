@@ -9,7 +9,16 @@ export const authConfig = {
         // Providers will be merged in the main auth.ts
     ],
     callbacks: {
+        async jwt({ token, user }) {
+            if (user) {
+                token.organizationId = user.organizationId;
+                token.role = user.role;
+            }
+            return token;
+        },
         async session({ session, token }) {
+
+
             if (token.sub && session.user) {
                 session.user.id = token.sub;
                 session.user.organizationId = token.organizationId as string | undefined;
@@ -19,6 +28,13 @@ export const authConfig = {
         },
         authorized({ auth, request: { nextUrl } }) {
             const isLoggedIn = !!auth?.user;
+            // @ts-ignore
+            const hasOrg = !!auth?.user?.organizationId;
+            // @ts-ignore
+            const role = auth?.user?.role;
+
+
+
             const isOnDashboard = nextUrl.pathname.startsWith('/dashboard');
             const isOnOnboarding = nextUrl.pathname.startsWith('/onboarding') && !nextUrl.pathname.startsWith('/onboarding-worker');
             const isOnOnboardingWorker = nextUrl.pathname.startsWith('/onboarding-worker');

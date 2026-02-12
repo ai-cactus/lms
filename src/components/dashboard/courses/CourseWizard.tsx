@@ -276,6 +276,7 @@ export default function CourseWizard() {
                     <Step6QuizReview
                         data={formData}
                         quiz={generatedContent?.quiz}
+                        onQuizUpdate={(newQuiz) => setGeneratedContent({ ...generatedContent, quiz: newQuiz })}
                     />
                 );
             case 7:
@@ -292,7 +293,7 @@ export default function CourseWizard() {
 
     const isNextDisabled = () => {
         if (currentStep === 1 && !formData.category) return true;
-        if (currentStep === 2 && !documents.some(d => d.selected)) return true;
+        if (currentStep === 2 && (!documents.some(d => d.selected) || isAnalyzing)) return true;
         if (currentStep === 3 && !formData.title) return true;
         if (currentStep === 4 && !formData.quizTitle) return true;
         // Step 7 validation optional? Or mandatory? Assuming optional for now unless specified.
@@ -335,9 +336,9 @@ export default function CourseWizard() {
                                 Back
                             </button>
                             <button
-                                className={`${styles.btnNext} ${!isNextDisabled() && !isPublishing ? styles.btnNextEnabled : ''}`}
+                                className={`${styles.btnNext} ${!isNextDisabled() && !isPublishing && !isAnalyzing ? styles.btnNextEnabled : ''}`}
                                 onClick={handleNext}
-                                disabled={isNextDisabled() || isPublishing}
+                                disabled={isNextDisabled() || isPublishing || isAnalyzing}
                             >
                                 {isPublishing ? 'Publishing...' : currentStep === totalSteps ? 'Publish' : 'Next'}
                             </button>

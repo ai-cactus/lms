@@ -194,83 +194,97 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
                 </div>
             </div>
 
-            {/* Navigation Bar */}
-            <div className={styles.moduleNav}>
-                {editedModules.map((mod: any, i: number) => (
-                    <button
-                        key={i}
-                        className={`${styles.navTab} ${i === activeModuleIndex ? styles.navTabActive : ''}`}
-                        onClick={() => setActiveModuleIndex(i)}
-                    >
-                        <span className={styles.navTabNum}>{i + 1}</span>
-                        <span className={styles.navTabTitle}>{mod.title}</span>
-                    </button>
-                ))}
-            </div>
+            {/* Split Screen Layout */}
+            <div className={styles.splitLayout}>
+                {/* Left Sidebar - Module List */}
+                <div className={styles.sidebar}>
+                    <h3 className={styles.sidebarTitle}>Course Modules</h3>
+                    <div className={styles.moduleList}>
+                        {editedModules.map((mod: any, i: number) => (
+                            <button
+                                key={i}
+                                className={`${styles.moduleItem} ${i === activeModuleIndex ? styles.moduleItemActive : ''}`}
+                                onClick={() => setActiveModuleIndex(i)}
+                            >
+                                <span className={styles.moduleNum}>{i + 1}</span>
+                                <div className={styles.moduleInfo}>
+                                    <span className={styles.moduleTitle}>{mod.title}</span>
+                                    <span className={styles.moduleDuration}>{mod.duration || '10 min'}</span>
+                                </div>
+                                {i === activeModuleIndex && <div className={styles.activeIndicator} />}
+                            </button>
+                        ))}
+                    </div>
+                </div>
 
-            <div className={styles.editorContainer}>
-                {viewMode === 'article' ? (
-                    <div className={styles.articlePaper}>
-                        <input
-                            type="text"
-                            className={styles.paperTitleInput}
-                            value={currentModule?.title || ''}
-                            onChange={(e) => handleTitleChange(e.target.value)}
-                            placeholder="Module Title"
-                        />
-                        <div className={styles.quillWrapper}>
-                            <ReactQuill
-                                theme="snow"
-                                value={currentModule?.content || ''}
-                                onChange={handleContentChange}
-                                modules={modules}
+                {/* Right Panel - Editor */}
+                <div className={styles.editorPanel}>
+                    {viewMode === 'article' ? (
+                        <div className={styles.articlePaper}>
+                            <input
+                                type="text"
+                                className={styles.paperTitleInput}
+                                value={currentModule?.title || ''}
+                                onChange={(e) => handleTitleChange(e.target.value)}
+                                placeholder="Module Title"
                             />
-                        </div>
-                    </div>
-                ) : (
-                    <div className={styles.previewContainer}>
-                        <div className={styles.slideCardWrapper}>
-                            <AnimatePresence mode='wait'>
-                                <motion.div
-                                    key={activeModuleIndex}
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                    className={styles.slideCard}
-                                >
-                                    <div className={styles.slideHeader}>
-                                        <span className={styles.moduleBadge}>Module {activeModuleIndex + 1}</span>
-                                        <span className={styles.durationBadge}>{currentModule?.duration || '10 min'}</span>
-                                    </div>
-                                    <h3 className={styles.slideTitle}>{currentModule?.title}</h3>
-                                    <div
-                                        className={styles.slideBody}
-                                        dangerouslySetInnerHTML={{ __html: currentModule?.content || '' }}
-                                    />
-                                </motion.div>
-                            </AnimatePresence>
-                        </div>
-                    </div>
-                )}
-            </div>
+                            <div className={styles.quillWrapper}>
+                                <ReactQuill
+                                    theme="snow"
+                                    value={currentModule?.content || ''}
+                                    onChange={handleContentChange}
+                                    modules={modules}
+                                />
+                            </div>
 
-            {/* Module Navigation Footer */}
-            <div className={styles.navFooter}>
-                <button
-                    className={styles.navBtn}
-                    onClick={() => setActiveModuleIndex(Math.max(0, activeModuleIndex - 1))}
-                    disabled={activeModuleIndex === 0}
-                >
-                    ← Previous Module
-                </button>
-                <button
-                    className={styles.navBtn}
-                    onClick={() => setActiveModuleIndex(Math.min(editedModules.length - 1, activeModuleIndex + 1))}
-                    disabled={activeModuleIndex === editedModules.length - 1}
-                >
-                    Next Module →
-                </button>
+                            {/* Sticky Bottom Navigation Bar (Optional but helpful for linear flow) */}
+                            <div className={styles.stickyBottomBar}>
+                                <button
+                                    className={styles.stickyNavBtn}
+                                    onClick={() => setActiveModuleIndex(Math.max(0, activeModuleIndex - 1))}
+                                    disabled={activeModuleIndex === 0}
+                                >
+                                    ← Previous
+                                </button>
+                                <span className={styles.stickyNavInfo}>
+                                    Module {activeModuleIndex + 1} of {editedModules.length}
+                                </span>
+                                <button
+                                    className={styles.stickyNavBtn}
+                                    onClick={() => setActiveModuleIndex(Math.min(editedModules.length - 1, activeModuleIndex + 1))}
+                                    disabled={activeModuleIndex === editedModules.length - 1}
+                                >
+                                    Next →
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className={styles.previewContainer}>
+                            <div className={styles.slideCardWrapper}>
+                                <AnimatePresence mode='wait'>
+                                    <motion.div
+                                        key={activeModuleIndex}
+                                        initial={{ opacity: 0, x: 20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -20 }}
+                                        transition={{ duration: 0.3 }}
+                                        className={styles.slideCard}
+                                    >
+                                        <div className={styles.slideHeader}>
+                                            <span className={styles.moduleBadge}>Module {activeModuleIndex + 1}</span>
+                                            <span className={styles.durationBadge}>{currentModule?.duration || '10 min'}</span>
+                                        </div>
+                                        <h3 className={styles.slideTitle}>{currentModule?.title}</h3>
+                                        <div
+                                            className={styles.slideBody}
+                                            dangerouslySetInnerHTML={{ __html: currentModule?.content || '' }}
+                                        />
+                                    </motion.div>
+                                </AnimatePresence>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

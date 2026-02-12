@@ -131,6 +131,7 @@ model Course {
   versions    CourseVersion[]
   lessons     Lesson[]
   enrollments Enrollment[]
+  objectives  String[]        @default([])
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 }

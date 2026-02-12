@@ -366,6 +366,7 @@ export async function createFullCourse(data: {
     category: string;
     difficulty: string;
     duration: string;
+    objectives?: string[];
     modules: { title: string; content: string; duration: string }[];
     quiz: { question: string; options: string[]; answer: number; type?: string }[];
     assignments: string[];
@@ -401,6 +402,7 @@ export async function createFullCourse(data: {
             description: data.description,
             category: data.category,
             duration: parseInt(data.duration) || 0,
+            objectives: data.objectives || [],
             status: 'published',
             createdBy: session.user.id,
             lessons: {

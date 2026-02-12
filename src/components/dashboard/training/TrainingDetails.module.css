@@ -105,7 +105,7 @@
 /* Stats Cards */
 .statsGrid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 24px;
     margin-bottom: 32px;
 }
@@ -118,7 +118,6 @@
     gap: 20px;
 }
 
-/* Specific Card Colors match the image approximately */
 /* Specific Card Colors match the image approximately */
 .cardBlue {
     background-color: #DBEAFE;
@@ -138,6 +137,11 @@
 .cardYellow {
     background-color: #FEF9C3;
     border: 1px solid #FEF08A;
+}
+
+.cardPurple {
+    background-color: #FAF5FF;
+    border: 1px solid #E9D8FD;
 }
 
 .iconBox {
@@ -164,6 +168,11 @@
 
 .iconYellow {
     background-color: #D69E2E;
+}
+
+.iconPurple {
+    background-color: #E9D8FD;
+    color: #6B46C1;
 }
 
 .statInfo h4 {

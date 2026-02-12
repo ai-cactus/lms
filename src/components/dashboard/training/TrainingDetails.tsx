@@ -21,6 +21,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
     // Calculate Stats
     const completedCount = enrollments.filter((e: any) => e.status === 'completed').length;
+    const attestedCount = enrollments.filter((e: any) => e.status === 'attested').length;
     const completionRate = totalLearners > 0 ? Math.round((completedCount / totalLearners) * 100) : 0;
 
     // Average Score
@@ -58,7 +59,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                             <span className={`${styles.badge} ${styles.badgeActive}`}>Active</span>
                         </h1>
                         <p className={styles.metaLink}>
-                            Linked Policy Document: <a href="#" className={styles.link}>CARF-Privacy-policy.pdf</a>
+
                         </p>
                     </div>
                     <div className={styles.actions}>
@@ -139,13 +140,13 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                     </div>
                     <div className={styles.statInfo}>
                         <h4>Average Duration</h4>
-                        <div className={styles.statValue}>60 mins</div>
+                        <div className={styles.statValue}>{course.duration || 0} mins</div>
                     </div>
                 </div>
 
                 {/* Attestation Status */}
-                <div className={`${styles.statCard} ${styles.cardPurple}`} style={{ background: '#FAF5FF', borderColor: '#E9D8FD' }}>
-                    <div className={`${styles.iconBox}`} style={{ background: '#E9D8FD', color: '#6B46C1', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '50%', width: 48, height: 48 }}>
+                <div className={`${styles.statCard} ${styles.cardPurple}`}>
+                    <div className={`${styles.iconBox} ${styles.iconPurple}`}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                             <polyline points="14 2 14 8 20 8"></polyline>
@@ -157,9 +158,9 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                     <div className={styles.statInfo}>
                         <h4>Attestation Status</h4>
                         <div className={styles.statValue}>
-                            {enrollments.filter((e: any) => e.status === 'attested').length} / {completedCount}
+                            {attestedCount} <span style={{ fontSize: '0.6em', color: '#718096' }}>/ {completedCount}</span>
                         </div>
-                        <div style={{ fontSize: 12, color: '#718096', marginTop: 4 }}>Signed / Passed</div>
+                        <div style={{ fontSize: 13, color: '#718096', marginTop: 4 }}>Attested / Completed</div>
                     </div>
                 </div>
             </div>

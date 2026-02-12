@@ -80,7 +80,7 @@ export default function Step2Documents({ documents, onToggleSelect, onUpload, is
                             />
                             <div className={styles.uploadIconWrapper}>
                                 {isAnalyzing ? (
-                                    <div style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#3182CE', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                    <div className={styles.loadingSpinner} />
                                 ) : (
                                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                         <path d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H13L11 5H5C3.89543 5 3 5.89543 3 7Z" fill="#718096" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -101,7 +101,7 @@ export default function Step2Documents({ documents, onToggleSelect, onUpload, is
 
                             {isAnalyzing && (
                                 <div style={{ width: '60%', height: '4px', background: '#E2E8F0', borderRadius: '2px', marginTop: '16px', overflow: 'hidden' }}>
-                                    <div style={{ width: `${progress}%`, height: '100%', background: '#3182CE', transition: 'width 0.3s ease' }} />
+                                    <div style={{ width: `${progress}%`, height: '100%', background: '#4C6EF5', transition: 'width 0.3s ease' }} />
                                 </div>
                             )}
                         </div>
@@ -118,7 +118,7 @@ export default function Step2Documents({ documents, onToggleSelect, onUpload, is
                                 <div key={doc.id} className={styles.uploadedFileItem}>
                                     <div className={styles.fileLeft}>
                                         <div className={styles.fileIcon}>
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={doc.name.endsWith('.pdf') ? '#F56565' : '#4299E1'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={doc.name.endsWith('.pdf') ? '#F56565' : '#4C6EF5'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                 <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" />
                                             </svg>
                                         </div>
