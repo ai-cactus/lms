@@ -105,6 +105,7 @@ export default function CourseWizard() {
                     difficulty: formData.difficulty,
                     duration: formData.duration,
                     modules: generatedContent?.modules || [],
+                    objectives: formData.objectives || [],
                     quiz: generatedContent?.quiz || [],
                     assignments: formData.assignments || [],
                     dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,

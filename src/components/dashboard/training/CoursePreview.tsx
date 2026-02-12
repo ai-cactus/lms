@@ -79,7 +79,16 @@ export default function CoursePreview({ course }: CoursePreviewProps) {
                                     Designed to meet CARF Standards 1.H.4.a-b, this training is a mandatory annual requirement for all staff.
                                 </p>
 
-
+                                {course.objectives && course.objectives.length > 0 && (
+                                    <>
+                                        <h3 className={styles.subTitle}>What You'll Learn</h3>
+                                        <ul className={styles.learnList}>
+                                            {course.objectives.map((objective: string, index: number) => (
+                                                <li key={index}>{objective}</li>
+                                            ))}
+                                        </ul>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
