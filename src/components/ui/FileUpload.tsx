@@ -16,7 +16,7 @@ export default function FileUpload({
     onFilesSelected,
     accept = '*/*',
     multiple = true,
-    maxSizeInMB = 5,
+    maxSizeInMB = 10,
     error,
     description
 }: FileUploadProps) {

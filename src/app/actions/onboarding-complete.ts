@@ -29,7 +29,21 @@ export async function completeOnboarding(data: any) {
 
     try {
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Create Organization
+            // 1. Check for existing organization
+            const existingOrg = await tx.organization.findFirst({
+                where: {
+                    name: {
+                        equals: step1.legalName,
+                        mode: 'insensitive'
+                    }
+                }
+            });
+
+            if (existingOrg) {
+                throw new Error('Organization with this name already exists. Please contact your admin for access.');
+            }
+
+            // 2. Create Organization
             const slug = `${step1.legalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.floor(Math.random() * 10000)}`;
 
             console.log('[completeOnboarding] Creating Organization...');

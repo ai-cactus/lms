@@ -3,9 +3,9 @@ module.exports = {
         {
             name: "lms2-app",
             script: "npm",
-            args: "start",
+            args: "run dev",
             env: {
-                NODE_ENV: "production",
+                NODE_ENV: "development",
                 PORT: 3000
             }
         },

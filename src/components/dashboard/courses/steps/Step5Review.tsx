@@ -1,108 +1,55 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import styles from '../CourseWizard.module.css';
+import SlideContentFitter from '@/components/ui/SlideContentFitter';
+import styles from './Step5Review.module.css'; // New CSS Module
 import { generateCourseAI } from '@/app/actions/course-ai';
-import { motion, AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 
-// Import React Quill dynamically to avoid SSR issues
+// Import React Quill dynamically
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 import 'react-quill-new/dist/quill.snow.css';
 
 interface Step5ReviewProps {
     data: any;
     documents: any[];
+    initialContent?: any;
     onComplete: (content: any) => void;
 }
 
-export default function Step5Review({ data, documents, onComplete }: Step5ReviewProps) {
-    const [isGenerating, setIsGenerating] = useState(true);
-    const [checklistStep, setChecklistStep] = useState(0);
-    const [generatedContent, setGeneratedContent] = useState<any>(null);
+export default function Step5Review({ data, documents, initialContent, onComplete }: Step5ReviewProps) {
+    // Core State
+    const hasInitialContent = !!initialContent?.modules;
+    const [isGenerating, setIsGenerating] = useState(!hasInitialContent);
+    const [generatedContent, setGeneratedContent] = useState<any>(initialContent || null);
     const [error, setError] = useState<string | null>(null);
+    const [editedModules, setEditedModules] = useState<any[]>(initialContent?.modules || []);
 
-    // UI State
+    // UI View State
+    const [viewMode, setViewMode] = useState<'slides' | 'article'>('slides');
     const [activeModuleIndex, setActiveModuleIndex] = useState(0);
 
-    // View Mode State
-    const [viewMode, setViewMode] = useState<'article' | 'slides'>('article');
-    const [editedModules, setEditedModules] = useState<any[]>([]);
+    // Animation Keys
+    const [animKey, setAnimKey] = useState(0);
+    const [viewKey, setViewKey] = useState(0);
 
-    useEffect(() => {
-        if (generatedContent?.modules) {
-            setEditedModules(generatedContent.modules);
-        }
-    }, [generatedContent]);
-
-    // Quill Modules
-    const modules = {
-        toolbar: [
-            [{ 'header': [1, 2, 3, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-            ['clean']
-        ],
-    };
-
-    const handleContentChange = (content: string) => {
-        const newModules = [...editedModules];
-        newModules[activeModuleIndex] = { ...newModules[activeModuleIndex], content };
-        setEditedModules(newModules);
-
-        // Auto-save to parent
-        const newContent = {
-            ...generatedContent,
-            modules: newModules
-        };
-        setGeneratedContent(newContent);
-        if (onComplete) {
-            onComplete(newContent);
-        }
-    };
-
-    const handleTitleChange = (title: string) => {
-        const newModules = [...editedModules];
-        newModules[activeModuleIndex] = { ...newModules[activeModuleIndex], title };
-        setEditedModules(newModules);
-        // Auto-save to parent
-        const newContent = {
-            ...generatedContent,
-            modules: newModules
-        };
-        setGeneratedContent(newContent);
-        if (onComplete) {
-            onComplete(newContent);
-        }
-    };
-
+    // Generation Ref
     const hasStartedRef = useRef(false);
 
-    const checklistItems = [
-        'Reading source document',
-        'Extracting key concepts',
-        'Generating course structure',
-        'Creating quiz questions',
-        'Finalizing citations'
-    ];
-
+    // Generate Request
     useEffect(() => {
+        // If we already have content, don't generate
+        if (hasInitialContent) {
+            return;
+        }
+
         if (hasStartedRef.current) return;
         hasStartedRef.current = true;
 
         const generate = async () => {
             try {
-                let step = 0;
-                const interval = setInterval(() => {
-                    if (step < checklistItems.length - 1) {
-                        step++;
-                        setChecklistStep(step);
-                    }
-                }, 1500);
-
                 const formData = new FormData();
                 formData.append('data', JSON.stringify(data));
-
                 const selectedDoc = documents.find(d => d.selected && d.file);
                 if (selectedDoc?.file) {
                     formData.append('file', selectedDoc.file);
@@ -110,33 +57,78 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
 
                 const result = await generateCourseAI(formData);
 
-                clearInterval(interval);
-                setChecklistStep(checklistItems.length);
-
                 if (result.error) {
                     setError(result.error);
                 } else {
                     setGeneratedContent(result);
+                    // Initialize edited modules
+                    if (result.modules) {
+                        setEditedModules(result.modules);
+                    }
                     onComplete(result);
                 }
                 setIsGenerating(false);
             } catch (err) {
                 console.error("Generation failed", err);
-                setError("An unexpected error occurred during generation.");
+                setError("An unexpected response was received from the server.");
                 setIsGenerating(false);
             }
         };
 
         generate();
-    }, [data, documents, onComplete]);
+    }, [data, documents, onComplete, hasInitialContent]);
 
+    // Handlers
+    const handleModuleChange = (index: number) => {
+        if (index < 0 || index >= editedModules.length) return;
+        setAnimKey(prev => prev + 1);
+        setActiveModuleIndex(index);
+    };
+
+    const handleSwitchView = (mode: 'slides' | 'article') => {
+        if (mode === viewMode) return;
+        setViewKey(prev => prev + 1);
+        setViewMode(mode);
+    };
+
+    const handleContentUpdate = (newContent: string) => {
+        const newModules = [...editedModules];
+        newModules[activeModuleIndex] = { ...newModules[activeModuleIndex], content: newContent };
+        setEditedModules(newModules);
+        updateParent(newModules);
+    };
+
+    const handleTitleUpdate = (newTitle: string) => {
+        const newModules = [...editedModules];
+        newModules[activeModuleIndex] = { ...newModules[activeModuleIndex], title: newTitle };
+        setEditedModules(newModules);
+        updateParent(newModules);
+    };
+
+    const updateParent = (modules: any[]) => {
+        const newContent = { ...generatedContent, modules };
+        setGeneratedContent(newContent);
+        onComplete(newContent);
+    };
+
+    // Quill Config
+    const quillModules = {
+        toolbar: [
+            [{ 'header': [1, 2, false] }],
+            ['bold', 'italic', 'underline'],
+            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+            ['clean']
+        ],
+    };
+
+    // Loading / Error States
     if (error) {
         return (
-            <div className={styles.stepWrapper}>
-                <div className={styles.generationContainer}>
-                    <h2 className={styles.stepTitle} style={{ color: '#E53E3E' }}>Generation Failed</h2>
-                    <p className={styles.stepSubtitle}>{error}</p>
-                    <button className={styles.btnDashboard} onClick={() => window.location.reload()}>Try Again</button>
+            <div className={styles.app} style={{ alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <h2 style={{ color: '#EF4444', marginBottom: 8 }}>Generation Failed</h2>
+                    <p style={{ color: '#6B7280' }}>{error}</p>
+                    <button onClick={() => window.location.reload()} style={{ marginTop: 16, padding: '8px 16px', background: '#1a1a1a', color: 'white', borderRadius: 6, border: 'none', cursor: 'pointer' }}>Try Again</button>
                 </div>
             </div>
         );
@@ -144,26 +136,12 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
 
     if (isGenerating) {
         return (
-            <div className={styles.stepWrapper}>
-                <div className={styles.generationContainer}>
-                    <h2 className={styles.stepTitle}>Analysis & Generation</h2>
-                    <p className={styles.stepSubtitle}>AI user is reading your documents and designing the course.</p>
-                    <div className={styles.processingCard}>
-                        <div className={styles.checklist}>
-                            {checklistItems.map((item, index) => {
-                                const isDone = checklistStep > index;
-                                const isCurrent = checklistStep === index;
-                                return (
-                                    <div key={index} className={`${styles.checklistItem} ${isDone ? styles.completed : ''} ${isCurrent ? styles.active : ''}`}>
-                                        <div className={styles.iconWrapper}>
-                                            {isDone ? <div className={styles.checkIcon}>✓</div> : isCurrent ? <div className={styles.spinner} /> : <div className={styles.dot} />}
-                                        </div>
-                                        <span>{item}</span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
+            <div className={styles.app} style={{ alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: 40, height: 40, border: '3px solid #E5E7EB', borderTopColor: '#1a1a1a', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }}></div>
+                    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                    <h2 style={{ fontSize: 18, fontWeight: 600 }}>Generation in progress...</h2>
+                    <p style={{ color: '#6B7280', fontSize: 14 }}>AI is analyzing your documents and building the course.</p>
                 </div>
             </div>
         );
@@ -172,115 +150,130 @@ export default function Step5Review({ data, documents, onComplete }: Step5Review
     const currentModule = editedModules[activeModuleIndex];
 
     return (
-        <div className={`${styles.stepWrapper} ${styles.stepWrapperWide}`}>
-            <div className={styles.reviewHeader}>
-                <div className={styles.headerTitle}>
-                    <h2 className={styles.stepTitle}>Review Course Content</h2>
-                    <p className={styles.stepSubtitle}>Review and edit your course modules.</p>
+        <div className={styles.app}>
+            {/* Rail */}
+            <nav className={styles.rail}>
+                <div className={styles.railLogo}>
+                    <svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>
                 </div>
-                <div className={styles.viewControls}>
+                {editedModules.map((mod, i) => (
                     <button
-                        className={`${styles.viewBtn} ${viewMode === 'article' ? styles.viewBtnActive : ''}`}
-                        onClick={() => setViewMode('article')}
+                        key={i}
+                        className={`${styles.modDot} ${i === activeModuleIndex ? styles.modDotActive : i < activeModuleIndex ? styles.modDotDone : ''}`}
+                        onClick={() => handleModuleChange(i)}
+                        title={mod.title}
                     >
-                        Article Editor
+                        {i + 1}
                     </button>
-                    <button
-                        className={`${styles.viewBtn} ${viewMode === 'slides' ? styles.viewBtnActive : ''}`}
-                        onClick={() => setViewMode('slides')}
-                    >
-                        Slide Preview
-                    </button>
-                </div>
-            </div>
+                ))}
+            </nav>
 
-            {/* Split Screen Layout */}
-            <div className={styles.splitLayout}>
-                {/* Left Sidebar - Module List */}
-                <div className={styles.sidebar}>
-                    <h3 className={styles.sidebarTitle}>Course Modules</h3>
-                    <div className={styles.moduleList}>
-                        {editedModules.map((mod: any, i: number) => (
-                            <button
-                                key={i}
-                                className={`${styles.moduleItem} ${i === activeModuleIndex ? styles.moduleItemActive : ''}`}
-                                onClick={() => setActiveModuleIndex(i)}
-                            >
-                                <span className={styles.moduleNum}>{i + 1}</span>
-                                <div className={styles.moduleInfo}>
-                                    <span className={styles.moduleTitle}>{mod.title}</span>
-                                    <span className={styles.moduleDuration}>{mod.duration || '10 min'}</span>
-                                </div>
-                                {i === activeModuleIndex && <div className={styles.activeIndicator} />}
-                            </button>
-                        ))}
+            {/* Main Area */}
+            <div className={styles.main}>
+                {/* Topbar */}
+                <header className={styles.topbar}>
+                    <div className={styles.topbarLeft}>
+                        <span className={styles.breadcrumb}>Course</span>
+                        <span className={styles.breadcrumbSep}>›</span>
+                        <span className={styles.breadcrumbActive}>{currentModule?.title || 'Untitled Module'}</span>
+                        <span className={styles.durationPill}>{currentModule?.duration || '10 min'}</span>
                     </div>
-                </div>
+                    <div className={styles.toggle}>
+                        <button
+                            className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
+                            onClick={() => handleSwitchView('article')}
+                        >
+                            ARTICLE
+                        </button>
+                        <button
+                            className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
+                            onClick={() => handleSwitchView('slides')}
+                        >
+                            SLIDE
+                        </button>
+                    </div>
+                </header>
 
-                {/* Right Panel - Editor */}
-                <div className={styles.editorPanel}>
-                    {viewMode === 'article' ? (
-                        <div className={styles.articlePaper}>
-                            <input
-                                type="text"
-                                className={styles.paperTitleInput}
-                                value={currentModule?.title || ''}
-                                onChange={(e) => handleTitleChange(e.target.value)}
-                                placeholder="Module Title"
-                            />
-                            <div className={styles.quillWrapper}>
-                                <ReactQuill
-                                    theme="snow"
-                                    value={currentModule?.content || ''}
-                                    onChange={handleContentChange}
-                                    modules={modules}
-                                />
+                {/* Content Stage */}
+                <div className={styles.contentArea}>
+                    {viewMode === 'slides' ? (
+                        <div className={`${styles.slideStage} ${styles.viewFade}`} key={`slide-stage-${viewKey}`}>
+                            <button
+                                className={`${styles.slideNav} ${styles.navPrev}`}
+                                onClick={() => handleModuleChange(activeModuleIndex - 1)}
+                                disabled={activeModuleIndex === 0}
+                            >
+                                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg>
+                            </button>
+
+                            <div className={`${styles.slideCard} ${styles.fadeEnter}`} key={animKey}>
+                                <div className={styles.slideAccent} />
+                                <div className={styles.slideInner}>
+                                    <div className={styles.slideMeta}>
+                                        <span className={styles.slideModuleLabel}>Module {activeModuleIndex + 1}</span>
+                                        <span className={styles.slideCounter}>{activeModuleIndex + 1} / {editedModules.length}</span>
+                                    </div>
+                                    <h2 className={styles.slideTitle}>{currentModule?.title?.replace(/^Module\s+\d+[:.]\s*/i, '')}</h2>
+                                    <div className={styles.slideDivider} />
+                                    <SlideContentFitter
+                                        className={styles.slideBody}
+                                        content={currentModule?.content || ''}
+                                        minFontSize={12}
+                                        maxFontSize={32}
+                                    />
+                                </div>
                             </div>
 
-                            {/* Sticky Bottom Navigation Bar (Optional but helpful for linear flow) */}
-                            <div className={styles.stickyBottomBar}>
-                                <button
-                                    className={styles.stickyNavBtn}
-                                    onClick={() => setActiveModuleIndex(Math.max(0, activeModuleIndex - 1))}
-                                    disabled={activeModuleIndex === 0}
-                                >
-                                    ← Previous
-                                </button>
-                                <span className={styles.stickyNavInfo}>
-                                    Module {activeModuleIndex + 1} of {editedModules.length}
-                                </span>
-                                <button
-                                    className={styles.stickyNavBtn}
-                                    onClick={() => setActiveModuleIndex(Math.min(editedModules.length - 1, activeModuleIndex + 1))}
-                                    disabled={activeModuleIndex === editedModules.length - 1}
-                                >
-                                    Next →
-                                </button>
-                            </div>
+                            <button
+                                className={`${styles.slideNav} ${styles.navNext}`}
+                                onClick={() => handleModuleChange(activeModuleIndex + 1)}
+                                disabled={activeModuleIndex === editedModules.length - 1}
+                            >
+                                <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg>
+                            </button>
                         </div>
                     ) : (
-                        <div className={styles.previewContainer}>
-                            <div className={styles.slideCardWrapper}>
-                                <AnimatePresence mode='wait'>
-                                    <motion.div
-                                        key={activeModuleIndex}
-                                        initial={{ opacity: 0, x: 20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: -20 }}
-                                        transition={{ duration: 0.3 }}
-                                        className={styles.slideCard}
+                        <div className={`${styles.articleStage} ${styles.viewFade}`} key={`article-stage-${viewKey}`}>
+                            <div className={`${styles.articlePaper} ${styles.fadeEnter}`} key={animKey}>
+                                <div className={styles.articleHeader}>
+                                    <p className={styles.articleModuleLabel}>Module {activeModuleIndex + 1}</p>
+                                    <input
+                                        className={styles.articleTitleInput}
+                                        value={currentModule?.title || ''}
+                                        onChange={(e) => handleTitleUpdate(e.target.value)}
+                                        placeholder="Untitled module"
+                                    />
+                                </div>
+                                <div className={styles.articleDivider} />
+
+                                <div className={styles.quillWrapper}>
+                                    <ReactQuill
+                                        theme="snow"
+                                        value={currentModule?.content || ''}
+                                        onChange={handleContentUpdate}
+                                        modules={quillModules}
+                                    />
+                                </div>
+
+                                <div className={styles.articleFooter}>
+                                    <button
+                                        className={styles.artNavBtn}
+                                        onClick={() => handleModuleChange(activeModuleIndex - 1)}
+                                        disabled={activeModuleIndex === 0}
                                     >
-                                        <div className={styles.slideHeader}>
-                                            <span className={styles.moduleBadge}>Module {activeModuleIndex + 1}</span>
-                                            <span className={styles.durationBadge}>{currentModule?.duration || '10 min'}</span>
-                                        </div>
-                                        <h3 className={styles.slideTitle}>{currentModule?.title}</h3>
-                                        <div
-                                            className={styles.slideBody}
-                                            dangerouslySetInnerHTML={{ __html: currentModule?.content || '' }}
-                                        />
-                                    </motion.div>
-                                </AnimatePresence>
+                                        <svg viewBox="0 0 24 24" style={{ marginRight: 6 }}><polyline points="15 18 9 12 15 6" /></svg>
+                                        Previous
+                                    </button>
+                                    <span className={styles.artProgress}>{activeModuleIndex + 1} / {editedModules.length}</span>
+                                    <button
+                                        className={styles.artNavBtn}
+                                        onClick={() => handleModuleChange(activeModuleIndex + 1)}
+                                        disabled={activeModuleIndex === editedModules.length - 1}
+                                    >
+                                        Next
+                                        <svg viewBox="0 0 24 24" style={{ marginLeft: 6 }}><polyline points="9 18 15 12 9 6" /></svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}

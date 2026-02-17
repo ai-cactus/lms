@@ -77,8 +77,8 @@ export default function CourseWizard() {
 
     const handleNext = async () => {
         if (currentStep < totalSteps) {
-            // If entering Step 5, set generating mode
-            if (currentStep === 4) {
+            // If entering Step 5, set generating mode only if no content exists
+            if (currentStep === 4 && !generatedContent) {
                 setIsGenerating(true);
             }
             setCurrentStep(currentStep + 1);
@@ -269,6 +269,7 @@ export default function CourseWizard() {
                     <Step5Review
                         data={formData}
                         documents={documents}
+                        initialContent={generatedContent}
                         onComplete={handleGenerationComplete}
                     />
                 );

@@ -6,11 +6,12 @@ import MappingCard from './mapping-card';
 
 export default async function MappingPage({ params }: { params: { id: string } }) {
     const session = await auth();
+    const { id } = await params;
 
     // We ideally need the text content.
     // Flow: Course -> DocumentVersion -> Content
     const course = await prisma.course.findUnique({
-        where: { id: params.id },
+        where: { id },
         include: { versions: { include: { documentVersion: true } } }
     });
 

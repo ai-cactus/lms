@@ -68,13 +68,36 @@ export default function InviteStaffModal({ isOpen, onClose, organizationId }: In
             const result = await createInvites(finalEmails, role, organizationId);
 
             if (result.success) {
-                setMessage({ type: 'success', text: `Sent ${result.sentCount} invitation(s)` });
-                setEmails([]);
-                setInputValue('');
-                setTimeout(() => {
-                    onClose();
-                    router.refresh();
-                }, 1500);
+                // Analyze results
+                const sent = result.results.filter(r => r.status === 'sent' || r.status === 'resent').length;
+                const existed = result.results.filter(r => r.status === 'exists').length;
+                const errors = result.results.filter(r => r.status === 'error').length;
+
+                let msgText = '';
+                let type: 'success' | 'error' = 'success';
+
+                if (sent > 0) msgText += `Sent ${sent} invite(s). `;
+                if (existed > 0) msgText += `${existed} user(s) already exist. `;
+                if (errors > 0) {
+                    msgText += `${errors} failed. `;
+                    type = 'error'; // Treat as error if any failed? Or maybe warning context?
+                    // If at least one sent, keep green but warn? Let's use neutral or just success if mixed.
+                    // If NOTHING sent and only errors/exists, maybe error color?
+                    if (sent === 0) type = 'error';
+                }
+
+                setMessage({ type, text: msgText.trim() });
+
+                if (type === 'success' || sent > 0) {
+                    setEmails([]);
+                    setInputValue('');
+                    // Only close if everything was perfect? Or just give them time to read?
+                    // Let's rely on the timeout
+                    setTimeout(() => {
+                        onClose();
+                        router.refresh();
+                    }, 2500); // slightly longer to read
+                }
             } else {
                 setMessage({ type: 'error', text: result.error || 'Failed to send invites' });
             }

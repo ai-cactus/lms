@@ -83,13 +83,72 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
 
                 {/* Learning Objectives */}
                 <div className={`${styles.formRow} ${styles.formRowTop}`}>
-                    <label className={`${styles.formLabel} ${styles.formLabelTop}`}>Objectives</label>
+                    <label className={`${styles.formLabel} ${styles.formLabelTop}`}>
+                        Objectives
+                        <span style={{ fontSize: '12px', fontWeight: 400, color: '#718096', marginLeft: '8px' }}>
+                            (Minimum 3 required)
+                        </span>
+                    </label>
                     <div className={styles.objectivesList}>
                         {data.objectives.map((obj: string, index: number) => (
-                            <div key={index} className={styles.objectiveInput}>
-                                {index + 1}. {obj}
+                            <div key={index} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                                <div style={{
+                                    width: '24px',
+                                    height: '40px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#718096',
+                                    fontWeight: 600
+                                }}>
+                                    {index + 1}.
+                                </div>
+                                <Input
+                                    value={obj}
+                                    onChange={(e) => {
+                                        const newObjectives = [...data.objectives];
+                                        newObjectives[index] = e.target.value;
+                                        onChange('objectives', newObjectives);
+                                    }}
+                                    placeholder={`Objective ${index + 1}`}
+                                />
+                                <button
+                                    onClick={() => {
+                                        const newObjectives = data.objectives.filter((_: any, i: number) => i !== index);
+                                        onChange('objectives', newObjectives);
+                                    }}
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: '#E53E3E',
+                                        cursor: 'pointer',
+                                        padding: '0 8px'
+                                    }}
+                                    title="Remove Objective"
+                                >
+                                    ✕
+                                </button>
                             </div>
                         ))}
+                        <button
+                            onClick={() => {
+                                onChange('objectives', [...data.objectives, '']);
+                            }}
+                            style={{
+                                marginTop: '8px',
+                                background: 'transparent',
+                                border: '1px dashed #CBD5E0',
+                                borderRadius: '6px',
+                                padding: '8px 16px',
+                                color: '#4A5568',
+                                cursor: 'pointer',
+                                width: '100%',
+                                fontSize: '14px',
+                                fontWeight: 500
+                            }}
+                        >
+                            + Add Objective
+                        </button>
                     </div>
                 </div>
 

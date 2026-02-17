@@ -123,6 +123,24 @@ export async function createOrganization(data: any) {
             return { success: false, error: 'Missing required fields' };
         }
 
+        // Check for existing organization with the same name
+        const existingOrg = await prisma.organization.findFirst({
+            where: {
+                name: {
+                    equals: data.legalName,
+                    mode: 'insensitive' // Case insensitive check
+                }
+            }
+        });
+
+        if (existingOrg) {
+            console.log('[createOrganization] Duplicate organization found:', data.legalName);
+            return {
+                success: false,
+                error: 'Organization with this name already exists. Please contact your admin for access.'
+            };
+        }
+
         const org = await prisma.organization.create({
             data: {
                 name: data.legalName,
@@ -156,5 +174,24 @@ export async function createOrganization(data: any) {
     } catch (error) {
         console.error('Error creating organization:', error);
         return { success: false, error: 'Failed to create organization' };
+    }
+}
+
+
+export async function checkOrganizationNameAvailable(name: string) {
+    try {
+        const existingOrg = await prisma.organization.findFirst({
+            where: {
+                name: {
+                    equals: name,
+                    mode: 'insensitive'
+                }
+            }
+        });
+
+        return { available: !existingOrg };
+    } catch (error) {
+        console.error('Error checking organization name:', error);
+        return { available: false, error: 'Failed to check organization name' };
     }
 }

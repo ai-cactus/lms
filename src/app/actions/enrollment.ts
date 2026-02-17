@@ -68,7 +68,7 @@ export async function enrollUsers(courseId: string, emails: string[]) {
 
     const bcrypt = await import('bcryptjs');
     const crypto = await import('crypto');
-    const { sendCourseInviteEmail } = await import('@/lib/email');
+    const { sendCourseInviteEmail, sendCourseEnrollmentEmail } = await import('@/lib/email');
 
     for (const email of emails) {
         const normalizedEmail = email.toLowerCase().trim();
@@ -82,6 +82,7 @@ export async function enrollUsers(courseId: string, emails: string[]) {
         // Find user by email
         let user = await prisma.user.findUnique({
             where: { email: normalizedEmail },
+            include: { profile: true }
         });
 
         // If user not found, create a new one with invite
@@ -92,7 +93,7 @@ export async function enrollUsers(courseId: string, emails: string[]) {
                 const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
                 // Create new user
-                user = await prisma.user.create({
+                const newUser = await prisma.user.create({
                     data: {
                         email: normalizedEmail,
                         password: hashedPassword,
@@ -101,6 +102,9 @@ export async function enrollUsers(courseId: string, emails: string[]) {
                         organizationId: currentUser?.organizationId || null,
                     }
                 });
+
+                // Satisfy type requirement
+                user = { ...newUser, profile: null };
 
                 // Send invite email with credentials
                 try {
@@ -122,6 +126,8 @@ export async function enrollUsers(courseId: string, emails: string[]) {
                 continue;
             }
         }
+
+        if (!user) continue;
 
         // Check if already enrolled
         const existing = await prisma.enrollment.findUnique({
@@ -150,6 +156,19 @@ export async function enrollUsers(courseId: string, emails: string[]) {
                 progress: 0,
             },
         });
+
+        // Send enrollment notification email to existing user
+        try {
+            await sendCourseEnrollmentEmail(
+                normalizedEmail,
+                user.profile?.fullName || 'there',
+                course.title,
+                currentUser?.organization?.name || 'Your Organization'
+            );
+        } catch (emailErr) {
+            console.error(`Failed to send enrollment email to ${email}:`, emailErr);
+            // Email failed but enrollment succeeded, so we don't block
+        }
 
         // Add to success if not already in newInvited
         if (!results.newInvited.includes(email)) {

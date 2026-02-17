@@ -33,6 +33,20 @@ export async function createOrganization(prevState: State, formData: FormData): 
 
     try {
         await prisma.$transaction(async (tx) => {
+            // Check for existing organization
+            const existingOrg = await tx.organization.findFirst({
+                where: {
+                    name: {
+                        equals: name,
+                        mode: 'insensitive'
+                    }
+                }
+            });
+
+            if (existingOrg) {
+                throw new Error('Organization with this name already exists. Please contact your admin for access.');
+            }
+
             // Create Organization
             const org = await tx.organization.create({
                 data: {

@@ -1,0 +1,584 @@
+/* Main App Container */
+.app {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+    background: #F8F7F4;
+    color: #1a1a1a;
+    overflow: hidden;
+    font-family: var(--font-body, 'Inter', sans-serif);
+}
+
+.app * {
+    box-sizing: border-box;
+}
+
+/* Rail */
+.rail {
+    width: 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 0;
+    gap: 6px;
+    border-right: 1px solid #E8E6E1;
+    background: #FAFAF8;
+    flex-shrink: 0;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.rail::-webkit-scrollbar {
+    display: none;
+}
+
+.railLogo {
+    width: 28px;
+    height: 28px;
+    background: #1a1a1a;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.railLogo svg {
+    width: 14px;
+    height: 14px;
+    fill: white;
+}
+
+.modDot {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: #9CA3AF;
+    /* Default muted */
+    border: 1px solid transparent;
+    background: transparent;
+    letter-spacing: -0.02em;
+    position: relative;
+}
+
+.modDot:hover {
+    background: #E8E6E1;
+    color: #1a1a1a;
+}
+
+.modDotActive {
+    background: #1a1a1a;
+    color: white;
+}
+
+.modDotDone {
+    color: #4B5563;
+    /* Darker than muted */
+    background: #F3F4F6;
+}
+
+.modDotQuiz {
+    border: 1px dashed #D1D5DB;
+    color: #6B7280;
+}
+
+.modDotQuizActive {
+    background: #4F46E5;
+    color: white;
+    border: none;
+}
+
+/* Main Content Column */
+.main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+}
+
+/* Top bar */
+.topbar {
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    border-bottom: 1px solid #E8E6E1;
+    flex-shrink: 0;
+    background: #FAFAF8;
+}
+
+.topbarLeft {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.breadcrumb {
+    font-size: 12px;
+    color: #9CA3AF;
+    font-weight: 500;
+}
+
+.breadcrumbSep {
+    font-size: 12px;
+    color: #D1D5DB;
+}
+
+.breadcrumbActive {
+    font-size: 12px;
+    color: #374151;
+    font-weight: 600;
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.durationPill {
+    font-size: 11px;
+    color: #6B7280;
+    background: #F3F4F6;
+    border-radius: 20px;
+    padding: 2px 8px;
+    font-weight: 500;
+}
+
+.topbarRight {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+/* Toggle */
+.toggle {
+    display: flex;
+    background: #EFEFED;
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+}
+
+.toggleBtn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: #6B7280;
+    background: transparent;
+    letter-spacing: 0.02em;
+}
+
+.toggleBtnActive {
+    background: white;
+    color: #1a1a1a;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Content area */
+.contentArea {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    height: 100%;
+    background: #F8F7F4;
+}
+
+/* SLIDE VIEW */
+.slideStage {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 64px;
+    position: relative;
+    flex-direction: column;
+}
+
+.slideCard {
+    width: 100%;
+    max-width: 900px;
+    aspect-ratio: 16/9;
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #E8E6E1;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 24px 48px -12px rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+.slideAccent {
+    height: 3px;
+    background: linear-gradient(90deg, #1a1a1a 0%, #6B7280 100%);
+    flex-shrink: 0;
+}
+
+.slideInner {
+    flex: 1;
+    padding: 32px 40px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.slideMeta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.slideModuleLabel {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9CA3AF;
+}
+
+.slideCounter {
+    font-size: 10px;
+    font-weight: 600;
+    color: #D1D5DB;
+}
+
+.slideTitle {
+    font-size: 24px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.25;
+    margin-bottom: 20px;
+    letter-spacing: -0.03em;
+}
+
+.slideDivider {
+    height: 1px;
+    background: #F3F4F6;
+    margin-bottom: 20px;
+    flex-shrink: 0;
+}
+
+.slideBody {
+    flex: 1;
+    overflow-y: auto;
+    font-size: 16px;
+    /* Slightly larger for readability than 11px in preview since this is actual learning */
+    line-height: 1.8;
+    color: #374151;
+    text-align: justify;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+    white-space: normal;
+}
+
+/* Hide duplicate title in body if it's the first element */
+.slideBody>h1:first-child,
+.slideBody>h2:first-child,
+.slideBody>h3:first-child,
+.slideBody>strong:first-child {
+    display: none;
+}
+
+.slideBody>* {
+    max-width: 100%;
+}
+
+.slideBody img {
+    max-width: 100%;
+    height: auto;
+}
+
+.slideBody::-webkit-scrollbar {
+    width: 3px;
+}
+
+.slideBody::-webkit-scrollbar-thumb {
+    background: #E5E7EB;
+    border-radius: 4px;
+}
+
+/* Slide Nav Buttons */
+.slideNav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid #E8E6E1;
+    background: white;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    z-index: 10;
+}
+
+.slideNav:hover:not(:disabled) {
+    background: #1a1a1a;
+    border-color: #1a1a1a;
+}
+
+.slideNav:hover:not(:disabled) svg {
+    stroke: white;
+}
+
+.slideNav:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.slideNav svg {
+    width: 14px;
+    height: 14px;
+    stroke: #374151;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke 0.15s;
+}
+
+.navPrev {
+    left: 16px;
+}
+
+.navNext {
+    right: 16px;
+}
+
+/* ARTICLE VIEW */
+.articleStage {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    padding: 48px 24px;
+    background: #F8F7F4;
+}
+
+.articlePaper {
+    max-width: 640px;
+    margin: 0 auto;
+    background: transparent;
+    padding-bottom: 64px;
+}
+
+.articleHeader {
+    margin-bottom: 40px;
+}
+
+.articleModuleLabel {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9CA3AF;
+    margin-bottom: 12px;
+}
+
+.articleTitle {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #111827;
+    line-height: 1.2;
+    margin-bottom: 8px;
+}
+
+.articleDivider {
+    height: 1px;
+    background: #E5E7EB;
+    margin: 32px 0;
+}
+
+.articleContent {
+    font-size: 16px;
+    line-height: 1.8;
+    color: #374151;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+    white-space: normal;
+}
+
+.articleContent>* {
+    max-width: 100%;
+}
+
+.articleContent img {
+    max-width: 100%;
+    height: auto;
+}
+
+.articleContent p {
+    margin-bottom: 1.5em;
+}
+
+.articleFooter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid #E5E7EB;
+}
+
+.artNavBtn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6B7280;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 8px 0;
+    transition: color 0.15s;
+}
+
+.artNavBtn:hover:not(:disabled) {
+    color: #1a1a1a;
+}
+
+.btnPrimary {
+    background: #1a1a1a;
+    color: white;
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.btnPrimary:hover {
+    opacity: 0.9;
+}
+
+/* QUIZ STYLES reuse slide card but adapted */
+.quizCard {
+    /* Inherits slideCard base */
+    width: 100%;
+    max-width: 900px;
+    min-height: 500px;
+    /* Ensure height for quiz */
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #E8E6E1;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 24px 48px -12px rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+.quizInner {
+    padding: 48px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.quizHeader {
+    margin-bottom: 32px;
+}
+
+.quizQuestion {
+    font-size: 20px;
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 32px;
+    line-height: 1.4;
+}
+
+.optionsGrid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.optionBox {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #F8FAFC;
+}
+
+.optionBox:hover {
+    border-color: #CBD5E0;
+    background: white;
+}
+
+.optionBox.selected {
+    border-color: #1a1a1a;
+    background: white;
+    box-shadow: 0 0 0 1px #1a1a1a;
+}
+
+.optionLetter {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: #E2E8F0;
+    color: #4A5568;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    margin-right: 16px;
+}
+
+.optionBox.selected .optionLetter {
+    background: #1a1a1a;
+    color: white;
+}
+
+.quizFooter {
+    margin-top: auto;
+    padding-top: 32px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Animations */
+.fadeEnter {
+    animation: fadeSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}

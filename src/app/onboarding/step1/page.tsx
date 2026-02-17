@@ -25,13 +25,25 @@ interface Step1FormData {
 
 export default function OnboardingStep1() {
     const router = useRouter();
-    const { register, handleSubmit, control, formState: { errors } } = useForm<Step1FormData>();
+    const { register, handleSubmit, control, setError, formState: { errors } } = useForm<Step1FormData>();
 
     const { data: session } = useSession();
 
-    const onSubmit = (data: Step1FormData) => {
+    const onSubmit = async (data: Step1FormData) => {
         console.log('Step 1 Data Saved Locally:', data);
         try {
+            // Check availability
+            const { checkOrganizationNameAvailable } = await import('@/app/actions/organization');
+            const result = await checkOrganizationNameAvailable(data.legalName);
+
+            if (!result.available) {
+                setError('legalName', {
+                    type: 'manual',
+                    message: 'Organization with this name already exists. Please contact your admin for access.'
+                });
+                return;
+            }
+
             // Save to localStorage
             if (typeof window !== 'undefined') {
                 const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
@@ -64,7 +76,7 @@ export default function OnboardingStep1() {
                     <label className={styles.label}>Legal Business Name <span className={styles.required}>*</span></label>
                     <Input
                         {...register('legalName', { required: "Legal Business Name is required" })}
-                        placeholder="e.g. Zenco Healthcare Ltd"
+                        placeholder="e.g. Acme Healthcare Ltd"
                         error={getError('legalName')}
                     />
                 </div>

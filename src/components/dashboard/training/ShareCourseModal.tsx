@@ -140,40 +140,7 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
                     </div>
                 )}
 
-                <div className={styles.section}>
-                    <div className={styles.toggleRow}>
-                        <div className={styles.labelGroup}>
-                            <span className={styles.labelTitle}>Set Completion Deadline</span>
-                            <span className={styles.labelDesc}>Set a deadline for team member to complete this course</span>
-                        </div>
-                        <label className={styles.switch}>
-                            <input type="checkbox" />
-                            <span className={styles.slider}></span>
-                        </label>
-                    </div>
-
-                    <div className={styles.toggleRow}>
-                        <div className={styles.labelGroup}>
-                            <span className={styles.labelTitle}>Add to Calendar</span>
-                            <span className={styles.labelDesc}>Make the most of your learning experience with practical design & product-related tips.</span>
-                        </div>
-                        <label className={styles.switch}>
-                            <input type="checkbox" defaultChecked />
-                            <span className={styles.slider}></span>
-                        </label>
-                    </div>
-
-                    <div className={styles.toggleRow}>
-                        <div className={styles.labelGroup}>
-                            <span className={styles.labelTitle}>Send Email Notifications</span>
-                            <span className={styles.labelDesc}>Who doesn't love discounts? We'll often send special offers that you surely don't want to miss.</span>
-                        </div>
-                        <label className={styles.switch}>
-                            <input type="checkbox" />
-                            <span className={styles.slider}></span>
-                        </label>
-                    </div>
-                </div>
+                {/* Toggle Section Removed as per request */}
             </div>
         </div>
     );

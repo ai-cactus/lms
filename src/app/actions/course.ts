@@ -481,7 +481,7 @@ export async function createFullCourse(data: {
                 organizationId: currentUser.organizationId,
                 email: { in: validEmails }
             },
-            select: { id: true, email: true }
+            include: { profile: true }
         });
         const existingEmails = existingUsers.map(u => u.email);
 
@@ -557,6 +557,21 @@ export async function createFullCourse(data: {
                     skipDuplicates: true
                 });
                 inviteResults.existingEnrolled = existingUsers.length;
+
+                // Send enrollment emails to existing users
+                const { sendCourseEnrollmentEmail } = await import('@/lib/email');
+
+                // We do this asynchronously without awaiting to not block the response
+                // or we can use Promise.allSettled if we want to be safe but fast
+                Promise.allSettled(existingUsers.map(user =>
+                    sendCourseEnrollmentEmail(
+                        user.email,
+                        user.profile?.fullName || 'there',
+                        course.title,
+                        orgName
+                    ).catch(err => console.error(`Failed to send enrollment email to ${user.email}`, err))
+                ));
+
             } catch (enrollError) {
                 console.error('Failed to create enrollments:', enrollError);
             }

@@ -7,7 +7,7 @@ import { notFound } from 'next/navigation';
 const prisma = new PrismaClient();
 
 export default async function JoinPage({ params }: { params: { token: string } }) {
-    const { token } = params;
+    const { token } = await params;
 
     const invite = await prisma.invite.findFirst({
         where: { token, status: 'pending' },

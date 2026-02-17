@@ -21,6 +21,7 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function sendInviteEmail(to: string, inviteLink: string, orgName: string, role: string) {
+    const appName = "Theraptly";
     const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #4C6EF5;">You've been invited!</h2>
@@ -33,10 +34,14 @@ export async function sendInviteEmail(to: string, inviteLink: string, orgName: s
     `;
 
     try {
+        console.log(`[Email Debug] Sending invite to: ${to}`);
+        console.log(`[Email Debug] Invite Link: ${inviteLink}`);
+        console.log(`[Email Debug] Org: ${orgName}`);
+
         const info = await transporter.sendMail({
-            from: `"Theraptly LMS" <${user}>`,
+            from: `"${appName}" <${user}>`,
             to,
-            subject: `Join ${orgName} on Theraptly`,
+            subject: `Join ${orgName} on ${appName}`,
             html,
         });
         console.log('Message sent: %s', info.messageId);
@@ -66,7 +71,7 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
 
     try {
         const info = await transporter.sendMail({
-            from: `"Theraptly Security" <${process.env.SMTP_USER}>`,
+            from: `"Theraptly Security" <${user}>`,
             to: email,
             subject: `Reset your password - ${appName}`,
             html,
@@ -108,7 +113,7 @@ export const sendEmailVerification = async (email: string, token: string) => {
 
     try {
         const info = await transporter.sendMail({
-            from: `"Theraptly" <${process.env.SMTP_USER}>`,
+            from: `"Theraptly" <${user}>`,
             to: email,
             subject: `Verify your email - ${appName}`,
             html,
@@ -160,7 +165,7 @@ export const sendCourseInviteEmail = async (
 
     try {
         const info = await transporter.sendMail({
-            from: `"${appName}" <${process.env.SMTP_USER}>`,
+            from: `"${appName}" <${user}>`,
             to: email,
             subject: `You've been assigned: ${courseName} - ${appName}`,
             html,
@@ -169,6 +174,57 @@ export const sendCourseInviteEmail = async (
         return { success: true };
     } catch (error) {
         console.error('Error sending course invite email:', error);
+        return { success: false, error };
+    }
+};
+
+export const sendCourseEnrollmentEmail = async (
+    email: string,
+    userName: string,
+    courseName: string,
+    orgName: string
+) => {
+    const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://staging-lms.theraptly.com';
+    const loginLink = `${baseUrl}/login`;
+    const appName = "Theraptly";
+
+    const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="color: #4C6EF5; font-size: 28px; margin: 0;">You've been assigned a new course!</h1>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Hi <strong>${userName}</strong>,
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                <strong>${orgName}</strong> has assigned you a new training course:
+            </p>
+            <div style="background: #f7fafc; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center;">
+                <h3 style="margin: 0; color: #2D3748; font-size: 20px;">${courseName}</h3>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Please log in to your account to start this course.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${loginLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Log In to Training Dashboard</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                If you have questions, please contact your administrator.
+            </p>
+        </div>
+    `;
+
+    try {
+        const info = await transporter.sendMail({
+            from: `"${appName}" <${user}>`,
+            to: email,
+            subject: `New Course Assignment: ${courseName} - ${appName}`,
+            html,
+        });
+        console.log('Course enrollment email sent: %s', info.messageId);
+        return { success: true };
+    } catch (error) {
+        console.error('Error sending course enrollment email:', error);
         return { success: false, error };
     }
 };

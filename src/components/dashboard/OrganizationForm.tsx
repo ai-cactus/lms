@@ -355,7 +355,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                         name="name"
                         value={formData.name || ''}
                         onChange={handleChange}
-                        placeholder="e.g. Zenco Healthcare Ltd"
+                        placeholder="e.g. Acme Healthcare Ltd"
                         disabled={!isAdmin}
                     />
                 </div>

@@ -45,6 +45,9 @@ export async function GET(
             return NextResponse.json({ error: 'Course not found' }, { status: 404 });
         }
 
+        // Check if user is admin
+        const isAdmin = session.user.role === 'admin' || session.user.role === 'superadmin' || session.user.role === 'organization_admin';
+
         // Get user's enrollment
         const enrollment = await prisma.enrollment.findFirst({
             where: {
@@ -56,9 +59,18 @@ export async function GET(
             }
         });
 
-        if (!enrollment) {
+        if (!enrollment && !isAdmin) {
             return NextResponse.json({ error: 'Not enrolled in this course' }, { status: 403 });
         }
+
+        // Mock enrollment for admins if none exists
+        const effectiveEnrollment = enrollment || {
+            id: 'preview-mode',
+            progress: 0,
+            status: 'in_progress',
+            score: null,
+            quizAttempts: []
+        };
 
         // Extract quiz from last lesson (where it's attached)
         const lastLesson = course.lessons[course.lessons.length - 1];
@@ -99,11 +111,11 @@ export async function GET(
                 quiz
             },
             enrollment: {
-                id: enrollment.id,
-                progress: enrollment.progress,
-                status: enrollment.status,
-                score: enrollment.score,
-                quizAttempts: enrollment.quizAttempts
+                id: effectiveEnrollment.id,
+                progress: effectiveEnrollment.progress,
+                status: effectiveEnrollment.status,
+                score: effectiveEnrollment.score,
+                quizAttempts: effectiveEnrollment.quizAttempts
             },
             user: {
                 name: user?.profile?.fullName || user?.email || '',

@@ -123,7 +123,7 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                                 {course.status === 'failed' ? (
                                     <Link href={`/learn/${course.id}`} className={styles.retryLink}>Retry</Link>
                                 ) : (
-                                    <Link href={`/learn/${course.id}`} className={styles.viewLink}>
+                                    <Link href={`/worker/courses/${course.id}`} className={styles.viewLink}>
                                         {course.progress > 0 && course.status !== 'attested' ? 'Continue' : 'View'}
                                     </Link>
                                 )}

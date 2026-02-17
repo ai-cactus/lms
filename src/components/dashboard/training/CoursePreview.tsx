@@ -8,9 +8,10 @@ import { useRouter } from 'next/navigation';
 
 interface CoursePreviewProps {
     course: any;
+    mode?: 'admin' | 'worker';
 }
 
-export default function CoursePreview({ course }: CoursePreviewProps) {
+export default function CoursePreview({ course, mode = 'admin' }: CoursePreviewProps) {
     const [activeTab, setActiveTab] = useState('About');
 
     return (
@@ -47,7 +48,15 @@ export default function CoursePreview({ course }: CoursePreviewProps) {
                     </div>
 
                     <div className={styles.heroActions}>
-                        <Button className={styles.startCourseButton}>View Course</Button>
+                        {mode === 'worker' ? (
+                            <Link href={`/learn/${course.id}`}>
+                                <Button className={styles.startCourseButton}>Start Course</Button>
+                            </Link>
+                        ) : (
+                            <Link href={`/learn/${course.id}`}>
+                                <Button className={styles.startCourseButton}>View Course</Button>
+                            </Link>
+                        )}
                     </div>
                 </div>
             </div>
@@ -74,9 +83,7 @@ export default function CoursePreview({ course }: CoursePreviewProps) {
                             <div className={styles.tabContent}>
                                 <h2 className={styles.sectionTitle}>Course Overview</h2>
                                 <p className={styles.text}>
-                                    This course ensures all personnel understand and apply CARF-aligned safety principles in daily operations. It covers essential workplace safety measures, emergency response protocols, and staff responsibilities in maintaining a safe therapeutic environment.
-                                    <br /><br />
-                                    Designed to meet CARF Standards 1.H.4.a-b, this training is a mandatory annual requirement for all staff.
+                                    {course.description || "No description available."}
                                 </p>
 
                                 {course.objectives && course.objectives.length > 0 && (
