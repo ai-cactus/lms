@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import DashboardCharts from '@/components/dashboard/DashboardCharts';
 import MyCoursesTable from '@/components/dashboard/MyCoursesTable';
 import Link from 'next/link';
-import { getCourses } from '@/app/actions/course';
+import { getCourses, getDashboardStats } from '@/app/actions/course';
 import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
 
 export default async function DashboardPage() {
@@ -16,13 +16,11 @@ export default async function DashboardPage() {
     const role = session.user.role;
     if (role === 'worker') redirect('/dashboard/learner');
 
-    // Fetch courses for the current user
-    let courses: any[] = [];
-    try {
-        courses = await getCourses();
-    } catch (error) {
-        console.error('Error fetching courses:', error);
-    }
+    // Fetch courses and stats in parallel
+    const [courses, stats] = await Promise.all([
+        getCourses(),
+        getDashboardStats()
+    ]);
 
     // Calculate real metrics from courses data
     const totalCourses = courses.length;
@@ -98,7 +96,7 @@ export default async function DashboardPage() {
             </div>
 
             {/* Charts */}
-            <DashboardCharts />
+            <DashboardCharts stats={stats} />
 
             {/* My Courses Table */}
             <MyCoursesTable courses={courses} maxItems={5} />

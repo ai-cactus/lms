@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import styles from './OrganizationActivationModal.module.css';
-import { Logo } from '@/components/ui';
-// import { LayoutDashboard } from 'lucide-react'; // Placeholder icon for logo if needed
+import { Logo, Modal } from '@/components/ui';
+import { useModalContext } from '@/components/ui/ModalContext';
 
 interface OrganizationActivationModalProps {
     hasOrganization: boolean;
@@ -26,28 +26,45 @@ export default function OrganizationActivationModal({
     description,
     actionLabel
 }: OrganizationActivationModalProps) {
-    const [internalIsOpen, setInternalIsOpen] = useState(false);
     const router = useRouter();
+    const { registerModal, unregisterModal, requestOpen, isModalOpen, dismissModal, shouldShowModal, closeModal } = useModalContext();
+    const modalId = 'organizationActivation';
 
     const isWelcomeMode = mode === 'welcome';
-    const show = isWelcomeMode ? internalIsOpen : controlledIsOpen;
+
+    // Internal state for controlled mode if needed, but mostly relying on context for welcome mode
+    const [internalOpen, setInternalOpen] = useState(false);
 
     useEffect(() => {
-        // If user has no organization and it's welcome mode, show the modal
-        if (isWelcomeMode && !hasOrganization) {
-            setInternalIsOpen(true);
+        if (isWelcomeMode) {
+            // Register with high priority (10)
+            registerModal(modalId, 10);
+
+            // Check if we should show it
+            if (!hasOrganization && shouldShowModal(modalId)) {
+                requestOpen(modalId);
+            }
         }
-    }, [hasOrganization, isWelcomeMode]);
+
+        return () => {
+            if (isWelcomeMode) {
+                unregisterModal(modalId);
+            }
+        };
+    }, [isWelcomeMode, hasOrganization, registerModal, unregisterModal, requestOpen, shouldShowModal, modalId]);
 
     const handleClose = () => {
         if (isWelcomeMode) {
-            setInternalIsOpen(false);
+            // "Skip for now" - snooze for 24 hours
+            dismissModal(modalId, 24 * 60 * 60 * 1000);
         } else {
             onClose?.();
         }
     };
 
-    if (!show) return null;
+    const isOpen = isWelcomeMode ? isModalOpen(modalId) : controlledIsOpen;
+
+    if (!isOpen) return null;
 
     const defaultTitle = isWelcomeMode
         ? "Welcome to Theraptly Learning Management Section"
@@ -60,9 +77,15 @@ export default function OrganizationActivationModal({
     const defaultAction = "Activate your account";
 
     return (
-        <div className={styles.overlay}>
-            <div className={styles.card}>
-
+        <Modal
+            isOpen={!!isOpen}
+            onClose={handleClose}
+            size="xl"
+            className={styles.modalParams}
+            preventClose={isWelcomeMode} // Force user to choose an action
+            showCloseButton={!isWelcomeMode}
+        >
+            <div className={styles.container}>
                 {/* Content Section */}
                 <div className={styles.content}>
                     <div className={styles.logoWrapper}>
@@ -83,7 +106,6 @@ export default function OrganizationActivationModal({
                             className={styles.primaryButton}
                         >
                             {actionLabel || defaultAction}
-                            {/* Add a notification badge if desired, per screenshot */}
                         </button>
 
                         <button
@@ -105,8 +127,7 @@ export default function OrganizationActivationModal({
                         priority
                     />
                 </div>
-
             </div>
-        </div>
+        </Modal>
     );
 }

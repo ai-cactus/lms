@@ -1,7 +1,5 @@
 
-import React from 'react';
-import { getCourseById } from '@/app/actions/course';
-import CoursePreview from '@/components/dashboard/training/CoursePreview';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,10 +11,6 @@ interface PageProps {
 
 export default async function WorkerCourseDetailsPage(props: PageProps) {
     const params = await props.params;
-    const course = await getCourseById(params.id);
-    
-    // We could also fetch enrollment status here if we wanted "Continue" logic more robustly
-    // But CoursePreview just links to /learn/[id] which handles state restoration.
-    
-    return <CoursePreview course={course} mode="worker" />;
+    // Redirect workers directly to the immersive slide/learner view
+    redirect(`/learn/${params.id}`);
 }

@@ -1,24 +1,17 @@
-.overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
+.modalParams {
+    padding: 0 !important;
+    overflow: hidden;
 }
 
-.modalContent {
-    background: white;
-    width: 800px;
-    max-width: 90vw;
+.container {
+    display: flex;
+    flex-direction: row;
     height: 500px;
+    width: 100%;
+    background: white;
+    max-width: 90vw;
     max-height: 90vh;
     border-radius: 16px;
-    display: flex;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
     overflow: hidden;
 }

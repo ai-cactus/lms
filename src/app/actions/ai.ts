@@ -2,15 +2,30 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
-import { VertexAI } from '@google-cloud/vertexai';
+// Vertex AI REST API configuration
+const VERTEX_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+const VERTEX_MODEL = 'gemini-2.0-flash';
+const VERTEX_BASE_URL = 'https://aiplatform.googleapis.com/v1/publishers/google/models';
 
-// Initialize Vertex AI
-const vertexAI = new VertexAI({
-    project: process.env.GOOGLE_PROJECT_ID || 'theraptly-lms',
-    location: process.env.GOOGLE_LOCATION || 'us-central1',
-});
+// Helper to call Vertex AI REST API with API key
+async function generateContent(prompt: string): Promise<string> {
+    const url = `${VERTEX_BASE_URL}/${VERTEX_MODEL}:generateContent?key=${VERTEX_API_KEY}`;
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        }),
+    });
 
-const model = vertexAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(`Vertex AI error (${res.status}): ${error?.error?.message || 'Unknown error'}`);
+    }
+
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
 
 export type GeneratedCourse = {
     title: string;
@@ -90,9 +105,7 @@ Generate a JSON response with this exact structure:
 Make the content educational, engaging, and based directly on the provided document. Include practical examples and key compliance points.`;
 
     try {
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const text = await generateContent(prompt);
 
         // Extract JSON from response
         const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -136,9 +149,7 @@ Generate a JSON array of questions:
 Make questions that test understanding of key concepts from the lesson.`;
 
     try {
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const text = await generateContent(prompt);
 
         const jsonMatch = text.match(/\[[\s\S]*\]/);
         if (!jsonMatch) {

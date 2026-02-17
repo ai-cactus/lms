@@ -26,12 +26,27 @@ export async function POST(
             return NextResponse.json({ error: 'Enrollment not found' }, { status: 403 });
         }
 
+        // Only allow forward progress (never decrease)
+        const newProgress = Math.min(progress, 100);
+        if (newProgress <= enrollment.progress) {
+            return NextResponse.json({ success: true, message: 'Progress already ahead' });
+        }
+
+        // Determine new status
+        let newStatus = enrollment.status;
+        if (newProgress < 100) {
+            newStatus = 'in_progress';
+        } else if (newProgress === 100 && enrollment.status !== 'completed' && enrollment.status !== 'attested') {
+            // All lessons done but quiz not yet taken
+            newStatus = 'lessons_complete';
+        }
+
         // Update progress
         await prisma.enrollment.update({
             where: { id: enrollmentId },
             data: {
-                progress: Math.min(progress, 100),
-                status: progress < 100 ? 'in_progress' : enrollment.status
+                progress: newProgress,
+                status: newStatus
             }
         });
 

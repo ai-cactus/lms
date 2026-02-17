@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './BadgeSuccessModal.module.css';
+import { Modal } from '@/components/ui';
 
 interface BadgeSuccessModalProps {
     isOpen: boolean;
@@ -23,15 +24,18 @@ export default function BadgeSuccessModal({
 }: BadgeSuccessModalProps) {
     const router = useRouter();
 
-    if (!isOpen) return null;
-
     const handleDashboard = () => {
         router.push('/worker');
     };
 
     return (
-        <div className={styles.overlay}>
-            <div className={styles.modalContent}>
+        <Modal
+            isOpen={isOpen}
+            onClose={onClose}
+            size="lg"
+            className={styles.modalParams}
+        >
+            <div className={styles.container}>
                 <div className={styles.leftPanel}>
                     <div className={styles.badgeIcon}>
                         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -81,6 +85,6 @@ export default function BadgeSuccessModal({
                     </div>
                 </div>
             </div>
-        </div>
+        </Modal>
     );
 }

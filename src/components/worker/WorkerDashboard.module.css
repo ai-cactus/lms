@@ -97,37 +97,76 @@
     font-size: 18px;
     font-weight: 700;
     color: #1A202C;
+    margin: 0;
+}
+
+.courseListHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 16px;
+}
+
+.searchBox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid #E2E8F0;
+    background: #F8FAFC;
+    transition: all 0.2s;
+}
+
+.searchBox:focus-within {
+    border-color: #4730F7;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(71, 48, 247, 0.08);
+}
+
+.searchInput {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 14px;
+    color: #1A202C;
+    width: 200px;
+}
+
+.searchInput::placeholder {
+    color: #94A3B8;
 }
 
 .tableContainer {
     background: white;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
     border: 1px solid #E2E8F0;
-    min-height: 60vh;
-    /* Force substantial vertical height */
+    min-height: 40vh;
     display: flex;
     flex-direction: column;
 }
 
 .tableHeader {
     display: flex;
-    padding: 12px 24px;
-    background: #F7FAFC;
-    border-bottom: 1px solid #E2E8F0;
+    padding: 14px 28px;
+    background: #F8FAFC;
+    border-bottom: 1px solid #EDF2F7;
     font-weight: 600;
-    color: #4A5568;
-    font-size: 13px;
+    color: #64748B;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .tableRow {
     display: flex;
-    padding: 16px 24px;
-    border-bottom: 1px solid #E2E8F0;
+    padding: 18px 28px;
+    border-bottom: 1px solid #F1F5F9;
     align-items: center;
-    transition: background 0.15s;
+    transition: all 0.15s ease;
+    cursor: pointer;
 }
 
 .tableRow:last-child {
@@ -135,14 +174,19 @@
 }
 
 .tableRow:hover {
-    background: #FAFAFA;
+    background: #F8FAFC;
+}
+
+.tableRow:active {
+    background: #F1F5F9;
 }
 
 .colName {
-    flex: 2;
+    flex: 2.5;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
+    min-width: 0;
 }
 
 .colProgress {
@@ -152,27 +196,27 @@
 
 .colDeadline {
     flex: 1;
-    color: #E53E3E;
-    font-size: 14px;
+    color: #64748B;
+    font-size: 13px;
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+.noDeadline {
+    color: #CBD5E1;
+    font-size: 14px;
 }
 
 .colStatus {
     flex: 1;
 }
 
-.colAction {
-    flex: 0.5;
-    text-align: right;
-}
-
 .courseIcon {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    background: #2D3748;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #4730F7, #6366F1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -182,35 +226,42 @@
 
 .courseNameText {
     font-weight: 500;
-    color: #1A202C;
+    color: #1E293B;
     font-size: 14px;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 /* Progress Bar */
 .progressContainer {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .progressBarTrack {
     flex: 1;
     height: 6px;
     background: #E2E8F0;
-    border-radius: 3px;
+    border-radius: 100px;
     overflow: hidden;
 }
 
 .progressBarFill {
     height: 100%;
-    background: #4730F7;
-    border-radius: 3px;
+    border-radius: 100px;
+    transition: width 0.5s ease;
 }
 
 .progressText {
     font-size: 12px;
-    color: #718096;
-    width: 32px;
+    font-weight: 600;
+    color: #64748B;
+    width: 36px;
     text-align: right;
 }
 
@@ -218,50 +269,54 @@
 .statusBadge {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 12px;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 100px;
     font-size: 12px;
     font-weight: 600;
+    white-space: nowrap;
 }
 
 .statusInProgress {
-    background: #FFFBEB;
-    color: #D97706;
+    background: #FEF3C7;
+    color: #B45309;
 }
 
 .statusCompleted {
-    background: #EBF8FF;
-    color: #3182CE;
+    background: #DBEAFE;
+    color: #1D4ED8;
 }
 
 .statusAttested {
-    background: #DEF7EC;
-    color: #03543F;
+    background: #D1FAE5;
+    color: #065F46;
 }
 
 .statusFailed {
-    background: #FEF2F2;
-    color: #E53E3E;
+    background: #FEE2E2;
+    color: #DC2626;
 }
 
-/* Action Buttons */
-.viewLink {
-    color: #4730F7;
-    font-weight: 600;
+.statusAssigned {
+    background: #F1F5F9;
+    color: #64748B;
+}
+
+/* Empty Table */
+.emptyTable {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: #94A3B8;
+    gap: 12px;
+}
+
+.emptyTable p {
+    margin: 0;
     font-size: 14px;
-    text-decoration: none;
-}
-
-.viewLink:hover {
-    text-decoration: underline;
-}
-
-.retryLink {
-    color: #E53E3E;
-    font-weight: 600;
-    font-size: 14px;
-    text-decoration: none;
 }
 
 /* Badges Section */

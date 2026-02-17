@@ -85,7 +85,15 @@ export async function getCourseById(courseId: string) {
         },
     });
 
-    if (!course || course.createdBy !== session.user.id) {
+    if (!course) {
+        throw new Error('Course not found');
+    }
+
+    // Allow access if user is the creator OR is enrolled in the course
+    const isCreator = course.createdBy === session.user.id;
+    const isEnrolled = course.enrollments.some(e => e.userId === session.user.id);
+
+    if (!isCreator && !isEnrolled) {
         throw new Error('Course not found');
     }
 
@@ -197,7 +205,12 @@ export async function getDashboardStats() {
     const [courses, enrollments] = await Promise.all([
         prisma.course.findMany({
             where: { createdBy: session.user.id },
-            include: { enrollments: true },
+            include: {
+                enrollments: true,
+                lessons: {
+                    include: { quiz: true }
+                }
+            },
         }),
         prisma.enrollment.findMany({
             where: { course: { createdBy: session.user.id } },
@@ -241,6 +254,24 @@ export async function getDashboardStats() {
         return { month, value: avg };
     });
 
+    // Calculate Course Performance (Scores vs Courses)
+    const coursePerformance = courses.map(course => {
+        const courseEnrollments = course.enrollments.filter(e => e.status === 'completed');
+        const avgScore = courseEnrollments.length > 0
+            ? Math.round(courseEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) / courseEnrollments.length)
+            : 0;
+
+        // Find passing score from the first quiz found in lessons (assuming one main quiz)
+        const quiz = course.lessons.find(l => l.quiz)?.quiz;
+        const passingScore = quiz?.passingScore || 70; // Default to 70 if no quiz found
+
+        return {
+            name: course.title,
+            score: avgScore,
+            passingScore
+        };
+    });
+
     const completedCount = enrollments.filter(
         (e) => e.status === 'completed'
     ).length;
@@ -257,6 +288,7 @@ export async function getDashboardStats() {
         totalStaffAssigned,
         averageGrade: averageScore,
         monthlyPerformance,
+        coursePerformance, // New Field
         trainingCoverage: {
             completed:
                 totalEnrollments > 0
@@ -270,6 +302,7 @@ export async function getDashboardStats() {
                 totalEnrollments > 0
                     ? Math.round((enrolledCount / totalEnrollments) * 100)
                     : 0,
+            totalStaff: totalStaffAssigned // Add total staff for donut label
         },
     };
 }

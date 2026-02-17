@@ -35,7 +35,7 @@
 .railLogo {
     width: 28px;
     height: 28px;
-    background: #1a1a1a;
+    background: #4730F7;
     border-radius: 8px;
     margin-bottom: 16px;
     display: flex;
@@ -71,12 +71,12 @@
 }
 
 .modDot:hover {
-    background: #E8E6E1;
-    color: #1a1a1a;
+    background: #EDE9FE;
+    color: #4730F7;
 }
 
 .modDotActive {
-    background: #1a1a1a;
+    background: #4730F7;
     color: white;
 }
 
@@ -184,7 +184,7 @@
 
 .toggleBtnActive {
     background: white;
-    color: #1a1a1a;
+    color: #4730F7;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
@@ -225,7 +225,7 @@
 
 .slideAccent {
     height: 3px;
-    background: linear-gradient(90deg, #1a1a1a 0%, #6B7280 100%);
+    background: linear-gradient(90deg, #4730F7 0%, #6366F1 100%);
     flex-shrink: 0;
 }
 
@@ -334,8 +334,8 @@
 }
 
 .slideNav:hover:not(:disabled) {
-    background: #1a1a1a;
-    border-color: #1a1a1a;
+    background: #4730F7;
+    border-color: #4730F7;
 }
 
 .slideNav:hover:not(:disabled) svg {
@@ -457,11 +457,11 @@
 }
 
 .artNavBtn:hover:not(:disabled) {
-    color: #1a1a1a;
+    color: #4730F7;
 }
 
 .btnPrimary {
-    background: #1a1a1a;
+    background: #4730F7;
     color: white;
     padding: 8px 20px;
     border-radius: 8px;
@@ -469,11 +469,11 @@
     font-weight: 600;
     border: none;
     cursor: pointer;
-    transition: opacity 0.2s;
+    transition: all 0.2s;
 }
 
 .btnPrimary:hover {
-    opacity: 0.9;
+    background: #3724C4;
 }
 
 /* QUIZ STYLES reuse slide card but adapted */
@@ -535,9 +535,9 @@
 }
 
 .optionBox.selected {
-    border-color: #1a1a1a;
+    border-color: #4730F7;
     background: white;
-    box-shadow: 0 0 0 1px #1a1a1a;
+    box-shadow: 0 0 0 1px #4730F7;
 }
 
 .optionLetter {
@@ -555,7 +555,7 @@
 }
 
 .optionBox.selected .optionLetter {
-    background: #1a1a1a;
+    background: #4730F7;
     color: white;
 }
 
@@ -575,6 +575,164 @@
     from {
         opacity: 0;
         transform: translateY(10px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* ===== TOPBAR RIGHT ===== */
+.topbarRight {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+/* ===== PROGRESS INDICATOR ===== */
+.progressIndicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.progressText {
+    font-size: 11px;
+    font-weight: 600;
+    color: #4730F7;
+    min-width: 32px;
+    text-align: right;
+}
+
+.progressBar {
+    width: 80px;
+    height: 4px;
+    background: #E5E7EB;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progressFill {
+    height: 100%;
+    background: linear-gradient(90deg, #4730F7 0%, #6366F1 100%);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+/* ===== LOCKED MODULE DOT ===== */
+.modDotLocked {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border: 1px dashed #D1D5DB;
+    font-size: 10px;
+}
+
+.modDotLocked:hover {
+    background: transparent;
+    color: #9CA3AF;
+}
+
+/* ===== MODAL STYLES ===== */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease;
+}
+
+.modalCard {
+    background: white;
+    border-radius: 16px;
+    padding: 40px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.modalIcon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.modalTitle {
+    font-size: 22px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 12px;
+    letter-spacing: -0.02em;
+}
+
+.modalText {
+    font-size: 15px;
+    color: #6B7280;
+    line-height: 1.6;
+    margin-bottom: 32px;
+}
+
+.modalActions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.modalBtnPrimary {
+    background: #4730F7;
+    color: white;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.modalBtnPrimary:hover {
+    background: #3724C4;
+}
+
+.modalBtnSecondary {
+    background: white;
+    color: #374151;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border: 1px solid #E5E7EB;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.modalBtnSecondary:hover {
+    background: #F9FAFB;
+    border-color: #D1D5DB;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes modalSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
     }
 
     to {

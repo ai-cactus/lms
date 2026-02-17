@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 
+
+
 export async function GET(
     request: NextRequest,
     props: { params: Promise<{ id: string }> }
@@ -96,6 +98,67 @@ export async function GET(
             include: { profile: true }
         });
 
+        // Build detailed quiz results if the user has completed the quiz
+        let quizResultsData = null;
+        const latestAttempt = effectiveEnrollment.quizAttempts?.length > 0
+            ? (effectiveEnrollment.quizAttempts as any[]).sort((a: any, b: any) =>
+                new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime()
+            )[0]
+            : null;
+
+        if (latestAttempt && quizData) {
+            // Fetch quiz with correct answers for results
+            const quizWithAnswers = await prisma.quiz.findUnique({
+                where: { id: quizData.id },
+                include: { questions: { orderBy: { order: 'asc' } } }
+            });
+
+            if (quizWithAnswers) {
+                const attemptAnswers = Array.isArray(latestAttempt.answers) ? latestAttempt.answers as any[] : [];
+                const totalQ = quizWithAnswers.questions.length;
+                const correctCount = attemptAnswers.filter((a: any) => {
+                    const question = quizWithAnswers.questions.find(q => q.id === a.questionId);
+                    return question && question.correctAnswer === a.selectedAnswer;
+                }).length;
+
+                quizResultsData = {
+                    score: latestAttempt.score || 0,
+                    passed: (latestAttempt.score || 0) >= (quizData.passingScore || 70),
+                    correctCount,
+                    totalQuestions: totalQ,
+                    answered: attemptAnswers.length,
+                    correct: correctCount,
+                    wrong: attemptAnswers.length - correctCount,
+                    time: latestAttempt.timeTaken || 0,
+                    questions: quizWithAnswers.questions.map((q: any) => {
+                        const userAnswer = attemptAnswers.find((a: any) => a.questionId === q.id);
+                        const optionsArray = Array.isArray(q.options) ? q.options : [];
+                        const optionTexts = optionsArray.map((opt: any) => typeof opt === 'string' ? opt : opt.text || opt);
+
+                        const selectedText = userAnswer?.selectedAnswer || '';
+                        const selectedIdx = optionTexts.findIndex((t: string) => t === selectedText);
+                        const selectedLetter = selectedIdx >= 0 ? String.fromCharCode(65 + selectedIdx) : '';
+
+                        const correctText = q.correctAnswer || '';
+                        const correctIdx = optionTexts.findIndex((t: string) => t === correctText);
+                        const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
+
+                        return {
+                            id: q.id,
+                            text: q.text,
+                            options: optionsArray.map((opt: any, idx: number) => ({
+                                id: String.fromCharCode(65 + idx),
+                                text: typeof opt === 'string' ? opt : opt.text || opt
+                            })),
+                            selectedAnswer: selectedLetter,
+                            correctAnswer: correctLetter,
+                            explanation: userAnswer?.explanation || ''
+                        };
+                    })
+                };
+            }
+        }
+
         return NextResponse.json({
             course: {
                 id: course.id,
@@ -117,6 +180,7 @@ export async function GET(
                 score: effectiveEnrollment.score,
                 quizAttempts: effectiveEnrollment.quizAttempts
             },
+            quizResultsData,
             user: {
                 name: user?.profile?.fullName || user?.email || '',
                 role: user?.profile?.jobTitle || 'Staff Member'

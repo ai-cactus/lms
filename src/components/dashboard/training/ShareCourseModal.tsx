@@ -3,6 +3,7 @@
 import React from 'react';
 import styles from './ShareCourseModal.module.css';
 import { enrollUsers } from '@/app/actions/enrollment';
+import { Modal } from '@/components/ui';
 
 interface ShareCourseModalProps {
     isOpen: boolean;
@@ -15,8 +16,6 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
     const [inputValue, setInputValue] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(false);
     const [result, setResult] = React.useState<{ success: string[]; alreadyEnrolled: string[]; newInvited: string[]; failed: string[] } | null>(null);
-
-    if (!isOpen) return null;
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (['Enter', 'Tab', ',', ' '].includes(e.key)) {
@@ -69,79 +68,76 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
     };
 
     return (
-        <div className={styles.overlay} onClick={onClose}>
-            <div className={styles.modal} onClick={e => e.stopPropagation()}>
-                <div className={styles.header}>
-                    <h2 className={styles.title}>Share this course</h2>
-                    <p className={styles.subtitle}>Enter one or more emails to invite to your course.</p>
+        <Modal
+            isOpen={isOpen}
+            onClose={onClose}
+            size="md"
+            title="Share this course"
+            description="Enter one or more emails to invite to your course."
+        >
+            <div className={styles.inputGroup}>
+                <div className={styles.inputWrapper} onClick={() => document.getElementById('email-input')?.focus()}>
+                    <svg className={styles.inputIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                        <polyline points="22,6 12,13 2,6"></polyline>
+                    </svg>
+
+                    {emails.map((email, index) => (
+                        <span key={index} className={styles.chip}>
+                            {email}
+                            <button className={styles.removeChip} onClick={() => removeEmail(index)}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </span>
+                    ))}
+
+                    <input
+                        id="email-input"
+                        className={styles.input}
+                        placeholder={emails.length === 0 ? "Emails, comma separated" : ""}
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        disabled={isLoading}
+                    />
                 </div>
-
-                <div className={styles.inputGroup}>
-                    <div className={styles.inputWrapper} onClick={() => document.getElementById('email-input')?.focus()}>
-                        <svg className={styles.inputIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                            <polyline points="22,6 12,13 2,6"></polyline>
-                        </svg>
-
-                        {emails.map((email, index) => (
-                            <span key={index} className={styles.chip}>
-                                {email}
-                                <button className={styles.removeChip} onClick={() => removeEmail(index)}>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                                    </svg>
-                                </button>
-                            </span>
-                        ))}
-
-                        <input
-                            id="email-input"
-                            className={styles.input}
-                            placeholder={emails.length === 0 ? "Emails, comma separated" : ""}
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            disabled={isLoading}
-                        />
-                    </div>
-                    <button
-                        className={`${styles.shareButton} ${emails.length > 0 ? styles.shareButtonActive : ''}`}
-                        onClick={handleShare}
-                        disabled={emails.length === 0 || isLoading}
-                    >
-                        {isLoading ? 'Sharing...' : 'Share'}
-                    </button>
-                </div>
-
-                {/* Result feedback */}
-                {result && (
-                    <div className={styles.resultSection}>
-                        {result.success.length > 0 && (
-                            <div className={styles.resultSuccess}>
-                                ✓ Enrolled: {result.success.join(', ')}
-                            </div>
-                        )}
-                        {result.newInvited.length > 0 && (
-                            <div className={styles.resultInvited}>
-                                📧 Invited & Enrolled: {result.newInvited.join(', ')}
-                            </div>
-                        )}
-                        {result.alreadyEnrolled.length > 0 && (
-                            <div className={styles.resultWarning}>
-                                Already enrolled: {result.alreadyEnrolled.join(', ')}
-                            </div>
-                        )}
-                        {result.failed.length > 0 && (
-                            <div className={styles.resultError}>
-                                Failed: {result.failed.join(', ')}
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Toggle Section Removed as per request */}
+                <button
+                    className={`${styles.shareButton} ${emails.length > 0 ? styles.shareButtonActive : ''}`}
+                    onClick={handleShare}
+                    disabled={emails.length === 0 || isLoading}
+                >
+                    {isLoading ? 'Sharing...' : 'Share'}
+                </button>
             </div>
-        </div>
+
+            {/* Result feedback */}
+            {result && (
+                <div className={styles.resultSection}>
+                    {result.success.length > 0 && (
+                        <div className={styles.resultSuccess}>
+                            ✓ Enrolled: {result.success.join(', ')}
+                        </div>
+                    )}
+                    {result.newInvited.length > 0 && (
+                        <div className={styles.resultInvited}>
+                            📧 Invited & Enrolled: {result.newInvited.join(', ')}
+                        </div>
+                    )}
+                    {result.alreadyEnrolled.length > 0 && (
+                        <div className={styles.resultWarning}>
+                            Already enrolled: {result.alreadyEnrolled.join(', ')}
+                        </div>
+                    )}
+                    {result.failed.length > 0 && (
+                        <div className={styles.resultError}>
+                            Failed: {result.failed.join(', ')}
+                        </div>
+                    )}
+                </div>
+            )}
+        </Modal>
     );
 }

@@ -1,30 +1,15 @@
 /* Overlay */
-.overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 50;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    padding: 16px;
+.modalParams {
+    padding: 0 !important;
+    overflow: hidden;
 }
 
-/* Modal Card */
-.card {
-    background-color: #FFFFFF;
-    border-radius: 16px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    width: 100%;
-    max-width: 900px;
-    max-height: 90vh;
+.container {
     display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    flex-direction: row;
+    height: 500px;
+    /* Fixed height for consistency */
+    width: 100%;
 }
 
 @media (min-width: 768px) {

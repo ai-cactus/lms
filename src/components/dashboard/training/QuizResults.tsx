@@ -47,7 +47,7 @@ export default function QuizResults({ courseId, enrollmentId, data }: QuizResult
 
     return (
         <div className={styles.container}>
-            <Link href={`/dashboard/training/courses/${courseId}`} className={styles.backLink}>
+            <Link href="/worker" className={styles.backLink}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="19" y1="12" x2="5" y2="12"></line>
                     <polyline points="12 19 5 12 12 5"></polyline>
@@ -71,7 +71,7 @@ export default function QuizResults({ courseId, enrollmentId, data }: QuizResult
                             </svg>
                             Share
                         </button>
-                        <Link href={`/dashboard/training/courses/${courseId}`}>
+                        <Link href="/worker">
                             <button className={`${styles.actionButton} ${styles.btnPrimary}`}>Done</button>
                         </Link>
                     </div>
@@ -142,7 +142,7 @@ export default function QuizResults({ courseId, enrollmentId, data }: QuizResult
                                 <span>{index + 1}.</span> {q.text}
                             </div>
                             <div className={styles.optionList}>
-                                {q.options.map(opt => {
+                                {q.options.map((opt, i) => {
                                     let optionClass = styles.option;
                                     let icon = null;
                                     // Correct Answer Logic
@@ -166,7 +166,7 @@ export default function QuizResults({ courseId, enrollmentId, data }: QuizResult
                                     }
 
                                     return (
-                                        <div key={opt.id} className={optionClass}>
+                                        <div key={i} className={optionClass}>
                                             <span className={styles.optionLabel}>{opt.id}.</span>
                                             {opt.text}
                                             {icon}
@@ -179,10 +179,25 @@ export default function QuizResults({ courseId, enrollmentId, data }: QuizResult
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                         <polyline points="20 6 9 17 4 12"></polyline>
                                     </svg>
-                                    Correct Answer: {q.correctAnswer}
+                                    Correct Answer: {q.correctAnswer}. {q.options.find(o => o.id === q.correctAnswer)?.text || ''}
                                 </div>
-                                <div className={styles.explanationTitle} style={{ color: '#2F855A', fontSize: 14, marginTop: 8 }}>Explanation:</div>
-                                <div className={styles.explanationText}>{q.explanation}</div>
+                                {q.explanation ? (
+                                    <>
+                                        <div className={styles.explanationTitle} style={{ color: '#2F855A', fontSize: 14, marginTop: 8 }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <circle cx="12" cy="12" r="10"></circle>
+                                                <line x1="12" y1="16" x2="12" y2="12"></line>
+                                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                            </svg>
+                                            &nbsp;Explanation
+                                        </div>
+                                        <div className={styles.explanationText}>{q.explanation}</div>
+                                    </>
+                                ) : (
+                                    <div className={styles.explanationText} style={{ color: '#A0AEC0', fontStyle: 'italic' }}>
+                                        AI explanation not available.
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))

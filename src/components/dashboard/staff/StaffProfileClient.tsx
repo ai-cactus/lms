@@ -101,81 +101,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
             </div>
 
             <div className={styles.layoutGrid}>
-                {/* Left Column: Bio & Background & Courses */}
+                {/* Left Column: Courses */}
                 <div className={styles.leftColumn}>
-
-                    {/* Bio Card */}
-                    <div className={styles.infoCard}>
-                        <div className={styles.cardHeader}>
-                            <h3 className={styles.cardTitle}>Bio</h3>
-                            <button className={styles.editButton}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                </svg>
-                            </button>
-                        </div>
-                        <p className={styles.bioText}>
-                            3 years of experience in residential behavioral programs.
-                        </p>
-                        <p className={styles.bioText}>
-                            I'm passionate about helping healthcare grow, improve their policies, and to raise venture capital through good policies.
-                        </p>
-                    </div>
-
-                    {/* Background Card */}
-                    <div className={styles.infoCard}>
-                        <div className={styles.cardHeader}>
-                            <h3 className={styles.cardTitle}>Background</h3>
-                            <button className={styles.editButton}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                </svg>
-                            </button>
-                        </div>
-
-                        <div className={styles.sectionRow}>
-                            <div className={styles.sectionLabel}>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
-                                </svg>
-                                Competencies
-                            </div>
-                            <div className={styles.tagsWrapper}>
-                                <span className={styles.tag}>Client Safety & Emergency Response</span>
-                                <span className={styles.tag}>Documentation Accuracy</span>
-                                <span className={styles.tag}>Infection Control</span>
-                            </div>
-                        </div>
-
-                        <div className={styles.sectionRow}>
-                            <div className={styles.sectionLabel}>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                                </svg>
-                                Strength
-                            </div>
-                            <div className={styles.tagsWrapper}>
-                                <span className={styles.tag}>Teamwork</span>
-                                <span className={styles.tag}>Communication</span>
-                                <span className={styles.tag} style={{ background: '#EDF2F7', border: '1px solid #E2E8F0' }}>Excellent documentation and ethical practice.</span>
-                            </div>
-                        </div>
-
-                        <div className={styles.sectionRow}>
-                            <div className={styles.sectionLabel}>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#718096" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <rect x="3" y="7" width="18" height="13" rx="2" ry="2"></rect>
-                                    <path d="M16 3H8L8 7H16V3Z"></path>
-                                </svg>
-                                Weakness
-                            </div>
-                            <div className={styles.weaknessBox}>
-                                Needs improvement in emergency procedures and infection control.
-                            </div>
-                        </div>
-                    </div>
 
                     {/* Courses Table */}
                     <div className={styles.coursesSection}>

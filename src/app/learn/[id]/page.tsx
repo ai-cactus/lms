@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import styles from './LearnerRedesign.module.css'; // New CSS
-import { Button } from '@/components/ui';
+import styles from './LearnerRedesign.module.css';
 import SlideContentFitter from '@/components/ui/SlideContentFitter';
+import QuizResults from '@/components/dashboard/training/QuizResults';
 
 interface Lesson {
     id: string;
@@ -67,17 +67,27 @@ export default function LearnPage() {
 
     // View State
     const [viewMode, setViewMode] = useState<'slides' | 'article'>('slides');
-    // Using index to track position: 0 to N-1 are lessons, N is Quiz Intro, N+1 is Active Quiz, N+2 is Results
     const [activeIndex, setActiveIndex] = useState(0);
+
+    // Linear progression: the highest module index the user has unlocked
+    // They can navigate back to 0..highestUnlockedIndex, but never skip ahead
+    const [highestUnlockedIndex, setHighestUnlockedIndex] = useState(0);
 
     // Quiz State
     const [isQuizActive, setIsQuizActive] = useState(false);
-    const [quizStep, setQuizStep] = useState<'intro' | 'active' | 'results'>('intro');
+    const [quizStep, setQuizStep] = useState<'intro' | 'active' | 'results' | 'review'>('intro');
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
     const [timeLeft, setTimeLeft] = useState(0);
     const [quizResults, setQuizResults] = useState<any>(null);
     const [submitting, setSubmitting] = useState(false);
+
+    // Modal State
+    const [showQuizGateModal, setShowQuizGateModal] = useState(false);
+    const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+
+    // Quiz unlocked flag
+    const [quizUnlocked, setQuizUnlocked] = useState(false);
 
     // Initial Fetch
     useEffect(() => {
@@ -90,14 +100,50 @@ export default function LearnPage() {
                 setEnrollment(data.enrollment);
                 setUserData(data.user);
 
-                // Restore state
-                if (data.enrollment?.status === 'completed' || data.enrollment?.status === 'attested') {
-                    // Go to results directly if done
-                    setQuizResults({ passed: true, score: data.enrollment.score || 100 });
-                    // Index for quiz is lessons.length
+                const lessonCount = data.course.lessons?.length || 1;
+
+                // Restore state from backend progress
+                const hasQuizAttempt = data.enrollment?.quizAttempts?.length > 0;
+                const isCompleted = data.enrollment?.status === 'completed' || data.enrollment?.status === 'attested';
+
+                if (isCompleted || hasQuizAttempt) {
+                    // Course completed or quiz taken — lock to results view only
+                    const resultsData = data.quizResultsData || {
+                        passed: (data.enrollment.score || 0) >= 70,
+                        score: data.enrollment.score || 0,
+                        totalQuestions: 0,
+                        correctCount: 0,
+                        answered: 0,
+                        correct: 0,
+                        wrong: 0,
+                        time: 0,
+                        questions: []
+                    };
+                    setQuizResults(resultsData);
                     if (data.course.lessons) setActiveIndex(data.course.lessons.length);
                     setIsQuizActive(true);
-                    setQuizStep('results');
+                    setQuizStep('review');
+                    setQuizUnlocked(true);
+                    setHighestUnlockedIndex(lessonCount - 1);
+                } else if (data.enrollment?.progress > 0) {
+                    // Restore to correct lesson from saved progress
+                    const savedProgress = data.enrollment.progress;
+                    const restoredIndex = Math.min(
+                        Math.round((savedProgress / 100) * lessonCount) - 1,
+                        lessonCount - 1
+                    );
+                    const startIndex = Math.max(0, restoredIndex);
+                    setActiveIndex(startIndex);
+                    setHighestUnlockedIndex(startIndex);
+
+                    // If 100%, all lessons done — unlock quiz
+                    if (savedProgress >= 100) {
+                        setQuizUnlocked(true);
+                        setHighestUnlockedIndex(lessonCount - 1);
+                    }
+                } else {
+                    // Fresh start — only module 0 unlocked
+                    setHighestUnlockedIndex(0);
                 }
             } catch (err: any) {
                 setError(err.message);
@@ -125,55 +171,112 @@ export default function LearnPage() {
         }
     }, [isQuizActive, quizStep, timeLeft]);
 
-    // Navigation Handlers
+    // Check if all lessons are unlocked (reached the last one)
+    const allLessonsComplete = course
+        ? highestUnlockedIndex >= course.lessons.length - 1
+        : false;
+
+    // Navigation: sidebar click — only allowed for unlocked modules
     const handleNavClick = (index: number) => {
         if (!course) return;
-        // If index is the quiz index (lessons.length)
+
+        // Clicking the quiz dot
         if (index === course.lessons.length) {
-            setIsQuizActive(true);
-            // If we have results, go to results, else intro
-            if (quizResults) setQuizStep('results');
-            else setQuizStep('intro');
-        } else {
-            setIsQuizActive(false);
+            if (quizUnlocked || quizResults) {
+                setIsQuizActive(true);
+                if (quizResults) setQuizStep('review');
+                else setQuizStep('intro');
+                setActiveIndex(index);
+            } else if (allLessonsComplete) {
+                setShowQuizGateModal(true);
+            } else {
+                setShowIncompleteModal(true);
+            }
+            return;
         }
+
+        // Block if trying to go to a module that isn't unlocked yet
+        if (index > highestUnlockedIndex) {
+            return; // Simply ignore — the dot is visually locked
+        }
+
+        // Navigate to an already-unlocked lesson
+        setIsQuizActive(false);
         setActiveIndex(index);
-        updateProgress(index);
     };
 
+    // Next: the ONLY way to advance and unlock new modules
     const handleNext = () => {
         if (!course) return;
-        const maxIndex = course.lessons.length + (course.quiz ? 0 : -1);
-        // Note: Logic simplifies if we treat Quiz as just another index
 
-        if (activeIndex < course.lessons.length) {
-            handleNavClick(activeIndex + 1);
+        if (activeIndex < course.lessons.length - 1) {
+            // Advance to next lesson
+            const nextIndex = activeIndex + 1;
+
+            // Unlock if this is a new high
+            if (nextIndex > highestUnlockedIndex) {
+                setHighestUnlockedIndex(nextIndex);
+            }
+
+            setIsQuizActive(false);
+            setActiveIndex(nextIndex);
+            updateProgress(nextIndex);
+
+        } else if (activeIndex === course.lessons.length - 1 && course.quiz) {
+            // On the last lesson — try to go to quiz
+            // Make sure we've recorded reaching the last lesson
+            if (course.lessons.length - 1 > highestUnlockedIndex) {
+                setHighestUnlockedIndex(course.lessons.length - 1);
+            }
+            updateProgress(course.lessons.length - 1);
+
+            if (quizUnlocked) {
+                setIsQuizActive(true);
+                setQuizStep('intro');
+                setActiveIndex(course.lessons.length);
+            } else {
+                // Show the "Ready for quiz?" modal
+                setShowQuizGateModal(true);
+            }
         }
     };
 
+    // Previous: can only go back within unlocked range
     const handlePrev = () => {
         if (activeIndex > 0) {
-            handleNavClick(activeIndex - 1);
+            const prevIndex = activeIndex - 1;
+            setIsQuizActive(false);
+            setActiveIndex(prevIndex);
         }
     };
 
     const updateProgress = async (idx: number) => {
         if (!course || !enrollment) return;
-        if (idx >= course.lessons.length) return; // Don't update progress for quiz steps here
+        if (enrollment.id === 'preview-mode') return;
+        if (idx >= course.lessons.length) return;
 
         const progress = Math.round(((idx + 1) / course.lessons.length) * 100);
-        // Only update if greater (simple logic, optional)
-        if (progress > enrollment.progress) {
+        if (progress > (enrollment.progress || 0)) {
             try {
                 await fetch(`/api/enrollments/${enrollment.id}/progress`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ progress })
                 });
+                setEnrollment(prev => prev ? { ...prev, progress } : prev);
             } catch (err) {
                 console.error('Failed to update progress', err);
             }
         }
+    };
+
+    // Quiz Gate Modal — user confirms proceeding to quiz
+    const handleConfirmQuiz = () => {
+        setShowQuizGateModal(false);
+        setQuizUnlocked(true);
+        setIsQuizActive(true);
+        setQuizStep('intro');
+        setActiveIndex(course!.lessons.length);
     };
 
     // Quiz Actions
@@ -217,13 +320,13 @@ export default function LearnPage() {
                 body: JSON.stringify({
                     enrollmentId: enrollment.id,
                     answers,
-                    timeTaken: 0 // Calc real time if needed
+                    timeTaken: 0
                 })
             });
             if (!res.ok) throw new Error('Failed to submit');
             const result = await res.json();
             setQuizResults(result);
-            setQuizStep('results');
+            setQuizStep('review');
         } catch (err) {
             console.error(err);
             alert('Failed to submit quiz');
@@ -244,29 +347,39 @@ export default function LearnPage() {
     const isQuizIndex = activeIndex >= course.lessons.length;
     const currentLesson = !isQuizIndex ? course.lessons[activeIndex] : null;
 
-    // Render Helpers
+    // Render the sidebar with locked/unlocked module dots
     const renderSidebar = () => (
         <nav className={styles.rail}>
             <div className={styles.railLogo} onClick={() => router.push('/dashboard/worker')}>
                 <svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>
             </div>
-            {course.lessons.map((l, i) => (
-                <button
-                    key={l.id}
-                    className={`${styles.modDot} ${i === activeIndex ? styles.modDotActive : i < activeIndex ? styles.modDotDone : ''}`}
-                    onClick={() => handleNavClick(i)}
-                    title={l.title}
-                >
-                    {i + 1}
-                </button>
-            ))}
+            {course.lessons.map((l, i) => {
+                const isActive = i === activeIndex && !isQuizIndex;
+                const isUnlocked = i <= highestUnlockedIndex;
+                const isDone = isUnlocked && i < activeIndex;
+                const isLocked = !isUnlocked;
+                // Lock all lesson dots when quiz is in progress or results are showing
+                const courseLocked = (quizStep === 'active' && isQuizActive) || quizStep === 'review';
+
+                return (
+                    <button
+                        key={l.id}
+                        className={`${styles.modDot} ${isActive ? styles.modDotActive : isDone ? styles.modDotDone : (isLocked || courseLocked) ? styles.modDotLocked : ''}`}
+                        onClick={() => handleNavClick(i)}
+                        title={courseLocked ? 'Quiz completed' : isLocked ? `Module ${i + 1} — Locked` : l.title}
+                        disabled={isLocked || courseLocked}
+                    >
+                        {(isLocked && !courseLocked) ? '🔒' : i + 1}
+                    </button>
+                );
+            })}
             {course.quiz && (
                 <button
-                    className={`${styles.modDot} ${styles.modDotQuiz} ${isQuizIndex ? styles.modDotQuizActive : ''}`}
+                    className={`${styles.modDot} ${styles.modDotQuiz} ${isQuizIndex ? styles.modDotQuizActive : ''} ${!quizUnlocked && !quizResults ? styles.modDotLocked : ''}`}
                     onClick={() => handleNavClick(course.lessons.length)}
-                    title="Quiz"
+                    title={quizUnlocked || quizResults ? 'Quiz' : 'Complete all modules to unlock'}
                 >
-                    Q
+                    {quizUnlocked || quizResults ? 'Q' : '🔒'}
                 </button>
             )}
         </nav>
@@ -283,24 +396,79 @@ export default function LearnPage() {
                 {!isQuizIndex && <span className={styles.durationPill}>{currentLesson?.duration || 5} min</span>}
             </div>
 
-            {!isQuizIndex && (
-                <div className={styles.toggle}>
-                    <button
-                        className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
-                        onClick={() => setViewMode('article')}
-                    >
-                        ARTICLE
-                    </button>
-                    <button
-                        className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
-                        onClick={() => setViewMode('slides')}
-                    >
-                        SLIDE
-                    </button>
-                </div>
-            )}
+            <div className={styles.topbarRight}>
+                {/* Progress indicator */}
+                {enrollment && enrollment.id !== 'preview-mode' && (
+                    <div className={styles.progressIndicator}>
+                        <span className={styles.progressText}>{Math.min(enrollment.progress || 0, 100)}%</span>
+                        <div className={styles.progressBar}>
+                            <div className={styles.progressFill} style={{ width: `${Math.min(enrollment.progress || 0, 100)}%` }} />
+                        </div>
+                    </div>
+                )}
+
+                {!isQuizIndex && (
+                    <div className={styles.toggle}>
+                        <button
+                            className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
+                            onClick={() => setViewMode('article')}
+                        >
+                            ARTICLE
+                        </button>
+                        <button
+                            className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
+                            onClick={() => setViewMode('slides')}
+                        >
+                            SLIDE
+                        </button>
+                    </div>
+                )}
+            </div>
         </header>
     );
+
+    // Quiz Gate Confirmation Modal
+    const renderQuizGateModal = () => (
+        <div className={styles.modalOverlay} onClick={() => setShowQuizGateModal(false)}>
+            <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+                <div className={styles.modalIcon}>🎓</div>
+                <h2 className={styles.modalTitle}>Ready for the Quiz?</h2>
+                <p className={styles.modalText}>
+                    You've completed all the course modules. Would you like to proceed to the quiz now?
+                </p>
+                <div className={styles.modalActions}>
+                    <button className={styles.modalBtnSecondary} onClick={() => setShowQuizGateModal(false)}>
+                        Review Modules
+                    </button>
+                    <button className={styles.modalBtnPrimary} onClick={handleConfirmQuiz}>
+                        Start Quiz
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+
+    // Incomplete Lessons Modal
+    const renderIncompleteModal = () => {
+        const remaining = course.lessons.length - (highestUnlockedIndex + 1);
+        return (
+            <div className={styles.modalOverlay} onClick={() => setShowIncompleteModal(false)}>
+                <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+                    <div className={styles.modalIcon}>📚</div>
+                    <h2 className={styles.modalTitle}>Complete All Modules First</h2>
+                    <p className={styles.modalText}>
+                        You have <strong>{remaining}</strong> module{remaining !== 1 ? 's' : ''} remaining.
+                        Please complete all modules in order before proceeding to the quiz.
+                    </p>
+                    <div className={styles.modalActions}>
+                        <button className={styles.modalBtnPrimary} onClick={() => setShowIncompleteModal(false)}>
+                            Continue Learning
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className={styles.app}>
@@ -310,8 +478,25 @@ export default function LearnPage() {
                 {renderTopbar()}
 
                 <div className={styles.contentArea}>
-                    {isQuizIndex ? (
-                        // QUIZ VIEW
+                    {quizStep === 'review' && quizResults ? (
+                        // FULL DETAILED RESULTS VIEW
+                        <div style={{ overflow: 'auto', height: '100%' }}>
+                            <QuizResults
+                                courseId={courseId}
+                                enrollmentId={enrollment?.id || ''}
+                                data={{
+                                    courseName: course.title,
+                                    score: quizResults.score,
+                                    answered: quizResults.answered || quizResults.totalQuestions,
+                                    correct: quizResults.correct || quizResults.correctCount,
+                                    wrong: quizResults.wrong || (quizResults.totalQuestions - quizResults.correctCount),
+                                    time: quizResults.time || 0,
+                                    questions: quizResults.questions || []
+                                }}
+                            />
+                        </div>
+                    ) : isQuizIndex ? (
+                        // QUIZ VIEW (intro / active)
                         <div className={`${styles.slideStage} ${styles.fadeEnter}`}>
                             <div className={styles.quizCard}>
                                 <div className={styles.slideAccent} />
@@ -351,25 +536,16 @@ export default function LearnPage() {
                                                 ))}
                                             </div>
                                             <div className={styles.quizFooter}>
-                                                <button className={styles.btnPrimary} onClick={handleNextQuestion}>
+                                                <button
+                                                    className={styles.btnPrimary}
+                                                    onClick={handleNextQuestion}
+                                                    disabled={!quizAnswers[course.quiz.questions[currentQuestionIndex].id] || submitting}
+                                                    style={!quizAnswers[course.quiz.questions[currentQuestionIndex].id] ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                                                >
                                                     {currentQuestionIndex === course.quiz.questions.length - 1 ? (submitting ? 'Submitting...' : 'Submit Quiz') : 'Next Question'}
                                                 </button>
                                             </div>
                                         </>
-                                    )}
-
-                                    {quizStep === 'results' && quizResults && (
-                                        <div style={{ textAlign: 'center', marginTop: 40 }}>
-                                            <div style={{ fontSize: 64, marginBottom: 16 }}>{quizResults.passed ? '🎉' : '😕'}</div>
-                                            <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>{quizResults.passed ? 'You Passed!' : 'Course Not Passed'}</h2>
-                                            <p style={{ fontSize: 18, color: '#4B5563', marginBottom: 32 }}>
-                                                You scored <strong>{quizResults.score}%</strong>
-                                            </p>
-                                            <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
-                                                {!quizResults.passed && <button className={styles.btnPrimary} onClick={handleRetake}>Retake Quiz</button>}
-                                                <button className={styles.btnPrimary} style={{ background: 'white', color: '#1a1a1a', border: '1px solid #E5E7EB' }} onClick={() => router.push('/dashboard/worker')}>Return to Dashboard</button>
-                                            </div>
-                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -377,7 +553,7 @@ export default function LearnPage() {
                     ) : (
                         // LESSON VIEW
                         viewMode === 'slides' ? (
-                            <div className={`${styles.slideStage} ${styles.fadeEnter}`}>
+                            <div className={`${styles.slideStage} ${styles.fadeEnter}`} key={activeIndex}>
                                 <button className={`${styles.slideNav} ${styles.navPrev}`} onClick={handlePrev} disabled={activeIndex === 0}>
                                     <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg>
                                 </button>
@@ -389,7 +565,7 @@ export default function LearnPage() {
                                             <span className={styles.slideModuleLabel}>Module {activeIndex + 1}</span>
                                             <span className={styles.slideCounter}>{activeIndex + 1} / {course.lessons.length}</span>
                                         </div>
-                                        <h2 className={styles.slideTitle}>{currentLesson?.title?.replace(/^Module\s+\d+[:.]\s*/i, '')}</h2>
+                                        <h2 className={styles.slideTitle}>{currentLesson?.title?.replace(/^Module\s+\d+[:.]?\s*/i, '')}</h2>
                                         <div className={styles.slideDivider} />
                                         <SlideContentFitter
                                             className={styles.slideBody}
@@ -406,7 +582,7 @@ export default function LearnPage() {
                             </div>
                         ) : (
                             // ARTICLE VIEW
-                            <div className={`${styles.articleStage} ${styles.fadeEnter}`}>
+                            <div className={`${styles.articleStage} ${styles.fadeEnter}`} key={activeIndex}>
                                 <div className={styles.articlePaper}>
                                     <div className={styles.articleHeader}>
                                         <p className={styles.articleModuleLabel}>Module {activeIndex + 1}</p>
@@ -429,6 +605,10 @@ export default function LearnPage() {
                     )}
                 </div>
             </div>
+
+            {/* Modals */}
+            {showQuizGateModal && renderQuizGateModal()}
+            {showIncompleteModal && renderIncompleteModal()}
         </div>
     );
 }
