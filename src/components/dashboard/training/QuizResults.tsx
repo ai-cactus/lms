@@ -5,7 +5,9 @@ import Link from 'next/link';
 interface QuizResultsProps {
     courseId: string;
     enrollmentId: string;
+    hideActions?: boolean; // New prop
     data?: {
+        // ... existing data types
         courseName: string;
         score: number;
         answered: number;
@@ -24,7 +26,7 @@ interface QuizResultsProps {
     };
 }
 
-export default function QuizResults({ courseId, enrollmentId, data }: QuizResultsProps) {
+export default function QuizResults({ courseId, enrollmentId, hideActions = false, data }: QuizResultsProps) {
     // Use provided data or fallback for demo/empty state
     const stats = data || {
         courseName: "Course",
@@ -54,27 +56,28 @@ export default function QuizResults({ courseId, enrollmentId, data }: QuizResult
                 </svg>
                 Back to Dashboard
             </Link>
-
             <div className={`${styles.headerCard} ${!isPassed ? styles.headerCardFailed : ''}`}>
                 <div className={styles.headerTop}>
                     <div className={styles.headerTitle}>
-                        {isPassed ? 'Nice work!' : 'Keep trying!'} You completed the <span className={styles.highlight}>[{stats.courseName}]</span> quiz in [{stats.time}] minutes.
+                        {isPassed ? 'Nice work!' : 'Keep trying!'} You completed the <span className={styles.highlight}>[{stats.courseName}]</span> quiz in [{Math.ceil(stats.time / 60)}] minutes.
                     </div>
-                    <div className={styles.headerActions}>
-                        <button className={`${styles.actionButton} ${styles.btnSecondary}`}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 8 }}>
-                                <circle cx="18" cy="5" r="3"></circle>
-                                <circle cx="6" cy="12" r="3"></circle>
-                                <circle cx="18" cy="19" r="3"></circle>
-                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-                            </svg>
-                            Share
-                        </button>
-                        <Link href="/worker">
-                            <button className={`${styles.actionButton} ${styles.btnPrimary}`}>Done</button>
-                        </Link>
-                    </div>
+                    {!hideActions && (
+                        <div className={styles.headerActions}>
+                            <button className={`${styles.actionButton} ${styles.btnSecondary}`}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 8 }}>
+                                    <circle cx="18" cy="5" r="3"></circle>
+                                    <circle cx="6" cy="12" r="3"></circle>
+                                    <circle cx="18" cy="19" r="3"></circle>
+                                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                                </svg>
+                                Share
+                            </button>
+                            <Link href="/worker">
+                                <button className={`${styles.actionButton} ${styles.btnPrimary}`}>Done</button>
+                            </Link>
+                        </div>
+                    )}
                 </div>
 
                 <div className={styles.statsRow}>
@@ -125,11 +128,13 @@ export default function QuizResults({ courseId, enrollmentId, data }: QuizResult
                 </div>
             </div>
 
-            {data?.userName && (
-                <div className={styles.profileRow}>
-                    <span>📚 Results for: {data.userName}</span>
-                </div>
-            )}
+            {
+                data?.userName && (
+                    <div className={styles.profileRow}>
+                        <span>📚 Results for: {data.userName}</span>
+                    </div>
+                )
+            }
 
             <div className={styles.questionList}>
                 <h2 className={styles.questionTitle}>Answers</h2>
@@ -203,6 +208,6 @@ export default function QuizResults({ courseId, enrollmentId, data }: QuizResult
                     ))
                 )}
             </div>
-        </div>
+        </div >
     );
 }

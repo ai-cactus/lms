@@ -2,9 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import styles from './LearnerRedesign.module.css';
-import SlideContentFitter from '@/components/ui/SlideContentFitter';
+import styles from '@/components/courses/CoursePlayer.module.css';
 import QuizResults from '@/components/dashboard/training/QuizResults';
+
+// Reusable Components
+import CourseRail from '@/components/courses/CourseRail';
+import CourseSlide from '@/components/courses/CourseSlide';
+import CourseArticle from '@/components/courses/CourseArticle';
 
 interface Lesson {
     id: string;
@@ -12,6 +16,7 @@ interface Lesson {
     content: string;
     duration: number | null;
     order: number;
+    moduleIndex: number;
 }
 
 interface Question {
@@ -67,10 +72,10 @@ export default function LearnPage() {
 
     // View State
     const [viewMode, setViewMode] = useState<'slides' | 'article'>('slides');
+    // activeIndex: 0..lessons.length-1 for modules, lessons.length for quiz
     const [activeIndex, setActiveIndex] = useState(0);
 
-    // Linear progression: the highest module index the user has unlocked
-    // They can navigate back to 0..highestUnlockedIndex, but never skip ahead
+    // Linear progression
     const [highestUnlockedIndex, setHighestUnlockedIndex] = useState(0);
 
     // Quiz State
@@ -96,6 +101,12 @@ export default function LearnPage() {
                 const res = await fetch(`/api/courses/${params.id}/learn`);
                 if (!res.ok) throw new Error('Failed to load course');
                 const data = await res.json();
+
+                // Map lesson data to include moduleIndex
+                if (data.course.lessons) {
+                    data.course.lessons = data.course.lessons.map((l: any, i: number) => ({ ...l, moduleIndex: i }));
+                }
+
                 setCourse(data.course);
                 setEnrollment(data.enrollment);
                 setUserData(data.user);
@@ -124,7 +135,7 @@ export default function LearnPage() {
                     setIsQuizActive(true);
                     setQuizStep('review');
                     setQuizUnlocked(true);
-                    setHighestUnlockedIndex(lessonCount - 1);
+                    setHighestUnlockedIndex(lessonCount - 1); // Allow nav through all lessons
                 } else if (data.enrollment?.progress > 0) {
                     // Restore to correct lesson from saved progress
                     const savedProgress = data.enrollment.progress;
@@ -142,7 +153,6 @@ export default function LearnPage() {
                         setHighestUnlockedIndex(lessonCount - 1);
                     }
                 } else {
-                    // Fresh start — only module 0 unlocked
                     setHighestUnlockedIndex(0);
                 }
             } catch (err: any) {
@@ -171,21 +181,25 @@ export default function LearnPage() {
         }
     }, [isQuizActive, quizStep, timeLeft]);
 
-    // Check if all lessons are unlocked (reached the last one)
     const allLessonsComplete = course
         ? highestUnlockedIndex >= course.lessons.length - 1
         : false;
 
-    // Navigation: sidebar click — only allowed for unlocked modules
-    const handleNavClick = (index: number) => {
+    // Determine what to pass to Rail as unlockedIndex
+    // If quiz is unlocked for attempts, we pass lessons.length (so quiz index is <= unlocked)
+    // Otherwise we pass highestUnlockedIndex which caps at lessons.length-1
+    const railUnlockedIndex = (quizUnlocked || quizResults)
+        ? (course?.lessons.length || 9999)
+        : highestUnlockedIndex;
+
+    const handleRailSelect = (index: number) => {
         if (!course) return;
 
-        // Clicking the quiz dot
+        // Quiz Index Selection
         if (index === course.lessons.length) {
             if (quizUnlocked || quizResults) {
                 setIsQuizActive(true);
-                if (quizResults) setQuizStep('review');
-                else setQuizStep('intro');
+                setQuizStep(quizResults ? 'review' : 'intro');
                 setActiveIndex(index);
             } else if (allLessonsComplete) {
                 setShowQuizGateModal(true);
@@ -195,36 +209,26 @@ export default function LearnPage() {
             return;
         }
 
-        // Block if trying to go to a module that isn't unlocked yet
-        if (index > highestUnlockedIndex) {
-            return; // Simply ignore — the dot is visually locked
+        // Standard Lesson Selection
+        if (index <= highestUnlockedIndex) {
+            setIsQuizActive(false);
+            setActiveIndex(index);
         }
-
-        // Navigate to an already-unlocked lesson
-        setIsQuizActive(false);
-        setActiveIndex(index);
     };
 
-    // Next: the ONLY way to advance and unlock new modules
     const handleNext = () => {
         if (!course) return;
 
         if (activeIndex < course.lessons.length - 1) {
-            // Advance to next lesson
             const nextIndex = activeIndex + 1;
-
-            // Unlock if this is a new high
             if (nextIndex > highestUnlockedIndex) {
                 setHighestUnlockedIndex(nextIndex);
             }
-
             setIsQuizActive(false);
             setActiveIndex(nextIndex);
             updateProgress(nextIndex);
-
         } else if (activeIndex === course.lessons.length - 1 && course.quiz) {
-            // On the last lesson — try to go to quiz
-            // Make sure we've recorded reaching the last lesson
+            // Reached end of lessons, check quiz
             if (course.lessons.length - 1 > highestUnlockedIndex) {
                 setHighestUnlockedIndex(course.lessons.length - 1);
             }
@@ -235,18 +239,15 @@ export default function LearnPage() {
                 setQuizStep('intro');
                 setActiveIndex(course.lessons.length);
             } else {
-                // Show the "Ready for quiz?" modal
                 setShowQuizGateModal(true);
             }
         }
     };
 
-    // Previous: can only go back within unlocked range
     const handlePrev = () => {
         if (activeIndex > 0) {
-            const prevIndex = activeIndex - 1;
             setIsQuizActive(false);
-            setActiveIndex(prevIndex);
+            setActiveIndex(activeIndex - 1);
         }
     };
 
@@ -270,7 +271,7 @@ export default function LearnPage() {
         }
     };
 
-    // Quiz Gate Modal — user confirms proceeding to quiz
+    // Quiz Handlers
     const handleConfirmQuiz = () => {
         setShowQuizGateModal(false);
         setQuizUnlocked(true);
@@ -279,7 +280,6 @@ export default function LearnPage() {
         setActiveIndex(course!.lessons.length);
     };
 
-    // Quiz Actions
     const handleStartQuiz = () => {
         setQuizStep('active');
         setCurrentQuestionIndex(0);
@@ -313,6 +313,11 @@ export default function LearnPage() {
             selectedAnswer: val
         }));
 
+        const limit = course?.quiz?.timeLimit
+            ? course.quiz.timeLimit * 60
+            : (course?.quiz?.questions.length || 5) * 60;
+        const timeTaken = Math.max(0, limit - timeLeft);
+
         try {
             const res = await fetch(`/api/quiz/${course.quiz.id}/submit`, {
                 method: 'POST',
@@ -320,7 +325,7 @@ export default function LearnPage() {
                 body: JSON.stringify({
                     enrollmentId: enrollment.id,
                     answers,
-                    timeTaken: 0
+                    timeTaken: timeTaken
                 })
             });
             if (!res.ok) throw new Error('Failed to submit');
@@ -335,152 +340,68 @@ export default function LearnPage() {
         }
     };
 
-    const handleRetake = () => {
-        setQuizResults(null);
-        setQuizStep('intro');
-    };
-
-    if (loading) return <div className={styles.app} style={{ justifyContent: 'center', alignItems: 'center' }}>Loading...</div>;
-    if (error) return <div className={styles.app} style={{ justifyContent: 'center', alignItems: 'center' }}>Error: {error}</div>;
+    if (loading) return <div className={styles.playerContainer} style={{ justifyContent: 'center', alignItems: 'center' }}>Loading...</div>;
+    if (error) return <div className={styles.playerContainer} style={{ justifyContent: 'center', alignItems: 'center' }}>Error: {error}</div>;
     if (!course) return null;
 
     const isQuizIndex = activeIndex >= course.lessons.length;
     const currentLesson = !isQuizIndex ? course.lessons[activeIndex] : null;
 
-    // Render the sidebar with locked/unlocked module dots
-    const renderSidebar = () => (
-        <nav className={styles.rail}>
-            <div className={styles.railLogo} onClick={() => router.push('/dashboard/worker')}>
-                <svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>
-            </div>
-            {course.lessons.map((l, i) => {
-                const isActive = i === activeIndex && !isQuizIndex;
-                const isUnlocked = i <= highestUnlockedIndex;
-                const isDone = isUnlocked && i < activeIndex;
-                const isLocked = !isUnlocked;
-                // Lock all lesson dots when quiz is in progress or results are showing
-                const courseLocked = (quizStep === 'active' && isQuizActive) || quizStep === 'review';
-
-                return (
-                    <button
-                        key={l.id}
-                        className={`${styles.modDot} ${isActive ? styles.modDotActive : isDone ? styles.modDotDone : (isLocked || courseLocked) ? styles.modDotLocked : ''}`}
-                        onClick={() => handleNavClick(i)}
-                        title={courseLocked ? 'Quiz completed' : isLocked ? `Module ${i + 1} — Locked` : l.title}
-                        disabled={isLocked || courseLocked}
-                    >
-                        {(isLocked && !courseLocked) ? '🔒' : i + 1}
-                    </button>
-                );
-            })}
-            {course.quiz && (
-                <button
-                    className={`${styles.modDot} ${styles.modDotQuiz} ${isQuizIndex ? styles.modDotQuizActive : ''} ${!quizUnlocked && !quizResults ? styles.modDotLocked : ''}`}
-                    onClick={() => handleNavClick(course.lessons.length)}
-                    title={quizUnlocked || quizResults ? 'Quiz' : 'Complete all modules to unlock'}
-                >
-                    {quizUnlocked || quizResults ? 'Q' : '🔒'}
-                </button>
-            )}
-        </nav>
-    );
-
-    const renderTopbar = () => (
-        <header className={styles.topbar}>
-            <div className={styles.topbarLeft}>
-                <span className={styles.breadcrumb}>Course</span>
-                <span className={styles.breadcrumbSep}>›</span>
-                <span className={styles.breadcrumbActive}>
-                    {isQuizIndex ? (course.quiz?.title || 'Quiz') : currentLesson?.title}
-                </span>
-                {!isQuizIndex && <span className={styles.durationPill}>{currentLesson?.duration || 5} min</span>}
-            </div>
-
-            <div className={styles.topbarRight}>
-                {/* Progress indicator */}
-                {enrollment && enrollment.id !== 'preview-mode' && (
-                    <div className={styles.progressIndicator}>
-                        <span className={styles.progressText}>{Math.min(enrollment.progress || 0, 100)}%</span>
-                        <div className={styles.progressBar}>
-                            <div className={styles.progressFill} style={{ width: `${Math.min(enrollment.progress || 0, 100)}%` }} />
-                        </div>
-                    </div>
-                )}
-
-                {!isQuizIndex && (
-                    <div className={styles.toggle}>
-                        <button
-                            className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
-                            onClick={() => setViewMode('article')}
-                        >
-                            ARTICLE
-                        </button>
-                        <button
-                            className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
-                            onClick={() => setViewMode('slides')}
-                        >
-                            SLIDE
-                        </button>
-                    </div>
-                )}
-            </div>
-        </header>
-    );
-
-    // Quiz Gate Confirmation Modal
-    const renderQuizGateModal = () => (
-        <div className={styles.modalOverlay} onClick={() => setShowQuizGateModal(false)}>
-            <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-                <div className={styles.modalIcon}>🎓</div>
-                <h2 className={styles.modalTitle}>Ready for the Quiz?</h2>
-                <p className={styles.modalText}>
-                    You've completed all the course modules. Would you like to proceed to the quiz now?
-                </p>
-                <div className={styles.modalActions}>
-                    <button className={styles.modalBtnSecondary} onClick={() => setShowQuizGateModal(false)}>
-                        Review Modules
-                    </button>
-                    <button className={styles.modalBtnPrimary} onClick={handleConfirmQuiz}>
-                        Start Quiz
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-
-    // Incomplete Lessons Modal
-    const renderIncompleteModal = () => {
-        const remaining = course.lessons.length - (highestUnlockedIndex + 1);
-        return (
-            <div className={styles.modalOverlay} onClick={() => setShowIncompleteModal(false)}>
-                <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-                    <div className={styles.modalIcon}>📚</div>
-                    <h2 className={styles.modalTitle}>Complete All Modules First</h2>
-                    <p className={styles.modalText}>
-                        You have <strong>{remaining}</strong> module{remaining !== 1 ? 's' : ''} remaining.
-                        Please complete all modules in order before proceeding to the quiz.
-                    </p>
-                    <div className={styles.modalActions}>
-                        <button className={styles.modalBtnPrimary} onClick={() => setShowIncompleteModal(false)}>
-                            Continue Learning
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
     return (
-        <div className={styles.app}>
-            {renderSidebar()}
+        <div className={styles.playerContainer}>
+            <CourseRail
+                lessons={course.lessons}
+                activeIndex={activeIndex}
+                onSelect={handleRailSelect}
+                unlockedIndex={railUnlockedIndex}
+                quiz={course.quiz}
+                onLogoClick={() => router.push('/dashboard/worker')}
+            />
 
             <div className={styles.main}>
-                {renderTopbar()}
+                {/* Topbar */}
+                <header className={styles.topbar}>
+                    <div className={styles.topbarLeft}>
+                        <span className={styles.breadcrumb}>Course</span>
+                        <span className={styles.breadcrumbSep}>›</span>
+                        <span className={styles.breadcrumbActive}>
+                            {isQuizIndex ? (course.quiz?.title || 'Quiz') : currentLesson?.title}
+                        </span>
+                        {!isQuizIndex && <span className={styles.durationPill}>{currentLesson?.duration || 5} min</span>}
+                    </div>
+
+                    <div className={styles.topbarRight}>
+                        {enrollment && enrollment.id !== 'preview-mode' && (
+                            <div className={styles.progressIndicator}>
+                                <span className={styles.progressText}>{Math.min(enrollment.progress || 0, 100)}%</span>
+                                <div className={styles.progressBar}>
+                                    <div className={styles.progressFill} style={{ width: `${Math.min(enrollment.progress || 0, 100)}%` }} />
+                                </div>
+                            </div>
+                        )}
+
+                        {!isQuizIndex && (
+                            <div className={styles.toggle}>
+                                <button
+                                    className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
+                                    onClick={() => setViewMode('article')}
+                                >
+                                    ARTICLE
+                                </button>
+                                <button
+                                    className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
+                                    onClick={() => setViewMode('slides')}
+                                >
+                                    SLIDE
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </header>
 
                 <div className={styles.contentArea}>
                     {quizStep === 'review' && quizResults ? (
-                        // FULL DETAILED RESULTS VIEW
-                        <div style={{ overflow: 'auto', height: '100%' }}>
+                        <div style={{ overflow: 'auto', height: '100%', padding: 24 }}>
                             <QuizResults
                                 courseId={courseId}
                                 enrollmentId={enrollment?.id || ''}
@@ -493,10 +414,11 @@ export default function LearnPage() {
                                     time: quizResults.time || 0,
                                     questions: quizResults.questions || []
                                 }}
+                                hideActions={enrollment?.status === 'completed' || enrollment?.status === 'attested'}
                             />
                         </div>
                     ) : isQuizIndex ? (
-                        // QUIZ VIEW (intro / active)
+                        // QUIZ VIEW
                         <div className={`${styles.slideStage} ${styles.fadeEnter}`}>
                             <div className={styles.quizCard}>
                                 <div className={styles.slideAccent} />
@@ -553,62 +475,63 @@ export default function LearnPage() {
                     ) : (
                         // LESSON VIEW
                         viewMode === 'slides' ? (
-                            <div className={`${styles.slideStage} ${styles.fadeEnter}`} key={activeIndex}>
-                                <button className={`${styles.slideNav} ${styles.navPrev}`} onClick={handlePrev} disabled={activeIndex === 0}>
-                                    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg>
-                                </button>
-
-                                <div className={styles.slideCard}>
-                                    <div className={styles.slideAccent} />
-                                    <div className={styles.slideInner}>
-                                        <div className={styles.slideMeta}>
-                                            <span className={styles.slideModuleLabel}>Module {activeIndex + 1}</span>
-                                            <span className={styles.slideCounter}>{activeIndex + 1} / {course.lessons.length}</span>
-                                        </div>
-                                        <h2 className={styles.slideTitle}>{currentLesson?.title?.replace(/^Module\s+\d+[:.]?\s*/i, '')}</h2>
-                                        <div className={styles.slideDivider} />
-                                        <SlideContentFitter
-                                            className={styles.slideBody}
-                                            content={currentLesson?.content || ''}
-                                            minFontSize={12}
-                                            maxFontSize={32}
-                                        />
-                                    </div>
-                                </div>
-
-                                <button className={`${styles.slideNav} ${styles.navNext}`} onClick={handleNext}>
-                                    <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg>
-                                </button>
-                            </div>
+                            <CourseSlide
+                                lesson={{
+                                    title: currentLesson!.title,
+                                    content: currentLesson!.content,
+                                    moduleIndex: activeIndex,
+                                    totalModules: course.lessons.length
+                                }}
+                                onNext={handleNext}
+                                onPrev={handlePrev}
+                                isFirst={activeIndex === 0}
+                                isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
+                            />
                         ) : (
-                            // ARTICLE VIEW
-                            <div className={`${styles.articleStage} ${styles.fadeEnter}`} key={activeIndex}>
-                                <div className={styles.articlePaper}>
-                                    <div className={styles.articleHeader}>
-                                        <p className={styles.articleModuleLabel}>Module {activeIndex + 1}</p>
-                                        <h1 className={styles.articleTitle}>{currentLesson?.title}</h1>
-                                    </div>
-                                    <div className={styles.articleDivider} />
-                                    <div className={styles.articleContent} dangerouslySetInnerHTML={{ __html: currentLesson?.content || '' }} />
-
-                                    <div className={styles.articleFooter}>
-                                        <button className={styles.artNavBtn} onClick={handlePrev} disabled={activeIndex === 0}>
-                                            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg> Previous
-                                        </button>
-                                        <button className={styles.artNavBtn} onClick={handleNext}>
-                                            Next <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                            <CourseArticle
+                                title={currentLesson!.title}
+                                moduleLabel={`Module ${activeIndex + 1}`}
+                                onNext={handleNext}
+                                onPrev={handlePrev}
+                                isFirst={activeIndex === 0}
+                                isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
+                            >
+                                <div dangerouslySetInnerHTML={{ __html: currentLesson!.content }} />
+                            </CourseArticle>
                         )
                     )}
                 </div>
             </div>
 
             {/* Modals */}
-            {showQuizGateModal && renderQuizGateModal()}
-            {showIncompleteModal && renderIncompleteModal()}
+            {showQuizGateModal && (
+                <div className={styles.modalOverlay} onClick={() => setShowQuizGateModal(false)}>
+                    <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.modalIcon}>🎓</div>
+                        <h2 className={styles.modalTitle}>Ready for the Quiz?</h2>
+                        <p className={styles.modalText}>You've completed all the course modules. Would you like to proceed to the quiz now?</p>
+                        <div className={styles.modalActions}>
+                            <button className={styles.modalBtnSecondary} onClick={() => setShowQuizGateModal(false)}>Review Modules</button>
+                            <button className={styles.modalBtnPrimary} onClick={handleConfirmQuiz}>Start Quiz</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {showIncompleteModal && (
+                <div className={styles.modalOverlay} onClick={() => setShowIncompleteModal(false)}>
+                    <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.modalIcon}>📚</div>
+                        <h2 className={styles.modalTitle}>Complete All Modules First</h2>
+                        <p className={styles.modalText}>
+                            You have <strong>{course.lessons.length - (highestUnlockedIndex + 1)}</strong> module(s) remaining.
+                            Please complete all modules in order.
+                        </p>
+                        <div className={styles.modalActions}>
+                            <button className={styles.modalBtnPrimary} onClick={() => setShowIncompleteModal(false)}>Continue Learning</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

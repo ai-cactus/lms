@@ -2,30 +2,11 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
-// Vertex AI REST API configuration
-const VERTEX_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-const VERTEX_MODEL = 'gemini-2.0-flash';
-const VERTEX_BASE_URL = 'https://aiplatform.googleapis.com/v1/publishers/google/models';
+import { callVertexAI, truncateToContext } from '@/lib/ai-client';
 
-// Helper to call Vertex AI REST API with API key
-async function generateContent(prompt: string): Promise<string> {
-    const url = `${VERTEX_BASE_URL}/${VERTEX_MODEL}:generateContent?key=${VERTEX_API_KEY}`;
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        }),
-    });
-
-    if (!res.ok) {
-        const error = await res.json();
-        throw new Error(`Vertex AI error (${res.status}): ${error?.error?.message || 'Unknown error'}`);
-    }
-
-    const data = await res.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-}
+// Max tokens for document content sent to the model
+// ~20k tokens keeps us well within TPM limits and ensures fast responses
+const MAX_DOCUMENT_TOKENS = 20000;
 
 export type GeneratedCourse = {
     title: string;
@@ -69,7 +50,7 @@ export async function generateCourseFromDocument(
     const prompt = `You are an expert instructional designer. Based on the following policy document, create a comprehensive training course.
 
 DOCUMENT CONTENT:
-${documentContent.slice(0, 15000)}
+${truncateToContext(documentContent, MAX_DOCUMENT_TOKENS)}
 
 REQUIREMENTS:
 - Category: ${category}
@@ -105,7 +86,7 @@ Generate a JSON response with this exact structure:
 Make the content educational, engaging, and based directly on the provided document. Include practical examples and key compliance points.`;
 
     try {
-        const text = await generateContent(prompt);
+        const text = await callVertexAI(prompt);
 
         // Extract JSON from response
         const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -149,7 +130,7 @@ Generate a JSON array of questions:
 Make questions that test understanding of key concepts from the lesson.`;
 
     try {
-        const text = await generateContent(prompt);
+        const text = await callVertexAI(prompt);
 
         const jsonMatch = text.match(/\[[\s\S]*\]/);
         if (!jsonMatch) {

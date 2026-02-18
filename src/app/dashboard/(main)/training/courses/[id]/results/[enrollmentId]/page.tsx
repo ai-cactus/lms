@@ -72,6 +72,7 @@ export default async function QuizResultsPage({ params }: { params: Promise<{ id
                 courseId={id}
                 enrollmentId={enrollmentId}
                 data={resultsData}
+                hideActions={true} // Hide redundant buttons in history view
             />
         );
     } catch (error) {

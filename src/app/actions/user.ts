@@ -128,6 +128,7 @@ export async function updateProfile(data: {
     first_name: string;
     last_name: string;
     company_name?: string;
+    avatarUrl?: string; // New field
 }) {
     const session = await auth();
 
@@ -152,6 +153,7 @@ export async function updateProfile(data: {
                 fullName: fullName,
                 companyName: data.company_name,
                 email: session.user.email, // Ensure email is synced if changed
+                avatarUrl: data.avatarUrl,
             },
             create: {
                 id: session.user.id,
@@ -160,6 +162,7 @@ export async function updateProfile(data: {
                 lastName: data.last_name,
                 fullName: fullName,
                 companyName: data.company_name,
+                avatarUrl: data.avatarUrl,
             },
         });
 
@@ -169,5 +172,36 @@ export async function updateProfile(data: {
     } catch (error) {
         console.error('Failed to update profile:', error);
         return { success: false, error: 'Failed to update profile' };
+    }
+}
+
+export async function uploadAvatar(formData: FormData) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        return { error: "Not authenticated" };
+    }
+
+    const file = formData.get('file') as File;
+    if (!file) {
+        return { error: "No file provided" };
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+        return { error: "Invalid file type. Please upload an image." };
+    }
+
+    // Validate file size (e.g., 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        return { error: "File size too large. Max 5MB." };
+    }
+
+    try {
+        const { saveFile } = await import('@/lib/documents/uploadHandler');
+        const publicUrl = await saveFile(file);
+        return { success: true, url: publicUrl };
+    } catch (error) {
+        console.error('Failed to upload avatar:', error);
+        return { error: "Failed to upload avatar" };
     }
 }

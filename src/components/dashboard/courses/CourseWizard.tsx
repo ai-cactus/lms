@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './CourseWizard.module.css';
 import Step1Category from './steps/Step1Category';
 import Step2Documents from './steps/Step2Documents';
@@ -12,6 +12,10 @@ import Step6QuizReview from './steps/Step6QuizReview';
 import Step7Publish from './steps/Step7Publish';
 import Logo from '@/components/ui/Logo';
 import { createFullCourse } from '@/app/actions/course';
+import { analyzeStoredDocument } from '@/app/actions/course-ai';
+
+import { uploadDocument, getDocuments } from '@/app/actions/documents';
+import PhiErrorModal from './PhiErrorModal';
 
 interface Document {
     id: string;
@@ -19,13 +23,17 @@ interface Document {
     type: 'pdf' | 'docx';
     status: 'analyzed';
     selected: boolean;
-    file?: File; // Store the actual file object
+    file?: File;
 }
 
 export default function CourseWizard() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const initialDocId = searchParams.get('documentId');
+    const hasAutoAnalyzed = React.useRef(false);
+
     const [currentStep, setCurrentStep] = useState(1);
-    const [isGenerating, setIsGenerating] = useState(false); // Track generation state
+    const [isGenerating, setIsGenerating] = useState(false);
     const totalSteps = 7;
 
     // Form Data
@@ -33,7 +41,7 @@ export default function CourseWizard() {
         category: '',
         title: 'HIPAA Privacy and Security Training',
         description: 'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
-        difficulty: 'moderate', // default fallback if needed by DB, or remove if unused
+        difficulty: 'moderate',
         duration: '60',
         notesCount: '5',
         objectives: [
@@ -41,7 +49,6 @@ export default function CourseWizard() {
             'Learn how to handle PHI securely',
             'Understand HIPAA privacy rules'
         ],
-        // Step 4 Quiz Data
         quizTitle: 'HIPAA Privacy and Security Quiz',
         quizQuestionCount: '15',
         quizDifficulty: 'moderate',
@@ -49,7 +56,6 @@ export default function CourseWizard() {
         quizDuration: '15',
         quizPassMark: '80%',
         quizAttempts: '2',
-        // Step 7 Publish Data
         assignments: [],
         dueDate: '',
         dueTime: ''
@@ -57,6 +63,49 @@ export default function CourseWizard() {
 
     // Documents State
     const [documents, setDocuments] = useState<Document[]>([]);
+
+    React.useEffect(() => {
+        const loadDocs = async () => {
+            try {
+                const fetchedDocs = await getDocuments();
+                const mappedDocs: Document[] = fetchedDocs.map(d => ({
+                    id: d.id,
+                    name: d.filename,
+                    type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
+                    status: 'analyzed',
+                    selected: initialDocId ? d.id === initialDocId : false
+                }));
+                setDocuments(mappedDocs);
+
+                if (initialDocId && !hasAutoAnalyzed.current) {
+                    hasAutoAnalyzed.current = true;
+                    // Auto-analyze
+                    setIsAnalyzing(true);
+                    setAnalysisProgress(30); // Fake progress
+                    analyzeStoredDocument(initialDocId).then(result => {
+                        if (!result.error) {
+                            setFormData(prev => ({
+                                ...prev,
+                                title: result.title,
+                                description: result.description,
+                                objectives: result.objectives,
+                                duration: result.duration,
+                                quizTitle: result.quizTitle
+                            }));
+                        }
+                        setAnalysisProgress(100);
+                        setTimeout(() => {
+                            setIsAnalyzing(false);
+                            setAnalysisProgress(0);
+                        }, 500);
+                    });
+                }
+            } catch (e) {
+                console.error("Failed to load documents", e);
+            }
+        };
+        loadDocs();
+    }, [initialDocId]);
 
     const handleToggleSelect = (id: string) => {
         setDocuments(docs => docs.map(doc =>
@@ -71,13 +120,32 @@ export default function CourseWizard() {
         setIsGenerating(false);
     };
 
-
     const [isPublishing, setIsPublishing] = useState(false);
     const [publishError, setPublishError] = useState<string | null>(null);
 
+    // PHI Scanning State
+    const [isScanningPhi, setIsScanningPhi] = useState(false);
+    const [showPhiError, setShowPhiError] = useState(false);
+    const [phiReason, setPhiReason] = useState<string | undefined>(undefined);
+
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analysisProgress, setAnalysisProgress] = useState(0);
+    const [uploadError, setUploadError] = useState<string | null>(null);
+
     const handleNext = async () => {
+        if (currentStep === 2) {
+            // Document Step - Validation check
+            const selectedDoc = documents.find(d => d.selected);
+            if (!selectedDoc) {
+                // Should be blocked by isNextDisabled, but safe check
+                return;
+            }
+            // Documents loaded from DB are already safe.
+            setCurrentStep(currentStep + 1);
+            return;
+        }
+
         if (currentStep < totalSteps) {
-            // If entering Step 5, set generating mode only if no content exists
             if (currentStep === 4 && !generatedContent) {
                 setIsGenerating(true);
             }
@@ -97,6 +165,9 @@ export default function CourseWizard() {
             setIsPublishing(true);
             setPublishError(null);
 
+            // Get selected document ID for linking
+            const selectedDocId = documents.find(d => d.selected)?.id;
+
             try {
                 const result = await createFullCourse({
                     title: formData.title,
@@ -110,20 +181,19 @@ export default function CourseWizard() {
                     assignments: formData.assignments || [],
                     dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,
                     dueTime: formData.dueTime,
-                    // Quiz settings from Step 4
                     quizTitle: formData.quizTitle,
                     quizPassMark: formData.quizPassMark,
                     quizQuestionType: formData.quizQuestionType,
                     quizAttempts: formData.quizAttempts,
                     quizDuration: formData.quizDuration,
-                    quizDifficulty: formData.quizDifficulty
+                    quizDifficulty: formData.quizDifficulty,
+                    documentId: selectedDocId
                 });
 
                 if (result.success) {
                     console.log('Course Created:', result.courseId);
                     console.log('Invite Results:', result.inviteResults);
 
-                    // Log any issues for debugging
                     if (result.inviteResults?.failed?.length > 0) {
                         console.warn('Failed to invite:', result.inviteResults.failed);
                     }
@@ -152,62 +222,66 @@ export default function CourseWizard() {
         }
     };
 
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [analysisProgress, setAnalysisProgress] = useState(0);
-    const [uploadError, setUploadError] = useState<string | null>(null);
+    const handleRetryUpload = () => {
+        setShowPhiError(false);
+        setPhiReason(undefined);
+        setDocuments([]);
+    };
 
     const handleUpload = async (files: File[]) => {
-        setUploadError(null); // Clear previous errors
-
-        // Enforce single file - take only the first one
+        setUploadError(null);
         const file = files[0];
         if (!file) return;
 
-        const newDoc: Document = {
-            id: `new-${Date.now()}`,
-            name: file.name,
-            type: file.name.endsWith('.pdf') ? 'pdf' : 'docx',
-            status: 'analyzed',
-            selected: true,
-            file: file
-        };
-
-        // Replace existing documents with the new single file
-        setDocuments([newDoc]);
-
-        // Start Analysis immediately
         setIsAnalyzing(true);
-        setAnalysisProgress(10); // Start progress
+        setAnalysisProgress(10);
 
-        // Simulate progress for UX while waiting
-        const progressInterval = setInterval(() => {
-            setAnalysisProgress(prev => {
-                if (prev >= 90) {
-                    clearInterval(progressInterval);
-                    return 90;
-                }
-                return prev + 10;
-            });
-        }, 500);
+        // 1. Upload & Validate (Storage, Extraction, PHI Scan)
+        const formData = new FormData();
+        formData.append('file', file);
 
         try {
-            // Import dynamically to avoid server-side issues if any
+            // Simulate progress
+            setAnalysisProgress(30);
+
+            const uploadResult = await uploadDocument(null, formData);
+
+            if (uploadResult.error) {
+                throw new Error(uploadResult.error);
+            }
+
+            if (uploadResult.phiDetected) {
+                setPhiReason("PHI Detected in document.");
+                setShowPhiError(true);
+                setIsAnalyzing(false);
+                return;
+            }
+
+            // Refresh documents list to get the new ID (and potentially select it)
+            const updatedDocs = await getDocuments();
+            const mappedDocs: Document[] = updatedDocs.map(d => ({
+                id: d.id,
+                name: d.filename,
+                type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
+                status: 'analyzed',
+                selected: d.filename === file.name // Auto-select the new file
+            }));
+            setDocuments(mappedDocs);
+            setAnalysisProgress(60);
+
+            // 2. AI Analysis for Course Generation
             const { analyzeDocument } = await import('@/app/actions/course-ai');
+            const analysisFormData = new FormData();
+            analysisFormData.append('file', file);
 
-            const formData = new FormData();
-            formData.append('file', file);
+            const result = await analyzeDocument(analysisFormData);
 
-            const result = await analyzeDocument(formData);
-
-            clearInterval(progressInterval);
             setAnalysisProgress(100);
 
             if (result.error) {
                 console.error("Analysis Error:", result.error);
                 setUploadError(result.error);
-                setDocuments([]); // Remove the failed file
             } else {
-                // Populate Step 3 Data
                 setFormData(prev => ({
                     ...prev,
                     title: result.title,
@@ -218,10 +292,8 @@ export default function CourseWizard() {
                 }));
             }
         } catch (err: any) {
-            console.error("Analysis Failed:", err);
-            clearInterval(progressInterval);
-            setUploadError(`Analysis failed: ${err.message || "Unknown error"}. Please try a different file.`);
-            setDocuments([]); // Reset on error
+            console.error("Upload/Analysis Failed:", err);
+            setUploadError(err.message || "Upload failed. Please try again.");
         } finally {
             setTimeout(() => {
                 setIsAnalyzing(false);
@@ -248,6 +320,7 @@ export default function CourseWizard() {
                         isAnalyzing={isAnalyzing}
                         progress={analysisProgress}
                         error={uploadError}
+                        isScanningPhi={isScanningPhi}
                     />
                 );
             case 3:
@@ -295,10 +368,9 @@ export default function CourseWizard() {
 
     const isNextDisabled = () => {
         if (currentStep === 1 && !formData.category) return true;
-        if (currentStep === 2 && (!documents.some(d => d.selected) || isAnalyzing)) return true;
+        if (currentStep === 2 && (!documents.some(d => d.selected) || isAnalyzing || isScanningPhi)) return true;
         if (currentStep === 3 && !formData.title) return true;
         if (currentStep === 4 && !formData.quizTitle) return true;
-        // Step 7 validation optional? Or mandatory? Assuming optional for now unless specified.
         return false;
     };
 
@@ -347,6 +419,25 @@ export default function CourseWizard() {
                         </div>
                     </div>
                 )}
+
+                {currentStep === 2 && (
+                    <div className={styles.privacyNotice}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="16" x2="12" y2="12" />
+                            <line x1="12" y1="8" x2="12.01" y2="8" />
+                        </svg>
+                        <span>We care about your privacy! Ensure that any document you upload does NOT contain personal health information.</span>
+                    </div>
+                )}
+
+                {/* PHI Error Modal */}
+                <PhiErrorModal
+                    isOpen={showPhiError}
+                    onClose={() => setShowPhiError(false)}
+                    onRetry={handleRetryUpload}
+                    reason={phiReason}
+                />
             </main>
         </div>
     );

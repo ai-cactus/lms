@@ -50,7 +50,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
         completionRate:
             course.enrollments.length > 0
                 ? Math.round(
-                    (course.enrollments.filter((e) => e.status === 'completed').length /
+                    (course.enrollments.filter((e) => e.status === 'completed' || e.status === 'attested').length /
                         course.enrollments.length) *
                     100
                 )
@@ -220,7 +220,7 @@ export async function getDashboardStats() {
     const totalCourses = courses.length;
     const totalStaffAssigned = new Set(enrollments.map((e) => e.userId)).size;
     const completedEnrollments = enrollments.filter(
-        (e) => e.status === 'completed'
+        (e) => e.status === 'completed' || e.status === 'attested'
     );
     const averageScore =
         completedEnrollments.length > 0
@@ -256,24 +256,31 @@ export async function getDashboardStats() {
 
     // Calculate Course Performance (Scores vs Courses)
     const coursePerformance = courses.map(course => {
-        const courseEnrollments = course.enrollments.filter(e => e.status === 'completed');
-        const avgScore = courseEnrollments.length > 0
-            ? Math.round(courseEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) / courseEnrollments.length)
-            : 0;
-
-        // Find passing score from the first quiz found in lessons (assuming one main quiz)
+        // Find passing score
         const quiz = course.lessons.find(l => l.quiz)?.quiz;
-        const passingScore = quiz?.passingScore || 70; // Default to 70 if no quiz found
+        const passingScore = quiz?.passingScore || 70;
+
+        // Filter valid enrollments with scores
+        const validEnrollments = course.enrollments.filter(e => e.score !== null);
+
+        const passCount = validEnrollments.filter(e => (e.score || 0) >= passingScore).length;
+        const failCount = validEnrollments.filter(e => (e.score || 0) < passingScore).length;
+
+        const avgScore = validEnrollments.length > 0
+            ? Math.round(validEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) / validEnrollments.length)
+            : 0;
 
         return {
             name: course.title,
             score: avgScore,
-            passingScore
+            passingScore,
+            passCount,
+            failCount
         };
     });
 
     const completedCount = enrollments.filter(
-        (e) => e.status === 'completed'
+        (e) => e.status === 'completed' || e.status === 'attested'
     ).length;
     const inProgressCount = enrollments.filter(
         (e) => e.status === 'in_progress'
@@ -412,6 +419,7 @@ export async function createFullCourse(data: {
     quizAttempts?: string;
     quizDuration?: string;
     quizDifficulty?: string;
+    documentId?: string; // New field
 }) {
     const session = await auth();
     if (!session?.user?.id) {
@@ -466,6 +474,25 @@ export async function createFullCourse(data: {
             }
         }
     });
+
+    // 1.5 Link Document if provided
+    if (data.documentId) {
+        // Find latest version of the document
+        const latestDocVersion = await prisma.documentVersion.findFirst({
+            where: { documentId: data.documentId },
+            orderBy: { version: 'desc' }
+        });
+
+        if (latestDocVersion) {
+            await prisma.courseVersion.create({
+                data: {
+                    courseId: course.id,
+                    documentVersionId: latestDocVersion.id,
+                    version: 1, // Initial version
+                }
+            });
+        }
+    }
 
     // 2. Handle Assignments (existing members + new invites)
     const inviteResults = {

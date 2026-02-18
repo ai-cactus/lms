@@ -55,28 +55,90 @@
     letter-spacing: 0.05em;
 }
 
+.clickableRow {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.clickableRow:hover {
+    background-color: #f8fafc;
+}
+
 .table tr:last-child td {
     border-bottom: none;
 }
 
-.table tr:hover {
-    background: var(--background-secondary);
+.docName {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    color: #64748b;
+}
+
+.filename {
+    font-weight: 500;
+    color: #334155;
+}
+
+.meta {
+    font-size: 0.75rem;
+    color: #94a3b8;
 }
 
 .badgeSuccess {
-    background: #ECFDF5;
-    color: #059669;
+    background: #dcfce7;
+    color: #166534;
     padding: 0.25rem 0.75rem;
-    border-radius: var(--radius-full);
+    border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 600;
+    display: inline-block;
 }
 
 .badgeWarning {
-    background: #FFFBEB;
-    color: #D97706;
+    background: #ffedd5;
+    color: #9a3412;
     padding: 0.25rem 0.75rem;
-    border-radius: var(--radius-full);
+    border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 600;
+    display: inline-block;
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.actionBtn {
+    background: #2563eb;
+    color: white;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.actionBtn:hover {
+    background: #1d4ed8;
+}
+
+.actionMute {
+    color: #cbd5e1;
+    font-size: 0.875rem;
 }

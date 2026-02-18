@@ -5,6 +5,7 @@ import styles from './MyCoursesTable.module.css';
 import { Input } from '@/components/ui';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface Course {
     id: string;
@@ -22,6 +23,7 @@ interface MyCoursesTableProps {
 }
 
 export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTableProps) {
+    const router = useRouter();
     const [searchQuery, setSearchQuery] = useState('');
 
     // Filter Logic
@@ -57,9 +59,10 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
             <table className={styles.table}>
                 <thead>
                     <tr>
-                        <th style={{ width: '50%' }}>Course Name</th>
-                        <th style={{ width: '25%' }}>Assigned Staff</th>
-                        <th style={{ width: '25%' }}>Date Created</th>
+                        <th style={{ width: '40%' }}>Course Name</th>
+                        <th style={{ width: '20%' }}>Assigned Staff</th>
+                        <th style={{ width: '20%' }}>Completion Rate</th>
+                        <th style={{ width: '20%' }}>Date Created</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -67,7 +70,7 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                         displayCourses.map((course) => (
                             <tr
                                 key={course.id}
-                                onClick={() => window.location.href = `/dashboard/training/courses/${course.id}`}
+                                onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
                                 className={styles.clickableRow}
                             >
                                 <td>
@@ -82,13 +85,14 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                                         </div>
                                         <div>
                                             <span className={styles.courseName}>{course.title}</span>
-                                            {course.level && (
-                                                <span className={styles.courseLevel}>{course.level}</span>
-                                            )}
+                                            {/* Level removed from reference image, but keeping code clean if needed, commenting out for now to match strict design? No, user didn't say remove level. Keeping it for now. */}
                                         </div>
                                     </div>
                                 </td>
                                 <td>{course.enrollmentsCount}</td>
+                                <td>
+                                    <span className={styles.completionRate}>{course.completionRate}%</span>
+                                </td>
                                 <td>
                                     {new Date(course.createdAt).toLocaleDateString('en-US', {
                                         month: 'short',
@@ -100,29 +104,29 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                         ))
                     ) : (
                         <tr>
-                            <td colSpan={3} className={styles.emptyState}>
+                            <td colSpan={4} className={styles.emptyState}>
                                 No courses found.
                             </td>
                         </tr>
                     )}
                 </tbody>
-            </table >
+            </table>
 
             {/* View All Button */}
             {
-                filteredCourses.length > maxItems && (
-                    <div className={styles.viewAllContainer}>
-                        <Link href="/dashboard/courses" className={styles.viewAllButton}>
-                            View all
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                <polyline points="15 3 21 3 21 9"></polyline>
-                                <line x1="10" y1="14" x2="21" y2="3"></line>
-                            </svg>
-                        </Link>
-                    </div>
-                )
+                // Show View All if there are more items than displayed OR if we are just showing the default list
+                // User's image shows "View all" at bottom right.
+                <div className={styles.viewAllContainer}>
+                    <Link href="/dashboard/courses" className={styles.viewAllButton}>
+                        View all
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </Link>
+                </div>
             }
-        </div >
+        </div>
     );
 }

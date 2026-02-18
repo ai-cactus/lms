@@ -1,14 +1,10 @@
-/* Main Page Background - Full White */
 .container {
-    height: 100vh;
     min-height: 100vh;
     background: white;
     display: flex;
     flex-direction: column;
     width: 100%;
     font-family: var(--font-body);
-    overflow: hidden;
-    /* Prevent page scroll */
 }
 
 /* Header Grid - Full Width */
@@ -80,24 +76,20 @@
     padding: 0 20px;
     position: relative;
     padding-top: 40px;
-    /* Reduced padding */
-    overflow: hidden;
-    /* Prevent pushing footer */
+    padding-bottom: 60px;
+    /* Add padding for footer breathing room */
 }
 
 /* Step Content Wrapper */
 .stepWrapper {
     width: 100%;
     max-width: 800px;
-    /* Take remaining space instead of fixed percentage which ignores siblings */
-    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-height: 0;
-    overflow: hidden;
-    /* Ensure inner scroll works */
     transition: max-width 0.3s ease;
+    position: relative;
+    z-index: 50;
 }
 
 .stepWrapperWide {
@@ -160,9 +152,9 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    /* Take remaining space */
     min-height: 0;
-    /* Allow scrolling inside */
+    z-index: 30;
+    /* Ensure dropdown appears above footer */
 }
 
 .helperText {
@@ -181,13 +173,27 @@
     justify-content: space-between;
     width: 100%;
     max-width: 800px;
-    margin-top: 20px;
-    /* Reduced margin */
+    margin-top: 100px;
     margin-bottom: 40px;
     padding: 0 20px;
-    flex-shrink: 0;
     z-index: 20;
     transition: max-width 0.3s ease;
+}
+
+.privacyNotice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: 14px;
+    color: #718096;
+    margin-top: 24px;
+    margin-bottom: 0;
+    text-align: center;
+    width: 100%;
+    max-width: 800px;
+    /* Match footer width */
+    line-height: 1.5;
 }
 
 .footerWide {
@@ -596,6 +602,77 @@
     width: 100%;
 }
 
+/* Scanning Card */
+.scanningCard {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    margin-top: 16px;
+    animation: fadeIn 0.3s ease;
+}
+
+.scanningIcon {
+    width: 40px;
+    height: 40px;
+    background: #EEF2FF;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.sparkle {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    font-size: 14px;
+    animation: bounce 1s infinite;
+}
+
+.scanningContent h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1A202C;
+    margin-bottom: 4px;
+}
+
+.scanningContent p {
+    margin: 0;
+    font-size: 13px;
+    color: #718096;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes bounce {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-3px);
+    }
+}
+
 /* Step 5: Generation Phase */
 .generationContainer {
     display: flex;
@@ -796,8 +873,46 @@
     color: #4F46E5;
     padding: 6px 16px;
     border-radius: 20px;
-    font-size: 13px;
-    font-weight: 700;
+
+    @media (max-width: 768px) {
+        .header {
+            padding: 0 16px;
+        }
+
+        .logoSection {
+            width: auto;
+            border-right: none;
+            margin-right: 16px;
+        }
+
+        .headerContent {
+            padding: 0;
+        }
+
+        .stepText {
+            font-size: 14px;
+            margin-right: auto;
+        }
+
+        .content {
+            padding: 0 16px;
+            padding-top: 24px;
+        }
+
+        .footer {
+            padding: 0;
+            margin-top: 32px;
+            margin-bottom: 32px;
+        }
+
+        .btnBack,
+        .btnNext {
+            min-width: 100px;
+            height: 40px;
+            font-size: 14px;
+        }
+    }
+
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }

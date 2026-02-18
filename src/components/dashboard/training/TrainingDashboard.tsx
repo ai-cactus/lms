@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from './TrainingDashboard.module.css';
 import { Button, Input } from '@/components/ui';
 import Image from 'next/image';
 import { CourseWithStats } from '@/app/actions/course';
 import { useRouter } from 'next/navigation';
-import { BarChart as Chart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
+
+
 
 export interface DashboardStats {
     totalCourses: number;
@@ -17,14 +18,16 @@ export interface DashboardStats {
         name: string;
         score: number;
         passingScore: number;
+        passCount: number;
+        failCount: number;
     }[];
-    trainingCoverage: {
-        completed: number;
-        inProgress: number;
-        notStarted: number;
-        totalStaff?: number;
-    };
-}
+        trainingCoverage: {
+            completed: number;
+            inProgress: number;
+            notStarted: number;
+            totalStaff?: number;
+        };
+    }
 
 interface TrainingDashboardProps {
     onCreateCourse: () => void;
@@ -198,6 +201,36 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
 
     // Filter defaults
     const [viewMode, setViewMode] = useState<'Courses'>('Courses');
+    const [mounted, setMounted] = useState(false);
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    // Process data for the chart
+    // We want to show "Top Performers" or "All".
+    // "Top Performers" could correspond to highest pass count or highest score?
+    // User said "Top Performers" filter. Let's filter by highest pass count.
+    const [filter, setFilter] = useState<'all' | 'top'>('all');
+
+    const chartData = React.useMemo(() => {
+        let data = [...coursePerformance];
+        if (filter === 'top') {
+            data.sort((a, b) => b.passCount - a.passCount);
+            data = data.slice(0, 5);
+        }
+        return data;
+    }, [coursePerformance, filter]);
+
+    // Calculate max value for Y-axis scaling
+    const maxVal = Math.max(...chartData.map(d => Math.max(d.passCount, d.failCount)), 5); // Minimum 5 for scale
+
+    // Generate ticks (0, 20%, 40%... or just counts?)
+    // User's snippet used percentages. But here we have counts.
+    // I will use counts: 0 to maxVal.
+    // Let's make 5 ticks.
+    const ticks = Array.from({ length: 6 }, (_, i) => Math.round((maxVal / 5) * i)).reverse();
 
     return (
         <div className={styles.container}>
@@ -267,56 +300,245 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
                     <div className={styles.chartHeader}>
                         <h3 className={styles.chartTitle}>Performance of Learners</h3>
                         <div className={styles.filterContainer}>
-                            <button className={`${styles.filterButton} ${styles.active}`}>
-                                Courses
+                            <button
+                                onClick={() => setFilter('all')}
+                                className={`${styles.filterButton} ${filter === 'all' ? styles.active : ''}`}
+                                style={{ marginRight: 8 }}
+                            >
+                                All Courses
+                            </button>
+                            <button
+                                onClick={() => setFilter('top')}
+                                className={`${styles.filterButton} ${filter === 'top' ? styles.active : ''}`}
+                            >
+                                Top Performers
                             </button>
                         </div>
                     </div>
 
-                    <div className={styles.barChartContainer} style={{ height: 300, position: 'relative', marginTop: 10 }}>
-                        <div style={{ position: 'absolute', top: '50%', left: -30, transform: 'rotate(-90deg)', fontSize: 12, color: '#A0AEC0', zIndex: 1 }}>
-                            Scores (%)
+                    {/* Legend */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '24px',
+                        marginBottom: '24px',
+                        paddingBottom: '16px',
+                        borderBottom: '1px solid #EDF2F7',
+                        marginTop: '16px'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{
+                                width: '12px',
+                                height: '12px',
+                                borderRadius: '4px',
+                                background: 'linear-gradient(180deg, #34D399 0%, #10B981 100%)'
+                            }} />
+                            <span style={{ fontSize: '13px', fontWeight: '500', color: '#64748B' }}>
+                                Passed
+                            </span>
                         </div>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <Chart
-                                data={coursePerformance}
-                                margin={{ top: 10, right: 10, left: 10, bottom: 60 }}
-                                barSize={24}
-                            >
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EDF2F7" />
-                                <XAxis
-                                    dataKey="name"
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: '#A0AEC0', fontSize: 10 }}
-                                    angle={-45}
-                                    textAnchor="end"
-                                    interval={0}
-                                    dy={10}
-                                    tickFormatter={(val) => val.length > 15 ? val.substring(0, 15) + '...' : val}
-                                />
-                                <YAxis
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: '#A0AEC0', fontSize: 12 }}
-                                    domain={[0, 100]}
-                                    ticks={[0, 20, 40, 60, 80, 100]}
-                                />
-                                {/* Custom Bar with Cell coloring */}
-                                <Bar dataKey="score" radius={[4, 4, 0, 0]}>
-                                    {coursePerformance.map((entry, index) => (
-                                        <Cell
-                                            key={`cell-${index}`}
-                                            fill={entry.score >= entry.passingScore ? '#10B981' : '#EF4444'}
-                                        />
-                                    ))}
-                                </Bar>
-                                <Tooltip
-                                    cursor={{ fill: 'rgba(0,0,0,0.05)' }}
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                                />
-                            </Chart>
-                        </ResponsiveContainer>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{
+                                width: '12px',
+                                height: '12px',
+                                borderRadius: '4px',
+                                background: 'linear-gradient(180deg, #F87171 0%, #EF4444 100%)'
+                            }} />
+                            <span style={{ fontSize: '13px', fontWeight: '500', color: '#64748B' }}>
+                                Failed
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className={styles.barChartContainer} style={{ height: 320, position: 'relative', marginTop: 10 }}>
+                        {/* Y-Axis */}
+                        <div style={{
+                            position: 'absolute',
+                            left: '0',
+                            top: '0',
+                            bottom: '60px',
+                            width: '40px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            paddingTop: '5px'
+                        }}>
+                            {ticks.map((tick, i) => (
+                                <div key={i} style={{
+                                    fontSize: '11px',
+                                    color: '#A0AEC0',
+                                    fontWeight: '500',
+                                    textAlign: 'right'
+                                }}>
+                                    {tick}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Grid Lines */}
+                        <div style={{
+                            position: 'absolute',
+                            left: '50px',
+                            right: '0',
+                            top: '12px',
+                            bottom: '60px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            zIndex: 0
+                        }}>
+                            {ticks.map((_, i) => (
+                                <div key={i} style={{
+                                    height: '1px',
+                                    background: '#EDF2F7',
+                                    width: '100%'
+                                }} />
+                            ))}
+                        </div>
+
+                        {/* Bars Container */}
+                        <div style={{
+                            position: 'absolute',
+                            left: '50px',
+                            right: '0',
+                            bottom: '60px',
+                            top: '12px',
+                            display: 'flex',
+                            gap: '12px',
+                            alignItems: 'flex-end',
+                            zIndex: 1
+                        }}>
+                            {chartData.map((item, idx) => {
+                                // Calculate heights relative to maxVal
+                                const passHeight = maxVal > 0 ? (item.passCount / maxVal) * 100 : 0;
+                                const failHeight = maxVal > 0 ? (item.failCount / maxVal) * 100 : 0;
+
+                                return (
+                                    (
+                                        <div
+                                            key={idx}
+                                            style={{
+                                                flex: '1',
+                                                display: 'flex',
+                                                gap: '4px', // Gap between pass and fail bars
+                                                alignItems: 'flex-end',
+                                                justifyContent: 'center',
+                                                height: '100%',
+                                                cursor: 'pointer',
+                                                transform: hoveredIndex === idx ? 'translateY(-4px)' : 'translateY(0)',
+                                                transition: 'transform 0.2s ease'
+                                            }}
+                                            onMouseEnter={() => setHoveredIndex(idx)}
+                                            onMouseLeave={() => setHoveredIndex(null)}
+                                        >
+                                            {/* Pass Bar */}
+                                            <div style={{
+                                                flex: '1',
+                                                maxWidth: '20px',
+                                                height: mounted ? `${passHeight}%` : '0%',
+                                                background: 'linear-gradient(180deg, #34D399 0%, #10B981 100%)',
+                                                borderRadius: '4px 4px 0 0',
+                                                transition: 'height 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease',
+                                                transitionDelay: `${idx * 0.05}s`,
+                                                boxShadow: hoveredIndex === idx
+                                                    ? '0 4px 12px rgba(16, 185, 129, 0.3)'
+                                                    : 'none',
+                                                position: 'relative'
+                                            }}>
+                                                {/* Tooltip on Hover */}
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    bottom: '100%',
+                                                    left: '50%',
+                                                    transform: 'translateX(-50%) translateY(-6px)',
+                                                    fontSize: '10px',
+                                                    fontWeight: '700',
+                                                    color: '#1a1a1a',
+                                                    background: 'white',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                                                    opacity: hoveredIndex === idx ? 1 : 0,
+                                                    transition: 'opacity 0.2s ease',
+                                                    pointerEvents: 'none',
+                                                    whiteSpace: 'nowrap',
+                                                    zIndex: 10
+                                                }}>
+                                                    {item.passCount}
+                                                </div>
+                                            </div>
+
+                                            {/* Fail Bar */}
+                                            <div style={{
+                                                flex: '1',
+                                                maxWidth: '20px',
+                                                height: mounted ? `${failHeight}%` : '0%',
+                                                background: 'linear-gradient(180deg, #F87171 0%, #EF4444 100%)',
+                                                borderRadius: '4px 4px 0 0',
+                                                transition: 'height 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease',
+                                                transitionDelay: `${idx * 0.05 + 0.1}s`,
+                                                boxShadow: hoveredIndex === idx
+                                                    ? '0 4px 12px rgba(239, 68, 68, 0.3)'
+                                                    : 'none',
+                                                position: 'relative'
+                                            }}>
+                                                {/* Tooltip on Hover */}
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    bottom: '100%',
+                                                    left: '50%',
+                                                    transform: 'translateX(-50%) translateY(-6px)',
+                                                    fontSize: '10px',
+                                                    fontWeight: '700',
+                                                    color: '#1a1a1a',
+                                                    background: 'white',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                                                    opacity: hoveredIndex === idx ? 1 : 0,
+                                                    transition: 'opacity 0.2s ease',
+                                                    pointerEvents: 'none',
+                                                    whiteSpace: 'nowrap',
+                                                    zIndex: 10
+                                                }}>
+                                                    {item.failCount}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                )
+                            })}
+                        </div>
+
+                        {/* X-Axis Labels */}
+                        <div style={{
+                            position: 'absolute',
+                            left: '50px',
+                            right: '0',
+                            bottom: '0',
+                            height: '60px',
+                            display: 'flex',
+                            gap: '12px'
+                        }}>
+                            {chartData.map((item, idx) => (
+                                <div key={idx} style={{
+                                    flex: '1',
+                                    fontSize: '10px',
+                                    color: hoveredIndex === idx ? '#2D3748' : '#A0AEC0',
+                                    fontWeight: hoveredIndex === idx ? '600' : '500',
+                                    textAlign: 'center',
+                                    // Rotate and position carefully
+                                    transform: 'rotate(-45deg)',
+                                    transformOrigin: 'top center',
+                                    paddingTop: '8px',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    transition: 'color 0.2s ease, font-weight 0.2s ease'
+                                }} title={item.name}>
+                                    {item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name}
+                                </div>
+                            ))}
+                        </div>
                     </div>
 
                 </div>

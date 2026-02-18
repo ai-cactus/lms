@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import styles from './WorkerProfile.module.css';
 import { Button, Input, Modal } from '@/components/ui';
-import { updateProfile } from '@/app/actions/user';
+import { updateProfile, uploadAvatar } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -33,9 +33,12 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
     });
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-    const [showConfirm, setShowConfirm] = useState(false);
 
-    const isDirty = formData.first_name !== user.first_name || formData.last_name !== user.last_name;
+    const [showConfirm, setShowConfirm] = useState(false);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatarUrl || null);
+
+    const isDirty = formData.first_name !== user.first_name || formData.last_name !== user.last_name || avatarUrl !== user.avatarUrl;
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -47,6 +50,34 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
         setShowConfirm(true);
     };
 
+    const handleAvatarClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsLoading(true);
+        const data = new FormData();
+        data.append('file', file);
+
+        try {
+            const result = await uploadAvatar(data);
+            if (result.success && result.url) {
+                setAvatarUrl(result.url);
+                // We don't save immediately, we wait for "Save Changes"
+                // But we should probably mark as dirty (which we did by adding avatarUrl to check)
+            } else {
+                setMessage({ type: 'error', text: result.error || 'Failed to upload avatar' });
+            }
+        } catch (error) {
+            setMessage({ type: 'error', text: 'Upload failed' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleConfirmSave = async () => {
         setShowConfirm(false);
         setIsLoading(true);
@@ -56,6 +87,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
             const result = await updateProfile({
                 first_name: formData.first_name,
                 last_name: formData.last_name,
+                avatarUrl: avatarUrl || undefined,
                 // Worker cannot update company name, so we don't send it or send empty
             });
 
@@ -88,19 +120,26 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
 
             <div className={styles.card}>
                 <div className={styles.avatarWrapper}>
-                    {user.avatarUrl ? (
-                        <img src={user.avatarUrl} alt="Profile" className={styles.avatarImage} />
+                    {avatarUrl ? (
+                        <img src={avatarUrl} alt="Profile" className={styles.avatarImage} />
                     ) : (
                         <div className={styles.avatarFallback}>
                             {formData.first_name?.[0] || user.email[0].toUpperCase()}
                         </div>
                     )}
-                    <button className={styles.editAvatarBtn} title="Change Avatar">
+                    <button className={styles.editAvatarBtn} title="Change Avatar" type="button" onClick={handleAvatarClick}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                         </svg>
                     </button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                    />
                 </div>
 
                 {message && (

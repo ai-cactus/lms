@@ -3,10 +3,12 @@
 import React, { useState } from 'react';
 import styles from './WorkerDashboard.module.css';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui';
 
 interface Course {
     id: string;
     title: string;
+    category?: string;
     status: string;
     progress: number;
     deadline?: Date | string | null;
@@ -25,159 +27,109 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
         c.title.toLowerCase().includes(search.toLowerCase())
     );
 
-    const getStatusLabel = (status: string) => {
-        switch (status) {
-            case 'in_progress': return 'In Progress';
-            case 'completed': return 'Completed';
-            case 'attested': return 'Attested';
-            case 'assigned': return 'Not Started';
-            default: return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
-        }
+    const handleStartClick = (courseId: string) => {
+        router.push(`/learn/${courseId}`);
     };
 
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case 'in_progress':
-                return (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <polyline points="12 6 12 12 16 14" />
-                    </svg>
-                );
-            case 'completed':
-                return (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                );
-            case 'attested':
-                return (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                        <polyline points="22 4 12 14.01 9 11.01" />
-                    </svg>
-                );
-            case 'assigned':
-                return (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                    </svg>
-                );
-            default: return null;
-        }
-    };
-
-    const getProgressColor = (progress: number) => {
-        if (progress >= 100) return '#10B981';
-        if (progress >= 50) return '#3B82F6';
-        if (progress > 0) return '#F59E0B';
-        return '#CBD5E1';
+    const handleViewResultClick = (courseId: string) => {
+        // Assuming there is a results page, or maybe just go to the course page which acts as result view if complete
+        // For now, let's route to the same learn page or a specific result page if exists.
+        // User asked for "View Result".
+        // In this app, /learn/[id] usually shows content. 
+        // Let's assume /learn/[id] handles completed state, or /worker/courses/[id] if that was the previous link.
+        // The previous code linked to /worker/courses/[id]. Let's stick to /learn/[id] for "Start" and maybe /worker/courses/[id] for details?
+        // Actually, "Start Course" usually implies going to the player: /learn/[id].
+        // "View Result" might imply the same if the course is done, or maybe the quiz result?
+        // Let's use /learn/[id] for both for now, but label differently.
+        router.push(`/learn/${courseId}`);
     };
 
     return (
         <section>
             <div className={styles.courseListHeader}>
-                <h2 className={styles.sectionTitle}>My Courses</h2>
-                <div className={styles.searchBox}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                    </svg>
-                    <input
-                        type="text"
-                        placeholder="Search courses..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className={styles.searchInput}
-                    />
-                </div>
+                <h2 className={styles.sectionTitle}>Assigned Courses</h2>
+                {/* Search could be here if needed */}
             </div>
 
-            <div className={styles.tableContainer}>
-                {/* Header */}
-                <div className={styles.tableHeader}>
-                    <div className={styles.colName}>Course</div>
-                    <div className={styles.colProgress}>Progress</div>
-                    <div className={styles.colDeadline}>Deadline</div>
-                    <div className={styles.colStatus}>Status</div>
-                </div>
-
-                {/* Rows */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {filtered.length > 0 ? (
-                    filtered.map(course => (
-                        <div
-                            key={course.id}
-                            className={styles.tableRow}
-                            onClick={() => router.push(`/worker/courses/${course.id}`)}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={e => e.key === 'Enter' && router.push(`/worker/courses/${course.id}`)}
-                        >
-                            {/* Course Name */}
-                            <div className={styles.colName}>
-                                <div className={styles.courseIcon}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                                    </svg>
-                                </div>
-                                <span className={styles.courseNameText}>{course.title}</span>
-                            </div>
+                    filtered.map(course => {
+                        const isCompleted = course.status === 'completed' || course.status === 'attested';
 
-                            {/* Progress */}
-                            <div className={styles.colProgress}>
-                                <div className={styles.progressContainer}>
-                                    <div className={styles.progressBarTrack}>
-                                        <div
-                                            className={styles.progressBarFill}
-                                            style={{
-                                                width: `${course.progress}%`,
-                                                background: getProgressColor(course.progress)
-                                            }}
-                                        />
-                                    </div>
-                                    <span className={styles.progressText}>{course.progress}%</span>
-                                </div>
-                            </div>
-
-                            {/* Deadline */}
-                            <div className={styles.colDeadline}>
-                                {course.deadline ? (
-                                    <>
-                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                                            <line x1="16" y1="2" x2="16" y2="6" />
-                                            <line x1="8" y1="2" x2="8" y2="6" />
-                                            <line x1="3" y1="10" x2="21" y2="10" />
+                        return (
+                            <div
+                                key={course.id}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    background: 'white',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '12px',
+                                    padding: '24px',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    {/* Icon Box */}
+                                    <div style={{
+                                        width: '48px',
+                                        height: '48px',
+                                        borderRadius: '8px',
+                                        background: '#1E293B', // Dark background for icon as in image
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'white'
+                                    }}>
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                                         </svg>
-                                        <span>{new Date(course.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                                    </>
-                                ) : (
-                                    <span className={styles.noDeadline}>—</span>
-                                )}
-                            </div>
+                                    </div>
 
-                            {/* Status */}
-                            <div className={styles.colStatus}>
-                                <span className={`${styles.statusBadge} ${course.status === 'in_progress' ? styles.statusInProgress :
-                                        course.status === 'completed' ? styles.statusCompleted :
-                                            course.status === 'attested' ? styles.statusAttested :
-                                                course.status === 'assigned' ? styles.statusAssigned :
-                                                    ''
-                                    }`}>
-                                    {getStatusIcon(course.status)}
-                                    {getStatusLabel(course.status)}
-                                </span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <h3 style={{
+                                            margin: 0,
+                                            fontSize: '16px',
+                                            fontWeight: 600,
+                                            color: '#1A202C'
+                                        }}>
+                                            {course.title}
+                                        </h3>
+                                        <span style={{
+                                            fontSize: '14px',
+                                            color: '#718096'
+                                        }}>
+                                            {course.category || 'General'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    {isCompleted ? (
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => handleViewResultClick(course.id)}
+                                            style={{ minWidth: '120px' }}
+                                        >
+                                            View Result
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="primary"
+                                            onClick={() => handleStartClick(course.id)}
+                                            style={{ minWidth: '120px', backgroundColor: '#4F46E5' }} // Indigo/Purple
+                                        >
+                                            Start Course
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))
+                        );
+                    })
                 ) : (
                     <div className={styles.emptyTable}>
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                        </svg>
-                        <p>{search ? 'No courses match your search.' : 'No courses assigned yet.'}</p>
+                        <p>No courses assigned yet.</p>
                     </div>
                 )}
             </div>

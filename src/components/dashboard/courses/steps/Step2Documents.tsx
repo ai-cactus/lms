@@ -20,9 +20,10 @@ interface Step2DocumentsProps {
     isAnalyzing?: boolean;
     progress?: number;
     error?: string | null;
+    isScanningPhi?: boolean;
 }
 
-export default function Step2Documents({ documents, onToggleSelect, onUpload, isAnalyzing = false, progress = 0, error }: Step2DocumentsProps) {
+export default function Step2Documents({ documents, onToggleSelect, onUpload, isAnalyzing = false, progress = 0, error, isScanningPhi }: Step2DocumentsProps) {
     const [source, setSource] = React.useState('uploaded');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -157,6 +158,22 @@ export default function Step2Documents({ documents, onToggleSelect, onUpload, is
                     </div>
                 )}
             </div>
+            {isScanningPhi && (
+                <div className={styles.scanningCard}>
+                    <div className={styles.scanningIcon}>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" fill="white" />
+                            <path d="M10.5 15.5L14.5 11.5M10.5 11.5L14.5 15.5" stroke="#4F46E5" strokeWidth="2" strokeLinecap="round" />
+                            {/* Animated sparkle or spinner effects could be added here */}
+                        </svg>
+                        <span className={styles.sparkle}>✨</span>
+                    </div>
+                    <div className={styles.scanningContent}>
+                        <h4>Scanning...</h4>
+                        <p>Ensuring document does not contain personal health information</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -7,47 +7,60 @@
     display: flex;
     flex-direction: column;
     min-height: 50vh;
-    /* Force substantial vertical height */
+    border: 1px solid #E2E8F0;
 }
 
 .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
 }
 
 .title {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 700;
     color: #1A202C;
     margin: 0;
 }
 
 .searchContainer {
-    width: 300px;
+    width: 320px;
 }
 
+/* Override input styling via global CSS or ensure Input component handles it. 
+   Assuming Input component takes className. */
 .searchInput {
-    width: 100%;
+    background: white;
+    border-color: #E2E8F0;
 }
 
 .table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
+    /* Use separate/spacing to handle border-radius on header if needed, 
+       but collapse is fine for standard rows. 
+       Ref text says "Header background #F9FAFB" (very light gray). */
 }
 
+/* Header Styling */
 .table thead tr {
-    background: #EBF5FF;
+    background: #F8FAFC;
+    /* Very light gray/blueish */
 }
 
 .table th {
     text-align: left;
-    padding: 12px 16px;
-    font-size: 13px;
+    padding: 16px 24px;
+    /* More padding */
+    font-size: 12px;
     font-weight: 600;
-    color: #4A5568;
-    border-bottom: 1px solid #E2E8F0;
+    color: #64748B;
+    /* Slate 500 */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: none;
 }
 
 .table th:first-child {
@@ -58,27 +71,40 @@
     border-radius: 0 8px 8px 0;
 }
 
-.table td {
-    padding: 16px;
-    font-size: 14px;
-    color: #2D3748;
-    border-bottom: 1px solid #E2E8F0;
-    vertical-align: middle;
+/* Row Styling */
+.table tbody tr {
+    /* No background by default */
 }
 
-.table tbody tr:hover {
-    background-color: #F7FAFC;
+.table td {
+    padding: 20px 24px;
+    /* More padding for spacious look */
+    font-size: 14px;
+    color: #1E293B;
+    /* Slate 800 */
+    border-bottom: 1px dashed #E2E8F0;
+    /* Dotted/dashed separator or none? Ref shows faint lines. */
+    vertical-align: middle;
+    font-weight: 500;
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
 }
 
 .clickableRow {
     cursor: pointer;
-    transition: background-color 0.15s ease;
+    transition: background-color 0.2s ease;
+}
+
+.clickableRow:hover {
+    background-color: #F8FAFC;
 }
 
 .courseInfo {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
 }
 
 .courseIcon {
@@ -89,7 +115,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #EBF5FF;
+    background: #F1F5F9;
+    flex-shrink: 0;
 }
 
 .courseIcon img {
@@ -99,57 +126,46 @@
 .courseName {
     display: block;
     font-weight: 600;
-    color: #1A202C;
-}
-
-.courseLevel {
-    display: block;
-    font-size: 12px;
-    color: #718096;
-    margin-top: 2px;
-}
-
-.viewLink {
-    color: #4730F7;
-    font-weight: 600;
-    text-decoration: none;
+    color: #0F172A;
     font-size: 14px;
 }
 
-.viewLink:hover {
-    text-decoration: underline;
+.completionRate {
+    font-weight: 600;
+    color: #0F172A;
 }
 
 .emptyState {
     text-align: center;
-    padding: 40px !important;
-    color: #718096;
+    padding: 60px !important;
+    color: #64748B;
 }
 
 .viewAllContainer {
     display: flex;
     justify-content: flex-end;
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px solid #E2E8F0;
+    margin-top: auto;
+    /* Push to bottom */
+    padding-top: 24px;
 }
 
 .viewAllButton {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     padding: 8px 16px;
     border: 1px solid #E2E8F0;
     border-radius: 6px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
-    color: #4A5568;
+    color: #1E293B;
     text-decoration: none;
     background: white;
     transition: all 0.2s;
 }
 
 .viewAllButton:hover {
-    background: #F7FAFC;
+    background: #F8FAFC;
     border-color: #CBD5E0;
+    color: #0F172A;
 }

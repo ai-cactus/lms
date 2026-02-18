@@ -1,0 +1,544 @@
+/* Main Player Layout */
+.playerContainer {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+    background: #F8F7F4;
+    color: #1a1a1a;
+    overflow: hidden;
+    font-family: var(--font-body, 'Inter', sans-serif);
+}
+
+/* =========================================
+   RAIL (SIDEBAR)
+   ========================================= */
+.rail {
+    width: 140px;
+    /* Increased from 100px */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 12px;
+    gap: 12px;
+    border-right: 1px solid #E8E6E1;
+    background: #FAFAF8;
+    flex-shrink: 0;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 20;
+}
+
+.rail::-webkit-scrollbar {
+    width: 4px;
+}
+
+.rail::-webkit-scrollbar-thumb {
+    background: #E5E7EB;
+    border-radius: 4px;
+}
+
+.railLogo {
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+}
+
+/* Thumbnail Button */
+.modThumb {
+    width: 100%;
+    height: auto;
+    min-height: 70px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    border: 1px solid #E5E7EB;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 8px;
+    position: relative;
+    overflow: hidden;
+    text-align: center;
+    gap: 6px;
+}
+
+.modThumb:hover {
+    border-color: #D1D5DB;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+}
+
+.modThumbActive {
+    border-color: #1a1a1a;
+    box-shadow: 0 0 0 1px #1a1a1a, 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.modThumbDone {
+    opacity: 0.8;
+    background: #F9FAFB;
+}
+
+.modThumbLocked {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #F3F4F6;
+    border-style: dashed;
+}
+
+.modThumbAccent {
+    width: 24px;
+    height: 3px;
+    background: #E5E7EB;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.modThumbActive .modThumbAccent {
+    background: #1a1a1a;
+    width: 40px;
+}
+
+.modThumbTitle {
+    font-size: 10px;
+    font-weight: 600;
+    color: #6B7280;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    width: 100%;
+}
+
+.modThumbActive .modThumbTitle {
+    color: #1a1a1a;
+    font-weight: 700;
+}
+
+/* Quiz Thumbnail Special Style */
+.modThumbQuiz {
+    border-color: #E0E7FF;
+    background: #EEF2FF;
+    min-height: 50px;
+    justify-content: center;
+}
+
+.modThumbQuizActive {
+    border-color: #4F46E5;
+    background: #E0E7FF;
+    box-shadow: 0 0 0 1px #4F46E5;
+}
+
+.modThumbQuiz .modThumbTitle {
+    color: #4338CA;
+    font-size: 11px;
+}
+
+
+
+/* Main Content Column */
+.main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+}
+
+/* Top bar */
+.topbar {
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    border-bottom: 1px solid #E8E6E1;
+    flex-shrink: 0;
+    background: #FAFAF8;
+    z-index: 10;
+}
+
+.topbarLeft {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.breadcrumb {
+    font-size: 13px;
+    color: #9CA3AF;
+    font-weight: 500;
+}
+
+.breadcrumbSep {
+    font-size: 13px;
+    color: #D1D5DB;
+}
+
+.breadcrumbActive {
+    font-size: 13px;
+    color: #374151;
+    font-weight: 600;
+    max-width: 400px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.durationPill {
+    font-size: 11px;
+    color: #6B7280;
+    background: #F3F4F6;
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+.topbarRight {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+/* Toggle */
+.toggle {
+    display: flex;
+    background: #EFEFED;
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+}
+
+.toggleBtn {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: #6B7280;
+    background: transparent;
+    letter-spacing: 0.02em;
+}
+
+.toggleBtnActive {
+    background: white;
+    color: #1a1a1a;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Content area */
+.contentArea {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    height: 100%;
+    background: #F8F7F4;
+}
+
+/* Force Logo Color */
+.railLogo svg path {
+    fill: #1a1a1a !important;
+}
+
+/* =========================================
+   SLIDE VIEW
+   ========================================= */
+.slideStage {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 64px;
+    position: relative;
+    flex-direction: column;
+}
+
+.slideCard {
+    width: 100%;
+    max-width: 900px;
+    aspect-ratio: 16/9;
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #E8E6E1;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 24px 48px -12px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+.slideAccent {
+    height: 4px;
+    background: linear-gradient(90deg, #1a1a1a 0%, #4B5563 100%);
+    /* Elegant Dark */
+    flex-shrink: 0;
+}
+
+.slideInner {
+    flex: 1;
+    padding: 40px 48px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.slideMeta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+}
+
+.slideModuleLabel {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9CA3AF;
+}
+
+.slideCounter {
+    font-size: 11px;
+    font-weight: 600;
+    color: #D1D5DB;
+}
+
+.slideTitle {
+    font-size: 32px;
+    font-weight: 800;
+    color: #111827;
+    line-height: 1.2;
+    margin-bottom: 24px;
+    letter-spacing: -0.02em;
+}
+
+.slideDivider {
+    height: 1px;
+    background: #F3F4F6;
+    margin-bottom: 32px;
+    flex-shrink: 0;
+}
+
+.slideBody {
+    flex: 1;
+    overflow-y: auto;
+    font-size: 20px;
+    font-weight: 450;
+    line-height: 1.7;
+    color: #374151;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+    white-space: normal;
+}
+
+/* Hide duplicate title in body if it's the first element */
+.slideBody>h1:first-child,
+.slideBody>h2:first-child {
+    display: none;
+}
+
+.slideBody img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: 16px 0;
+}
+
+/* Animations */
+.fadeEnter {
+    animation: fadeSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Navigation Buttons (Round) */
+.navBtn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    /* Larger hit area */
+    height: 48px;
+    border-radius: 50%;
+    border: 1px solid #E5E7EB;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    z-index: 20;
+    color: #374151;
+}
+
+.navBtn:hover:not(:disabled) {
+    transform: translateY(-50%) scale(1.1);
+    border-color: #1a1a1a;
+    color: #1a1a1a;
+    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.1);
+}
+
+.navBtn:disabled {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.navPrev {
+    left: 32px;
+}
+
+.navNext {
+    right: 32px;
+}
+
+
+/* =========================================
+   ARTICLE VIEW
+   ========================================= */
+.articleStage {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    padding: 48px 24px;
+    background: #F8F7F4;
+    scroll-behavior: smooth;
+    /* Smooth scrolling for keyboard nav */
+}
+
+.articlePaper {
+    max-width: 720px;
+    /* Slightly wider */
+    margin: 0 auto;
+    background: transparent;
+    /* Seamless */
+    padding-bottom: 120px;
+}
+
+.articleHeader {
+    margin-bottom: 40px;
+}
+
+.articleModuleLabel {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9CA3AF;
+    margin-bottom: 12px;
+}
+
+.articleTitle {
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #111827;
+    line-height: 1.1;
+}
+
+/* Input version for editing title */
+.articleTitleInput {
+    width: 100%;
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #111827;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    line-height: 1.1;
+    font-family: inherit;
+    padding: 0;
+}
+
+.articleDivider {
+    height: 1px;
+    background: #E5E7EB;
+    margin: 40px 0;
+}
+
+.articleContent {
+    font-size: 20px;
+    line-height: 1.8;
+    color: #374151;
+    font-weight: 450;
+}
+
+.articleContent p {
+    margin-bottom: 1.5em;
+}
+
+.articleFooter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 80px;
+    padding-top: 32px;
+    border-top: 1px solid #E5E7EB;
+}
+
+.textBtn {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    color: #6B7280;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.textBtn:hover:not(:disabled) {
+    color: #1a1a1a;
+}
+
+.textBtn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+/* Quill Overrides for Article View (Bigger/Bolder) */
+/* We assume the wrapper has 'quillWrapper' class */
+.quillWrapper :global(.ql-container) {
+    font-size: 18px !important;
+    font-weight: 450;
+    line-height: 1.8;
+    color: #374151;
+    font-family: inherit;
+    border: none !important;
+}
+
+.quillWrapper :global(.ql-editor) {
+    padding: 0 !important;
+}
+
+.quillWrapper :global(.ql-toolbar) {
+    border: none !important;
+    border-bottom: 1px solid #F3F4F6 !important;
+    margin-bottom: 24px;
+    background: transparent;
+    padding: 8px 0 !important;
+}

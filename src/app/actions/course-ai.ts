@@ -3,6 +3,13 @@
 
 import { z } from 'zod';
 import { extractTextFromFile } from '@/lib/file-parser';
+import { callVertexAI, truncateToContext } from '@/lib/ai-client';
+import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
+
+// Token budgets — keeps us well within TPM limits
+const MAX_SOURCE_TOKENS = 100000; // For full course generation (large context ok)
+const MAX_ANALYSIS_TOKENS = 12500; // For quick metadata analysis (~50k chars)
 
 // Internal types for processing
 interface CourseData {
@@ -53,13 +60,6 @@ const CourseContentSchema = z.object({
 export type GeneratedContent = z.infer<typeof CourseContentSchema> & { error?: string; sourceText?: string };
 
 export async function generateCourseAI(formData: FormData): Promise<GeneratedContent> {
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-
-    if (!apiKey) {
-        console.error("Missing Gemini API Key");
-        return { modules: [], quiz: [], error: "Server configuration error: Missing API Key" };
-    }
-
     // Extract data from FormData
     const rawData = formData.get('data');
     if (!rawData || typeof rawData !== 'string') {
@@ -76,12 +76,8 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
             sourceText = await extractTextFromFile(file);
             console.log(`Extracted ${sourceText.length} characters from file.`);
 
-            // Truncate if too long (Gemini Flash Lite has 1M context window, but let's be safe with ~100k chars for now ensures speed)
-            // Actually, 1M tokens is huge, we can likely pass the whole thing unless it's a book. 
-            // Let's cap at 500k chars to be safe on timing.
-            if (sourceText.length > 500000) {
-                sourceText = sourceText.substring(0, 500000) + "...[truncated]";
-            }
+            // Truncate to token budget for safe processing
+            sourceText = truncateToContext(sourceText, MAX_SOURCE_TOKENS);
         } catch (err: any) {
             console.error("File parsing error:", err);
             return { modules: [], quiz: [], error: `Failed to read document: ${err.message}` };
@@ -169,40 +165,7 @@ export async function generateCourseAI(formData: FormData): Promise<GeneratedCon
             attempts++;
             console.log(`AI Generation Attempt ${attempts}/${maxAttempts}`);
 
-            const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
-            const location = process.env.GOOGLE_LOCATION || 'us-central1';
-            const modelId = 'gemini-2.5-flash-lite';
-
-            const response = await fetch(
-                `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{
-                            role: "user",
-                            parts: [{ text: prompt }]
-                        }],
-                        generationConfig: {
-                            temperature: 0.7,
-                            maxOutputTokens: 8192,
-                        }
-                    })
-                }
-            );
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Vertex AI Error: ${response.status} ${response.statusText} - ${errorText}`);
-            }
-
-            const json = await response.json();
-            const candidate = json.candidates?.[0];
-            const textPart = candidate?.content?.parts?.[0]?.text;
-
-            if (!textPart) {
-                throw new Error("No content generated in response");
-            }
+            const textPart = await callVertexAI(prompt);
 
             // Cleanup potential markdown and bad characters
             let cleanText = textPart.trim();
@@ -274,9 +237,6 @@ const CourseMetadataSchema = z.object({
 export type AnalyzedMetadata = z.infer<typeof CourseMetadataSchema> & { error?: string };
 
 export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetadata> {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!apiKey) return { title: '', description: '', objectives: [], duration: '', quizTitle: '', error: "Missing API Key" };
-
     const file = formData.get('file') as File | null;
     if (!file) return { title: '', description: '', objectives: [], duration: '', quizTitle: '', error: "No file provided" };
 
@@ -290,8 +250,8 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
             throw new Error(`Could not extract enough text (${sourceText?.length || 0} characters) from the file to analyze. Please ensure the PDF contains selectable text, not just images. If you cannot select the text with your mouse, it is likely an image scan.`);
         }
 
-        // Truncate for analysis speed & cost (50k chars is plenty for metadata)
-        const truncatedText = sourceText.length > 50000 ? sourceText.substring(0, 50000) + "..." : sourceText;
+        // Truncate for analysis speed & cost
+        const truncatedText = truncateToContext(sourceText, MAX_ANALYSIS_TOKENS);
 
         const systemPrompt = `
             You are an expert instructional designer. Analyze the following document text and extract key course metadata.
@@ -314,48 +274,23 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
             Return ONLY valid JSON.
         `;
 
-        const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
-        const location = process.env.GOOGLE_LOCATION || 'us-central1';
-        const modelId = 'gemini-2.5-flash-lite'; // Fallback to 1.5-flash for stability, user can change if needed
+        const textPart = await callVertexAI(prompt);
+        let rawText = textPart;
 
-        const response = await fetch(
-            `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:generateContent?key=${apiKey}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ role: "user", parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        temperature: 0.7,
-                        maxOutputTokens: 8192,
-                    }
-                })
-            }
-        );
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Vertex AI Request Failed: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-
-        const json = await response.json();
-        let textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!textPart) throw new Error("No content generated");
-
-        console.log("Raw AI Response:", textPart); // Debug log
+        console.log("Raw AI Response:", rawText); // Debug log
 
         // Robust JSON extraction: Find the first '{' and last '}'
-        const firstOpenBrace = textPart.indexOf('{');
-        const lastCloseBrace = textPart.lastIndexOf('}');
+        const firstOpenBrace = rawText.indexOf('{');
+        const lastCloseBrace = rawText.lastIndexOf('}');
 
         if (firstOpenBrace !== -1 && lastCloseBrace !== -1 && lastCloseBrace > firstOpenBrace) {
-            textPart = textPart.substring(firstOpenBrace, lastCloseBrace + 1);
+            rawText = rawText.substring(firstOpenBrace, lastCloseBrace + 1);
         } else {
             console.error("No JSON block found in response.");
             throw new Error("AI response did not contain valid JSON.");
         }
 
-        const parsedData = JSON.parse(textPart);
+        const parsedData = JSON.parse(rawText);
         const result = CourseMetadataSchema.safeParse(parsedData);
 
         if (result.success) {
@@ -382,5 +317,231 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
             quizTitle: `Quiz: ${file.name}`,
             error: error.message
         };
+    }
+    }
+}
+
+export async function analyzeStoredDocument(documentId: string): Promise<AnalyzedMetadata> {
+    const session = await auth();
+    if (!session?.user?.id) return { title: '', description: '', objectives: [], duration: '', quizTitle: '', error: "Unauthorized" };
+
+    try {
+        const doc = await prisma.document.findUnique({
+            where: { id: documentId, userId: session.user.id },
+            include: { versions: { orderBy: { version: 'desc' }, take: 1 } }
+        });
+
+        if (!doc) return { title: '', description: '', objectives: [], duration: '', quizTitle: '', error: "Document not found" };
+
+        const latestVersion = doc.versions[0];
+        const sourceText = latestVersion?.content || "";
+        const filename = doc.filename;
+
+        console.log(`Analyzing stored file: ${filename} (Length: ${sourceText.length})`);
+
+        if (!sourceText || sourceText.length < 50) {
+            console.error(`Extraction failed/empty: Text length is ${sourceText?.length || 0}`);
+            return {
+                title: filename,
+                description: "Document content is empty or too short to analyze.",
+                objectives: ["Review the document content manually."],
+                duration: "30",
+                quizTitle: `Quiz: ${filename}`,
+                error: "Document content is empty or too short."
+            };
+        }
+
+        // Truncate for analysis speed & cost
+        const truncatedText = truncateToContext(sourceText, MAX_ANALYSIS_TOKENS);
+
+        const systemPrompt = `
+            You are an expert instructional designer. Analyze the following document text and extract key course metadata.
+            
+            DOCUMENT TEXT START:
+            ${truncatedText}
+            DOCUMENT TEXT END
+            `;
+
+        const prompt = `
+            ${systemPrompt}
+
+            Output a valid JSON object with the following fields:
+            - title: A professional, engaging title for a training course based on this content.
+            - description: A concise (2-3 sentences) summary of what this course covers.
+            - objectives: An array of 3-5 distinct learning objectives (start with action verbs).
+            - duration: Estimated time in minutes to read/complete this content (just the number, e.g. "45").
+            - quizTitle: A relevant title for the assessment quiz (e.g. "Knowledge Check: [Topic]").
+
+            Return ONLY valid JSON.
+        `;
+
+        const textPart = await callVertexAI(prompt);
+        let rawText = textPart;
+
+        console.log("Raw AI Response:", rawText);
+
+        // Robust JSON extraction
+        const firstOpenBrace = rawText.indexOf('{');
+        const lastCloseBrace = rawText.lastIndexOf('}');
+
+        if (firstOpenBrace !== -1 && lastCloseBrace !== -1 && lastCloseBrace > firstOpenBrace) {
+            rawText = rawText.substring(firstOpenBrace, lastCloseBrace + 1);
+        } else {
+            console.error("No JSON block found in response.");
+            throw new Error("AI response did not contain valid JSON.");
+        }
+
+        const parsedData = JSON.parse(rawText);
+        const result = CourseMetadataSchema.safeParse(parsedData);
+
+        if (result.success) {
+            return result.data;
+        } else {
+            console.error("Analysis Schema Validation Failed:", result.error);
+            // Fallback with partial data if possible
+            return {
+                title: parsedData.title || filename.replace(/\.[^/.]+$/, ""),
+                description: parsedData.description || "Generated from uploaded document.",
+                objectives: parsedData.objectives || ["Understand the document content."],
+                duration: parsedData.duration || "30",
+                quizTitle: parsedData.quizTitle || `Quiz: ${filename.replace(/\.[^/.]+$/, "")}`,
+            };
+        }
+
+    } catch (error: any) {
+        console.error("Stored Document Analysis Error:", error);
+        return {
+            title: "Course Title",
+            description: "Failed to analyze document automatically.",
+            objectives: ["Review the document content."],
+            duration: "30",
+            quizTitle: "Quiz",
+            error: error.message
+        };
+    }
+}
+
+// --- PHI Detection ---
+
+const PHI_PATTERNS = {
+    SSN: /\b\d{3}-\d{2}-\d{4}\b/g,
+    PHONE: /\b(?:\+?1[-.]?)?\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})\b/g,
+    EMAIL: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, // Basic email
+    DATE: /\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/g, // MM/DD/YYYY or similar
+    MRN_KEYWORD: /\b(MRN|Medical Record Number|Patient ID|Patient No)\b/i,
+};
+
+// PHI Detection Schema
+const PhiDetectionSchema = z.object({
+    hasPhi: z.boolean(),
+    reason: z.string().optional()
+});
+
+export type PhiScanResult = z.infer<typeof PhiDetectionSchema> & { error?: string };
+
+export async function scanDocumentForPhi(formData: FormData): Promise<PhiScanResult> {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!apiKey) return { hasPhi: false, error: "Missing API Key" };
+
+    const file = formData.get('file') as File | null;
+    if (!file) return { hasPhi: false, error: "No file provided" };
+
+    try {
+        console.log(`Scanning file for PHI: ${file.name}`);
+        const sourceText = await extractTextFromFile(file);
+
+        if (!sourceText || sourceText.length < 50) {
+            console.warn("Text too short for PHI scan");
+            return { hasPhi: false, reason: "Text too short to analyze" };
+        }
+
+        const truncatedText = sourceText.length > 50000 ? sourceText.substring(0, 50000) + "..." : sourceText;
+
+        // 1. Regex Pass
+        const regexMatches: string[] = [];
+        if (PHI_PATTERNS.SSN.test(truncatedText)) regexMatches.push("Social Security Number pattern");
+        if (PHI_PATTERNS.PHONE.test(truncatedText)) regexMatches.push("Phone Number pattern");
+        if (PHI_PATTERNS.EMAIL.test(truncatedText)) regexMatches.push("Email Address pattern");
+        if (PHI_PATTERNS.DATE.test(truncatedText)) regexMatches.push("Date pattern (potential DOB)");
+        if (PHI_PATTERNS.MRN_KEYWORD.test(truncatedText)) regexMatches.push("Medical Record Number keyword");
+
+        console.log("Regex Flags:", regexMatches);
+
+        // 2. AI Verification
+        let promptContext = "";
+        if (regexMatches.length > 0) {
+            promptContext = `
+            ATTENTION: We detected specific patterns in the text: ${regexMatches.join(", ")}.
+            Your job is to VERIFY if these are actual PHI or false positives (e.g., support emails, business phones, publication dates).
+            `;
+        } else {
+            promptContext = `
+            No obvious regex patterns were found, but scan specifically for unstructured PHI like "Patient: [Name]" or narrative medical history.
+            `;
+        }
+
+        const prompt = `
+            You are a rigorous privacy compliance officer. Analyze the following text for Protected Health Information (PHI) under HIPAA.
+            
+            ${promptContext}
+
+            DEFINITIONS:
+            - PHI includes: Patient Names, DOB, MRN, SSN, Patient Contact Info, Medical History tied to an individual.
+            - NOT PHI: Provider names, business addresses, generic policy examples, fictional template data (e.g. "John Doe").
+
+            INSTRUCTIONS:
+            - Return JSON: { "hasPhi": boolean, "reason": "Short explanation" }.
+            - If Regex flagged a phone number, check if it's a patient's number (PHI) vs a helpdesk/agency number (Safe).
+            - If Regex flagged a date, check if it's a DOB/Admission Date (PHI) vs a policy effective date (Safe).
+            - Be Conservative: If you are unsure if it's real patient data, err on the side of caution but try to distinguish templates.
+
+            TEXT START:
+            ${truncatedText}
+            TEXT END
+            
+            Return ONLY valid JSON.
+        `;
+
+        const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
+        const location = process.env.GOOGLE_LOCATION || 'us-central1';
+        const modelId = 'gemini-2.5-flash-lite';
+
+        const response = await fetch(
+            `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:generateContent?key=${apiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.1,
+                        responseMimeType: "application/json"
+                    }
+                })
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`Vertex AI Request Failed: ${response.status}`);
+        }
+
+        const json = await response.json();
+        const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!textPart) throw new Error("No content generated");
+
+        // Clean JSON
+        let cleanJson = textPart.trim();
+        if (cleanJson.startsWith('```json')) cleanJson = cleanJson.replace(/```json\n?/, '').replace(/```$/, '');
+        if (cleanJson.startsWith('```')) cleanJson = cleanJson.replace(/```\n?/, '').replace(/```$/, '');
+
+        const parsedData = JSON.parse(cleanJson);
+        return {
+            hasPhi: parsedData.hasPhi,
+            reason: parsedData.reason
+        };
+
+    } catch (error: any) {
+        console.error("PHI Scan Error:", error);
+        return { hasPhi: false, error: error.message };
     }
 }

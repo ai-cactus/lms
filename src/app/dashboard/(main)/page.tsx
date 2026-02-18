@@ -23,11 +23,9 @@ export default async function DashboardPage() {
     ]);
 
     // Calculate real metrics from courses data
-    const totalCourses = courses.length;
-    const totalStaffAssigned = courses.reduce((sum, c) => sum + c.enrollmentsCount, 0);
-    const averageGrade = courses.length > 0
-        ? Math.round(courses.reduce((sum, c) => sum + c.completionRate, 0) / courses.length)
-        : 0;
+    const totalCourses = stats?.totalCourses || 0;
+    const totalStaffAssigned = stats?.totalStaffAssigned || 0;
+    const averageGrade = stats?.averageGrade || 0;
 
     return (
         <div className={styles.container}>
