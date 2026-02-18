@@ -320,6 +320,7 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
     }
 }
 
+
 export async function analyzeStoredDocument(documentId: string): Promise<AnalyzedMetadata> {
     const session = await auth();
     if (!session?.user?.id) return { title: '', description: '', objectives: [], duration: '', quizTitle: '', error: "Unauthorized" };
