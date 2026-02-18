@@ -9,9 +9,11 @@ import { useRouter } from 'next/navigation';
 interface CoursePreviewProps {
     course: any;
     mode?: 'admin' | 'worker';
+    user?: any; // Pass current user details
+    enrollment?: any; // Pass enrollment details
 }
 
-export default function CoursePreview({ course, mode = 'admin' }: CoursePreviewProps) {
+export default function CoursePreview({ course, mode = 'admin', user, enrollment }: CoursePreviewProps) {
     const [activeTab, setActiveTab] = useState('About');
 
     return (
@@ -103,6 +105,48 @@ export default function CoursePreview({ course, mode = 'admin' }: CoursePreviewP
 
                 {/* Right Column (Sidebar) */}
                 <div className={styles.sidebarColumn}>
+                    {/* Attestation Status Card */}
+                    {enrollment?.status === 'attested' && (
+                        <div className={styles.sidebarCard} style={{ marginBottom: 24, padding: 24, border: '1px solid #E9D8FD', backgroundColor: '#FAF5FF' }}>
+                            <h3 className={styles.sidebarTitle} style={{ marginBottom: 16 }}>Attestation status</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                                <div style={{
+                                    width: 40, height: 40, borderRadius: '50%', backgroundColor: '#E2E8F0',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: 16, fontWeight: 600, color: '#4A5568'
+                                }}>
+                                    {(user?.name?.[0] || 'U').toUpperCase()}
+                                </div>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span style={{ fontWeight: 600, color: '#1A202C' }}>{user?.name || 'User'}</span>
+                                        <span style={{ fontSize: 11, backgroundColor: '#E2E8F0', padding: '2px 6px', borderRadius: 4 }}>You</span>
+                                    </div>
+                                    <div style={{ fontSize: 13, color: '#718096' }}>{user?.email}</div>
+                                </div>
+                            </div>
+
+                            <div style={{ fontSize: 13, color: '#718096', marginBottom: 16 }}>
+                                Course: "{course.title}"
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    backgroundColor: '#DEF7EC', color: '#03543F',
+                                    fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 12
+                                }}>
+                                    Signed digitally
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                </span>
+                                <span style={{ fontSize: 12, color: '#4C6EF5', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                    View details
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: 2 }}><polyline points="9 18 15 12 9 6"></polyline></svg>
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
                     <div className={styles.sidebarCard}>
                         <h3 className={styles.sidebarTitle}>Course Content</h3>
                         <div className={styles.lessonsList}>

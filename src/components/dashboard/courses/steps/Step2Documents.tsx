@@ -23,7 +23,15 @@ interface Step2DocumentsProps {
     isScanningPhi?: boolean;
 }
 
-export default function Step2Documents({ documents, onToggleSelect, onUpload, isAnalyzing = false, progress = 0, error, isScanningPhi }: Step2DocumentsProps) {
+export default function Step2Documents({
+    documents,
+    onToggleSelect,
+    onUpload,
+    isAnalyzing = false,
+    progress = 0,
+    error,
+    isScanningPhi
+}: Step2DocumentsProps) {
     const [source, setSource] = React.useState('uploaded');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -112,59 +120,59 @@ export default function Step2Documents({ documents, onToggleSelect, onUpload, is
                                 <strong>Upload Failed:</strong> {error}
                             </div>
                         )}
-
-                        {/* Uploaded Files List */}
-                        <div className={styles.uploadedFilesContainer}>
-                            {documents.map((doc) => (
-                                <div key={doc.id} className={styles.uploadedFileItem}>
-                                    <div className={styles.fileLeft}>
-                                        <div className={styles.fileIcon}>
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={doc.name.endsWith('.pdf') ? '#F56565' : '#4C6EF5'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" />
-                                            </svg>
-                                        </div>
-                                        <div className={styles.uploadedFileInfo}>
-                                            <span className={styles.uploadedFileName}>{doc.name}</span>
-                                            <span className={styles.uploadedFileSize}>{doc.file ? `${(doc.file.size / 1024 / 1024).toFixed(2)} MB` : 'Mock File'}</span>
-                                        </div>
-                                    </div>
-
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={doc.selected}
-                                            onChange={() => onToggleSelect(doc.id)}
-                                            className={styles.checkbox}
-                                            disabled={isAnalyzing}
-                                        />
-                                        <button className={styles.trashBtn} disabled={isAnalyzing}>
-                                            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M2.5 4H13.5" />
-                                                <path d="M6.5 7V11" />
-                                                <path d="M9.5 7V11" />
-                                                <path d="M3.5 4L4.5 13C4.5 13.55 4.95 14 5.5 14H10.5C11.05 14 11.5 13.55 11.5 13L12.5 4" />
-                                                <path d="M6 4V2.5C6 2.22386 6.22386 2 6.5 2H9.5C9.77614 2 10 2.22386 10 2.5V4" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
                     </div>
                 ) : (
-                    <div className={styles.fileList}>
-                        {/* Placeholder for 'Uploaded Documents' tab if needed */}
-                        <p style={{ textAlign: 'center', color: '#718096', marginTop: 40 }}>No previously uploaded documents found.</p>
+                    <div className={styles.scrollableContent}>
+                        {documents.length > 0 ? (
+                            <div className={styles.uploadedFilesContainer}>
+                                {documents.map((doc) => (
+                                    <div key={doc.id} className={styles.uploadedFileItem}>
+                                        <div className={styles.fileLeft}>
+                                            <div className={styles.fileIcon}>
+                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={doc.name.endsWith('.pdf') ? '#F56565' : '#4C6EF5'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" />
+                                                </svg>
+                                            </div>
+                                            <div className={styles.uploadedFileInfo}>
+                                                <span className={styles.uploadedFileName}>{doc.name}</span>
+                                                <span className={styles.uploadedFileSize}>{doc.file ? `${(doc.file.size / 1024 / 1024).toFixed(2)} MB` : ''}</span>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={doc.selected}
+                                                onChange={() => onToggleSelect(doc.id)}
+                                                className={styles.checkbox}
+                                                disabled={isAnalyzing}
+                                            />
+                                            <button className={styles.trashBtn} disabled={isAnalyzing}>
+                                                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M2.5 4H13.5" />
+                                                    <path d="M6.5 7V11" />
+                                                    <path d="M9.5 7V11" />
+                                                    <path d="M3.5 4L4.5 13C4.5 13.55 4.95 14 5.5 14H10.5C11.05 14 11.5 13.55 11.5 13L12.5 4" />
+                                                    <path d="M6 4V2.5C6 2.22386 6.22386 2 6.5 2H9.5C9.77614 2 10 2.22386 10 2.5V4" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p style={{ textAlign: 'center', color: '#718096', marginTop: 40 }}>No previously uploaded documents found.</p>
+                        )}
                     </div>
                 )}
             </div>
+
             {isScanningPhi && (
                 <div className={styles.scanningCard}>
                     <div className={styles.scanningIcon}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" fill="white" />
                             <path d="M10.5 15.5L14.5 11.5M10.5 11.5L14.5 15.5" stroke="#4F46E5" strokeWidth="2" strokeLinecap="round" />
-                            {/* Animated sparkle or spinner effects could be added here */}
                         </svg>
                         <span className={styles.sparkle}>✨</span>
                     </div>

@@ -323,12 +323,14 @@ export async function submitQuizAttempt(
     }
 
     // Update enrollment status and score
+    // CORE CHANGE: Passing the quiz does NOT complete the course. 
+    // Attestation is required for completion.
     await prisma.enrollment.update({
         where: { id: enrollmentId },
         data: {
-            status: passed ? 'completed' : 'in_progress',
+            status: 'in_progress', // Remains in_progress until attestation
             score,
-            completedAt: passed ? new Date() : null,
+            // completedAt is NOT set here anymore
         },
     });
 

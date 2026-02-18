@@ -360,20 +360,58 @@
     margin-bottom: 2px;
 }
 
-.verifyBtn {
-    color: #4730F7;
-    font-weight: 600;
+/* Enhanced Badge Styles */
+.badgeIconWrapper {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #FFFAF0;
+    /* Light gold background */
+    border: 1px solid #FDE68A;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.tagApproved {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #EBF8FF;
+    color: #2B6CB0;
+    padding: 6px 12px;
+    border-radius: 20px;
     font-size: 13px;
-    background: none;
-    border: 1px solid #4730F7;
-    padding: 4px 12px;
-    border-radius: 4px;
+    font-weight: 600;
+}
+
+.tagCompleted {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #F0FFF4;
+    color: #2F855A;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.verifyBtn {
+    color: #4C6EF5;
+    font-weight: 600;
+    font-size: 14px;
+    background: white;
+    border: none;
+    padding: 0;
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .verifyBtn:hover {
-    background: #EEF2FF;
+    color: #3B5BDB;
+    text-decoration: underline;
 }
 
 

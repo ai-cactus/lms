@@ -32,16 +32,8 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
     };
 
     const handleViewResultClick = (courseId: string) => {
-        // Assuming there is a results page, or maybe just go to the course page which acts as result view if complete
-        // For now, let's route to the same learn page or a specific result page if exists.
-        // User asked for "View Result".
-        // In this app, /learn/[id] usually shows content. 
-        // Let's assume /learn/[id] handles completed state, or /worker/courses/[id] if that was the previous link.
-        // The previous code linked to /worker/courses/[id]. Let's stick to /learn/[id] for "Start" and maybe /worker/courses/[id] for details?
-        // Actually, "Start Course" usually implies going to the player: /learn/[id].
-        // "View Result" might imply the same if the course is done, or maybe the quiz result?
-        // Let's use /learn/[id] for both for now, but label differently.
-        router.push(`/learn/${courseId}`);
+        // Route to the worker course details page which acts as the "Result/Completion" view
+        router.push(`/worker/courses/${courseId}`);
     };
 
     return (

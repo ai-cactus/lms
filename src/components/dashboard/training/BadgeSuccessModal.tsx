@@ -12,6 +12,7 @@ interface BadgeSuccessModalProps {
     organizationName: string;
     badgeId?: string;
     issuedDate: string;
+    courseId?: string; // Optional for navigation
 }
 
 export default function BadgeSuccessModal({
@@ -20,12 +21,17 @@ export default function BadgeSuccessModal({
     courseName,
     organizationName,
     badgeId = 'LMS-104',
-    issuedDate
+    issuedDate,
+    courseId
 }: BadgeSuccessModalProps) {
     const router = useRouter();
 
     const handleDashboard = () => {
-        router.push('/worker');
+        if (courseId) {
+            router.push(`/worker/courses/${courseId}`);
+        } else {
+            router.push('/worker');
+        }
     };
 
     return (
@@ -64,7 +70,7 @@ export default function BadgeSuccessModal({
                     </div>
 
                     <button className={styles.dashboardBtn} onClick={handleDashboard}>
-                        Goto Dashboard
+                        View Course Status
                     </button>
 
                     <div className={styles.startNewLink}>

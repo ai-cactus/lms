@@ -1,13 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styles from './QuizResults.module.css';
 import Link from 'next/link';
+import AttestationModal from './AttestationModal';
+import BadgeSuccessModal from './BadgeSuccessModal';
 
 interface QuizResultsProps {
     courseId: string;
     enrollmentId: string;
-    hideActions?: boolean; // New prop
+    hideActions?: boolean;
+    showAttestation?: boolean; // Show attestation button
+    onAttestSuccess?: () => void; // Callback after successful attestation
+    onRetake?: () => void; // Callback for retake
     data?: {
-        // ... existing data types
         courseName: string;
         score: number;
         answered: number;
@@ -24,9 +28,22 @@ interface QuizResultsProps {
             explanation: string;
         }[];
     };
+    userRole?: string;
 }
 
-export default function QuizResults({ courseId, enrollmentId, hideActions = false, data }: QuizResultsProps) {
+export default function QuizResults({
+    courseId,
+    enrollmentId,
+    hideActions = false,
+    showAttestation = false,
+    onAttestSuccess,
+    onRetake,
+    data,
+    userRole = 'worker'
+}: QuizResultsProps) {
+    const [isAttestationOpen, setIsAttestationOpen] = useState(false);
+    const [isBadgeOpen, setIsBadgeOpen] = useState(false);
+
     // Use provided data or fallback for demo/empty state
     const stats = data || {
         courseName: "Course",
@@ -47,6 +64,24 @@ export default function QuizResults({ courseId, enrollmentId, hideActions = fals
     const strokeColor = stats.score >= 70 ? '#00C55E' : '#E53E3E'; // Green or Red
     const isPassed = stats.score >= 70;
 
+    const handleAttestSuccess = () => {
+        setIsAttestationOpen(false);
+        setIsBadgeOpen(true); // Open badge modal
+        if (onAttestSuccess) onAttestSuccess();
+    };
+
+    // Retake Logic
+    const attemptsUsed = (data as any)?.attemptsUsed || 1;
+    const allowedAttempts = (data as any)?.allowedAttempts || null;
+    const canRetake = !isPassed && (allowedAttempts === null || attemptsUsed < allowedAttempts);
+
+    // Callback for retake
+    const handleRetake = () => {
+        if (onRetake) {
+            onRetake();
+        }
+    };
+
     return (
         <div className={styles.container}>
             <Link href="/worker" className={styles.backLink}>
@@ -60,9 +95,33 @@ export default function QuizResults({ courseId, enrollmentId, hideActions = fals
                 <div className={styles.headerTop}>
                     <div className={styles.headerTitle}>
                         {isPassed ? 'Nice work!' : 'Keep trying!'} You completed the <span className={styles.highlight}>[{stats.courseName}]</span> quiz in [{Math.ceil(stats.time / 60)}] minutes.
+                        {!isPassed && allowedAttempts && (
+                            <div style={{ fontSize: 13, marginTop: 4, fontWeight: 400, color: '#E53E3E' }}>
+                                Attempt {attemptsUsed} of {allowedAttempts}
+                            </div>
+                        )}
                     </div>
                     {!hideActions && (
                         <div className={styles.headerActions}>
+                            {showAttestation && isPassed && (
+                                <button
+                                    className={`${styles.actionButton} ${styles.btnPrimary}`}
+                                    style={{ backgroundColor: '#4C6EF5', marginRight: 8 }}
+                                    onClick={() => setIsAttestationOpen(true)}
+                                >
+                                    Attestate
+                                </button>
+                            )}
+                            {canRetake && (
+                                <button
+                                    className={`${styles.actionButton} ${styles.btnPrimary}`}
+                                    style={{ backgroundColor: '#ED8936', marginRight: 8, borderColor: '#ED8936' }}
+                                    onClick={handleRetake}
+                                >
+                                    Retake Quiz
+                                </button>
+                            )}
+
                             <button className={`${styles.actionButton} ${styles.btnSecondary}`}>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 8 }}>
                                     <circle cx="18" cy="5" r="3"></circle>
@@ -208,6 +267,25 @@ export default function QuizResults({ courseId, enrollmentId, hideActions = fals
                     ))
                 )}
             </div>
+
+            <AttestationModal
+                isOpen={isAttestationOpen}
+                onClose={() => setIsAttestationOpen(false)}
+                enrollmentId={enrollmentId}
+                courseName={stats.courseName}
+                userName={data?.userName || 'User'}
+                userRole={userRole}
+                onSuccess={handleAttestSuccess}
+            />
+
+            <BadgeSuccessModal
+                isOpen={isBadgeOpen}
+                onClose={() => setIsBadgeOpen(false)}
+                courseName={stats.courseName}
+                organizationName="Theraptly" // TODO: Get dynamic org name if possible, or use default
+                issuedDate={new Date().toLocaleDateString()}
+                courseId={courseId}
+            />
         </div >
     );
 }

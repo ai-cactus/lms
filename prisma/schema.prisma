@@ -245,6 +245,7 @@ model QuizAttempt {
   answers      Json // Array of { questionId, selectedAnswer }
   score        Int
   timeTaken    Int? // seconds
+  attemptCount Int        @default(1)
   completedAt  DateTime   @default(now())
 
   @@unique([enrollmentId, quizId])

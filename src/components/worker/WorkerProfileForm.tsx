@@ -119,136 +119,139 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
             </Link>
 
             <div className={styles.card}>
-                <div className={styles.avatarWrapper}>
-                    {avatarUrl ? (
-                        <img src={avatarUrl} alt="Profile" className={styles.avatarImage} />
-                    ) : (
-                        <div className={styles.avatarFallback}>
-                            {formData.first_name?.[0] || user.email[0].toUpperCase()}
+                <div className={styles.profileWrapper}>
+                    <div className={styles.avatarSection}>
+                        <div className={styles.avatarLarge}>
+                            {avatarUrl ? (
+                                <img src={avatarUrl} alt="Profile" />
+                            ) : (
+                                <span>{formData.first_name?.[0] || user.email[0].toUpperCase()}</span>
+                            )}
+                            <button className={styles.editAvatarBtn} title="Change Avatar" type="button" onClick={handleAvatarClick}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                            </button>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                            />
                         </div>
-                    )}
-                    <button className={styles.editAvatarBtn} title="Change Avatar" type="button" onClick={handleAvatarClick}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                        </svg>
-                    </button>
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        accept="image/*"
-                        style={{ display: 'none' }}
-                    />
+                    </div>
+
+                    <form onSubmit={handleSubmit} className={styles.form}>
+                        <div className={styles.formGrid}>
+                            <div className={styles.fieldGroup}>
+                                <label className={styles.label}>First Name</label>
+                                <input
+                                    className={styles.input}
+                                    name="first_name"
+                                    value={formData.first_name}
+                                    onChange={handleChange}
+                                    placeholder="First Name"
+                                />
+                            </div>
+                            <div className={styles.fieldGroup}>
+                                <label className={styles.label}>Last Name</label>
+                                <input
+                                    className={styles.input}
+                                    name="last_name"
+                                    value={formData.last_name}
+                                    onChange={handleChange}
+                                    placeholder="Last Name"
+                                />
+                            </div>
+                        </div>
+
+                        <div className={styles.fieldGroup}>
+                            <label className={styles.label}>Company</label>
+                            <input
+                                className={`${styles.input} ${styles.readOnlyInput}`}
+                                value={organization?.name || ''}
+                                disabled
+                                placeholder="Company Name"
+                            />
+                        </div>
+
+                        <div className={styles.fieldGroup}>
+                            <label className={styles.label}>Email Address</label>
+                            <input
+                                className={`${styles.input} ${styles.readOnlyInput}`}
+                                value={user.email}
+                                disabled
+                            />
+                        </div>
+
+                        <div className={styles.fieldGroup}>
+                            <label className={styles.label}>Role</label>
+                            <input
+                                className={`${styles.input} ${styles.readOnlyInput}`}
+                                value={user.role === 'worker' ? 'Worker' : user.role === 'admin' ? 'Compliance Officer' : user.role}
+                                disabled
+                            />
+                        </div>
+
+                        <div className={styles.formGrid}>
+                            <div className={styles.fieldGroup}>
+                                <label className={styles.label}>State</label>
+                                <input
+                                    className={`${styles.input} ${styles.readOnlyInput}`}
+                                    value={organization?.state || ''}
+                                    disabled
+                                    placeholder="State"
+                                />
+                            </div>
+                            <div className={styles.fieldGroup}>
+                                <label className={styles.label}>Zip Code</label>
+                                <input
+                                    className={`${styles.input} ${styles.readOnlyInput}`}
+                                    value={organization?.zipCode || ''}
+                                    disabled
+                                    placeholder="Zip Code"
+                                />
+                            </div>
+                        </div>
+
+                        <div className={styles.fieldGroup}>
+                            <label className={styles.label}>Business Address</label>
+                            <input
+                                className={`${styles.input} ${styles.readOnlyInput}`}
+                                value={businessAddress}
+                                disabled
+                                placeholder="Business Address"
+                            />
+                        </div>
+
+                        {message && (
+                            <div className={`${styles.message} ${message.type === 'success' ? styles.success : styles.error}`}>
+                                {message.text}
+                            </div>
+                        )}
+
+                        <div className={styles.actions}>
+                            <button
+                                type="button"
+                                className={styles.discardBtn}
+                                onClick={() => setFormData({ first_name: user.first_name, last_name: user.last_name })}
+                                disabled={!isDirty}
+                            >
+                                Discard
+                            </button>
+                            <button
+                                type="submit"
+                                className={`${styles.saveBtn} ${isDirty ? styles.active : ''}`}
+                                disabled={!isDirty || isLoading}
+                            >
+                                {isLoading ? 'Saving...' : 'Save Changes'}
+                            </button>
+                        </div>
+                    </form>
                 </div>
 
-                {message && (
-                    <div className={`${styles.message} ${message.type === 'success' ? styles.success : styles.error}`}>
-                        {message.text}
-                    </div>
-                )}
-
-                <form onSubmit={handleSubmit} className={styles.form}>
-                    <div className={styles.row}>
-                        <div className={styles.fieldGroup}>
-                            <label className={styles.label}>First Name</label>
-                            <input
-                                className={styles.input}
-                                name="first_name"
-                                value={formData.first_name}
-                                onChange={handleChange}
-                                placeholder="First Name"
-                            />
-                        </div>
-                        <div className={styles.fieldGroup}>
-                            <label className={styles.label}>Last Name</label>
-                            <input
-                                className={styles.input}
-                                name="last_name"
-                                value={formData.last_name}
-                                onChange={handleChange}
-                                placeholder="Last Name"
-                            />
-                        </div>
-                    </div>
-
-                    <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Company</label>
-                        <input
-                            className={styles.input}
-                            value={organization?.name || ''}
-                            disabled
-                            placeholder="Company Name"
-                        />
-                    </div>
-
-                    <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Email Address</label>
-                        <input
-                            className={styles.input}
-                            value={user.email}
-                            disabled
-                        />
-                    </div>
-
-                    <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Role</label>
-                        <input
-                            className={styles.input}
-                            value={user.role === 'worker' ? 'Worker' : user.role === 'admin' ? 'Compliance Officer' : user.role}
-                            disabled
-                        />
-                    </div>
-
-                    <div className={styles.row}>
-                        <div className={styles.fieldGroup}>
-                            <label className={styles.label}>State</label>
-                            <input
-                                className={styles.input}
-                                value={organization?.state || ''}
-                                disabled
-                                placeholder="State"
-                            />
-                        </div>
-                        <div className={styles.fieldGroup}>
-                            <label className={styles.label}>Zip Code</label>
-                            <input
-                                className={styles.input}
-                                value={organization?.zipCode || ''}
-                                disabled
-                                placeholder="Zip Code"
-                            />
-                        </div>
-                    </div>
-
-                    <div className={styles.fieldGroup}>
-                        <label className={styles.label}>Business Address</label>
-                        <input
-                            className={styles.input}
-                            value={businessAddress}
-                            disabled
-                            placeholder="Business Address"
-                        />
-                    </div>
-
-                    <div className={styles.actions}>
-                        <button
-                            type="button"
-                            className={styles.discardBtn}
-                            onClick={() => setFormData({ first_name: user.first_name, last_name: user.last_name })}
-                            disabled={!isDirty}
-                        >
-                            Discard
-                        </button>
-                        <button
-                            type="submit"
-                            className={`${styles.saveBtn} ${isDirty ? styles.active : ''}`}
-                            disabled={!isDirty || isLoading}
-                        >
-                            {isLoading ? 'Saving...' : 'Save Changes'}
-                        </button>
-                    </div>
-                </form>
             </div>
 
             <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)}>
@@ -261,6 +264,6 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                     </div>
                 </div>
             </Modal>
-        </div>
+        </div >
     );
 }

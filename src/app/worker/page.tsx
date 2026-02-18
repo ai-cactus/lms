@@ -53,12 +53,16 @@ export default async function LearnerDashboard() {
         id: e.id,
         courseTitle: e.course.title,
         completedAt: e.attestedAt || e.completedAt || new Date(),
-        status: e.status
+        status: e.status,
+        score: e.score
     }));
 
     // Check if completely empty (onboarding state)
     // If no enrollments at all, show empty state MODAL on top of the dashboard.
     const showWelcomeModal = allEnrollments.length === 0;
+
+    // Check for any progress to intelligently hide welcome modal
+    const hasProgress = allEnrollments.some(e => (e.progress || 0) > 0 || e.status === 'completed' || e.status === 'attested');
 
     return (
         <div className={styles.container}>
@@ -84,6 +88,7 @@ export default async function LearnerDashboard() {
             <WorkerWelcomeModal
                 courseCount={allEnrollments.length}
                 firstCourseId={allEnrollments[0]?.courseId}
+                hasProgress={hasProgress}
             />
         </div>
     );

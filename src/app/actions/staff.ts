@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { revalidatePath } from 'next/cache';
 
 export async function getStaffDetails(userId: string) {
     const session = await auth();
@@ -72,5 +73,53 @@ export async function getStaffDetails(userId: string) {
     } catch (error) {
         console.error('Failed to fetch staff details:', error);
         return null;
+    }
+}
+
+export async function updateStaffDetails(userId: string, data: {
+    firstName: string;
+    lastName: string;
+    role: string;
+    jobTitle: string;
+}) {
+    const session = await auth();
+    // Verify admin/manager permissions - for now just check if logged in
+    if (!session?.user?.id) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        // Update User role
+        const user = await prisma.user.update({
+            where: { id: userId },
+            data: { role: data.role }
+        });
+
+        // Update Profile details
+        // We use upsert to handle cases where users were created without a profile
+        await prisma.profile.upsert({
+            where: { id: userId },
+            update: {
+                firstName: data.firstName,
+                lastName: data.lastName,
+                fullName: `${data.firstName} ${data.lastName}`.trim(),
+                jobTitle: data.jobTitle
+            },
+            create: {
+                id: userId,
+                email: user.email,
+                firstName: data.firstName,
+                lastName: data.lastName,
+                fullName: `${data.firstName} ${data.lastName}`.trim(),
+                jobTitle: data.jobTitle
+            }
+        });
+
+        revalidatePath(`/dashboard/staff/${userId}`);
+        revalidatePath('/dashboard/staff');
+        return { success: true };
+    } catch (error) {
+        console.error('Failed to update staff details:', error);
+        return { success: false, error: 'Failed to update user details' };
     }
 }

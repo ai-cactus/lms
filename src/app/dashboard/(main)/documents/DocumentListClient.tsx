@@ -101,7 +101,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                router.push(`/dashboard/courses/new?documentId=${doc.id}`);
+                                                router.push(`/dashboard/courses/create?documentId=${doc.id}`);
                                             }}
                                             style={{
                                                 backgroundColor: '#2563EB',

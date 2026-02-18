@@ -147,12 +147,12 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                 </div>
 
                 {activeTab === 'profile' ? (
-                    <div className={styles.profileContent}>
+                    <div className={styles.profileWrapper}>
                         <div className={styles.avatarSection}>
                             <div className={styles.avatarLarge}>
                                 {formData.first_name ? formData.first_name[0] : 'U'}
                                 <button className={styles.editAvatarButton}>
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M12 20h9"></path>
                                         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                                     </svg>
@@ -184,7 +184,6 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                                 </div>
                             </div>
 
-                            {/* Company - Read-only from organization for workers */}
                             <div className={styles.fieldGroup}>
                                 <label className={styles.label}>Company</label>
                                 <Input
@@ -193,7 +192,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                                     onChange={isAdmin ? handleChange : undefined}
                                     disabled={!isAdmin}
                                     className={!isAdmin ? styles.readOnlyInput : undefined}
-                                    placeholder="Your organization name"
+                                    placeholder="Your company name"
                                 />
                             </div>
 
@@ -207,55 +206,48 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                                 />
                             </div>
 
-                            {/* State & Zip Code - Read-only from organization for workers */}
-                            {!isAdmin && organizationData && (
-                                <div className={styles.formGrid}>
-                                    <div className={styles.fieldGroup}>
-                                        <label className={styles.label}>State</label>
-                                        <Input
-                                            value={organizationData.state || ''}
-                                            disabled
-                                            className={styles.readOnlyInput}
-                                        />
-                                    </div>
-                                    <div className={styles.fieldGroup}>
-                                        <label className={styles.label}>Zip Code</label>
-                                        <Input
-                                            value={organizationData.zipCode || ''}
-                                            disabled
-                                            className={styles.readOnlyInput}
-                                        />
-                                    </div>
-                                </div>
-                            )}
+                            {/* Role Field - Read-only for everyone as per user request */}
+                            <div className={styles.fieldGroup}>
+                                <label className={styles.label}>Role</label>
+                                <Input
+                                    value={formData.role === 'admin' ? 'Compliance Professional (Admin)' : 'Worker'}
+                                    disabled
+                                    className={styles.readOnlyInput}
+                                />
+                            </div>
 
-                            {/* Business Address - Read-only from organization for workers */}
-                            {!isAdmin && organizationData && (
+                            {/* State & Zip Code */}
+                            <div className={styles.formGrid}>
                                 <div className={styles.fieldGroup}>
-                                    <label className={styles.label}>Business Address</label>
+                                    <label className={styles.label}>State</label>
                                     <Input
-                                        value={organizationData.address || ''}
+                                        value={organizationData?.state || ''}
                                         disabled
                                         className={styles.readOnlyInput}
+                                        placeholder="Your state"
                                     />
                                 </div>
-                            )}
-
-                            {/* Role field - only for admins */}
-                            {isAdmin && (
                                 <div className={styles.fieldGroup}>
-                                    <label className={styles.label}>Role</label>
-                                    <Select
-                                        value={formData.role}
-                                        onChange={(value) => setFormData(prev => ({ ...prev, role: value as 'admin' | 'worker' }))}
-                                        options={[
-                                            { label: 'Compliance Professional (Admin)', value: 'admin' },
-                                            { label: 'Worker', value: 'worker' }
-                                        ]}
-                                        disabled={true}
+                                    <label className={styles.label}>Zip Code</label>
+                                    <Input
+                                        value={organizationData?.zipCode || ''}
+                                        disabled
+                                        className={styles.readOnlyInput}
+                                        placeholder="Your zip code"
                                     />
                                 </div>
-                            )}
+                            </div>
+
+                            {/* Business Address */}
+                            <div className={styles.fieldGroup}>
+                                <label className={styles.label}>Business Address</label>
+                                <Input
+                                    value={organizationData?.address || ''}
+                                    disabled
+                                    className={styles.readOnlyInput}
+                                    placeholder="Your business address"
+                                />
+                            </div>
 
                             {message && (
                                 <div className={`${styles.message} ${styles[message.type]}`}>
@@ -265,7 +257,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
 
                             <div className={styles.actions}>
                                 <Button
-                                    variant="ghost"
+                                    variant="outline"
                                     type="button"
                                     onClick={(e) => {
                                         e.preventDefault();

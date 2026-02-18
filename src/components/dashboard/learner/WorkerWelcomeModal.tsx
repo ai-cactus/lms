@@ -10,9 +10,10 @@ import { useModalContext } from '@/components/ui/ModalContext';
 interface WorkerWelcomeModalProps {
     courseCount: number;
     firstCourseId?: string;
+    hasProgress?: boolean; // New prop to check if user already started something
 }
 
-export default function WorkerWelcomeModal({ courseCount, firstCourseId }: WorkerWelcomeModalProps) {
+export default function WorkerWelcomeModal({ courseCount, firstCourseId, hasProgress }: WorkerWelcomeModalProps) {
     const { registerModal, unregisterModal, requestOpen, isModalOpen, dismissModal, shouldShowModal } = useModalContext();
     const modalId = 'workerWelcome';
 
@@ -21,28 +22,26 @@ export default function WorkerWelcomeModal({ courseCount, firstCourseId }: Worke
 
     useEffect(() => {
         setHasMounted(true);
-        // Register with lower priority (5) than OrganizationActivation (10)
         registerModal(modalId, 5);
 
-        // Check if we should show it
-        if (courseCount > 0 && shouldShowModal(modalId)) {
-            // Also check legacy local storage if needed, but ModalContext handles its own keys
-            // If we want to migrate legacy key:
-            const legacySeen = localStorage.getItem('workerWelcomeSeen');
-            if (!legacySeen) {
-                requestOpen(modalId);
-            } else {
-                // Migrate to new system if we want, or just respect legacy by not requesting
-            }
+        // Intelligent Check: only show if they have courses but HAVEN'T started any yet
+        // AND context says we should show it.
+        const legacySeen = typeof window !== 'undefined' ? localStorage.getItem('workerWelcomeSeen') : null;
+
+        if (courseCount > 0 && !hasProgress && !legacySeen && shouldShowModal(modalId)) {
+            requestOpen(modalId);
         }
 
         return () => unregisterModal(modalId);
-    }, [courseCount, registerModal, unregisterModal, requestOpen, shouldShowModal, modalId]);
+    }, [courseCount, hasProgress, registerModal, unregisterModal, requestOpen, shouldShowModal, modalId]);
 
     const handleClose = () => {
         // Dismiss forever when closed
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('workerWelcomeSeen', 'true');
+            localStorage.setItem(`modal_dismissed_${modalId}`, 'forever');
+        }
         dismissModal(modalId, -1);
-        localStorage.setItem('workerWelcomeSeen', 'true'); // Keep legacy key for safety
     };
 
     const handleStart = () => {

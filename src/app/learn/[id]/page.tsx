@@ -94,6 +94,9 @@ export default function LearnPage() {
     // Quiz unlocked flag
     const [quizUnlocked, setQuizUnlocked] = useState(false);
 
+    // Track if user just finished quiz in this session
+    const [justFinished, setJustFinished] = useState(false);
+
     // Initial Fetch
     useEffect(() => {
         const fetchCourseData = async () => {
@@ -332,6 +335,9 @@ export default function LearnPage() {
             const result = await res.json();
             setQuizResults(result);
             setQuizStep('review');
+            if (result.passed) {
+                setJustFinished(true);
+            }
         } catch (err) {
             console.error(err);
             alert('Failed to submit quiz');
@@ -412,9 +418,24 @@ export default function LearnPage() {
                                     correct: quizResults.correct || quizResults.correctCount,
                                     wrong: quizResults.wrong || (quizResults.totalQuestions - quizResults.correctCount),
                                     time: quizResults.time || 0,
-                                    questions: quizResults.questions || []
-                                }}
+                                    questions: quizResults.questions || [],
+                                    attemptsUsed: quizResults.attemptsUsed,
+                                    allowedAttempts: quizResults.allowedAttempts
+                                } as any}
                                 hideActions={enrollment?.status === 'completed' || enrollment?.status === 'attested'}
+                                showAttestation={justFinished && userData?.role === 'worker' && quizResults.passed}
+                                userRole={userData?.role}
+                                onAttestSuccess={() => {
+                                    setJustFinished(false);
+                                    setEnrollment(prev => prev ? { ...prev, status: 'attested' } : prev);
+                                }}
+                                onRetake={() => {
+                                    setQuizStep('intro');
+                                    setCurrentQuestionIndex(0);
+                                    setQuizAnswers({});
+                                    setQuizResults(null);
+                                    setJustFinished(false);
+                                }}
                             />
                         </div>
                     ) : isQuizIndex ? (

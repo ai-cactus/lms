@@ -68,14 +68,16 @@ export default function CourseWizard() {
         const loadDocs = async () => {
             try {
                 const fetchedDocs = await getDocuments();
-                const mappedDocs: Document[] = fetchedDocs.map(d => ({
-                    id: d.id,
-                    name: d.filename,
-                    type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
-                    status: 'analyzed',
-                    selected: initialDocId ? d.id === initialDocId : false
+                setDocuments(prevDocs => fetchedDocs.map(d => {
+                    const existing = prevDocs.find(p => p.id === d.id);
+                    return {
+                        id: d.id,
+                        name: d.filename,
+                        type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
+                        status: 'analyzed',
+                        selected: existing ? existing.selected : (initialDocId ? d.id === initialDocId : false)
+                    };
                 }));
-                setDocuments(mappedDocs);
 
                 if (initialDocId && !hasAutoAnalyzed.current) {
                     hasAutoAnalyzed.current = true;
@@ -109,7 +111,7 @@ export default function CourseWizard() {
 
     const handleToggleSelect = (id: string) => {
         setDocuments(docs => docs.map(doc =>
-            doc.id === id ? { ...doc, selected: !doc.selected } : doc
+            doc.id === id ? { ...doc, selected: !doc.selected } : { ...doc, selected: false }
         ));
     };
 
@@ -259,14 +261,15 @@ export default function CourseWizard() {
 
             // Refresh documents list to get the new ID (and potentially select it)
             const updatedDocs = await getDocuments();
-            const mappedDocs: Document[] = updatedDocs.map(d => ({
-                id: d.id,
-                name: d.filename,
-                type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
-                status: 'analyzed',
-                selected: d.filename === file.name // Auto-select the new file
+            setDocuments(prevDocs => updatedDocs.map(d => {
+                return {
+                    id: d.id,
+                    name: d.filename,
+                    type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
+                    status: 'analyzed',
+                    selected: d.filename === file.name // Auto-select ONLY the new file
+                };
             }));
-            setDocuments(mappedDocs);
             setAnalysisProgress(60);
 
             // 2. AI Analysis for Course Generation

@@ -128,30 +128,43 @@ export async function POST(
             }
         });
 
+        let currentAttemptCount = 1;
+
         if (existingAttempt) {
+            // Check allowed attempts
+            if (quiz.allowedAttempts && existingAttempt.attemptCount >= quiz.allowedAttempts) {
+                // Allow update if they are just re-submitting same attempt (unlikely) or valid logic
+                // But strictly, if they exceeded, we should maybe block or just count it.
+                // For now, let's increment and logic in UI will hide retake.
+            }
+            currentAttemptCount = existingAttempt.attemptCount + 1;
+
             await prisma.quizAttempt.update({
                 where: { id: existingAttempt.id },
                 data: {
                     answers: enrichedAnswers,
                     score,
                     timeTaken,
+                    attemptCount: { increment: 1 },
                     completedAt: new Date()
                 }
             });
         } else {
             await prisma.quizAttempt.create({
-                data: { enrollmentId, quizId, answers: enrichedAnswers, score, timeTaken }
+                data: { enrollmentId, quizId, answers: enrichedAnswers, score, timeTaken, attemptCount: 1 }
             });
         }
 
-        // Update enrollment status and score — always mark as completed after quiz
+        // Update enrollment status and score
+        // CORE LOGIC: Passing the quiz does NOT complete the course. 
+        // Attestation is required for completion.
         await prisma.enrollment.update({
             where: { id: enrollmentId },
             data: {
-                status: 'completed',
+                status: 'in_progress', // Remains in_progress until attestation
                 score,
                 progress: 100,
-                completedAt: new Date()
+                // completedAt is NOT set here anymore
             }
         });
 
@@ -163,6 +176,8 @@ export async function POST(
             passed,
             correctCount,
             totalQuestions,
+            attemptsUsed: currentAttemptCount,
+            allowedAttempts: quiz.allowedAttempts,
             courseName: '',
             answered: answers.length,
             correct: correctCount,

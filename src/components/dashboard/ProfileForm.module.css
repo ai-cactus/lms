@@ -71,32 +71,42 @@
     background: white;
 }
 
-.profileContent {
+.profileWrapper {
     display: flex;
-    gap: 48px;
-    padding: 32px;
+    gap: 64px;
+    padding: 40px;
+    align-items: flex-start;
 }
 
 .avatarSection {
     flex-shrink: 0;
-    width: 200px;
+    width: 120px;
     display: flex;
     justify-content: center;
+    padding-top: 8px;
 }
 
 .avatarLarge {
-    width: 100px;
-    height: 100px;
+    width: 120px;
+    height: 120px;
     border-radius: 50%;
-    background: var(--primary);
-    color: white;
-    font-size: 36px;
+    background: #e2e8f0;
+    /* Default avatar bg */
+    color: #64748b;
+    font-size: 48px;
     font-weight: 600;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.avatarLarge img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
 }
 
 .editAvatarButton {
@@ -106,27 +116,25 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: var(--primary-dark, #2563eb);
-    border: 2px solid white;
+    background: var(--primary, #2563eb);
+    border: 3px solid white;
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .editAvatarButton:hover {
     transform: scale(1.1);
-}
-
-.editAvatarButton:hover {
-    transform: scale(1.1);
+    background: var(--primary-dark, #1d4ed8);
 }
 
 .form {
     flex: 1;
-    max-width: 600px;
+    max-width: 800px;
     display: flex;
     flex-direction: column;
 }
@@ -139,14 +147,19 @@
 }
 
 @media (max-width: 768px) {
-    .profileContent {
+    .profileWrapper {
         flex-direction: column;
         align-items: center;
-        gap: 24px;
+        gap: 32px;
+        padding: 24px;
     }
 
     .formGrid {
         grid-template-columns: 1fr;
+    }
+
+    .avatarSection {
+        width: auto;
     }
 }
 
@@ -157,15 +170,22 @@
 .label {
     display: block;
     font-size: 14px;
-    font-weight: 500;
-    color: var(--text-primary);
+    font-weight: 600;
+    color: #1a202c;
+    /* darker text for label */
     margin-bottom: 8px;
 }
 
+/* Custom styling for inputs to look like "wrappers" if needed, 
+   but standard Input component usually handles this. 
+   We added readOnlyInput class handling below. */
+
 .readOnlyInput {
-    background-color: var(--bg-secondary);
-    color: var(--text-secondary);
+    background-color: #f7fafc;
+    /* lighter gray */
+    color: #718096;
     cursor: not-allowed;
+    border-color: #e2e8f0;
 }
 
 .message {
@@ -176,38 +196,60 @@
 }
 
 .message.success {
-    background-color: rgba(16, 185, 129, 0.1);
-    color: var(--success);
-    border: 1px solid rgba(16, 185, 129, 0.2);
+    background-color: #f0fdf4;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
 }
 
 .message.error {
-    background-color: rgba(239, 68, 68, 0.1);
-    color: var(--error);
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    background-color: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
 }
 
 .actions {
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
-    border-top: 1px solid var(--border-color);
-    padding-top: 24px;
-    margin-top: auto;
+    gap: 16px;
+    margin-top: 32px;
+    padding-top: 0;
+    border-top: none;
+    /* Removed border as per design */
 }
 
 .saveButton {
-    min-width: 120px;
+    min-width: 140px;
+    background-color: #e2e8f0;
+    /* Default disabled/secondary look? No, design has it filled or secondary. */
+    /* If variant is primary it will pick up primary styles. 
+       Design shows "Save Changes" as gray/disabled if no changes, or blue if changes?
+       Screenshot shows "Save Changes" as gray filled. 
+       "Discard" is outline purple? 
+       Wait, design screenshot:
+       Discard: Purple/Blue text, White bg, Purple border.
+       Save Changes: Light Gray bg, Dark Gray text. (Likely disabled state).
+    */
 }
 
+/* Override button styles for this specific form to match design */
 .discardButton {
+    border: 1px solid var(--primary);
     color: var(--primary);
-    font-weight: 500;
+    font-weight: 600;
+    padding: 10px 24px;
+    height: auto;
+    border-radius: 6px;
 }
 
 .discardButton:hover {
-    background: var(--bg-secondary);
-    color: var(--primary-dark);
+    background: #f0f9ff;
+}
+
+.saveButton {
+    font-weight: 600;
+    padding: 10px 24px;
+    height: auto;
+    border-radius: 6px;
 }
 
 /* Modal styles */
@@ -217,9 +259,6 @@
 }
 
 .modalIcon {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
     width: 64px;
     height: 64px;
     border-radius: 50%;
