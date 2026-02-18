@@ -318,7 +318,6 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
             error: error.message
         };
     }
-    }
 }
 
 export async function analyzeStoredDocument(documentId: string): Promise<AnalyzedMetadata> {
