@@ -2,6 +2,8 @@ tunnel: d2f87791-8003-45d9-a8f3-1de7c220601a
 credentials-file: /home/homepc/.cloudflared/d2f87791-8003-45d9-a8f3-1de7c220601a.json
 
 ingress:
-  - hostname: staging-lms.theraptly.com
+  - hostname: lms.theraptly.com
     service: http://localhost:3000
+  - hostname: staging-lms.theraptly.com
+    service: http://localhost:3001
   - service: http_status:404
