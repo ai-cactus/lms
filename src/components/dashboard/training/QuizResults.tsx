@@ -16,6 +16,7 @@ interface QuizResultsProps {
     data?: {
         courseName: string;
         score: number;
+        passingScore?: number;
         answered: number;
         correct: number;
         wrong: number;
@@ -63,8 +64,9 @@ export default function QuizResults({
     const radius = 50;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (stats.score / 100) * circumference;
-    const strokeColor = stats.score >= 70 ? '#00C55E' : '#E53E3E'; // Green or Red
-    const isPassed = stats.score >= 70;
+    const passingScore = (data as any)?.passingScore || 70;
+    const isPassed = stats.score >= passingScore;
+    const strokeColor = isPassed ? '#00C55E' : '#E53E3E'; // Green or Red
 
     const handleAttestSuccess = () => {
         setIsAttestationOpen(false);

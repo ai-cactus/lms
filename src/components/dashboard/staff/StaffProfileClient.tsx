@@ -184,7 +184,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                                         <td>
                                             {/* Logic for badges based on screenshots */}
                                             {/* Logic for badges based on screenshots */}
-                                            {(enrollment.status === 'completed' || enrollment.progress === 100) && enrollment.score >= 70 ? (
+                                            {(enrollment.status === 'completed' || enrollment.progress === 100) && enrollment.score >= (enrollment.passingScore || 70) ? (
                                                 <span className={`${styles.badge} ${styles.badgePassed}`}>
                                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                                         <polyline points="20 6 9 17 4 12"></polyline>
@@ -204,11 +204,15 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                                                     <span style={{ fontSize: '12px', color: '#718096' }}>In Progress</span>
                                                     {enrollment.quizAttempts && (
                                                         <span style={{ fontSize: '10px', color: '#A0AEC0', marginTop: '2px' }}>
-                                                            Attempt {enrollment.quizAttempts[0]
-                                                                ? (enrollment.quizAttempts[0].timeTaken === null
-                                                                    ? enrollment.quizAttempts[0].attemptCount
-                                                                    : enrollment.quizAttempts[0].attemptCount + 1)
-                                                                : 1}
+                                                            Attempt {Math.min(
+                                                                enrollment.quizAttempts[0]
+                                                                    ? (enrollment.quizAttempts[0].timeTaken === null
+                                                                        ? enrollment.quizAttempts[0].attemptCount
+                                                                        : enrollment.quizAttempts[0].attemptCount + 1)
+                                                                    : 1,
+                                                                enrollment.allowedAttempts || 99
+                                                            )}
+                                                            {enrollment.allowedAttempts && ` of ${enrollment.allowedAttempts}`}
                                                         </span>
                                                     )}
                                                 </div>

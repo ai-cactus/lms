@@ -164,7 +164,7 @@ export default function LearnPage() {
                     // Course completed or quiz taken (and finished) — lock to results view only
                     // But if status is 'in_progress' (e.g. retake), allow them to proceed to Intro/Active.
                     const resultsData = data.quizResultsData || {
-                        passed: (data.enrollment.score || 0) >= 70,
+                        passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
                         score: data.enrollment.score || 0,
                         totalQuestions: 0,
                         correctCount: 0,
@@ -503,7 +503,8 @@ export default function LearnPage() {
                                     time: quizResults.time || 0,
                                     questions: quizResults.questions || [],
                                     attemptsUsed: quizResults.attemptsUsed,
-                                    allowedAttempts: quizResults.allowedAttempts
+                                    allowedAttempts: quizResults.allowedAttempts,
+                                    passingScore: course.quiz?.passingScore
                                 } as any}
                                 hideActions={enrollment?.status === 'completed' || enrollment?.status === 'attested'}
                                 showAttestation={justFinished && userData?.role === 'worker' && quizResults.passed}
@@ -553,7 +554,9 @@ export default function LearnPage() {
                                                     Passing score: {course.quiz?.passingScore}%
                                                     {course.quiz?.allowedAttempts && (
                                                         <span style={{ display: 'block', marginTop: 8, color: '#E53E3E', fontWeight: 600 }}>
-                                                            Attempt {(enrollment?.quizAttempts?.[0]?.attemptCount || 0) + 1} of {course.quiz.allowedAttempts}
+                                                            {((enrollment?.quizAttempts?.[0]?.attemptCount || 0) >= course.quiz.allowedAttempts)
+                                                                ? `All ${course.quiz.allowedAttempts} attempts used`
+                                                                : `Attempt ${(enrollment?.quizAttempts?.[0]?.attemptCount || 0) + 1} of ${course.quiz.allowedAttempts}`}
                                                         </span>
                                                     )}
                                                 </p>

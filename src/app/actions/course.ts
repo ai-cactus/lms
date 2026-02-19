@@ -822,16 +822,39 @@ export async function retakeQuiz(enrollmentId: string) {
     }
 
     const enrollment = await prisma.enrollment.findUnique({
-        where: { id: enrollmentId }
+        where: { id: enrollmentId },
+        include: {
+            course: {
+                include: {
+                    lessons: {
+                        include: { quiz: true }
+                    }
+                }
+            },
+            quizAttempts: {
+                orderBy: { completedAt: 'desc' },
+                take: 1
+            }
+        }
     });
 
     if (!enrollment || enrollment.userId !== session.user.id) {
         throw new Error('Enrollment not found or unauthorized');
     }
 
+    // Check allowed attempts
+    const lastLesson = enrollment.course.lessons[enrollment.course.lessons.length - 1];
+    const quiz = lastLesson?.quiz;
+    const latestAttempt = enrollment.quizAttempts[0];
+
+    if (quiz && quiz.allowedAttempts) {
+        const attemptsUsed = latestAttempt?.attemptCount || 0;
+        if (attemptsUsed >= quiz.allowedAttempts) {
+            throw new Error('No attempts remaining');
+        }
+    }
+
     // Reset status to in_progress and clear score/completion time
-    // We do NOT delete old attempts (they are in QuizAttempt model)
-    // But we reset the "current" enrollment state so the UI shows the quiz again.
     await prisma.enrollment.update({
         where: { id: enrollmentId },
         data: {

@@ -17,7 +17,13 @@ export async function getStaffDetails(userId: string) {
                 profile: true,
                 enrollments: {
                     include: {
-                        course: true,
+                        course: {
+                            include: {
+                                lessons: {
+                                    include: { quiz: true }
+                                }
+                            }
+                        },
                         quizAttempts: {
                             orderBy: { completedAt: 'desc' },
                             take: 1
@@ -34,15 +40,16 @@ export async function getStaffDetails(userId: string) {
 
         // Calculate Stats
         const totalCourses = user.enrollments.length || 0;
-        const completedCourses = user.enrollments.filter(e => e.status === 'completed').length || 0;
+        const completedCourses = user.enrollments.filter(e => {
+            const passingScore = e.course.lessons.find(l => l.quiz)?.quiz?.passingScore || 70;
+            return (e.status === 'completed' || e.status === 'attested') || (e.progress === 100 && (e.score || 0) >= passingScore);
+        }).length || 0;
 
-        // Assuming 'failed' status or score threshold. 
-        // A failed course is one where they took the quiz (progress 100) but didn't pass (score < 70)
-        // OR explicit 'failed' status if used.
         const failedCourses = user.enrollments.filter(e => {
             const isFinished = e.status === 'completed' || e.progress === 100;
             const hasScore = e.score !== null;
-            return isFinished && hasScore && (e.score || 0) < 70;
+            const passingScore = e.course.lessons.find(l => l.quiz)?.quiz?.passingScore || 70;
+            return isFinished && hasScore && (e.score || 0) < passingScore;
         }).length || 0;
 
         // Active courses are those in progress but NOT failed yet (or failed but we want to count them as active? usually specific bucket)
@@ -74,7 +81,8 @@ export async function getStaffDetails(userId: string) {
                 score: e.score,
                 enrolledAt: e.startedAt,
                 completedAt: e.completedAt,
-
+                quizAttempts: e.quizAttempts,
+                allowedAttempts: e.course.lessons.find(l => l.quiz)?.quiz?.allowedAttempts || null
             }))
         };
     } catch (error) {
@@ -214,7 +222,8 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
             userName: enrollment.user.profile?.fullName || enrollment.user.email,
             questions: questions,
             attemptsUsed: latestAttempt.attemptCount,
-            allowedAttempts: quiz.allowedAttempts
+            allowedAttempts: quiz.allowedAttempts,
+            passingScore: quiz.passingScore
         };
 
     } catch (error) {
