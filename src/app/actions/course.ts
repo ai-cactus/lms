@@ -692,3 +692,159 @@ export async function attestCourse(enrollmentId: string, signature: string, role
     revalidatePath(`/learn/${enrollment.courseId}`);
     return { success: true };
 }
+
+// Start a course (mark as in_progress)
+export async function startCourse(courseId: string) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        throw new Error('Unauthorized');
+    }
+
+    const enrollment = await prisma.enrollment.findFirst({
+        where: {
+            courseId: courseId,
+            userId: session.user.id
+        }
+    });
+
+    if (!enrollment) {
+        // Should ideally be enrolled already by assignment, but strictly speaking we could auto-enroll if open?
+        // For now, assume assignment exists as per flow.
+        throw new Error('Enrollment not found');
+    }
+
+    if (enrollment.status === 'enrolled' || enrollment.status === 'assigned') {
+        await prisma.enrollment.update({
+            where: { id: enrollment.id },
+            data: {
+                status: 'in_progress',
+                progress: enrollment.progress === 0 ? 1 : enrollment.progress, // Ensure at least 1% to show in progress
+                startedAt: enrollment.startedAt || new Date()
+            }
+        });
+
+        revalidatePath('/dashboard/worker');
+        revalidatePath(`/worker/courses/${courseId}`);
+    }
+
+    return { success: true };
+}
+
+// Update quiz questions (Admin)
+export async function updateQuizQuestions(courseId: string, questions: {
+    question: string;
+    options: string[];
+    answer: number;
+    type?: string;
+}[]) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        throw new Error('Unauthorized');
+    }
+
+    const course = await prisma.course.findUnique({
+        where: { id: courseId },
+        include: { lessons: { include: { quiz: true } } }
+    });
+
+    if (!course || course.createdBy !== session.user.id) {
+        throw new Error('Unauthorized or Course not found');
+    }
+
+    // Find the quiz. Assuming one quiz per course for now or attached to the last lesson.
+    // In createFullCourse, we attach quiz to the last lesson.
+    // Let's find the quiz ID.
+    const lessonWithQuiz = course.lessons.find(l => l.quiz);
+    if (!lessonWithQuiz || !lessonWithQuiz.quiz) {
+        throw new Error('Quiz not found in this course');
+    }
+    const quizId = lessonWithQuiz.quiz.id;
+
+    // Transaction to replace questions
+    await prisma.$transaction(async (tx) => {
+        // Delete existing questions
+        await tx.question.deleteMany({
+            where: { quizId: quizId }
+        });
+
+        // Create new questions
+        if (questions.length > 0) {
+            await tx.question.createMany({
+                data: questions.map((q, index) => ({
+                    quizId: quizId,
+                    text: q.question,
+                    type: q.type || 'multiple_choice',
+                    options: q.options,
+                    correctAnswer: q.options[q.answer],
+                    order: index
+                }))
+            });
+        }
+    });
+
+    revalidatePath(`/learn/${courseId}`);
+    return { success: true };
+}
+
+// Update lesson content (Admin)
+export async function updateLessonContent(lessonId: string, content: string, title?: string) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        throw new Error('Unauthorized');
+    }
+
+    const lesson = await prisma.lesson.findUnique({
+        where: { id: lessonId },
+        include: { course: true }
+    });
+
+    if (!lesson || lesson.course.createdBy !== session.user.id) {
+        throw new Error('Unauthorized or Lesson not found');
+    }
+
+    await prisma.lesson.update({
+        where: { id: lessonId },
+        data: {
+            content,
+            title: title || lesson.title
+        }
+    });
+
+    revalidatePath(`/learn/${lesson.courseId}`);
+    return { success: true };
+}
+
+// Retake a quiz (reset status to in_progress)
+export async function retakeQuiz(enrollmentId: string) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        throw new Error('Unauthorized');
+    }
+
+    const enrollment = await prisma.enrollment.findUnique({
+        where: { id: enrollmentId }
+    });
+
+    if (!enrollment || enrollment.userId !== session.user.id) {
+        throw new Error('Enrollment not found or unauthorized');
+    }
+
+    // Reset status to in_progress and clear score/completion time
+    // We do NOT delete old attempts (they are in QuizAttempt model)
+    // But we reset the "current" enrollment state so the UI shows the quiz again.
+    await prisma.enrollment.update({
+        where: { id: enrollmentId },
+        data: {
+            status: 'in_progress',
+            score: null,
+            completedAt: null,
+            attestedAt: null,
+            attestationSignature: null,
+            // progress: 100 // Keep progress at 100 if they finished lessons? 
+            // Actually, keep progress as is (likely 100 or close).
+        }
+    });
+
+    revalidatePath(`/learn/${enrollment.courseId}`);
+    return { success: true };
+}

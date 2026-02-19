@@ -139,11 +139,41 @@ export default function CourseWizard() {
             // Document Step - Validation check
             const selectedDoc = documents.find(d => d.selected);
             if (!selectedDoc) {
-                // Should be blocked by isNextDisabled, but safe check
                 return;
             }
-            // Documents loaded from DB are already safe.
-            setCurrentStep(currentStep + 1);
+
+            // Trigger analysis for the selected document if we haven't already populated data from it
+            // Or just always re-analyze to be safe/robust?
+            // Let's re-analyze to ensure formData matches the selected doc.
+            setIsAnalyzing(true);
+            setAnalysisProgress(30);
+
+            try {
+                const result = await analyzeStoredDocument(selectedDoc.id);
+                setAnalysisProgress(100);
+
+                if (result.error) {
+                    console.error("Analysis failed:", result.error);
+                    // Decide if we should block or just warn?
+                    // For now, let's proceed but maybe show a toast? 
+                    // Or just fall back to placeholders which the user can edit.
+                } else {
+                    setFormData(prev => ({
+                        ...prev,
+                        title: result.title,
+                        description: result.description,
+                        objectives: result.objectives,
+                        duration: result.duration,
+                        quizTitle: result.quizTitle
+                    }));
+                }
+            } catch (err) {
+                console.error("Error analyzing stored doc:", err);
+            } finally {
+                setIsAnalyzing(false);
+                setAnalysisProgress(0);
+                setCurrentStep(currentStep + 1);
+            }
             return;
         }
 
@@ -371,9 +401,48 @@ export default function CourseWizard() {
 
     const isNextDisabled = () => {
         if (currentStep === 1 && !formData.category) return true;
-        if (currentStep === 2 && (!documents.some(d => d.selected) || isAnalyzing || isScanningPhi)) return true;
-        if (currentStep === 3 && !formData.title) return true;
-        if (currentStep === 4 && !formData.quizTitle) return true;
+
+        if (currentStep === 2) {
+            // Must have a selected document and not be processing
+            if (!documents.some(d => d.selected)) return true;
+            if (isAnalyzing || isScanningPhi) return true;
+            return false;
+        }
+
+        if (currentStep === 3) {
+            // Title, Description, and at least 3 objectives required
+            if (!formData.title?.trim()) return true;
+            if (!formData.description?.trim()) return true;
+            if (!formData.duration) return true;
+            if (!formData.notesCount) return true;
+            if (!formData.objectives || formData.objectives.length < 3) return true;
+            // Check for empty objectives
+            if (formData.objectives.some(obj => !obj.trim())) return true;
+            return false;
+        }
+
+        if (currentStep === 4) {
+            if (!formData.quizTitle?.trim()) return true;
+            if (!formData.quizQuestionCount) return true;
+            if (!formData.quizDuration) return true;
+            // Validate pass mark (must be present and valid number)
+            const passMark = parseInt(formData.quizPassMark?.replace('%', '') || '0');
+            if (!formData.quizPassMark || isNaN(passMark) || passMark <= 0) return true;
+            return false;
+        }
+
+        if (currentStep === 5) {
+            // Must have generated content to proceed
+            if (!generatedContent?.modules || generatedContent.modules.length === 0) return true;
+            return false;
+        }
+
+        if (currentStep === 6) {
+            // Must have quiz questions
+            if (!generatedContent?.quiz || generatedContent.quiz.length === 0) return true;
+            return false;
+        }
+
         return false;
     };
 

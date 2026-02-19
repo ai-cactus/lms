@@ -14,7 +14,7 @@ export default async function DashboardPage() {
     if (!session?.user) redirect('/login');
 
     const role = session.user.role;
-    if (role === 'worker') redirect('/dashboard/learner');
+    if (role === 'worker') redirect('/worker');
 
     // Fetch courses and stats in parallel
     const [courses, stats] = await Promise.all([
@@ -100,7 +100,7 @@ export default async function DashboardPage() {
             <MyCoursesTable courses={courses} maxItems={5} />
 
             {/* Empty State Modal */}
-            <DashboardEmptyState isOpen={totalCourses === 0} />
+            <DashboardEmptyState totalCourses={totalCourses} />
         </div>
     );
 }

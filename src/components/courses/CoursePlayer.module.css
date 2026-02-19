@@ -3,7 +3,7 @@
     display: flex;
     height: 100vh;
     width: 100%;
-    background: #F8F7F4;
+    background: var(--background-secondary);
     color: #1a1a1a;
     overflow: hidden;
     font-family: var(--font-body, 'Inter', sans-serif);
@@ -21,12 +21,12 @@
     padding: 24px 12px;
     gap: 12px;
     border-right: 1px solid #E8E6E1;
-    background: #FAFAF8;
+    background: var(--background);
     flex-shrink: 0;
     height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
-    z-index: 20;
+    z-index: 60;
 }
 
 .rail::-webkit-scrollbar {
@@ -74,8 +74,8 @@
 }
 
 .modThumbActive {
-    border-color: #1a1a1a;
-    box-shadow: 0 0 0 1px #1a1a1a, 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary), 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .modThumbDone {
@@ -99,7 +99,7 @@
 }
 
 .modThumbActive .modThumbAccent {
-    background: #1a1a1a;
+    background: var(--primary);
     width: 40px;
 }
 
@@ -230,7 +230,7 @@
 
 .toggleBtnActive {
     background: white;
-    color: #1a1a1a;
+    color: var(--primary);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
@@ -245,7 +245,7 @@
 
 /* Force Logo Color */
 .railLogo svg path {
-    fill: #1a1a1a !important;
+    fill: var(--primary) !important;
 }
 
 /* =========================================
@@ -264,12 +264,14 @@
 
 .slideCard {
     width: 100%;
-    max-width: 900px;
-    aspect-ratio: 16/9;
+    max-width: 800px;
+    /* aspect-ratio: 16/9; Remove fixed aspect ratio */
+    min-height: 60vh;
     background: white;
     border-radius: 16px;
     border: 1px solid #E8E6E1;
-    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 24px 48px -12px rgba(0, 0, 0, 0.1);
+    /* Match previous articlePaper shadow */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.05);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -278,17 +280,31 @@
 
 .slideAccent {
     height: 4px;
-    background: linear-gradient(90deg, #1a1a1a 0%, #4B5563 100%);
-    /* Elegant Dark */
+    background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
     flex-shrink: 0;
 }
 
 .slideInner {
     flex: 1;
-    padding: 40px 48px;
+    padding: 64px 80px;
+    /* Increased padding to match article look */
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+/* ... existing styles ... */
+
+.articlePaper {
+    max-width: 800px;
+    margin: 0 auto;
+    background: transparent;
+    padding: 0;
+    /* Remove card padding */
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
+    margin-bottom: 80px;
 }
 
 .slideMeta {
@@ -313,32 +329,37 @@
 }
 
 .slideTitle {
-    font-size: 32px;
+    font-size: 42px;
     font-weight: 800;
-    color: #111827;
-    line-height: 1.2;
+    color: var(--text-primary);
+    line-height: 1.1;
     margin-bottom: 24px;
-    letter-spacing: -0.02em;
-}
-
-.slideDivider {
-    height: 1px;
-    background: #F3F4F6;
-    margin-bottom: 32px;
-    flex-shrink: 0;
+    letter-spacing: -0.04em;
 }
 
 .slideBody {
     flex: 1;
     overflow-y: auto;
-    font-size: 20px;
-    font-weight: 450;
-    line-height: 1.7;
-    color: #374151;
+    font-size: 19px;
+    font-weight: 400;
+    line-height: 1.8;
+    color: var(--text-secondary);
     overflow-wrap: break-word;
-    word-wrap: break-word;
-    word-break: break-word;
-    white-space: normal;
+    /* Allows long words to break if they overflow */
+    word-break: normal !important;
+    /* Standard word breaking */
+    hyphens: none !important;
+    /* Prevent hyphenation */
+    white-space: normal !important;
+    font-family: 'Inter', sans-serif;
+}
+
+.slideBody * {
+    hyphens: none !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    text-wrap: pretty !important;
+    text-align: left !important;
 }
 
 /* Hide duplicate title in body if it's the first element */
@@ -394,8 +415,8 @@
 
 .navBtn:hover:not(:disabled) {
     transform: translateY(-50%) scale(1.1);
-    border-color: #1a1a1a;
-    color: #1a1a1a;
+    border-color: var(--primary);
+    color: var(--primary);
     box-shadow: 0 8px 12px rgba(0, 0, 0, 0.1);
 }
 
@@ -421,19 +442,11 @@
     height: 100%;
     overflow-y: auto;
     padding: 48px 24px;
-    background: #F8F7F4;
+    background: var(--background-secondary);
     scroll-behavior: smooth;
-    /* Smooth scrolling for keyboard nav */
 }
 
-.articlePaper {
-    max-width: 720px;
-    /* Slightly wider */
-    margin: 0 auto;
-    background: transparent;
-    /* Seamless */
-    padding-bottom: 120px;
-}
+/* articlePaper styles moved to top of file */
 
 .articleHeader {
     margin-bottom: 40px;
@@ -445,23 +458,34 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: #9CA3AF;
-    margin-bottom: 12px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.articleModuleLabel::before {
+    content: '';
+    display: block;
+    width: 20px;
+    height: 1px;
+    background: #D1D5DB;
 }
 
 .articleTitle {
-    font-size: 40px;
+    font-size: 42px;
     font-weight: 800;
-    letter-spacing: -0.03em;
-    color: #111827;
+    letter-spacing: -0.04em;
+    color: var(--text-primary);
     line-height: 1.1;
 }
 
 /* Input version for editing title */
 .articleTitleInput {
     width: 100%;
-    font-size: 40px;
+    font-size: 42px;
     font-weight: 800;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.04em;
     color: #111827;
     background: transparent;
     border: none;
@@ -474,19 +498,69 @@
 
 .articleDivider {
     height: 1px;
-    background: #E5E7EB;
+    background: #F3F4F6;
     margin: 40px 0;
 }
 
 .articleContent {
-    font-size: 20px;
+    font-size: 19px;
     line-height: 1.8;
-    color: #374151;
-    font-weight: 450;
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-family: 'Inter', sans-serif;
+    /* Explicitly set font */
+    overflow-wrap: break-word;
+    word-break: normal !important;
+    hyphens: none !important;
+    text-wrap: pretty !important;
+    white-space: normal !important;
+}
+
+.articleContent * {
+    hyphens: none !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    text-wrap: pretty !important;
+    text-align: left !important;
 }
 
 .articleContent p {
-    margin-bottom: 1.5em;
+    margin-bottom: 1.6em;
+}
+
+.articleContent h2 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #111827;
+    margin-top: 48px;
+    margin-bottom: 24px;
+    letter-spacing: -0.02em;
+}
+
+.articleContent h3 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-top: 32px;
+    margin-bottom: 16px;
+}
+
+.articleContent ul,
+.articleContent ol {
+    margin-bottom: 24px;
+    padding-left: 24px;
+}
+
+.articleContent li {
+    margin-bottom: 8px;
+}
+
+.articleContent blockquote {
+    border-left: 4px solid #E5E7EB;
+    padding-left: 24px;
+    color: #6B7280;
+    font-style: italic;
+    margin: 32px 0;
 }
 
 .articleFooter {
@@ -495,7 +569,7 @@
     justify-content: space-between;
     margin-top: 80px;
     padding-top: 32px;
-    border-top: 1px solid #E5E7EB;
+    border-top: 1px solid #F3F4F6;
 }
 
 .textBtn {
@@ -526,7 +600,7 @@
     font-size: 18px !important;
     font-weight: 450;
     line-height: 1.8;
-    color: #374151;
+    color: var(--text-secondary);
     font-family: inherit;
     border: none !important;
 }
@@ -542,3 +616,281 @@
     background: transparent;
     padding: 8px 0 !important;
 }
+
+/* =========================================
+   MODALS
+   ========================================= */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modalCard {
+    background: white;
+    width: 100%;
+    max-width: 480px;
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    animation: scaleIn 0.2s ease-out;
+}
+
+.modalIcon {
+    font-size: 48px;
+    margin-bottom: 24px;
+    background: #F3F4F6;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modalTitle {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    letter-spacing: -0.02em;
+}
+
+.modalText {
+    font-size: 16px;
+    color: var(--text-muted);
+    margin-bottom: 32px;
+    line-height: 1.5;
+}
+
+.modalActions {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+}
+
+.modalBtnPrimary {
+    flex: 1;
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.modalBtnPrimary:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+}
+
+.modalBtnSecondary {
+    flex: 1;
+    background: white;
+    color: #374151;
+    border: 1px solid #E5E7EB;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.modalBtnSecondary:hover {
+    background: var(--background-secondary);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* =========================================
+   QUIZ VIEW
+   ========================================= */
+.quizCard {
+    width: 100%;
+    max-width: 800px;
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #E8E6E1;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 24px 48px -12px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    max-height: 85vh;
+    /* Prevent it from being too tall */
+}
+
+.quizInner {
+    padding: 40px 48px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.quizHeader {
+    margin-bottom: 32px;
+}
+
+.quizQuestion {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+}
+
+.optionsGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 32px;
+}
+
+.optionBox {
+    display: flex;
+    align-items: center;
+    padding: 16px 20px;
+    background: white;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    font-weight: 500;
+    color: #374151;
+    gap: 16px;
+}
+
+.optionBox:hover {
+    border-color: var(--primary);
+    background: var(--background-secondary);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.selected {
+    border-color: var(--primary);
+    background: var(--background-secondary);
+    box-shadow: 0 0 0 1px var(--primary);
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.optionLetter {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #F3F4F6;
+    color: #6B7280;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.selected .optionLetter {
+    background: var(--primary);
+    color: white;
+}
+
+.quizFooter {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 24px;
+    border-top: 1px solid #F3F4F6;
+    margin-top: auto;
+}
+
+.btnPrimary {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btnPrimary:hover:not(:disabled) {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btnPrimary:disabled {
+    cursor: not-allowed;
+    background: #9CA3AF;
+}
+
+.quizIntro {
+    text-align: center;
+    margin-top: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.quizIntroTitle {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 16px;
+    color: #111827;
+    letter-spacing: -0.02em;
+}
+
+.quizIntroText {
+    color: #6B7280;
+    margin-bottom: 40px;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+/* Force Update */

@@ -33,6 +33,13 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
     });
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    
+    // DEBUG: Client-side mount check
+    React.useEffect(() => {
+        console.log('[WorkerProfileForm] MOUNTED');
+        console.log('[WorkerProfileForm] User:', user);
+        return () => console.log('[WorkerProfileForm] UNMOUNTED');
+    }, [user]);
 
     const [showConfirm, setShowConfirm] = useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);

@@ -183,7 +183,7 @@ export async function GET(
             quizResultsData,
             user: {
                 name: user?.profile?.fullName || user?.email || '',
-                role: user?.profile?.jobTitle || 'Staff Member'
+                role: user?.role || 'worker'
             }
         });
 

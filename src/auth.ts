@@ -48,14 +48,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
             // Always fetch fresh data on subsequent calls to keep session in sync
             if (!user && token.sub) {
-                const freshUser = await prisma.user.findUnique({
-                    where: { id: token.sub },
-                    select: { organizationId: true, role: true }
-                });
+                try {
+                    const freshUser = await prisma.user.findUnique({
+                        where: { id: token.sub },
+                        select: { organizationId: true, role: true }
+                    });
 
-                if (freshUser) {
-                    token.organizationId = freshUser.organizationId;
-                    token.role = freshUser.role;
+                    if (freshUser) {
+                        token.organizationId = freshUser.organizationId;
+                        token.role = freshUser.role;
+                    } else {
+                        console.error('[Auth] User not found during refresh. Invalidating session for:', token.sub);
+                        return null; // Invalidate session
+                    }
+                } catch (error) {
+                    console.error('[Auth] Error fetching user:', error);
+                    // If DB is down, maybe don't invalidate immediately? 
+                    // But for now, safety first.
+                    return null;
                 }
             }
             return token;

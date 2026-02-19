@@ -48,6 +48,14 @@ export const authConfig = {
                 // @ts-ignore
                 const role = auth.user?.role;
 
+                console.log('[Middleware] Check:', {
+                    path: nextUrl.pathname,
+                    role,
+                    hasOrg,
+                    isWorkerPath,
+                    isOnDashboard
+                });
+
                 // 1. Worker Redirection Logic
                 if (role === 'worker') {
                     // If worker has no org, they MUST go to onboarding-worker
@@ -74,21 +82,21 @@ export const authConfig = {
                 // 2. Admin Redirection Logic
                 if (role === 'admin') {
                     // If admin has no org, they MUST go to onboarding
-                    if (!hasOrg) {
-                        if (isOnOnboarding) return true;
-                        return Response.redirect(new URL('/onboarding', nextUrl));
-                    }
+                    // if (!hasOrg) {
+                    //     if (isOnOnboarding) return true;
+                    //     return Response.redirect(new URL('/onboarding', nextUrl));
+                    // }
 
                     // If admin HAS org
                     if (hasOrg) {
                         if (isOnOnboarding || isOnAuth) {
                             return Response.redirect(new URL('/dashboard', nextUrl));
                         }
-                        // Admins cannot access worker onboarding or worker routes? 
-                        // (Maybe they can view, but for now redirect to dashboard)
-                        if (isOnOnboardingWorker || isWorkerPath) {
-                            return Response.redirect(new URL('/dashboard', nextUrl));
-                        }
+                        // Admins cannot access worker onboarding or worker routes?
+                        // RELAXED: Allow access to prevent redirect loops if role states are out of sync (DB vs Cookie)
+                        // if (isOnOnboardingWorker || isWorkerPath) {
+                        //    return Response.redirect(new URL('/dashboard', nextUrl));
+                        // }
                     }
                 }
 
@@ -104,6 +112,11 @@ export const authConfig = {
 
             if (isOnAuth) {
                 if (isLoggedIn) {
+                    // @ts-ignore
+                    const role = auth?.user?.role;
+                    if (role === 'worker') {
+                        return Response.redirect(new URL('/worker', nextUrl));
+                    }
                     return Response.redirect(new URL('/dashboard', nextUrl));
                 }
                 return true;

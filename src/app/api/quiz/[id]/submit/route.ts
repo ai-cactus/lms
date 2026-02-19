@@ -145,7 +145,7 @@ export async function POST(
                     answers: enrichedAnswers,
                     score,
                     timeTaken,
-                    attemptCount: { increment: 1 },
+                    // attemptCount is NOT incremented here anymore (handled in start)
                     completedAt: new Date()
                 }
             });

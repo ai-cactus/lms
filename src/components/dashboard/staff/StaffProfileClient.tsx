@@ -6,6 +6,8 @@ import { Button, Input } from '@/components/ui';
 import Link from 'next/link';
 import Image from 'next/image';
 import EditStaffModal from './EditStaffModal';
+import QuizResults from '@/components/dashboard/training/QuizResults';
+import { getEnrollmentQuizResult } from '@/app/actions/staff';
 
 interface StaffProfileClientProps {
     staff: {
@@ -31,6 +33,22 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
     const { user, stats, enrollments } = staff;
     const [searchQuery, setSearchQuery] = useState('');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [viewingResult, setViewingResult] = useState<any>(null);
+    const [isLoadingResult, setIsLoadingResult] = useState(false);
+
+    const handleViewResult = async (enrollmentId: string) => {
+        setIsLoadingResult(true);
+        try {
+            const result = await getEnrollmentQuizResult(enrollmentId);
+            if (result) {
+                setViewingResult({ ...result, enrollmentId });
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsLoadingResult(false);
+        }
+    };
 
     // Filter enrollments
     const filteredEnrollments = enrollments.filter(e =>
@@ -165,14 +183,15 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                                         </td>
                                         <td>
                                             {/* Logic for badges based on screenshots */}
-                                            {enrollment.status === 'completed' && enrollment.score >= 70 ? (
+                                            {/* Logic for badges based on screenshots */}
+                                            {(enrollment.status === 'completed' || enrollment.progress === 100) && enrollment.score >= 70 ? (
                                                 <span className={`${styles.badge} ${styles.badgePassed}`}>
                                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                                         <polyline points="20 6 9 17 4 12"></polyline>
                                                     </svg>
                                                     Passed
                                                 </span>
-                                            ) : enrollment.status === 'completed' ? (
+                                            ) : (enrollment.status === 'completed' || enrollment.progress === 100) ? (
                                                 <span className={`${styles.badge} ${styles.badgeFailed}`}>
                                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                                         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -185,7 +204,13 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                                             )}
                                         </td>
                                         <td style={{ textAlign: 'right' }}>
-                                            <button className={styles.viewBtn}>View</button>
+                                            <button
+                                                className={styles.viewBtn}
+                                                onClick={() => handleViewResult(enrollment.id)}
+                                                disabled={isLoadingResult}
+                                            >
+                                                {isLoadingResult ? '...' : 'View'}
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}
@@ -267,6 +292,55 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                     jobTitle: user.jobTitle
                 }}
             />
+
+            {/* Quiz Result Modal */}
+            {viewingResult && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999
+                }} onClick={() => setViewingResult(null)}>
+                    <div style={{
+                        background: 'white',
+                        width: '90%',
+                        maxWidth: '800px',
+                        maxHeight: '90vh',
+                        overflowY: 'auto',
+                        borderRadius: '16px',
+                        padding: '24px',
+                        position: 'relative'
+                    }} onClick={e => e.stopPropagation()}>
+                        <button
+                            onClick={() => setViewingResult(null)}
+                            style={{
+                                position: 'absolute',
+                                top: '16px',
+                                right: '16px',
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '24px'
+                            }}
+                        >
+                            &times;
+                        </button>
+                        <QuizResults
+                            courseId=""
+                            enrollmentId={viewingResult.enrollmentId}
+                            data={viewingResult}
+                            hideActions={true}
+                            userRole="admin"
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

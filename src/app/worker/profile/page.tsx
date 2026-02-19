@@ -12,6 +12,7 @@ export default async function WorkerProfilePage() {
     }
 
     // Fetch user with profile and organization
+    console.log('[WorkerProfilePage] Rendering for user:', session.user.id);
     const user = await prisma.user.findUnique({
         where: { id: session.user.id },
         include: {

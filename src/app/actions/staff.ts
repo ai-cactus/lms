@@ -33,14 +33,17 @@ export async function getStaffDetails(userId: string) {
         const completedCourses = user.enrollments.filter(e => e.status === 'completed').length || 0;
 
         // Assuming 'failed' status or score threshold. 
-        // For now, let's assume if status is 'completed' and score < 70 (passing), it's a fail/retake needed.
-        // Or if there's an explicit 'failed' status.
-        // The previous code used score < 70 check for badges.
-        const failedCourses = user.enrollments.filter(e =>
-            e.status === 'completed' && (e.score !== null && e.score < 70)
-        ).length || 0;
+        // A failed course is one where they took the quiz (progress 100) but didn't pass (score < 70)
+        // OR explicit 'failed' status if used.
+        const failedCourses = user.enrollments.filter(e => {
+            const isFinished = e.status === 'completed' || e.progress === 100;
+            const hasScore = e.score !== null;
+            return isFinished && hasScore && (e.score || 0) < 70;
+        }).length || 0;
 
-        const activeCourses = user.enrollments.filter(e => e.status === 'in_progress').length || 0;
+        // Active courses are those in progress but NOT failed yet (or failed but we want to count them as active? usually specific bucket)
+        // Let's say Active = Total - Completed - Failed
+        const activeCourses = Math.max(0, totalCourses - completedCourses - failedCourses);
 
         return {
             user: {
@@ -121,5 +124,97 @@ export async function updateStaffDetails(userId: string, data: {
     } catch (error) {
         console.error('Failed to update staff details:', error);
         return { success: false, error: 'Failed to update user details' };
+    }
+}
+
+export async function getEnrollmentQuizResult(enrollmentId: string) {
+    const session = await auth();
+    if (!session?.user) {
+        throw new Error('Unauthorized');
+    }
+
+    try {
+        const enrollment = await prisma.enrollment.findUnique({
+            where: { id: enrollmentId },
+            include: {
+                user: {
+                    include: {
+                        profile: true
+                    }
+                },
+                course: true,
+                quizAttempts: {
+                    orderBy: { completedAt: 'desc' },
+                    take: 1,
+                    include: {
+                        quiz: {
+                            include: {
+                                questions: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!enrollment || enrollment.quizAttempts.length === 0) {
+            return null;
+        }
+
+        const latestAttempt = enrollment.quizAttempts[0];
+        const quiz = latestAttempt.quiz;
+        const userAnswers = Array.isArray(latestAttempt.answers) ? (latestAttempt.answers as any[]) : [];
+
+        const questions = quiz.questions.map((q: any) => {
+            const userAnswerObj = userAnswers.find((a: any) => a.questionId === q.id);
+
+            // Format options just like in the submit route: map text to A, B, C...
+            const optionsArray = Array.isArray(q.options) ? (q.options as any[]) : [];
+            const optionTexts = optionsArray.map((opt: any) => typeof opt === 'string' ? opt : opt.text || opt);
+
+            const formattedOptions = optionTexts.map((text, idx) => ({
+                id: String.fromCharCode(65 + idx), // A, B, C...
+                text: text
+            }));
+
+            // Map selected answer (text) to ID (letter)
+            const selectedText = userAnswerObj?.selectedAnswer || '';
+            const selectedIdx = optionTexts.findIndex((t: string) => t === selectedText);
+            const selectedAnswerId = selectedIdx >= 0 ? String.fromCharCode(65 + selectedIdx) : '';
+
+            // Map correct answer (text) to ID (letter)
+            const correctText = q.correctAnswer || '';
+            const correctIdx = optionTexts.findIndex((t: string) => t === correctText);
+            const correctAnswerId = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
+
+            return {
+                id: q.id,
+                text: q.text,
+                options: formattedOptions,
+                selectedAnswer: selectedAnswerId,
+                correctAnswer: correctAnswerId,
+                explanation: userAnswerObj?.explanation || ''
+            };
+        });
+
+        const correctCount = questions.filter((q: any) => q.selectedAnswer === q.correctAnswer).length;
+        const wrongCount = questions.length - correctCount;
+
+        return {
+            courseName: enrollment.course.title,
+            score: latestAttempt.score,
+            answered: questions.filter((q: any) => q.selectedAnswer).length,
+            correct: correctCount,
+            wrong: wrongCount,
+            time: latestAttempt.timeTaken || 0,
+            userName: enrollment.user.profile?.fullName || enrollment.user.email,
+            questions: questions,
+            attemptsUsed: latestAttempt.attemptCount,
+            allowedAttempts: quiz.allowedAttempts
+        };
+
+    } catch (error) {
+        console.error('Failed to fetch quiz result:', error);
+        return null;
     }
 }

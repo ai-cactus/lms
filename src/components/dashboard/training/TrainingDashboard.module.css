@@ -1,7 +1,11 @@
 .container {
-    padding: 0;
+    padding: 24px 40px;
+    /* Match standard dashboard padding */
     width: 100%;
-    margin: 0 auto;
+    max-width: 1400px;
+    /* Cap width for large 17"+ screens */
+    margin: 0;
+    /* Left aligned */
 }
 
 .header {
@@ -435,4 +439,109 @@
     justify-content: flex-end;
     margin-top: 24px;
     padding-top: 16px;
+}
+
+/* Responsive Implementation */
+/* Use fluid grid for stats by default with smaller min-width */
+.statsGrid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+/* Charts Grid - Dynamic Flexbox */
+.chartsGrid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+/* Force Stacking ONLY on Table/Mobile (< 900px) */
+@media (max-width: 900px) {
+    .chartsGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Performance Chart (Left) */
+.performanceCard {
+    /* Reset Flex properties */
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* Coverage Chart (Right) */
+.coverageCard {
+    /* Reset Flex properties */
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* Ensure SVGs don't overflow */
+.pieChartContainer svg {
+    max-width: 100%;
+    height: auto;
+}
+
+@media (max-width: 768px) {
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .createButton {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .statsGrid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .chartHeader {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .filterContainer {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .filterButton {
+        flex: 1;
+        text-align: center;
+    }
+
+    /* Stack Pie Chart Layout */
+    .pieChartContainer .legend {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Courses Section */
+    .coursesHeader {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+
+    .coursesControls {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .searchInput {
+        width: 100%;
+    }
+
+    .tableWrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -24px;
+        /* Align with bleeding edge if needed, or just contain it */
+        padding: 0 24px;
+        width: calc(100% + 48px);
+    }
 }

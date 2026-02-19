@@ -9,6 +9,7 @@ export default async function ProfileRedirectPage() {
     }
 
     const role = session.user.role;
+    console.log('[ProfileRedirectPage] Accessing profile with role:', role);
 
     if (role === 'worker') {
         redirect('/worker/profile');

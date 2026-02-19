@@ -56,61 +56,64 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
             </div>
 
             {/* Table */}
-            <table className={styles.table}>
-                <thead>
-                    <tr>
-                        <th style={{ width: '40%' }}>Course Name</th>
-                        <th style={{ width: '20%' }}>Assigned Staff</th>
-                        <th style={{ width: '20%' }}>Completion Rate</th>
-                        <th style={{ width: '20%' }}>Date Created</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {displayCourses.length > 0 ? (
-                        displayCourses.map((course) => (
-                            <tr
-                                key={course.id}
-                                onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                                className={styles.clickableRow}
-                            >
-                                <td>
-                                    <div className={styles.courseInfo}>
-                                        <div className={styles.courseIcon}>
-                                            <Image
-                                                src={course.thumbnail || '/images/icon-course-blue.svg'}
-                                                alt={course.title}
-                                                width={40}
-                                                height={40}
-                                            />
+            <div className={styles.tableWrapper}>
+                <table className={styles.table}>
+                    <thead>
+                        <tr>
+                            <th style={{ width: '45%' }}>Course Name</th>
+                            <th style={{ width: '15%' }}>Assigned Staff</th>
+                            <th style={{ width: '20%' }}>Completion %</th>
+                            <th style={{ width: '20%' }}>Date Created</th>
+                        </tr>
+
+
+                    </thead>
+                    <tbody>
+                        {displayCourses.length > 0 ? (
+                            displayCourses.map((course) => (
+                                <tr
+                                    key={course.id}
+                                    onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                                    className={styles.clickableRow}
+                                >
+                                    <td>
+                                        <div className={styles.courseInfo}>
+                                            <div className={styles.courseIcon}>
+                                                <Image
+                                                    src={course.thumbnail || '/images/icon-course-blue.svg'}
+                                                    alt={course.title}
+                                                    width={40}
+                                                    height={40}
+                                                />
+                                            </div>
+                                            <div className={styles.courseText}>
+                                                <span className={styles.courseName}>{course.title}</span>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <span className={styles.courseName}>{course.title}</span>
-                                            {/* Level removed from reference image, but keeping code clean if needed, commenting out for now to match strict design? No, user didn't say remove level. Keeping it for now. */}
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>{course.enrollmentsCount}</td>
-                                <td>
-                                    <span className={styles.completionRate}>{course.completionRate}%</span>
-                                </td>
-                                <td>
-                                    {new Date(course.createdAt).toLocaleDateString('en-US', {
-                                        month: 'short',
-                                        day: 'numeric',
-                                        year: 'numeric',
-                                    })}
+                                    </td>
+                                    <td>{course.enrollmentsCount}</td>
+                                    <td>
+                                        <span className={styles.completionRate}>{course.completionRate}%</span>
+                                    </td>
+                                    <td>
+                                        {new Date(course.createdAt).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric',
+                                        })}
+                                    </td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan={4} className={styles.emptyState}>
+                                    No courses found.
                                 </td>
                             </tr>
-                        ))
-                    ) : (
-                        <tr>
-                            <td colSpan={4} className={styles.emptyState}>
-                                No courses found.
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+                        )}
+                    </tbody>
+                </table>
+            </div>
 
             {/* View All Button */}
             {

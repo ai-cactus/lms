@@ -13,6 +13,50 @@ interface CoursePreviewProps {
     enrollment?: any; // Pass enrollment details
 }
 
+import { startCourse } from '@/app/actions/course';
+
+function WorkerStartButton({ courseId, enrollment }: { courseId: string, enrollment: any }) {
+    const router = useRouter();
+    const [loading, setLoading] = useState(false);
+
+    // Determine status
+    const isStarted = (enrollment?.progress > 0) || (enrollment?.status === 'in_progress');
+    const isCompleted = enrollment?.status === 'completed' || enrollment?.status === 'attested';
+
+    // Determine button text
+    let buttonText = 'Start Course';
+    if (loading) buttonText = 'Starting...';
+    else if (isCompleted) buttonText = 'Review Course';
+    else if (isStarted) buttonText = 'Continue Course';
+
+    const handleClick = async () => {
+        if (isCompleted) {
+            router.push(`/learn/${courseId}`);
+            return;
+        }
+
+        try {
+            setLoading(true);
+            await startCourse(courseId);
+            router.push(`/learn/${courseId}`);
+        } catch (error) {
+            console.error('Failed to start course:', error);
+            // Fallback navigation even if action fails (e.g. network)
+            router.push(`/learn/${courseId}`);
+        }
+    };
+
+    return (
+        <Button
+            className={styles.startCourseButton}
+            onClick={handleClick}
+            disabled={loading}
+        >
+            {buttonText}
+        </Button>
+    );
+}
+
 export default function CoursePreview({ course, mode = 'admin', user, enrollment }: CoursePreviewProps) {
     const [activeTab, setActiveTab] = useState('About');
 
@@ -51,9 +95,10 @@ export default function CoursePreview({ course, mode = 'admin', user, enrollment
 
                     <div className={styles.heroActions}>
                         {mode === 'worker' ? (
-                            <Link href={`/learn/${course.id}`}>
-                                <Button className={styles.startCourseButton}>Start Course</Button>
-                            </Link>
+                            <WorkerStartButton
+                                courseId={course.id}
+                                enrollment={enrollment}
+                            />
                         ) : (
                             <Link href={`/learn/${course.id}`}>
                                 <Button className={styles.startCourseButton}>View Course</Button>
@@ -148,7 +193,7 @@ export default function CoursePreview({ course, mode = 'admin', user, enrollment
                     )}
 
                     <div className={styles.sidebarCard}>
-                        <h3 className={styles.sidebarTitle}>Course Content</h3>
+                        <h3 className={styles.sidebarTitle}>Table of Content</h3>
                         <div className={styles.lessonsList}>
                             {course.lessons && course.lessons.length > 0 ? (
                                 course.lessons.map((lesson: any, i: number) => (

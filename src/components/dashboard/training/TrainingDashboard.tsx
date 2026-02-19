@@ -21,13 +21,13 @@ export interface DashboardStats {
         passCount: number;
         failCount: number;
     }[];
-        trainingCoverage: {
-            completed: number;
-            inProgress: number;
-            notStarted: number;
-            totalStaff?: number;
-        };
-    }
+    trainingCoverage: {
+        completed: number;
+        inProgress: number;
+        notStarted: number;
+        totalStaff?: number;
+    };
+}
 
 interface TrainingDashboardProps {
     onCreateCourse: () => void;
@@ -40,10 +40,17 @@ interface TrainingDashboardProps {
 function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainingCoverage'] }) {
     const [activeSegment, setActiveSegment] = useState<string | null>(null);
 
+    // Safe parse helper
+    const parseVal = (v: any) => {
+        if (typeof v === 'number') return v;
+        if (typeof v === 'string') return parseFloat(v.replace('%', '')) || 0;
+        return 0;
+    };
+
     const segments = [
-        { id: 'completed', label: 'Staff who have completed required courses', value: coverage.completed, color: '#14B8A6', hoverColor: '#2DD4BF', position: 'right' as const },
-        { id: 'enrolled', label: 'Staff currently enrolled (in progress)', value: coverage.inProgress, color: '#F59E0B', hoverColor: '#FBBF24', position: 'bottom' as const },
-        { id: 'notStarted', label: 'Staff yet to begin any course', value: coverage.notStarted, color: '#EF4444', hoverColor: '#F87171', position: 'left' as const },
+        { id: 'completed', label: 'Staff who have completed required courses', value: parseVal(coverage.completed), color: '#14B8A6', hoverColor: '#2DD4BF', position: 'right' as const },
+        { id: 'enrolled', label: 'Staff currently enrolled (in progress)', value: parseVal(coverage.inProgress), color: '#F59E0B', hoverColor: '#FBBF24', position: 'bottom' as const },
+        { id: 'notStarted', label: 'Staff yet to begin any course', value: parseVal(coverage.notStarted), color: '#EF4444', hoverColor: '#F87171', position: 'left' as const },
     ];
 
     // Calculate SVG arc paths
@@ -59,9 +66,14 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
     const hasData = totalValue > 0;
 
     const paths = segments.map(segment => {
-        // If no data, render empty gray ring? Or just don't render. 
-        // Logic assumes percentage values sum to 100 roughly.
-        const angle = (segment.value / 100) * 360;
+        // Handle 360 degree case for SVG Arc
+        let angle = (segment.value / 100) * 360;
+
+        // If angle is 360, SVG arc command behaves weirdly if start/end points are same.
+        // Cap it slightly or handle full circle.
+        // Easiest fix: if 360, make it 359.99 to ensure it draws.
+        if (angle >= 360) angle = 359.99;
+
         const endAngle = startAngle + angle;
 
         const startRad = (startAngle - 90) * (Math.PI / 180);
@@ -236,16 +248,11 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
         <div className={styles.container}>
             <div className={styles.header}>
                 <div>
-                    <div className={styles.breadcrumbs}>Home / Training</div>
-                    <h2 className={styles.title}>Training Dashboard</h2>
+                    <h1 className={styles.title}>Training Dashboard</h1>
                     <p className={styles.subtitle}>Here is an overview of your courses</p>
                 </div>
-                <Button onClick={onCreateCourse} className={styles.createButton}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    Create Course
+                <Button variant="primary" onClick={onCreateCourse}>
+                    + Create Course
                 </Button>
             </div>
 
@@ -296,7 +303,7 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
             {/* Charts Section */}
             <div className={styles.chartsGrid}>
                 {/* Performance Chart */}
-                <div className={styles.chartCard}>
+                <div className={`${styles.chartCard} ${styles.performanceCard}`}>
                     <div className={styles.chartHeader}>
                         <h3 className={styles.chartTitle}>Performance of Learners</h3>
                         <div className={styles.filterContainer}>
@@ -544,7 +551,7 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
                 </div>
 
                 {/* Donut Coverage Chart */}
-                <div className={styles.chartCard}>
+                <div className={`${styles.chartCard} ${styles.coverageCard}`}>
                     <h3 className={styles.chartTitle} style={{ marginBottom: '24px' }}>Training Coverage</h3>
 
                     <div className={styles.pieChartContainer}>
@@ -588,59 +595,61 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
                     </div>
                 </div>
 
-                <table className={styles.coursesTable}>
-                    <thead>
-                        <tr>
-                            <th className={styles.colName}>Course Name</th>
-                            <th className={styles.colStaff}>Assigned Staff</th>
-                            <th className={styles.colCompletion}>Completion %</th>
-                            <th className={styles.colDate}>Date Created</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {courses.length === 0 ? (
+                <div className={styles.tableWrapper}>
+                    <table className={styles.coursesTable}>
+                        <thead>
                             <tr>
-                                <td colSpan={4} style={{ textAlign: 'center', color: '#718096' }}>
-                                    No courses found. Create your first course above.
-                                </td>
+                                <th className={styles.colName}>Course Name</th>
+                                <th className={styles.colStaff}>Assigned Staff</th>
+                                <th className={styles.colCompletion}>Completion %</th>
+                                <th className={styles.colDate}>Date Created</th>
                             </tr>
-                        ) : (
-                            courses.map((course) => (
-                                <tr
-                                    key={course.id}
-                                    onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                                    style={{ cursor: 'pointer' }}
-                                >
-                                    <td>
-                                        <div className={styles.courseInfo}>
-                                            <div className={styles.courseIcon}>
-                                                <Image
-                                                    src={course.thumbnail || '/images/icon-course-blue.svg'}
-                                                    alt={course.title}
-                                                    width={40}
-                                                    height={40}
-                                                />
-                                            </div>
-                                            <div>
-                                                <span className={styles.courseName}>{course.title}</span>
-
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>{course.enrollmentsCount}</td>
-                                    <td>{course.completionRate}%</td>
-                                    <td>
-                                        {new Date(course.createdAt).toLocaleDateString('en-US', {
-                                            month: 'short',
-                                            day: 'numeric',
-                                            year: 'numeric',
-                                        })}
+                        </thead>
+                        <tbody>
+                            {courses.length === 0 ? (
+                                <tr>
+                                    <td colSpan={4} style={{ textAlign: 'center', color: '#718096' }}>
+                                        No courses found. Create your first course above.
                                     </td>
                                 </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+                            ) : (
+                                courses.map((course) => (
+                                    <tr
+                                        key={course.id}
+                                        onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                                        style={{ cursor: 'pointer' }}
+                                    >
+                                        <td>
+                                            <div className={styles.courseInfo}>
+                                                <div className={styles.courseIcon}>
+                                                    <Image
+                                                        src={course.thumbnail || '/images/icon-course-blue.svg'}
+                                                        alt={course.title}
+                                                        width={40}
+                                                        height={40}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <span className={styles.courseName}>{course.title}</span>
+
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>{course.enrollmentsCount}</td>
+                                        <td>{course.completionRate}%</td>
+                                        <td>
+                                            {new Date(course.createdAt).toLocaleDateString('en-US', {
+                                                month: 'short',
+                                                day: 'numeric',
+                                                year: 'numeric',
+                                            })}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
 
                 <div className={styles.viewAllContainer}>
                     <Button variant="outline" size="sm" className={styles.viewAllButton}>
@@ -648,7 +657,6 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: '4px' }}>
                             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                             <polyline points="15 3 21 3 21 9"></polyline>
-                            <line x1="10" y1="14" x2="21" y2="3"></line>
                         </svg>
                     </Button>
                 </div>

@@ -4,24 +4,37 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import styles from './DashboardEmptyState.module.css';
 
+import { useModalContext } from '@/components/ui/ModalContext';
+
 interface DashboardEmptyStateProps {
-    isOpen: boolean;
-    onClose?: () => void;
+    totalCourses: number;
 }
 
-export default function DashboardEmptyState({ isOpen: initialIsOpen, onClose }: DashboardEmptyStateProps) {
-    const [isOpen, setIsOpen] = useState(initialIsOpen);
+export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStateProps) {
+    const { registerModal, unregisterModal, requestOpen, isModalOpen, dismissModal, shouldShowModal } = useModalContext();
+    const modalId = 'dashboardEmptyState';
+    const [hasMounted, setHasMounted] = useState(false);
 
     useEffect(() => {
-        setIsOpen(initialIsOpen);
-    }, [initialIsOpen]);
+        setHasMounted(true);
+        // Priority 1 (Lowest)
+        registerModal(modalId, 1);
+
+        if (totalCourses === 0 && shouldShowModal(modalId)) {
+            requestOpen(modalId);
+        }
+
+        return () => unregisterModal(modalId);
+    }, [totalCourses, registerModal, unregisterModal, requestOpen, shouldShowModal, modalId]);
 
     const handleClose = () => {
-        setIsOpen(false);
-        if (onClose) onClose();
+        // Snooze for 7 days
+        dismissModal(modalId, 7 * 24 * 60 * 60 * 1000);
     };
 
-    if (!isOpen) return null;
+    const isOpen = isModalOpen(modalId);
+
+    if (!hasMounted || !isOpen) return null;
 
     return (
         <div className={styles.overlay}>

@@ -6,13 +6,40 @@
     flex-direction: column;
     gap: 32px;
     flex: 1;
+    min-width: 0;
 }
+
+
+@media (max-width: 1440px) {
+    .container {
+        padding: 24px 32px;
+        gap: 24px;
+    }
+}
+
+@media (max-width: 1280px) {
+    .container {
+        padding: 24px 20px;
+        gap: 20px;
+    }
+}
+
+
 
 .header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
 }
+
+@media (max-width: 640px) {
+    .header {
+        flex-direction: column;
+    }
+}
+
 
 .titleSection {
     display: flex;
@@ -26,6 +53,13 @@
     color: #1A202C;
     margin: 0;
 }
+
+@media (max-width: 1280px) {
+    .title {
+        font-size: 24px;
+    }
+}
+
 
 .subtitle {
     font-size: 16px;
@@ -46,6 +80,13 @@
     }
 }
 
+@media (max-width: 1280px) {
+    .metricsGrid {
+        gap: 16px;
+    }
+}
+
+
 .metricCard {
     border-radius: 16px;
     padding: 24px;
@@ -55,6 +96,14 @@
     min-height: 160px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
+
+@media (max-width: 1280px) {
+    .metricCard {
+        padding: 20px;
+        min-height: 140px;
+    }
+}
+
 
 .metricIcon {
     width: 48px;
@@ -80,6 +129,13 @@
     color: #1A202C;
 }
 
+@media (max-width: 1280px) {
+    .metricValue {
+        font-size: 28px;
+    }
+}
+
+
 /* Charts Section */
 .chartsGrid {
     display: grid;
@@ -92,6 +148,13 @@
         grid-template-columns: 2fr 1fr;
     }
 }
+
+@media (max-width: 1440px) {
+    .chartsGrid {
+        gap: 20px;
+    }
+}
+
 
 .chartCard {
     background: white;

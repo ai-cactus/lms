@@ -3,19 +3,38 @@
     border-radius: 12px;
     padding: 24px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    flex: 1;
+    flex: 1 1 0;
+    /* Important: allow shrinking */
     display: flex;
     flex-direction: column;
     min-height: 50vh;
     border: 1px solid #E2E8F0;
+    overflow: hidden;
+    min-width: 0;
+    max-width: 100%;
 }
+
+
+
+
+
+@media (max-width: 1280px) {
+    .container {
+        padding: 20px;
+    }
+}
+
 
 .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 24px;
+    gap: 16px;
+    flex-wrap: wrap;
+    /* Add this */
 }
+
 
 .title {
     font-size: 18px;
@@ -28,6 +47,13 @@
     width: 320px;
 }
 
+@media (max-width: 1280px) {
+    .searchContainer {
+        width: 240px;
+    }
+}
+
+
 /* Override input styling via global CSS or ensure Input component handles it. 
    Assuming Input component takes className. */
 .searchInput {
@@ -35,14 +61,37 @@
     border-color: #E2E8F0;
 }
 
+.tableWrapper {
+    overflow-x: auto;
+    width: 100%;
+    max-width: 100%;
+    /* Add this */
+    margin-bottom: 24px;
+    padding-bottom: 8px;
+    min-width: 0;
+    -webkit-overflow-scrolling: touch;
+}
+
+
+
 .table {
     width: 100%;
+    min-width: 600px;
+    table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    /* Use separate/spacing to handle border-radius on header if needed, 
-       but collapse is fine for standard rows. 
-       Ref text says "Header background #F9FAFB" (very light gray). */
 }
+
+.table td,
+.table th {
+    overflow: hidden;
+    white-space: normal;
+    word-break: break-word;
+    vertical-align: top;
+}
+
+
+
 
 /* Header Styling */
 .table thead tr {
@@ -52,8 +101,8 @@
 
 .table th {
     text-align: left;
-    padding: 16px 24px;
-    /* More padding */
+    padding: 12px 20px;
+    /* Reduced padding */
     font-size: 12px;
     font-weight: 600;
     color: #64748B;
@@ -62,6 +111,13 @@
     letter-spacing: 0.05em;
     border-bottom: none;
 }
+
+@media (max-width: 1280px) {
+    .table th {
+        padding: 12px 16px;
+    }
+}
+
 
 .table th:first-child {
     border-radius: 8px 0 0 8px;
@@ -72,13 +128,9 @@
 }
 
 /* Row Styling */
-.table tbody tr {
-    /* No background by default */
-}
-
 .table td {
-    padding: 20px 24px;
-    /* More padding for spacious look */
+    padding: 16px 20px;
+    /* Reduced padding for more space */
     font-size: 14px;
     color: #1E293B;
     /* Slate 800 */
@@ -87,6 +139,13 @@
     vertical-align: middle;
     font-weight: 500;
 }
+
+@media (max-width: 1280px) {
+    .table td {
+        padding: 16px;
+    }
+}
+
 
 .table tbody tr:last-child td {
     border-bottom: none;
@@ -105,6 +164,8 @@
     display: flex;
     align-items: center;
     gap: 16px;
+    /* Limit width to allow text wrapping inside */
+    max-width: 100%;
 }
 
 .courseIcon {
@@ -128,6 +189,16 @@
     font-weight: 600;
     color: #0F172A;
     font-size: 14px;
+    white-space: normal;
+    /* Allow wrapping */
+    word-break: normal;
+    overflow-wrap: break-word;
+    line-height: 1.4;
+}
+
+.courseText {
+    min-width: 0;
+    flex: 1;
 }
 
 .completionRate {

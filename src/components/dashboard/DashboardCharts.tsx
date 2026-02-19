@@ -72,13 +72,25 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
 
     const { coursePerformance = [], trainingCoverage } = stats;
 
+    // Safe parser for percentages or numbers
+    const parseChartValue = (val: any) => {
+        if (typeof val === 'number') return val;
+        if (typeof val === 'string') {
+            return parseFloat(val.replace('%', '')) || 0;
+        }
+        return 0;
+    };
+
     // Overriding colors to match the Donut Ring in the image more closely:
     const donutData = [
-        { name: 'Completed', value: trainingCoverage?.completed || 0, color: '#14B8A6' },
-        { name: 'Enrolled', value: trainingCoverage?.inProgress || 0, color: '#F59E0B' },
-        { name: 'Not Started', value: trainingCoverage?.notStarted || 0, color: '#EF4444' },
+        { name: 'Completed', value: parseChartValue(trainingCoverage?.completed), color: '#14B8A6' },
+        { name: 'Enrolled', value: parseChartValue(trainingCoverage?.inProgress), color: '#F59E0B' },
+        { name: 'Not Started', value: parseChartValue(trainingCoverage?.notStarted), color: '#EF4444' },
     ];
 
+    // Filter out zero values to avoid clutter, but keep at least one if all are zero? 
+    // Actually Recharts handles 0 fine, it just doesn't render a slice.
+    // But we want to ensure we don't pass empty array if something is weird.
     const activeDonutData = donutData.filter(d => d.value > 0);
 
     const [mounted, setMounted] = useState(false);
@@ -89,27 +101,33 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
         setMounted(true);
     }, []);
 
-    const chartData = React.useMemo(() => {
-        let data = [...coursePerformance];
-        if (filter === 'top') {
-            data.sort((a, b) => ((b.passCount || 0) - (a.passCount || 0)));
-            data = data.slice(0, 5);
-        }
-        return data;
-    }, [coursePerformance, filter]);
+    // Verify data in console
+    console.log('DashboardCharts Data:', { trainingCoverage, activeDonutData });
 
-    // Calculate max value for Y-axis scaling
+    // Helper to check if we have any data
+    const hasData = activeDonutData.length > 0;
+
+    // Placeholder for chartData, maxVal, ticks as they are not defined in the original snippet
+    // and seem to belong to a different chart type (bar chart) not fully provided.
+    // For the purpose of making the provided snippet syntactically correct,
+    // we'll define minimal versions if they are used in the provided edit.
+    const chartData = coursePerformance.map(cp => ({
+        name: cp.name,
+        passCount: cp.passCount,
+        failCount: cp.failCount
+    }));
     const maxVal = Math.max(...chartData.map(d => Math.max(d.passCount || 0, d.failCount || 0)), 5);
-
-    // Generate ticks
     const ticks = Array.from({ length: 6 }, (_, i) => Math.round((maxVal / 5) * i)).reverse();
+
 
     return (
         <div className={styles.chartsGrid}>
             {/* Performance Chart */}
-            <div className={styles.chartCard} style={{ minHeight: '440px' }}>
+            <div className={styles.chartCard} style={{ minHeight: '440px', flex: 1 }}>
+
                 <div className={styles.chartHeader}>
                     <h3 className={styles.chartTitle}>Performance of Learners</h3>
+                    {/* ... (buttons remain the same) ... */}
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button
                             onClick={() => setFilter('all')}
@@ -147,6 +165,7 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                 </div>
 
                 {/* Legend */}
+                {/* ... (Performance Chart Content) ... */}
                 <div style={{
                     display: 'flex',
                     gap: '24px',
@@ -180,6 +199,7 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                 </div>
 
                 <div style={{ height: 300, position: 'relative', marginTop: 10 }}>
+                    {/* ... (Performance Chart Bars/Axis) ... */}
                     {/* Y-Axis */}
                     <div style={{
                         position: 'absolute',
@@ -233,10 +253,11 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                         bottom: '60px',
                         top: '12px',
                         display: 'flex',
-                        gap: '12px',
+                        gap: '4px',
                         alignItems: 'flex-end',
                         zIndex: 1
                     }}>
+
                         {chartData.map((item, idx) => {
                             // Calculate heights relative to maxVal
                             const passHeight = maxVal > 0 ? ((item.passCount || 0) / maxVal) * 100 : 0;
@@ -343,8 +364,9 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                         bottom: '0',
                         height: '60px',
                         display: 'flex',
-                        gap: '12px'
+                        gap: '4px'
                     }}>
+
                         {chartData.map((item, idx) => (
                             <div key={idx} style={{
                                 flex: '1',
@@ -368,26 +390,30 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             </div>
 
             {/* Coverage Donut Chart */}
-            <div className={styles.chartCard}>
+            <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column' }}>
                 <div className={styles.chartHeader}>
                     <h3 className={styles.chartTitle}>Training Coverage</h3>
                 </div>
 
-                <div style={{ width: '100%', height: 220, position: 'relative' }}>
+                <div style={{ width: '100%', height: 260, position: 'relative', flexShrink: 0 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                             <Pie
-                                data={donutData}
+                                data={hasData ? activeDonutData : [{ name: 'Empty', value: 1 }]}
                                 cx="50%"
                                 cy="50%"
-                                innerRadius={60}
-                                outerRadius={85}
+                                innerRadius="65%"
+                                outerRadius="90%"
                                 paddingAngle={0}
                                 dataKey="value"
                             >
-                                {donutData.map((entry, index) => (
+
+                                {activeDonutData.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
                                 ))}
+                                {/* If no data, show gray ring */}
+                                {!hasData && <Cell key="cell-empty" fill="#F1F5F9" stroke="none" />}
+
                                 <Label
                                     value={trainingCoverage?.totalStaff || 0}
                                     position="center"
@@ -412,25 +438,41 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                     </ResponsiveContainer>
                 </div>
 
-                <div className={styles.legend} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '12px 16px', alignItems: 'center' }}>
-                    {/* Header Row could be here if needed, but simple list is better */}
-
+                <div className={styles.legend} style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    marginTop: 'auto',
+                    paddingTop: '16px'
+                }}>
                     {/* Item 1 */}
-                    <div className={styles.legendDot} style={{ background: '#14B8A6' }}></div>
-                    <div style={{ fontSize: '14px', color: '#4A5568' }}>Staff who have completed required courses</div>
-                    <div className={styles.legendValue}>{trainingCoverage?.completed}%</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div className={styles.legendDot} style={{ background: '#14B8A6', width: '12px', height: '12px', borderRadius: '50%', flexShrink: 0 }}></div>
+                            <span style={{ fontSize: '13px', color: '#4A5568' }}>Completed</span>
+                        </div>
+                        <div className={styles.legendValue} style={{ fontWeight: 600 }}>{trainingCoverage?.completed}%</div>
+                    </div>
 
                     {/* Item 2 */}
-                    <div className={styles.legendDot} style={{ background: '#F59E0B' }}></div>
-                    <div style={{ fontSize: '14px', color: '#4A5568' }}>Staff currently enrolled (in progress)</div>
-                    <div className={styles.legendValue}>{trainingCoverage?.inProgress}%</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div className={styles.legendDot} style={{ background: '#F59E0B', width: '12px', height: '12px', borderRadius: '50%', flexShrink: 0 }}></div>
+                            <span style={{ fontSize: '13px', color: '#4A5568' }}>Enrolled</span>
+                        </div>
+                        <div className={styles.legendValue} style={{ fontWeight: 600 }}>{trainingCoverage?.inProgress}%</div>
+                    </div>
 
                     {/* Item 3 */}
-                    <div className={styles.legendDot} style={{ background: '#EF4444' }}></div>
-                    <div style={{ fontSize: '14px', color: '#4A5568' }}>Staff yet to begin any course</div>
-                    <div className={styles.legendValue}>{trainingCoverage?.notStarted}%</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div className={styles.legendDot} style={{ background: '#EF4444', width: '12px', height: '12px', borderRadius: '50%', flexShrink: 0 }}></div>
+                            <span style={{ fontSize: '13px', color: '#4A5568' }}>Not Started</span>
+                        </div>
+                        <div className={styles.legendValue} style={{ fontWeight: 600 }}>{trainingCoverage?.notStarted}%</div>
+                    </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

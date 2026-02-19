@@ -71,30 +71,27 @@
 }
 
 .btnSecondary {
-    background: #F8F9FF;
-    /* Light Lavender */
-    color: #4C51BF;
-    /* Indigo/Purple text */
-    border: none;
+    background: var(--background-secondary);
+    color: var(--primary);
+    border: 1px solid var(--border);
     padding: 10px 24px;
     font-size: 15px;
     border-radius: 8px;
 }
 
 .btnSecondary:hover {
-    background: #EEF2FF;
+    background: var(--border-light);
 }
 
 .btnPrimary {
-    background: #4C51BF;
-    /* Indigo/Purple */
+    background: var(--primary);
     color: white;
-    box-shadow: 0 4px 6px rgba(76, 81, 191, 0.3);
+    box-shadow: var(--shadow-sm);
     padding: 10px 32px;
 }
 
 .btnPrimary:hover {
-    background: #434190;
+    background: var(--primary-hover);
 }
 
 .statsRow {

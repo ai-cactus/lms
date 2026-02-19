@@ -1,13 +1,35 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from './WorkerDashboard.module.css';
 import Image from 'next/image';
+import { useModalContext } from '@/components/ui/ModalContext';
 
 export default function WorkerEmptyState() {
-    const [isVisible, setIsVisible] = React.useState(true);
+    const { registerModal, unregisterModal, requestOpen, isModalOpen, dismissModal, shouldShowModal } = useModalContext();
+    const modalId = 'workerEmptyState';
+    const [hasMounted, setHasMounted] = useState(false);
 
-    if (!isVisible) return null;
+    useEffect(() => {
+        setHasMounted(true);
+        // Priority 1
+        registerModal(modalId, 1);
+
+        if (shouldShowModal(modalId)) {
+            requestOpen(modalId);
+        }
+
+        return () => unregisterModal(modalId);
+    }, [registerModal, unregisterModal, requestOpen, shouldShowModal, modalId]);
+
+    const handleClose = () => {
+        // Snooze for 7 days
+        dismissModal(modalId, 7 * 24 * 60 * 60 * 1000);
+    };
+
+    const isOpen = isModalOpen(modalId);
+
+    if (!hasMounted || !isOpen) return null;
 
     return (
         <div className={styles.overlay}>
@@ -16,7 +38,7 @@ export default function WorkerEmptyState() {
                 <div className={styles.closeButtonContainer}>
                     <button
                         className={styles.closeButton}
-                        onClick={() => setIsVisible(false)}
+                        onClick={handleClose}
                         aria-label="Close"
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -47,7 +69,7 @@ export default function WorkerEmptyState() {
                     </p>
 
                     <button className={styles.startButton} onClick={() => {
-                        setIsVisible(false); // Close modal on start
+                        handleClose(); // Close modal on start
                         // Ideally we focus somewhere relevant or navigate
                     }}>
                         Start your first course

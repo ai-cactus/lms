@@ -3,7 +3,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import WorkerDashboardLayout from '@/components/worker/WorkerDashboardLayout';
-import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
+
 
 export default async function WorkerLayout({
     children,
@@ -30,11 +30,16 @@ export default async function WorkerLayout({
 
     const fullName = profile?.fullName || session.user.name || session.user.email || 'User';
     const role = user?.role || session.user.role;
+    console.log('[WorkerLayout] Rendering for user:', session.user.email, 'Role:', role);
     const organizationId = user?.organizationId;
+
+    if (!organizationId) {
+        redirect('/onboarding-worker');
+    }
 
     return (
         <>
-            <OrganizationActivationModal hasOrganization={!!organizationId} />
+
             <WorkerDashboardLayout
                 userEmail={session.user.email || ''}
                 fullName={fullName}

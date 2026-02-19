@@ -103,6 +103,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         if (candidates.length > 0) {
             // registeredModals is already sorted by priority desc
             const nextModal = candidates[0];
+            console.log('[ModalContext] Activating modal:', nextModal.id);
             setActiveModal(nextModal.id);
         }
     }, [activeModal, openRequests, registeredModals]);

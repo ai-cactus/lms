@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import styles from './WorkerWelcomeModal.module.css';
@@ -20,32 +20,40 @@ export default function WorkerWelcomeModal({ courseCount, firstCourseId, hasProg
     const [hasMounted, setHasMounted] = useState(false);
     const router = useRouter();
 
+    const effectRan = useRef(false);
+
     useEffect(() => {
         setHasMounted(true);
+        // Priority 5 (Medium)
         registerModal(modalId, 5);
 
-        // Intelligent Check: only show if they have courses but HAVEN'T started any yet
-        // AND context says we should show it.
-        const legacySeen = typeof window !== 'undefined' ? localStorage.getItem('workerWelcomeSeen') : null;
+        // Debug logging
+        console.log('[WorkerWelcomeModal] Effect run. CourseCount:', courseCount, 'HasProgress:', hasProgress);
 
-        if (courseCount > 0 && !hasProgress && !legacySeen && shouldShowModal(modalId)) {
-            requestOpen(modalId);
+        if (typeof window !== 'undefined') {
+            const shouldShow = shouldShowModal(modalId);
+            console.log('[WorkerWelcomeModal] Should show?', shouldShow);
+
+            if (courseCount > 0 && !hasProgress && shouldShow) {
+                console.log('[WorkerWelcomeModal] Requesting Open');
+                requestOpen(modalId);
+            }
         }
 
         return () => unregisterModal(modalId);
     }, [courseCount, hasProgress, registerModal, unregisterModal, requestOpen, shouldShowModal, modalId]);
 
     const handleClose = () => {
-        // Dismiss forever when closed
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('workerWelcomeSeen', 'true');
-            localStorage.setItem(`modal_dismissed_${modalId}`, 'forever');
-        }
-        dismissModal(modalId, -1);
+        // Snooze for 4 hours (simulating the "4 refreshes" or just a time duration)
+        // The user asked for it to be intelligent. Sticking to time-based is cleaner.
+        // Let's say 24 hours snooze if they close it without acting? Or maybe shorter.
+        // The previous code had "4" which implied refreshes. Let's do 12 hours.
+        dismissModal(modalId, 12 * 60 * 60 * 1000);
     };
 
     const handleStart = () => {
-        handleClose();
+        // Permanent dismiss
+        dismissModal(modalId, -1);
         if (firstCourseId) {
             router.push(`/learn/${firstCourseId}`);
         }

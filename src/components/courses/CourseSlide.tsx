@@ -72,11 +72,14 @@ export default function CourseSlide({
 
                     <div className={styles.slideDivider} />
 
-                    <SlideContentFitter
+                    <div
                         className={styles.slideBody}
-                        content={lesson.content || ''}
-                        minFontSize={14}
-                        maxFontSize={32}
+                        dangerouslySetInnerHTML={{
+                            __html: (lesson.content || '')
+                                .replace(/&nbsp;/g, ' ')
+                                .replace(/<br\s*\/?>/gi, ' ')
+                                .replace(/\s+/g, ' ')
+                        }}
                     />
                 </div>
             </div>

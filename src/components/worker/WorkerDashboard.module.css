@@ -233,6 +233,7 @@
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
 }
 
@@ -648,4 +649,222 @@
     .rightPanel {
         padding: 30px;
     }
+}
+
+/* Achievements Section */
+.achievementsSection {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.achievementsCard {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 40px;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.achievementsContent {
+    max-width: 800px;
+}
+
+.achievementsText {
+    font-size: 16px;
+    color: #1A202C;
+    margin-bottom: 8px;
+}
+
+.achievementsSubtext {
+    font-size: 14px;
+    color: #718096;
+    line-height: 1.6;
+}
+
+/* New Table Layout Styles */
+.tableWrapper {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    /* For rounded corners on the table */
+}
+
+.courseTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.courseTable th {
+    background: #F1F5F9;
+    color: #64748B;
+    font-weight: 600;
+    text-align: left;
+    padding: 16px 24px;
+    border-bottom: 1px solid #E2E8F0;
+}
+
+.courseTable td {
+    padding: 16px 24px;
+    border-bottom: 1px solid #F1F5F9;
+    color: #1A202C;
+    vertical-align: middle;
+}
+
+.courseTable tr:last-child td {
+    border-bottom: none;
+}
+
+.courseInfo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.courseIconSmall {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: #1E293B;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+
+.courseTitleSmall {
+    font-weight: 600;
+    color: #1A202C;
+}
+
+.deadlineRed {
+    color: #DC2626;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+}
+
+.deadlineNormal {
+    color: #4A5568;
+}
+
+.actionButton {
+    color: #4F46E5;
+    font-weight: 600;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.actionButton:hover {
+    text-decoration: underline;
+}
+
+.actionRetry {
+    color: #DC2626;
+}
+
+.menuButton {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #94A3B8;
+    padding: 4px;
+}
+
+
+/* Training Page List */
+.trainingListSection {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #E2E8F0;
+    overflow: hidden;
+    padding: 0;
+}
+
+.trainingList {
+    display: flex;
+    flex-direction: column;
+}
+
+.trainingItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 32px;
+    border-bottom: 1px dashed #E2E8F0;
+    transition: all 0.2s;
+}
+
+.trainingItem:last-child {
+    border-bottom: none;
+}
+
+.trainingItem:hover {
+    background-color: #F8FAFC;
+}
+
+.trainingInfo {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.trainingIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: #1E293B;
+    /* Dark background as in visual */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+
+.trainingDetails {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.trainingTitle {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1A202C;
+    margin: 0;
+}
+
+.trainingCategory {
+    font-size: 14px;
+    color: #718096;
+    margin: 0;
+}
+
+.trainingActionBtn {
+    background-color: #4730F7;
+    /* Primary Blue from design */
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    min-width: 120px;
+    text-align: center;
+}
+
+.trainingActionBtn:hover {
+    background-color: #3720E3;
 }

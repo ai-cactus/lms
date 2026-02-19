@@ -8,11 +8,25 @@
     padding: 0 40px;
 }
 
+@media (max-width: 1280px) {
+    .header {
+        padding: 0 24px;
+    }
+}
+
+
 .headerEnd {
     display: flex;
     align-items: center;
     gap: 24px;
 }
+
+@media (max-width: 1280px) {
+    .headerEnd {
+        gap: 16px;
+    }
+}
+
 
 .iconButton {
     background: none;

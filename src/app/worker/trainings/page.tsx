@@ -1,7 +1,7 @@
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import styles from '@/components/worker/WorkerDashboard.module.css';
-import WorkerCourseList from '@/components/worker/WorkerCourseList';
+import WorkerTrainingList from '@/components/worker/WorkerTrainingList';
 
 export default async function WorkerTrainingsPage() {
     const session = await auth();
@@ -18,19 +18,19 @@ export default async function WorkerTrainingsPage() {
         status: e.status,
         progress: e.progress,
         deadline: null,
-        duration: e.course.duration || undefined
+        duration: e.course.duration || undefined,
+        category: e.course.category
     }));
 
     return (
         <div className={styles.container}>
             <header className={styles.header}>
                 <div>
-                    <h1 className={styles.welcome}>My Trainings</h1>
-                    <p className={styles.sub}>View and access your assigned courses</p>
+                    <h1 className={styles.welcome}>Assigned Courses</h1>
                 </div>
             </header>
 
-            <WorkerCourseList courses={activeCourses} />
+            <WorkerTrainingList courses={activeCourses} />
         </div>
     );
 }

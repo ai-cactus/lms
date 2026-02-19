@@ -53,6 +53,13 @@ export default function Step2Documents({
         }
     };
 
+    // Auto-switch to list view if a document is selected (e.g. after upload)
+    React.useEffect(() => {
+        if (source === 'computer' && documents.some(d => d.selected)) {
+            setSource('uploaded');
+        }
+    }, [documents, source]);
+
     return (
         <div className={styles.stepWrapper}>
             <h2 className={styles.stepTitle}>Upload Training Documents</h2>
