@@ -12,7 +12,13 @@ export default async function LearnerDashboard() {
     const session = await auth();
     const allEnrollments = await prisma.enrollment.findMany({
         where: { userId: session?.user?.id },
-        include: { course: true }
+        include: {
+            course: true,
+            quizAttempts: {
+                orderBy: { completedAt: 'desc' },
+                take: 1
+            }
+        }
     });
 
     // In the new design, we list ALL courses in the course list table, including attested/completed ones.
@@ -38,7 +44,8 @@ export default async function LearnerDashboard() {
         status: e.status,
         progress: e.progress,
         deadline: null,
-        duration: e.course.duration || undefined
+        duration: e.course.duration || undefined,
+        quizAttempts: e.quizAttempts
     }));
 
     // Check if completely empty (onboarding state)

@@ -200,7 +200,18 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                                                     Failed
                                                 </span>
                                             ) : (
-                                                <span style={{ fontSize: '12px', color: '#718096' }}>In Progress</span>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: '12px', color: '#718096' }}>In Progress</span>
+                                                    {enrollment.quizAttempts && (
+                                                        <span style={{ fontSize: '10px', color: '#A0AEC0', marginTop: '2px' }}>
+                                                            Attempt {enrollment.quizAttempts[0]
+                                                                ? (enrollment.quizAttempts[0].timeTaken === null
+                                                                    ? enrollment.quizAttempts[0].attemptCount
+                                                                    : enrollment.quizAttempts[0].attemptCount + 1)
+                                                                : 1}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             )}
                                         </td>
                                         <td style={{ textAlign: 'right' }}>

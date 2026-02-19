@@ -551,6 +551,11 @@ export default function LearnPage() {
                                                 <p className={styles.quizIntroText}>
                                                     This quiz contains {course.quiz?.questions.length} questions.<br />
                                                     Passing score: {course.quiz?.passingScore}%
+                                                    {course.quiz?.allowedAttempts && (
+                                                        <span style={{ display: 'block', marginTop: 8, color: '#E53E3E', fontWeight: 600 }}>
+                                                            Attempt {(enrollment?.quizAttempts?.[0]?.attemptCount || 0) + 1} of {course.quiz.allowedAttempts}
+                                                        </span>
+                                                    )}
                                                 </p>
                                                 <button className={styles.btnPrimary} style={{ fontSize: 16, padding: '12px 32px' }} onClick={handleStartQuiz}>
                                                     Start Quiz
@@ -562,7 +567,10 @@ export default function LearnPage() {
                                             <>
                                                 <div className={styles.quizHeader}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                                                        <span className={styles.slideModuleLabel}>Question {currentQuestionIndex + 1} of {course.quiz.questions.length}</span>
+                                                        <span className={styles.slideModuleLabel}>
+                                                            Question {currentQuestionIndex + 1} of {course.quiz.questions.length}
+                                                            {course.quiz.allowedAttempts && ` | Attempt ${enrollment?.quizAttempts?.[0]?.attemptCount || 1} of ${course.quiz.allowedAttempts}`}
+                                                        </span>
                                                         <span className={styles.slideCounter}>{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</span>
                                                     </div>
                                                     <h2 className={styles.quizQuestion}>{course.quiz.questions[currentQuestionIndex].text}</h2>

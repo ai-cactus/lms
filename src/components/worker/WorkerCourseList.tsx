@@ -13,6 +13,7 @@ interface Course {
     progress: number;
     deadline?: Date | string | null;
     duration?: number;
+    quizAttempts?: any[];
 }
 
 interface WorkerCourseListProps {
@@ -35,7 +36,7 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
         router.push(`/worker/courses/${courseId}`);
     };
 
-    const getStatusBadge = (status: string, progress: number) => {
+    const getStatusBadge = (status: string, progress: number, quizAttempts?: any[]) => {
         if (status === 'attested') {
             return <span className={`${styles.statusBadge} ${styles.statusAttested}`}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -57,10 +58,23 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
 
         // Default to In Progress or Assigned
         const isStarted = progress > 0 || status === 'in_progress';
-        return <span className={`${styles.statusBadge} ${isStarted ? styles.statusInProgress : styles.statusAssigned}`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            {isStarted ? 'In progress' : 'Assigned'}
-        </span>;
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span className={`${styles.statusBadge} ${isStarted ? styles.statusInProgress : styles.statusAssigned}`}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    {isStarted ? 'In progress' : 'Assigned'}
+                </span>
+                {isStarted && quizAttempts && (
+                    <span style={{ fontSize: '10px', color: '#A0AEC0', paddingLeft: '4px' }}>
+                        Attempt {quizAttempts[0]
+                            ? (quizAttempts[0].timeTaken === null
+                                ? quizAttempts[0].attemptCount
+                                : quizAttempts[0].attemptCount + 1)
+                            : 1}
+                    </span>
+                )}
+            </div>
+        );
     };
 
     const formatDate = (date: Date | string | null | undefined) => {
@@ -147,7 +161,7 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                                             {formatDate(course.deadline)}
                                         </td>
                                         <td>
-                                            {getStatusBadge(course.status, course.progress)}
+                                            {getStatusBadge(course.status, course.progress, course.quizAttempts)}
                                         </td>
                                         <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>

@@ -18,6 +18,10 @@ export async function getStaffDetails(userId: string) {
                 enrollments: {
                     include: {
                         course: true,
+                        quizAttempts: {
+                            orderBy: { completedAt: 'desc' },
+                            take: 1
+                        }
                     },
                     orderBy: {
                         startedAt: 'desc',
