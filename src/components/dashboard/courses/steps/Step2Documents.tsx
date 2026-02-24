@@ -3,6 +3,7 @@
 import React, { useRef } from 'react';
 import styles from '../CourseWizard.module.css';
 import { Select } from '@/components/ui';
+import Link from 'next/link';
 
 interface Document {
     id: string;
@@ -132,7 +133,7 @@ export default function Step2Documents({
                     <div className={styles.scrollableContent}>
                         {documents.length > 0 ? (
                             <div className={styles.uploadedFilesContainer}>
-                                {documents.map((doc) => (
+                                {documents.slice(0, 4).map((doc) => (
                                     <div key={doc.id} className={styles.uploadedFileItem}>
                                         <div className={styles.fileLeft}>
                                             <div className={styles.fileIcon}>
@@ -166,6 +167,13 @@ export default function Step2Documents({
                                         </div>
                                     </div>
                                 ))}
+                                {documents.length > 4 && (
+                                    <div style={{ textAlign: 'center', margin: '20px 0 10px 0' }}>
+                                        <Link href="/dashboard/documents" style={{ color: '#4C6EF5', textDecoration: 'none', fontWeight: 500, fontSize: '14px' }}>
+                                            View more in Document Hub →
+                                        </Link>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <p style={{ textAlign: 'center', color: '#718096', marginTop: 40 }}>No previously uploaded documents found.</p>

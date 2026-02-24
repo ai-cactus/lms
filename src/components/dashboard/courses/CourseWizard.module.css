@@ -438,6 +438,8 @@
     font-weight: 500;
     color: #1A202C;
     margin-bottom: 8px;
+    text-align: center;
+    text-wrap: balance;
 }
 
 .uploadLink {
@@ -449,6 +451,8 @@
 .uploadSubtext {
     font-size: 14px;
     color: #718096;
+    text-align: center;
+    text-wrap: balance;
 }
 
 /* Scrollable Wrapper for Computer Mode */

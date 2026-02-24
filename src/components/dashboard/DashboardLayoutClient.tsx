@@ -113,37 +113,6 @@ export default function DashboardLayoutClient({
                             </svg>
                             <span>Staff Management</span>
                         </Link>
-
-                        <Link href="/dashboard/auditor-pack" className={`${styles.navItem} ${pathname.startsWith('/dashboard/auditor-pack') ? styles.active : ''}`}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M18 20V10" />
-                                <path d="M12 20V4" />
-                                <path d="M6 20v-6" />
-                            </svg>
-                            <span>Auditor Pack</span>
-                        </Link>
-                    </div>
-
-                    {/* SETTINGS Section */}
-                    <div className={styles.navSection}>
-                        <h4 className={styles.navSectionTitle}>SETTINGS</h4>
-
-                        <Link href="/dashboard/billing" className={`${styles.navItem} ${pathname.startsWith('/dashboard/billing') ? styles.active : ''}`}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="2" y="5" width="20" height="14" rx="2" />
-                                <line x1="2" y1="10" x2="22" y2="10" />
-                            </svg>
-                            <span>Billing</span>
-                        </Link>
-
-                        <Link href="/dashboard/help" className={`${styles.navItem} ${pathname.startsWith('/dashboard/help') ? styles.active : ''}`}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="10" />
-                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                                <line x1="12" y1="17" x2="12.01" y2="17" />
-                            </svg>
-                            <span>Help Center</span>
-                        </Link>
                     </div>
                 </nav>
             </aside>

@@ -408,7 +408,7 @@ export async function createFullCourse(data: {
     duration: string;
     objectives?: string[];
     modules: { title: string; content: string; duration: string }[];
-    quiz: { question: string; options: string[]; answer: number; type?: string }[];
+    quiz: { question: string; options: string[]; answer: number; type?: string; explanation?: any; archetype?: string; evidence?: any }[];
     assignments: string[];
     dueDate?: Date;
     dueTime?: string;
@@ -419,7 +419,10 @@ export async function createFullCourse(data: {
     quizAttempts?: string;
     quizDuration?: string;
     quizDifficulty?: string;
-    documentId?: string; // New field
+    documentId?: string;
+    // v3.1 raw JSON for persistence
+    rawCourseJson?: any;
+    rawQuizJson?: any;
 }) {
     const session = await auth();
     if (!session?.user?.id) {
@@ -446,6 +449,10 @@ export async function createFullCourse(data: {
             objectives: data.objectives || [],
             status: 'published',
             createdBy: session.user.id,
+            // v3.1 fields
+            promptVersion: data.rawCourseJson ? 'v3.1' : undefined,
+            rawCourseJson: data.rawCourseJson || undefined,
+            rawQuizJson: data.rawQuizJson || undefined,
             lessons: {
                 create: data.modules.map((mod, index) => ({
                     title: mod.title,
@@ -458,14 +465,18 @@ export async function createFullCourse(data: {
                             passingScore: parseInt(data.quizPassMark?.replace('%', '') || '70'),
                             allowedAttempts: (data.quizAttempts === 'unlimited' || !data.quizAttempts) ? null : parseInt(data.quizAttempts),
                             timeLimit: parseInt(data.quizDuration?.replace(/\D/g, '') || '15'),
-                            difficulty: data.quizDifficulty || 'moderate',
+                            difficulty: data.quizDifficulty || 'medium',
                             questions: {
                                 create: data.quiz.map((q, qIndex) => ({
                                     text: q.question,
                                     type: q.type || data.quizQuestionType || 'multiple_choice',
                                     options: q.options,
                                     correctAnswer: q.options[q.answer],
-                                    order: qIndex
+                                    order: qIndex,
+                                    // v3.1 embedded fields
+                                    explanation: q.explanation?.correctExplanation || undefined,
+                                    archetype: q.archetype || undefined,
+                                    evidence: q.evidence || undefined,
                                 }))
                             }
                         }

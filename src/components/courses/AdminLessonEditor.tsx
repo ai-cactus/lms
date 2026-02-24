@@ -28,12 +28,20 @@ export default function AdminLessonEditor({ lesson, onNext, onPrev, isFirst, isL
     const [content, setContent] = useState(lesson.content);
     const [title, setTitle] = useState(lesson.title);
     const [isSaving, setIsSaving] = useState(false);
+    const titleRef = React.useRef<HTMLTextAreaElement>(null);
 
     // Sync state if lesson changes
     React.useEffect(() => {
         setContent(lesson.content);
         setTitle(lesson.title);
     }, [lesson.id, lesson.content, lesson.title]);
+
+    React.useEffect(() => {
+        if (titleRef.current) {
+            titleRef.current.style.height = 'auto';
+            titleRef.current.style.height = `${titleRef.current.scrollHeight}px`;
+        }
+    }, [title]);
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -61,11 +69,13 @@ export default function AdminLessonEditor({ lesson, onNext, onPrev, isFirst, isL
     return (
         <CourseArticle
             title={
-                <input
+                <textarea
+                    ref={titleRef}
                     className={styles.articleTitleInput}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Lesson Title"
+                    rows={1}
                     style={{
                         background: 'transparent',
                         border: 'none',
@@ -74,7 +84,9 @@ export default function AdminLessonEditor({ lesson, onNext, onPrev, isFirst, isL
                         fontWeight: 'inherit',
                         color: 'inherit',
                         width: '100%',
-                        outline: 'none'
+                        outline: 'none',
+                        resize: 'none',
+                        overflow: 'hidden'
                     }}
                 />
             }

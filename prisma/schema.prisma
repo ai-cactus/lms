@@ -119,21 +119,24 @@ model PhiReport {
 }
 
 model Course {
-  id          String          @id @default(uuid())
-  title       String
-  description String?
-  thumbnail   String?
-  status      String          @default("draft") // 'draft' | 'published' | 'archived'
-  category    String? // 'compliance' | 'safety' | 'hr' | 'custom'
-  duration    Int? // estimated minutes
-  createdBy   String
-  creator     User            @relation(fields: [createdBy], references: [id])
-  versions    CourseVersion[]
-  lessons     Lesson[]
-  enrollments Enrollment[]
-  objectives  String[]        @default([])
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id             String          @id @default(uuid())
+  title          String
+  description    String?
+  thumbnail      String?
+  status         String          @default("draft") // 'draft' | 'published' | 'archived'
+  category       String? // 'compliance' | 'safety' | 'hr' | 'custom'
+  duration       Int? // estimated minutes
+  createdBy      String
+  creator        User            @relation(fields: [createdBy], references: [id])
+  versions       CourseVersion[]
+  lessons        Lesson[]
+  enrollments    Enrollment[]
+  objectives     String[]        @default([])
+  promptVersion  String?         // e.g. "v3.1" — tracks which prompt pipeline generated this course
+  rawCourseJson  Json?           // Full v3.1 Prompt A output (CourseV3 schema)
+  rawQuizJson    Json?           // Full v3.1 Prompt B output (QuizV3 schema)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 model CourseVersion {
@@ -182,7 +185,7 @@ model Lesson {
   courseId  String
   course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   title     String
-  content   String   @db.Text // HTML/Markdown content
+  content   String   @db.Text // HTML/Markdown content (legacy) or plain text (v3.1)
   order     Int
   duration  Int? // minutes
   quiz      Quiz?
@@ -205,14 +208,17 @@ model Quiz {
 }
 
 model Question {
-  id            String @id @default(uuid())
+  id            String  @id @default(uuid())
   quizId        String
-  quiz          Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
   text          String
-  type          String // 'multiple_choice' | 'true_false' | 'short_answer'
-  options       Json? // Array of options for multiple choice
+  type          String  // 'multiple_choice' | 'true_false' | 'short_answer'
+  options       Json?   // Array of options for multiple choice
   correctAnswer String
   order         Int
+  explanation   String? @db.Text // v3.1: embedded explanation (correctExplanation)
+  archetype     String? // v3.1: 'best-next-action' | 'identify-noncompliance' | 'sequence' | 'escalation' | 'modality-check'
+  evidence      Json?   // v3.1: { moduleSectionId, moduleSectionHeading, sourceAnchors[] }
 }
 
 model Enrollment {

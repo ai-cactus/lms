@@ -62,7 +62,6 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     /* Subtle shadow per design */
     padding: 24px;
-    min-height: 600px;
     display: flex;
     flex-direction: column;
 }
@@ -196,10 +195,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    align-items: center;
-    margin-top: auto;
-    padding-top: 24px;
-    /* border-top: 1px solid #EDF2F7; Removed for cleaner look */
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #EDF2F7;
     color: #718096;
     font-size: 13px;
 }

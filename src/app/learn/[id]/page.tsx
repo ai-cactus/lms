@@ -592,6 +592,14 @@ export default function LearnPage() {
                                                 </div>
                                                 <div className={styles.quizFooter}>
                                                     <button
+                                                        className={styles.modalBtnSecondary}
+                                                        onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                                                        disabled={currentQuestionIndex === 0 || submitting}
+                                                        style={currentQuestionIndex === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                                                    >
+                                                        Previous Question
+                                                    </button>
+                                                    <button
                                                         className={styles.btnPrimary}
                                                         onClick={handleNextQuestion}
                                                         disabled={!quizAnswers[course.quiz.questions[currentQuestionIndex].id] || submitting}
@@ -637,23 +645,35 @@ export default function LearnPage() {
                                 />
                             ) : (
                                 <CourseArticle
-                                    title={currentLesson!.title}
-                                    moduleLabel={`Module ${activeIndex + 1}`}
-                                    onNext={handleNext}
-                                    onPrev={handlePrev}
-                                    isFirst={activeIndex === 0}
-                                    isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
+                                    title={course.title}
+                                    onProceedToQuiz={() => {
+                                        const endIdx = course.lessons.length - 1;
+                                        setHighestUnlockedIndex(endIdx);
+                                        updateProgress(endIdx);
+                                        setQuizUnlocked(true);
+                                        setIsQuizActive(true);
+                                        setQuizStep('intro');
+                                        setActiveIndex(course.lessons.length);
+                                    }}
+                                    hasQuiz={!!course.quiz}
                                 >
-                                    <div dangerouslySetInnerHTML={{
-                                        __html: (currentLesson!.content || '')
-                                            .replace(/&nbsp;/g, ' ')
-                                            .replace(/<br\s*\/?>/gi, ' ')
-                                            .replace(/\s+/g, ' ')
-                                    }} />
+                                    {course.lessons.map((lesson, idx) => (
+                                        <div key={lesson.id} id={`module-${idx}`} style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}>
+                                            <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: '#1A202C' }}>
+                                                {idx + 1}. {lesson.title}
+                                            </h2>
+                                            <div dangerouslySetInnerHTML={{
+                                                __html: (lesson.content || '')
+                                                    .replace(/&nbsp;/g, ' ')
+                                                    .replace(/<br\s*\/?>/gi, ' ')
+                                                    .replace(/\s+/g, ' ')
+                                            }} />
+                                            {idx < course.lessons.length - 1 && <hr style={{ marginTop: '48px', border: 'none', borderTop: '1px solid #EDF2F7' }} />}
+                                        </div>
+                                    ))}
                                 </CourseArticle>
                             )
-                        )
-                    )}
+                        ))}
 
                 </div>
             </div>

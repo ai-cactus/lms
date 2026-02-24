@@ -313,7 +313,7 @@
     background: white;
     border: 1px solid #E2E8F0;
     border-radius: 16px;
-    padding: 30px 24px 40px;
+    padding: 24px 24px;
 }
 
 .coursesHeader {
@@ -437,8 +437,8 @@
 .viewAllContainer {
     display: flex;
     justify-content: flex-end;
-    margin-top: 24px;
-    padding-top: 16px;
+    margin-top: 12px;
+    padding-top: 12px;
 }
 
 /* Responsive Implementation */

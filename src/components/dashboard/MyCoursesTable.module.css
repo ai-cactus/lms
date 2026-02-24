@@ -7,7 +7,6 @@
     /* Important: allow shrinking */
     display: flex;
     flex-direction: column;
-    min-height: 50vh;
     border: 1px solid #E2E8F0;
     overflow: hidden;
     min-width: 0;
@@ -215,9 +214,8 @@
 .viewAllContainer {
     display: flex;
     justify-content: flex-end;
-    margin-top: auto;
-    /* Push to bottom */
-    padding-top: 24px;
+    margin-top: 16px;
+    padding-top: 16px;
 }
 
 .viewAllButton {

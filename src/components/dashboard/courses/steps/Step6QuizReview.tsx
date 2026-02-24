@@ -8,6 +8,19 @@ interface QuizQuestion {
     options: string[];
     answer: number;
     type?: string;
+    // v3.1 fields
+    archetype?: string;
+    difficulty?: string;
+    explanation?: {
+        correctExplanation: string;
+        incorrectOptions: Record<string, string>;
+    };
+    evidence?: {
+        moduleSectionId: string;
+        moduleSectionHeading: string;
+    };
+    moduleTitle?: string;
+    qualityFlags?: string[];
 }
 
 interface Step6QuizReviewProps {
@@ -15,9 +28,21 @@ interface Step6QuizReviewProps {
     quiz?: QuizQuestion[];
 }
 
+const ARCHETYPE_COLORS: Record<string, { bg: string; color: string }> = {
+    'best-next-action': { bg: '#EBF8FF', color: '#2B6CB0' },
+    'identify-noncompliance': { bg: '#FED7D7', color: '#C53030' },
+    'sequence': { bg: '#FEFCBF', color: '#975A16' },
+    'escalation': { bg: '#FED7E2', color: '#97266D' },
+    'modality-check': { bg: '#E9D8FD', color: '#6B46C1' },
+};
+
 export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizReviewProps & { onQuizUpdate: (quiz: QuizQuestion[]) => void }) {
     const questions = quiz || [];
     const [isAdding, setIsAdding] = useState(false);
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
+    const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
+    const [expandedExplanation, setExpandedExplanation] = useState<number | null>(null);
+
     const [newQuestion, setNewQuestion] = useState<QuizQuestion>({
         question: '',
         options: ['', '', '', ''],
@@ -42,6 +67,14 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
         setNewQuestion({ ...newQuestion, options: newOptions });
     };
 
+    // Count archetypes for summary
+    const archetypeCounts: Record<string, number> = {};
+    questions.forEach(q => {
+        if (q.archetype) {
+            archetypeCounts[q.archetype] = (archetypeCounts[q.archetype] || 0) + 1;
+        }
+    });
+
     return (
         <div className={`${styles.stepWrapper} ${styles.stepWrapperFlex}`}>
             <h2 className={styles.stepTitle}>Review Quiz Questions</h2>
@@ -58,6 +91,27 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
                     </div>
                 </div>
 
+                {/* Archetype Summary (v3.1) */}
+                {Object.keys(archetypeCounts).length > 0 && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px', padding: '0 0 16px 0', borderBottom: '1px solid #EDF2F7' }}>
+                        {Object.entries(archetypeCounts).map(([archetype, count]) => {
+                            const colors = ARCHETYPE_COLORS[archetype] || { bg: '#EDF2F7', color: '#4A5568' };
+                            return (
+                                <span key={archetype} style={{
+                                    background: colors.bg,
+                                    color: colors.color,
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                }}>
+                                    {archetype}: {count}
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
+
                 {/* Flat Question List */}
                 <div className={styles.questionListWrapper}>
                     {questions.length === 0 ? (
@@ -65,37 +119,204 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
                             No questions available. Add one below.
                         </div>
                     ) : (
-                        questions.map((q, index) => (
-                            <div key={index} className={styles.questionCard}>
-                                <div className={styles.questionHeader}>
-                                    <div className={styles.questionText}>
-                                        <span style={{ fontWeight: 'bold', marginRight: 8 }}>{index + 1}.</span>
-                                        {q.question}
-                                        {q.type && (
-                                            <span className={styles.badge} style={{
-                                                marginLeft: 10,
-                                                background: q.type === 'true_false' ? '#E9D8FD' : '#EBF8FF',
-                                                color: q.type === 'true_false' ? '#6B46C1' : '#3182CE'
-                                            }}>
-                                                {q.type.replace('_', ' ')}
-                                            </span>
-                                        )}
-                                    </div>
-                                    {/* Edit button removed as requested */}
-                                </div>
-                                <div className={styles.optionList}>
-                                    {q.options.map((opt, optIndex) => (
-                                        <div key={optIndex} className={styles.optionItem}>
-                                            <div
-                                                className={`${styles.radioCircle} ${q.answer === optIndex ? styles.radioSelected : ''}`}
-                                            />
-                                            {opt}
-                                            {q.answer === optIndex && <span style={{ marginLeft: 8, fontSize: 12, color: '#48BB78', fontWeight: 600 }}>(Correct)</span>}
+                        questions.map((q, index) => {
+                            const isEditing = editingIndex === index;
+                            if (isEditing && editingQuestion) {
+                                return (
+                                    <div key={index} className={styles.questionCard} style={{ border: '2px solid #4C6EF5' }}>
+                                        <h4 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Edit Question {index + 1}</h4>
+                                        <div className={styles.formGroup}>
+                                            <label>Question Type</label>
+                                            <select
+                                                className={styles.typeSelect}
+                                                value={editingQuestion.type}
+                                                onChange={(e) => {
+                                                    const type = e.target.value;
+                                                    setEditingQuestion({
+                                                        ...editingQuestion,
+                                                        type,
+                                                        options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
+                                                        answer: 0
+                                                    });
+                                                }}
+                                            >
+                                                <option value="multiple_choice">Multiple Choice</option>
+                                                <option value="true_false">True / False</option>
+                                            </select>
                                         </div>
-                                    ))}
+
+                                        <div className={styles.formGroup}>
+                                            <label>Question Text</label>
+                                            <input
+                                                type="text"
+                                                className={styles.formInput}
+                                                value={editingQuestion.question}
+                                                onChange={(e) => setEditingQuestion({ ...editingQuestion, question: e.target.value })}
+                                            />
+                                        </div>
+
+                                        <div className={styles.formGroup}>
+                                            <label>Options (Select correct answer)</label>
+                                            <div className={styles.optionsGrid}>
+                                                {editingQuestion.options.map((opt, i) => (
+                                                    <div key={i} className={styles.optionInputRow}>
+                                                        <input
+                                                            type="radio"
+                                                            name={`editCorrectAnswer-${index}`}
+                                                            checked={editingQuestion.answer === i}
+                                                            onChange={() => setEditingQuestion({ ...editingQuestion, answer: i })}
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            className={styles.formInput}
+                                                            value={opt}
+                                                            onChange={(e) => {
+                                                                const newOptions = [...editingQuestion.options];
+                                                                newOptions[i] = e.target.value;
+                                                                setEditingQuestion({ ...editingQuestion, options: newOptions });
+                                                            }}
+                                                            disabled={editingQuestion.type === 'true_false'}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className={styles.formActions}>
+                                            <button className={styles.btnCancel} onClick={() => { setEditingIndex(null); setEditingQuestion(null); }}>Cancel</button>
+                                            <button className={styles.btnSave} onClick={() => {
+                                                if (!editingQuestion.question.trim() || editingQuestion.options.some(o => !o.trim())) {
+                                                    alert("Please fill in all fields.");
+                                                    return;
+                                                }
+                                                const updatedQuiz = [...questions];
+                                                updatedQuiz[index] = editingQuestion;
+                                                onQuizUpdate(updatedQuiz);
+                                                setEditingIndex(null);
+                                                setEditingQuestion(null);
+                                            }}>Save Changes</button>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            const archetypeColors = q.archetype ? ARCHETYPE_COLORS[q.archetype] : null;
+
+                            return (
+                                <div key={index} className={styles.questionCard}>
+                                    <div className={styles.questionHeader}>
+                                        <div className={styles.questionText}>
+                                            <span style={{ fontWeight: 'bold', marginRight: 8 }}>{index + 1}.</span>
+                                            {q.question}
+                                            {/* Type badge */}
+                                            {q.type && (
+                                                <span className={styles.badge} style={{
+                                                    marginLeft: 10,
+                                                    background: q.type === 'true_false' ? '#E9D8FD' : '#EBF8FF',
+                                                    color: q.type === 'true_false' ? '#6B46C1' : '#3182CE'
+                                                }}>
+                                                    {q.type.replace('_', ' ')}
+                                                </span>
+                                            )}
+                                            {/* Archetype badge (v3.1) */}
+                                            {q.archetype && archetypeColors && (
+                                                <span className={styles.badge} style={{
+                                                    marginLeft: 6,
+                                                    background: archetypeColors.bg,
+                                                    color: archetypeColors.color,
+                                                }}>
+                                                    {q.archetype}
+                                                </span>
+                                            )}
+                                            {/* Difficulty badge (v3.1) */}
+                                            {q.difficulty && (
+                                                <span className={styles.badge} style={{
+                                                    marginLeft: 6,
+                                                    background: q.difficulty === 'hard' ? '#FED7D7' : q.difficulty === 'medium' ? '#FEFCBF' : '#C6F6D5',
+                                                    color: q.difficulty === 'hard' ? '#C53030' : q.difficulty === 'medium' ? '#975A16' : '#276749',
+                                                }}>
+                                                    {q.difficulty}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                            {/* Explanation toggle (v3.1) */}
+                                            {q.explanation && (
+                                                <button
+                                                    onClick={() => setExpandedExplanation(expandedExplanation === index ? null : index)}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: '1px solid #E2E8F0',
+                                                        borderRadius: '6px',
+                                                        padding: '4px 10px',
+                                                        fontSize: '12px',
+                                                        color: expandedExplanation === index ? '#4C6EF5' : '#718096',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    {expandedExplanation === index ? 'Hide' : 'Why?'}
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => {
+                                                    setEditingIndex(index);
+                                                    setEditingQuestion(q);
+                                                }}
+                                                style={{
+                                                    background: 'transparent',
+                                                    border: '1px solid #E2E8F0',
+                                                    borderRadius: '6px',
+                                                    padding: '4px 12px',
+                                                    fontSize: '13px',
+                                                    color: '#4A5568',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Edit
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className={styles.optionList}>
+                                        {q.options.map((opt, optIndex) => (
+                                            <div key={optIndex} className={styles.optionItem}>
+                                                <div
+                                                    className={`${styles.radioCircle} ${q.answer === optIndex ? styles.radioSelected : ''}`}
+                                                />
+                                                {opt}
+                                                {q.answer === optIndex && <span style={{ marginLeft: 8, fontSize: 12, color: '#48BB78', fontWeight: 600 }}>(Correct)</span>}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Embedded Explanation (v3.1) */}
+                                    {expandedExplanation === index && q.explanation && (
+                                        <div style={{
+                                            marginTop: '12px',
+                                            padding: '12px 16px',
+                                            background: '#F7FAFC',
+                                            borderRadius: '8px',
+                                            border: '1px solid #E2E8F0',
+                                            fontSize: '13px',
+                                            lineHeight: '1.6',
+                                        }}>
+                                            <div style={{ fontWeight: 600, color: '#2D3748', marginBottom: 6 }}>
+                                                ✓ Correct: {q.explanation.correctExplanation}
+                                            </div>
+                                            {q.explanation.incorrectOptions && Object.entries(q.explanation.incorrectOptions).map(([key, text]) => (
+                                                <div key={key} style={{ color: '#718096', marginTop: 4 }}>
+                                                    ✕ Option {String.fromCharCode(65 + parseInt(key))}: {text}
+                                                </div>
+                                            ))}
+                                            {q.evidence?.moduleSectionHeading && (
+                                                <div style={{ color: '#A0AEC0', marginTop: 8, fontSize: 11 }}>
+                                                    Source: {q.evidence.moduleSectionHeading}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
-                        ))
+                            );
+                        })
                     )}
                 </div>
 
@@ -156,7 +377,7 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
                                             value={opt}
                                             onChange={(e) => updateOption(i, e.target.value)}
                                             placeholder={`Option ${i + 1}`}
-                                            disabled={newQuestion.type === 'true_false'} // Disable text edit for T/F
+                                            disabled={newQuestion.type === 'true_false'}
                                         />
                                     </div>
                                 ))}

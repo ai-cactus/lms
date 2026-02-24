@@ -4,7 +4,19 @@ import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 
 // Generate AI explanations for quiz answers using Gemini
+// v3.1 courses have embedded explanations; this is the legacy fallback
 async function generateExplanations(questions: any[]): Promise<Record<string, string>> {
+    // Check if v3.1 embedded explanations are available
+    const hasEmbedded = questions.every(q => q.explanation && q.explanation.length > 0);
+    if (hasEmbedded) {
+        const map: Record<string, string> = {};
+        questions.forEach(q => {
+            map[q.id] = q.explanation || '';
+        });
+        return map;
+    }
+
+    // Legacy fallback: generate explanations via AI
     const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     if (!apiKey) return {};
 

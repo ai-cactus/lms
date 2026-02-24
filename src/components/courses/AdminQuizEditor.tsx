@@ -39,6 +39,8 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
+    const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
     const [newQuestion, setNewQuestion] = useState<QuizQuestion>({
         question: '',
         options: ['', '', '', ''],
@@ -115,42 +117,135 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                             No questions available. Add one below.
                         </div>
                     ) : (
-                        questions.map((q, index) => (
-                            <div key={index} className={styles.questionCard}>
-                                <div className={styles.questionHeader}>
-                                    <div className={styles.questionText}>
-                                        <span style={{ fontWeight: 'bold', marginRight: 8 }}>{index + 1}.</span>
-                                        {q.question}
-                                        {q.type && (
-                                            <span className={styles.badge} style={{
-                                                marginLeft: 10,
-                                                background: q.type === 'true_false' ? '#E9D8FD' : '#EBF8FF',
-                                                color: q.type === 'true_false' ? '#6B46C1' : '#3182CE'
-                                            }}>
-                                                {q.type.replace('_', ' ')}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <button
-                                        style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '12px' }}
-                                        onClick={() => handleDeleteQuestion(index)}
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
-                                <div className={styles.optionList}>
-                                    {q.options.map((opt, optIndex) => (
-                                        <div key={optIndex} className={styles.optionItem}>
-                                            <div
-                                                className={`${styles.radioCircle} ${q.answer === optIndex ? styles.radioSelected : ''}`}
-                                            />
-                                            {opt}
-                                            {q.answer === optIndex && <span style={{ marginLeft: 8, fontSize: 12, color: '#48BB78', fontWeight: 600 }}>(Correct)</span>}
+                        questions.map((q, index) => {
+                            const isEditing = editingIndex === index;
+                            if (isEditing && editingQuestion) {
+                                return (
+                                    <div key={index} className={styles.questionCard} style={{ border: '2px solid #4C6EF5' }}>
+                                        <h4 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Edit Question {index + 1}</h4>
+                                        <div className={styles.formGroup}>
+                                            <label>Question Type</label>
+                                            <select
+                                                className={styles.typeSelect}
+                                                value={editingQuestion.type}
+                                                onChange={(e) => {
+                                                    const type = e.target.value;
+                                                    setEditingQuestion({
+                                                        ...editingQuestion,
+                                                        type,
+                                                        options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
+                                                        answer: 0
+                                                    });
+                                                }}
+                                            >
+                                                <option value="multiple_choice">Multiple Choice</option>
+                                                <option value="true_false">True / False</option>
+                                            </select>
                                         </div>
-                                    ))}
+
+                                        <div className={styles.formGroup}>
+                                            <label>Question Text</label>
+                                            <input
+                                                type="text"
+                                                className={styles.formInput}
+                                                value={editingQuestion.question}
+                                                onChange={(e) => setEditingQuestion({ ...editingQuestion, question: e.target.value })}
+                                            />
+                                        </div>
+
+                                        <div className={styles.formGroup}>
+                                            <label>Options (Select correct answer)</label>
+                                            <div className={styles.optionsGrid}>
+                                                {editingQuestion.options.map((opt, i) => (
+                                                    <div key={i} className={styles.optionInputRow}>
+                                                        <input
+                                                            type="radio"
+                                                            name={`editCorrectAnswer-${index}`}
+                                                            checked={editingQuestion.answer === i}
+                                                            onChange={() => setEditingQuestion({ ...editingQuestion, answer: i })}
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            className={styles.formInput}
+                                                            value={opt}
+                                                            onChange={(e) => {
+                                                                const newOptions = [...editingQuestion.options];
+                                                                newOptions[i] = e.target.value;
+                                                                setEditingQuestion({ ...editingQuestion, options: newOptions });
+                                                            }}
+                                                            disabled={editingQuestion.type === 'true_false'}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className={styles.formActions}>
+                                            <button className={styles.btnCancel} onClick={() => { setEditingIndex(null); setEditingQuestion(null); }}>Cancel</button>
+                                            <button className={styles.btnSave} onClick={() => {
+                                                if (!editingQuestion.question.trim() || editingQuestion.options.some(o => !o.trim())) {
+                                                    alert("Please fill in all fields.");
+                                                    return;
+                                                }
+                                                const updatedQuiz = [...questions];
+                                                updatedQuiz[index] = editingQuestion;
+                                                setQuestions(updatedQuiz);
+                                                setEditingIndex(null);
+                                                setEditingQuestion(null);
+                                            }}>Save Changes</button>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div key={index} className={styles.questionCard}>
+                                    <div className={styles.questionHeader}>
+                                        <div className={styles.questionText}>
+                                            <span style={{ fontWeight: 'bold', marginRight: 8 }}>{index + 1}.</span>
+                                            {q.question}
+                                            {q.type && (
+                                                <span className={styles.badge} style={{
+                                                    marginLeft: 10,
+                                                    background: q.type === 'true_false' ? '#E9D8FD' : '#EBF8FF',
+                                                    color: q.type === 'true_false' ? '#6B46C1' : '#3182CE'
+                                                }}>
+                                                    {q.type.replace('_', ' ')}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button
+                                                style={{ background: 'transparent', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '4px 12px', fontSize: '12px', color: '#4A5568', cursor: 'pointer' }}
+                                                onClick={() => {
+                                                    setEditingIndex(index);
+                                                    setEditingQuestion(q);
+                                                }}
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                style={{ background: 'transparent', border: '1px solid #FED7D7', borderRadius: '6px', padding: '4px 12px', color: '#EF4444', cursor: 'pointer', fontSize: '12px' }}
+                                                onClick={() => handleDeleteQuestion(index)}
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className={styles.optionList}>
+                                        {q.options.map((opt, optIndex) => (
+                                            <div key={optIndex} className={styles.optionItem}>
+                                                <div
+                                                    className={`${styles.radioCircle} ${q.answer === optIndex ? styles.radioSelected : ''}`}
+                                                />
+                                                {opt}
+                                                {q.answer === optIndex && <span style={{ marginLeft: 8, fontSize: 12, color: '#48BB78', fontWeight: 600 }}>(Correct)</span>}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        ))
+                            );
+                        })
                     )}
                 </div>
 

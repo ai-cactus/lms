@@ -43,7 +43,7 @@ export default function CourseWizard() {
         description: 'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
         difficulty: 'moderate',
         duration: '60',
-        notesCount: '5',
+        notesCount: '10',
         objectives: [
             'To train staff on HIPAA compliance in behavioral health.',
             'Learn how to handle PHI securely',
@@ -51,7 +51,7 @@ export default function CourseWizard() {
         ],
         quizTitle: 'HIPAA Privacy and Security Quiz',
         quizQuestionCount: '15',
-        quizDifficulty: 'moderate',
+        quizDifficulty: 'medium',
         quizQuestionType: 'multiple_choice',
         quizDuration: '15',
         quizPassMark: '80%',
@@ -219,7 +219,10 @@ export default function CourseWizard() {
                     quizAttempts: formData.quizAttempts,
                     quizDuration: formData.quizDuration,
                     quizDifficulty: formData.quizDifficulty,
-                    documentId: selectedDocId
+                    documentId: selectedDocId,
+                    // v3.1 raw JSON for persistence
+                    rawCourseJson: generatedContent?.rawCourseJson || undefined,
+                    rawQuizJson: generatedContent?.rawQuizJson || undefined,
                 });
 
                 if (result.success) {
