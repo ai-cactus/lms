@@ -175,7 +175,14 @@ export default function OnboardingStep1() {
                         <Controller
                             name="phone"
                             control={control}
-                            rules={{ required: "Phone Number is required" }}
+                            rules={{ 
+                                required: "Phone Number is required",
+                                validate: (value) => {
+                                    const digits = value.replace(/\D/g, '');
+                                    if (digits.length < 10) return "Phone number must be at least 10 digits";
+                                    return true;
+                                }
+                            }}
                             render={({ field }) => (
                                 <PhoneInput
                                     value={field.value}

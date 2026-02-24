@@ -5,9 +5,9 @@ import styles from './PhoneInput.module.css';
 
 // Country data with flags, dial codes
 const countries = [
-    { code: 'US', name: 'United States', dialCode: '+1', flag: '🇺🇸' },
-    { code: 'GB', name: 'United Kingdom', dialCode: '+44', flag: '🇬🇧' },
-    { code: 'CA', name: 'Canada', dialCode: '+1', flag: '🇨🇦' },
+    { code: 'US', name: 'United States', dialCode: '+1', flag: '🇺🇸', expectedLength: 10 },
+    { code: 'GB', name: 'United Kingdom', dialCode: '+44', flag: '🇬🇧', expectedLength: 10 },
+    { code: 'CA', name: 'Canada', dialCode: '+1', flag: '🇨🇦', expectedLength: 10 },
     { code: 'AU', name: 'Australia', dialCode: '+61', flag: '🇦🇺' },
     { code: 'DE', name: 'Germany', dialCode: '+49', flag: '🇩🇪' },
     { code: 'FR', name: 'France', dialCode: '+33', flag: '🇫🇷' },
@@ -149,7 +149,13 @@ export default function PhoneInput({
     };
 
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newPhone = e.target.value;
+        // Strip non-digits
+        const rawValue = e.target.value.replace(/\D/g, '');
+
+        // Restrict length based on country metadata (default to 15 if not specified)
+        const maxLength = selectedCountry.expectedLength || 15;
+        const newPhone = rawValue.slice(0, maxLength);
+
         setPhoneNumber(newPhone);
         if (onChange) {
             onChange(`${selectedCountry.dialCode} ${newPhone}`);

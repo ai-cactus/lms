@@ -7,6 +7,11 @@ interface CourseArticleProps {
     onProceedToQuiz?: () => void;
     hasQuiz?: boolean;
     className?: string;
+    moduleLabel?: string;
+    onNext?: () => void;
+    onPrev?: () => void;
+    isFirst?: boolean;
+    isLast?: boolean;
 }
 
 export default function CourseArticle({

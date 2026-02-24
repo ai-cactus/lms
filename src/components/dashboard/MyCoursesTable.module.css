@@ -8,7 +8,6 @@
     display: flex;
     flex-direction: column;
     border: 1px solid #E2E8F0;
-    overflow: hidden;
     min-width: 0;
     max-width: 100%;
 }
