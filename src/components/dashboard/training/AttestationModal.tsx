@@ -25,7 +25,7 @@ export default function AttestationModal({
     userRole,
     onSuccess
 }: AttestationModalProps) {
-    const [signature, setSignature] = useState('');
+    const [signature, setSignature] = useState(userName);
     const [confirmed1, setConfirmed1] = useState(false);
     const [confirmed2, setConfirmed2] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,17 +75,15 @@ export default function AttestationModal({
                     <input
                         className={styles.input}
                         value={signature}
-                        onChange={(e) => setSignature(e.target.value)}
-                        placeholder="Type your full name"
+                        readOnly
                     />
-                    <div style={{ fontSize: 12, color: '#A0AEC0', marginTop: 4 }}>Must match: {userName}</div>
                 </div>
 
                 <div className={styles.fieldGroup}>
                     <label className={styles.label}>Role</label>
                     <input
                         className={styles.input}
-                        value={userRole}
+                        value={userRole.charAt(0).toUpperCase() + userRole.slice(1)}
                         readOnly
                     />
                 </div>

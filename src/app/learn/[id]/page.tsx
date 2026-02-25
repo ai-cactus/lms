@@ -629,50 +629,43 @@ export default function LearnPage() {
                                 isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
                             />
                         ) : (
-                            userData?.role === 'admin' ? (
-                                <AdminLessonEditor
-                                    lesson={{
-                                        id: currentLesson!.id,
-                                        title: currentLesson!.title || '',
-                                        content: currentLesson!.content || '',
-                                        moduleIndex: activeIndex,
-                                        totalModules: course.lessons.length
-                                    }}
-                                    onNext={handleNext}
-                                    onPrev={handlePrev}
-                                    isFirst={activeIndex === 0}
-                                    isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
-                                />
-                            ) : (
-                                <CourseArticle
-                                    title={course.title}
-                                    onProceedToQuiz={() => {
-                                        const endIdx = course.lessons.length - 1;
-                                        setHighestUnlockedIndex(endIdx);
-                                        updateProgress(endIdx);
-                                        setQuizUnlocked(true);
-                                        setIsQuizActive(true);
-                                        setQuizStep('intro');
-                                        setActiveIndex(course.lessons.length);
-                                    }}
-                                    hasQuiz={!!course.quiz}
-                                >
-                                    {course.lessons.map((lesson, idx) => (
-                                        <div key={lesson.id} id={`module-${idx}`} style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}>
-                                            <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: '#1A202C' }}>
-                                                {idx + 1}. {lesson.title}
-                                            </h2>
-                                            <div dangerouslySetInnerHTML={{
-                                                __html: (lesson.content || '')
-                                                    .replace(/&nbsp;/g, ' ')
-                                                    .replace(/<br\s*\/?>/gi, ' ')
-                                                    .replace(/\s+/g, ' ')
-                                            }} />
-                                            {idx < course.lessons.length - 1 && <hr style={{ marginTop: '48px', border: 'none', borderTop: '1px solid #EDF2F7' }} />}
-                                        </div>
-                                    ))}
-                                </CourseArticle>
-                            )
+                            <CourseArticle
+                                title={course.title}
+                                onProceedToQuiz={() => {
+                                    const endIdx = course.lessons.length - 1;
+                                    setHighestUnlockedIndex(endIdx);
+                                    updateProgress(endIdx);
+                                    setQuizUnlocked(true);
+                                    setIsQuizActive(true);
+                                    setQuizStep('intro');
+                                    setActiveIndex(course.lessons.length);
+                                }}
+                                hasQuiz={!!course.quiz}
+                            >
+                                {course.lessons.map((lesson, idx) => (
+                                    <div key={lesson.id} id={`module-${idx}`} style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}>
+                                        <h2 style={{
+                                            fontSize: '22px',
+                                            fontWeight: 700,
+                                            marginBottom: '8px',
+                                            color: '#4C6EF5',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Module {idx + 1}
+                                        </h2>
+                                        <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px', color: '#1A202C' }}>
+                                            {lesson.title}
+                                        </h3>
+                                        <div dangerouslySetInnerHTML={{
+                                            __html: (lesson.content || '')
+                                                .replace(/&nbsp;/g, ' ')
+                                                .replace(/<br\s*\/?>/gi, ' ')
+                                                .replace(/\s+/g, ' ')
+                                        }} />
+                                        {idx < course.lessons.length - 1 && <hr style={{ marginTop: '48px', border: 'none', borderTop: '2px solid #EDF2F7' }} />}
+                                    </div>
+                                ))}
+                            </CourseArticle>
                         ))}
 
                 </div>

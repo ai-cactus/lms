@@ -153,17 +153,8 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                     </div>
                 </div>
 
-                <h3 style={{ fontSize: '20px', fontWeight: 700, margin: '40px 0 24px', color: '#1A202C' }}>
-                    Compliance Mapping
-                </h3>
 
-                {/* Compliance Mapping */}
-                <div className={styles.formRow}>
-                    <label className={styles.formLabel}>CARF Section</label>
-                    <div className={styles.readOnlyBox}>
-                        Standard 1.J.5.a.-b.
-                    </div>
-                </div>
+
             </div>
         </div>
     );

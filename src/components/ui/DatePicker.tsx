@@ -9,9 +9,12 @@ interface DatePickerProps {
     onChange: (date: string) => void;
     placeholder?: string;
     label?: string;
+    minDate?: Date; // Dates before this are disabled
 }
 
-export default function DatePicker({ value, onChange, placeholder = 'Select date' }: DatePickerProps) {
+export default function DatePicker({ value, onChange, placeholder = 'Select date', minDate }: DatePickerProps) {
+    // Default minDate to start of today if not provided
+    const effectiveMinDate = minDate || new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
@@ -172,6 +175,10 @@ export default function DatePicker({ value, onChange, placeholder = 'Select date
                             // Check if today
                             const isToday = today.getDate() === day && today.getMonth() === currentMonth && today.getFullYear() === currentYear;
 
+                            // Check if before minDate
+                            const thisDate = new Date(currentYear, currentMonth, day);
+                            const isPast = thisDate < effectiveMinDate;
+
                             return (
                                 <button
                                     key={day}
@@ -179,11 +186,13 @@ export default function DatePicker({ value, onChange, placeholder = 'Select date
                                         ${styles.dayButton} 
                                         ${isSelected ? styles.selected : ''}
                                         ${isToday && !isSelected ? styles.today : ''}
+                                        ${isPast ? styles.disabled : ''}
                                     `}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        handleDayClick(day);
+                                        if (!isPast) handleDayClick(day);
                                     }}
+                                    disabled={isPast}
                                 >
                                     {day}
                                 </button>

@@ -376,9 +376,9 @@
 
 .coursesTable td {
     padding: 24px 16px;
-    color: #0D0D12;
-    font-size: 17px;
-    font-weight: 500;
+    color: #4A5568;
+    font-size: 14px;
+    font-weight: 400;
     border-bottom: 1px dashed #E2E8F0;
     vertical-align: middle;
 }
@@ -401,10 +401,10 @@
 }
 
 .courseName {
-    font-weight: 600;
-    font-size: 16px;
+    font-weight: 400;
+    font-size: 14px;
     display: block;
-    color: #0D0D12;
+    color: #2D3748;
 }
 
 .courseSub {

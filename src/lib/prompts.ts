@@ -14,39 +14,40 @@
 // ─── Metadata builder ────────────────────────────
 
 interface DocumentMeta {
-    docId: string;
-    label: string;
-    hint?: string;
+  docId: string;
+  label: string;
+  hint?: string;
 }
 
 interface PromptAInput {
-    sourceTexts: string;
-    documents: DocumentMeta[];
-    title?: string;
-    category?: string;
+  sourceTexts: string;
+  documents: DocumentMeta[];
+  title?: string;
+  category?: string;
+  requestedSlideCount?: number;
 }
 
 interface PromptBInput {
-    courseJson: string;
-    requestedQuestionCount: number;
-    quizDifficulty: 'easy' | 'medium' | 'hard';
+  courseJson: string;
+  requestedQuestionCount: number;
+  quizDifficulty: 'easy' | 'medium' | 'hard';
 }
 
 function buildMetadataSection(documents: DocumentMeta[]): string {
-    if (documents.length === 0) return 'METADATA:\nNo documents provided.';
-    const entries = documents.map(
-        (d, i) => `  - docId: "${d.docId}", label: "${d.label}"${d.hint ? `, hint: "${d.hint}"` : ''}`
-    ).join('\n');
-    return `METADATA:\nSource Documents:\n${entries}`;
+  if (documents.length === 0) return 'METADATA:\nNo documents provided.';
+  const entries = documents.map(
+    (d, i) => `  - docId: "${d.docId}", label: "${d.label}"${d.hint ? `, hint: "${d.hint}"` : ''}`
+  ).join('\n');
+  return `METADATA:\nSource Documents:\n${entries}`;
 }
 
 // ─── Prompt A — Structured Course JSON ───────────
 
 export function buildPromptA(input: PromptAInput): string {
-    const metadataSection = buildMetadataSection(input.documents);
-    const contextForGeneration = input.sourceTexts;
+  const metadataSection = buildMetadataSection(input.documents);
+  const contextForGeneration = input.sourceTexts;
 
-    return `
+  return `
 ROLE:
 You are a senior instructional designer and compliance-minded writer creating staff training for a regulated organization.
 
@@ -71,6 +72,7 @@ LENGTH + STRUCTURE (anti-truncation):
 - Each module: 2–4 sections.
 - Each section: 2–4 short paragraphs max.
 - Keep text staff-friendly and practical.
+- SLIDES: Generate exactly ${input.requestedSlideCount || 10} slides total, distributed evenly across all modules. Each slide MUST have a slideTitle and 3–5 concise bullets summarizing key points from the corresponding module sections. Do NOT leave slides arrays empty.
 
 TRACEABILITY (lightweight, engineer-friendly):
 - Every module.section MUST include sourceAnchors with docId and a hint.
@@ -177,7 +179,7 @@ ${contextForGeneration}
 // ─── Prompt B — Quiz + Explanations ──────────────
 
 export function buildPromptB(input: PromptBInput): string {
-    return `
+  return `
 ROLE:
 You are an assessment specialist generating a university-grade quiz for a regulated training course.
 

@@ -1,0 +1,104 @@
+.inputGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.selectWrapper {
+    position: relative;
+    width: 100%;
+}
+
+.select {
+    width: 100%;
+    padding: 12px 40px 12px 14px;
+    border: 2px solid #E2E8F0;
+    border-radius: 8px;
+    font-size: 15px;
+    color: #1A202C;
+    background: white;
+    outline: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    appearance: none;
+    /* Hide default native chevron */
+    font-family: var(--font-body);
+}
+
+.select:hover:not(:disabled) {
+    border-color: #CBD5E0;
+}
+
+.select:focus {
+    border-color: #4C6EF5;
+    box-shadow: 0 0 0 3px rgba(76, 110, 245, 0.15);
+}
+
+.hasSelection {
+    border-color: #4C6EF5;
+}
+
+.select:disabled {
+    background: #F7FAFC;
+    cursor: not-allowed;
+    color: #718096;
+}
+
+.chevron {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: #4A5568;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s ease;
+}
+
+.select:focus~.chevron {
+    color: #4C6EF5;
+}
+
+.assignButton {
+    width: 100%;
+    background: #4C6EF5;
+    color: white;
+    font-weight: 600;
+}
+
+.assignButton:hover:not(:disabled) {
+    background: #4361EE;
+}
+
+/* Result feedback styles */
+.resultSection {
+    margin-bottom: 16px;
+    font-size: 13px;
+}
+
+.resultSuccess {
+    color: #059669;
+    padding: 8px 12px;
+    background: #D1FAE5;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.resultWarning {
+    color: #D97706;
+    padding: 8px 12px;
+    background: #FEF3C7;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.resultError {
+    color: #DC2626;
+    padding: 8px 12px;
+    background: #FEE2E2;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}

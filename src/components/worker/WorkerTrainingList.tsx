@@ -4,6 +4,13 @@ import React from 'react';
 import styles from './WorkerDashboard.module.css';
 import { useRouter } from 'next/navigation';
 
+function formatCategory(category: string): string {
+    return category
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
 interface Course {
     id: string;
     title: string;
@@ -63,7 +70,7 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
                                     </div>
                                     <div className={styles.trainingDetails}>
                                         <h3 className={styles.trainingTitle}>{course.title}</h3>
-                                        <p className={styles.trainingCategory}>{course.category || 'General'}</p>
+                                        <p className={styles.trainingCategory}>{course.category ? formatCategory(course.category) : 'General'}</p>
                                     </div>
                                 </div>
                                 <button

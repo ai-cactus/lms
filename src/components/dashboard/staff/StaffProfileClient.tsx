@@ -6,6 +6,7 @@ import { Button, Input } from '@/components/ui';
 import Link from 'next/link';
 import Image from 'next/image';
 import EditStaffModal from './EditStaffModal';
+import AssignUserCourseModal from './AssignUserCourseModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentQuizResult } from '@/app/actions/staff';
 
@@ -33,6 +34,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
     const { user, stats, enrollments } = staff;
     const [searchQuery, setSearchQuery] = useState('');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [viewingResult, setViewingResult] = useState<any>(null);
     const [isLoadingResult, setIsLoadingResult] = useState(false);
 
@@ -79,7 +81,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                             <img src={user.avatarUrl} alt={user.name} className={styles.avatarImage} />
                         ) : (
                             // Fallback image matching the design (dark abstract or just initials)
-                            // For now using initials centered like other parts
                             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 600 }}>
                                 {(user.name.charAt(0) || 'U').toUpperCase()}
                             </div>
@@ -111,7 +112,10 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                         </svg>
                         Edit Profile
                     </button>
-                    <button className={styles.btnPrimary}>
+                    <button
+                        className={styles.btnPrimary}
+                        onClick={() => setIsAssignModalOpen(true)}
+                    >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <line x1="12" y1="5" x2="12" y2="19"></line>
                             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -121,180 +125,173 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                 </div>
             </div>
 
-            <div className={styles.layoutGrid}>
-                {/* Left Column: Courses */}
-                <div className={styles.leftColumn}>
-
-                    {/* Courses Table */}
-                    <div className={styles.coursesSection}>
-                        <div className={styles.coursesHeader}>
-                            <h3 className={styles.coursesTitle}>Courses</h3>
-                            <div className={styles.searchWrapper}>
-                                <Input
-                                    className=""
-                                    style={{ width: '250px' }}
-                                    placeholder="Search for courses..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    leftIcon={
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A0AEC0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <circle cx="11" cy="11" r="8"></circle>
-                                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                                        </svg>
-                                    }
-                                />
-                            </div>
-                        </div>
-
-                        <table className={styles.table}>
-                            <thead>
-                                <tr>
-                                    <th style={{ width: '40%' }}>Name</th>
-                                    <th style={{ width: '30%' }}>Progress</th>
-                                    <th style={{ width: '15%' }}>Quiz Status</th>
-                                    <th style={{ width: '15%' }}></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredEnrollments.map(enrollment => (
-                                    <tr key={enrollment.id}>
-                                        <td>
-                                            <div className={styles.courseItem}>
-                                                <div className={styles.courseThumb}>
-                                                    {/* Icon or Image */}
-                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                                                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-                                                    </svg>
-                                                </div>
-                                                <div>
-                                                    <span className={styles.courseName}>{enrollment.courseName}</span>
-                                                    <span className={styles.courseLvl}>{enrollment.difficulty || 'Advanced'}</span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div className={styles.progressWrapper}>
-                                                <div className={styles.bgBar}>
-                                                    <div className={styles.fillBar} style={{ width: `${enrollment.progress || 0}%` }}></div>
-                                                </div>
-                                                <span className={styles.pctText}>{enrollment.progress || 0}%</span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            {/* Logic for badges based on screenshots */}
-                                            {/* Logic for badges based on screenshots */}
-                                            {(enrollment.status === 'completed' || enrollment.progress === 100) && enrollment.score >= (enrollment.passingScore || 70) ? (
-                                                <span className={`${styles.badge} ${styles.badgePassed}`}>
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                                        <polyline points="20 6 9 17 4 12"></polyline>
-                                                    </svg>
-                                                    Passed
-                                                </span>
-                                            ) : (enrollment.status === 'completed' || enrollment.progress === 100) ? (
-                                                <span className={`${styles.badge} ${styles.badgeFailed}`}>
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                                                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                                                    </svg>
-                                                    Failed
-                                                </span>
-                                            ) : (
-                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                                    <span style={{ fontSize: '12px', color: '#718096' }}>In Progress</span>
-                                                    {enrollment.quizAttempts && (
-                                                        <span style={{ fontSize: '10px', color: '#A0AEC0', marginTop: '2px' }}>
-                                                            Attempt {Math.min(
-                                                                enrollment.quizAttempts[0]
-                                                                    ? (enrollment.quizAttempts[0].timeTaken === null
-                                                                        ? enrollment.quizAttempts[0].attemptCount
-                                                                        : enrollment.quizAttempts[0].attemptCount + 1)
-                                                                    : 1,
-                                                                enrollment.allowedAttempts || 99
-                                                            )}
-                                                            {enrollment.allowedAttempts && ` of ${enrollment.allowedAttempts}`}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td style={{ textAlign: 'right' }}>
-                                            <button
-                                                className={styles.viewBtn}
-                                                onClick={() => handleViewResult(enrollment.id)}
-                                                disabled={isLoadingResult}
-                                            >
-                                                {isLoadingResult ? '...' : 'View'}
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {filteredEnrollments.length === 0 && (
-                                    <tr>
-                                        <td colSpan={4} style={{ textAlign: 'center', color: '#718096', padding: '24px' }}>No courses found.</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+            {/* Stats Cards - Horizontal Row Above Table */}
+            <div className={styles.statsRow}>
+                <div className={`${styles.statsCard} ${styles.statsBlue}`}>
+                    <div className={`${styles.statsIcon} ${styles.iconBlue}`}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                        </svg>
                     </div>
-
+                    <div className={styles.statsInfo}>
+                        <span className={styles.statsLabel}>Total Courses Assigned</span>
+                        <span className={styles.statsValue}>{stats.totalCourses}</span>
+                    </div>
                 </div>
 
-                {/* Right Column: Stats */}
-                <div className={styles.rightColumn}>
-                    <div className={`${styles.statsCard} ${styles.statsBlue}`}>
-                        <div className={`${styles.statsIcon} ${styles.iconBlue}`}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                            </svg>
-                        </div>
-                        <div className={styles.statsInfo}>
-                            <span className={styles.statsLabel}>Total Courses Assigned</span>
-                            <span className={styles.statsValue}>{stats.totalCourses}</span>
-                        </div>
+                <div className={`${styles.statsCard} ${styles.statsGreen}`}>
+                    <div className={`${styles.statsIcon} ${styles.iconGreen}`}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                        </svg>
                     </div>
-
-                    <div className={`${styles.statsCard} ${styles.statsGreen}`}>
-                        <div className={`${styles.statsIcon} ${styles.iconGreen}`}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                            </svg>
-                        </div>
-                        <div className={styles.statsInfo}>
-                            <span className={styles.statsLabel}>Courses Completed</span>
-                            <span className={styles.statsValue}>{stats.completedCourses}</span>
-                        </div>
+                    <div className={styles.statsInfo}>
+                        <span className={styles.statsLabel}>Courses Completed</span>
+                        <span className={styles.statsValue}>{stats.completedCourses}</span>
                     </div>
+                </div>
 
-                    <div className={`${styles.statsCard} ${styles.statsRed}`}>
-                        <div className={`${styles.statsIcon} ${styles.iconRed}`}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                            </svg>
-                        </div>
-                        <div className={styles.statsInfo}>
-                            <span className={styles.statsLabel}>Failed / Retake Needed</span>
-                            <span className={styles.statsValue}>{stats.failedCourses}</span>
-                        </div>
+                <div className={`${styles.statsCard} ${styles.statsRed}`}>
+                    <div className={`${styles.statsIcon} ${styles.iconRed}`}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                        </svg>
                     </div>
+                    <div className={styles.statsInfo}>
+                        <span className={styles.statsLabel}>Failed / Retake Needed</span>
+                        <span className={styles.statsValue}>{stats.failedCourses}</span>
+                    </div>
+                </div>
 
-                    <div className={`${styles.statsCard} ${styles.statsYellow}`}>
-                        <div className={`${styles.statsIcon} ${styles.iconYellow}`}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                            </svg>
-                        </div>
-                        <div className={styles.statsInfo}>
-                            <span className={styles.statsLabel}>Active / Due Soon</span>
-                            <span className={styles.statsValue}>{stats.activeCourses}</span>
-                        </div>
+                <div className={`${styles.statsCard} ${styles.statsYellow}`}>
+                    <div className={`${styles.statsIcon} ${styles.iconYellow}`}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                        </svg>
+                    </div>
+                    <div className={styles.statsInfo}>
+                        <span className={styles.statsLabel}>Active / Due Soon</span>
+                        <span className={styles.statsValue}>{stats.activeCourses}</span>
                     </div>
                 </div>
             </div>
+
+            {/* Courses Table */}
+            <div className={styles.coursesSection}>
+                <div className={styles.coursesHeader}>
+                    <h3 className={styles.coursesTitle}>Courses</h3>
+                    <div className={styles.searchWrapper}>
+                        <Input
+                            className=""
+                            style={{ width: '250px' }}
+                            placeholder="Search for courses..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            leftIcon={
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A0AEC0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                            }
+                        />
+                    </div>
+                </div>
+
+                <table className={styles.table}>
+                    <thead>
+                        <tr>
+                            <th style={{ width: '40%' }}>Name</th>
+                            <th style={{ width: '30%' }}>Progress</th>
+                            <th style={{ width: '15%' }}>Quiz Status</th>
+                            <th style={{ width: '15%' }}></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filteredEnrollments.map(enrollment => (
+                            <tr key={enrollment.id}>
+                                <td>
+                                    <div className={styles.courseItem}>
+                                        <div className={styles.courseThumb}>
+                                            {/* Icon or Image */}
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                                                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <span className={styles.courseName}>{enrollment.courseName}</span>
+                                            <span className={styles.courseLvl}>{enrollment.difficulty || 'Advanced'}</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div className={styles.progressWrapper}>
+                                        <div className={styles.bgBar}>
+                                            <div className={styles.fillBar} style={{ width: `${enrollment.progress || 0}%` }}></div>
+                                        </div>
+                                        <span className={styles.pctText}>{enrollment.progress || 0}%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    {/* Logic for badges based on screenshots */}
+                                    {(enrollment.status === 'completed' || enrollment.progress === 100) && enrollment.score >= (enrollment.passingScore || 70) ? (
+                                        <span className={`${styles.badge} ${styles.badgePassed}`}>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="20 6 9 17 4 12"></polyline>
+                                            </svg>
+                                            Passed
+                                        </span>
+                                    ) : (enrollment.status === 'completed' || enrollment.progress === 100) ? (
+                                        <span className={`${styles.badge} ${styles.badgeFailed}`}>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                                            </svg>
+                                            Failed
+                                        </span>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '12px', color: '#718096' }}>In Progress</span>
+                                            {enrollment.quizAttempts && (
+                                                <span style={{ fontSize: '10px', color: '#A0AEC0', marginTop: '2px' }}>
+                                                    Attempt {Math.min(
+                                                        enrollment.quizAttempts[0]
+                                                            ? (enrollment.quizAttempts[0].timeTaken === null
+                                                                ? enrollment.quizAttempts[0].attemptCount
+                                                                : enrollment.quizAttempts[0].attemptCount + 1)
+                                                            : 1,
+                                                        enrollment.allowedAttempts || 99
+                                                    )}
+                                                    {enrollment.allowedAttempts && ` of ${enrollment.allowedAttempts}`}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </td>
+                                <td style={{ textAlign: 'right' }}>
+                                    <button
+                                        className={styles.viewBtn}
+                                        onClick={() => handleViewResult(enrollment.id)}
+                                        disabled={isLoadingResult}
+                                    >
+                                        {isLoadingResult ? '...' : 'View'}
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                        {filteredEnrollments.length === 0 && (
+                            <tr>
+                                <td colSpan={4} style={{ textAlign: 'center', color: '#718096', padding: '24px' }}>No courses found.</td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
             {/* Edit Modal */}
             <EditStaffModal
                 isOpen={isEditModalOpen}
@@ -305,6 +302,21 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                     email: user.email,
                     role: user.role,
                     jobTitle: user.jobTitle
+                }}
+            />
+
+            {/* Assign Course Modal */}
+            <AssignUserCourseModal
+                isOpen={isAssignModalOpen}
+                onClose={() => setIsAssignModalOpen(false)}
+                userEmail={user.email}
+                userName={user.name}
+                enrolledCourseIds={enrollments.map(e => e.courseId)}
+                onSuccess={() => {
+                    // Optional: refresh data here or via router.refresh() 
+                    // though Server Actions with revalidatePath usually handle it.
+                    // For client-side, we might want to tell Next.js to refresh
+                    window.location.reload();
                 }}
             />
 

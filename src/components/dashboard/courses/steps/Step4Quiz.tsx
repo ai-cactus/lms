@@ -115,26 +115,25 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
 
                 {/* Attempts */}
                 <div className={styles.formRow}>
-                    <label className={styles.formLabel}>Attempts</label>
-                    <div className={styles.attemptsControlGroup}>
-                        <div className={styles.toggleWrapper}>
-                            <label className={styles.switch}>
-                                <input
-                                    type="checkbox"
-                                    checked={data.quizAttempts === 'unlimited'}
-                                    onChange={(e) => {
-                                        if (e.target.checked) {
-                                            onChange('quizAttempts', 'unlimited');
-                                        } else {
-                                            onChange('quizAttempts', '1');
-                                        }
-                                    }}
-                                />
-                                <span className={styles.slider}></span>
-                            </label>
-                            <span className={styles.toggleLabel}>Unlimited Retakes</span>
-                        </div>
-
+                    <label className={styles.formLabel} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        Attempts
+                        <label className={styles.switch}>
+                            <input
+                                type="checkbox"
+                                checked={data.quizAttempts === 'unlimited'}
+                                onChange={(e) => {
+                                    if (e.target.checked) {
+                                        onChange('quizAttempts', 'unlimited');
+                                    } else {
+                                        onChange('quizAttempts', '1');
+                                    }
+                                }}
+                            />
+                            <span className={styles.slider}></span>
+                        </label>
+                        <span className={styles.toggleLabel}>Unlimited</span>
+                    </label>
+                    <div>
                         {data.quizAttempts !== 'unlimited' && (
                             <div className={styles.attemptsInputContainer}>
                                 <input

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { generateCourseAndQuizV3 } from '@/app/actions/course-ai-v3';
+import { generateCourseAndQuizV3, checkCourseGenerationJob } from '@/app/actions/course-ai-v3';
 import styles from '@/components/courses/CoursePlayer.module.css';
 
 // Reusable Components
@@ -14,6 +14,7 @@ interface Step5ReviewProps {
     documents: any[];
     initialContent?: any;
     onComplete: (content: any) => void;
+    onBack?: () => void;
 }
 
 /**
@@ -86,65 +87,60 @@ function slidesToHtml(slides: any[]): string {
  * Adapts v3.1 CourseV3 modules into the format expected by existing rendering components
  * and CourseWizard data flow: { title, content, duration, ... }
  */
-function adaptModulesForRendering(courseJson: any): any[] {
+const adaptModulesForRendering = (courseJson: any) => {
     if (!courseJson?.modules) return [];
-
-    return courseJson.modules.map((mod: any) => ({
-        // Legacy-compatible fields
-        title: mod.moduleTitle,
-        content: sectionsToHtml(mod.sections),
-        slideContent: slidesToHtml(mod.slides),
+    return courseJson.modules.map((m: any, mIdx: number) => ({
+        id: `m-${mIdx}`,
+        title: m.moduleTitle,
+        content: sectionsToHtml(m.sections),
+        slideContent: slidesToHtml(m.slides),
         duration: `${Math.round((courseJson.meta?.estimatedDurationMinutes || 60) / courseJson.modules.length)} min`,
-        // v3.1 rich data (preserved for future use)
-        moduleId: mod.moduleId,
-        moduleSummary: mod.moduleSummary,
-        sections: mod.sections,
-        slides: mod.slides,
-        keyTerms: mod.keyTerms,
-        objectivesCovered: mod.objectivesCovered,
+        order: mIdx,
+        moduleId: m.moduleId,
+        moduleSummary: m.moduleSummary,
+        sections: m.sections,
+        slides: m.slides,
+        keyTerms: m.keyTerms,
+        objectivesCovered: m.objectivesCovered,
     }));
-}
+};
 
 /**
  * Adapts v3.1 QuizV3 questions into the format expected by Step6QuizReview
  * and createFullCourse: { question, options, answer, type, ... }
  */
-function adaptQuizForRendering(quizJson: any): any[] {
+const adaptQuizForRendering = (quizJson: any): any[] => {
     if (!quizJson?.questions) return [];
-
     return quizJson.questions.map((q: any) => ({
-        // Legacy-compatible fields
+        // Legacy-compatible fields expected by Step6QuizReview
         question: q.text,
-        options: q.options,
+        options: q.options || [],
         answer: q.correctAnswer,
         type: 'multiple_choice',
         // v3.1 rich data
-        id: q.id,
-        moduleId: q.moduleId,
-        moduleTitle: q.moduleTitle,
-        objectiveId: q.objectiveId,
-        difficulty: q.difficulty,
         archetype: q.archetype,
-        evidence: q.evidence,
+        difficulty: q.difficulty,
         explanation: q.explanation,
+        evidence: q.evidence,
+        moduleTitle: q.moduleTitle,
         qualityFlags: q.qualityFlags,
     }));
-}
+};
 
-export default function Step5Review({ data, documents, initialContent, onComplete }: Step5ReviewProps) {
+export default function Step5Review({ data, documents, initialContent, onComplete, onBack }: Step5ReviewProps) {
     // Core State
-    const hasInitialContent = !!initialContent?.modules;
-    const [isGenerating, setIsGenerating] = useState(!hasInitialContent);
+    const [isGenerating, setIsGenerating] = useState(!initialContent);
     const [generatedContent, setGeneratedContent] = useState<any>(initialContent || null);
     const [error, setError] = useState<string | null>(null);
-    const [editedModules, setEditedModules] = useState<any[]>(initialContent?.modules || []);
 
     // UI View State
     const [viewMode, setViewMode] = useState<'slides' | 'article'>('slides');
     const [activeModuleIndex, setActiveModuleIndex] = useState(0);
+    const [editedModules, setEditedModules] = useState<any[]>(initialContent?.modules || []);
 
     // Generation Ref
     const hasStartedRef = useRef(false);
+    const hasInitialContent = !!initialContent;
 
     // Generate Request — v3.1 two-stage pipeline
     useEffect(() => {
@@ -156,38 +152,73 @@ export default function Step5Review({ data, documents, initialContent, onComplet
             try {
                 const formData = new FormData();
                 formData.append('data', JSON.stringify(data));
-                const selectedDoc = documents.find(d => d.selected && d.file);
-                if (selectedDoc?.file) {
-                    formData.append('file', selectedDoc.file);
+
+                // Try to send the File blob if available (freshly uploaded)
+                const selectedDocWithFile = documents.find(d => d.selected && d.file);
+                if (selectedDocWithFile?.file) {
+                    formData.append('file', selectedDocWithFile.file);
                 }
 
-                const result = await generateCourseAndQuizV3(formData);
+                // Always pass the selected document ID so the server can
+                // read from DB if no File blob is available
+                const selectedDoc = documents.find(d => d.selected);
+                if (selectedDoc) {
+                    formData.append('documentId', selectedDoc.id);
+                }
 
-                if (result.error && !result.courseJson) {
-                    setError(result.error);
-                } else {
-                    // Adapt v3.1 output for the existing UI flow
-                    const adaptedModules = adaptModulesForRendering(result.courseJson);
-                    const adaptedQuiz = adaptQuizForRendering(result.quizJson);
+                const { jobId, error: startError } = await generateCourseAndQuizV3(formData);
 
-                    const content = {
-                        modules: adaptedModules,
-                        quiz: adaptedQuiz,
-                        // Preserve raw v3.1 JSON for DB persistence
-                        rawCourseJson: result.courseJson,
-                        rawQuizJson: result.quizJson,
-                        sourceText: result.sourceText,
-                        // Pass along any partial errors (e.g., quiz failed)
-                        ...(result.error ? { warning: result.error } : {}),
-                    };
+                if (startError || !jobId) {
+                    setError(startError || "Failed to start generation job");
+                    setIsGenerating(false);
+                    return;
+                }
 
-                    setGeneratedContent(content);
-                    if (content.modules) {
-                        setEditedModules(content.modules);
+                // Poll for completion
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusRes = await checkCourseGenerationJob(jobId);
+
+                        if (statusRes.error) {
+                            clearInterval(pollInterval);
+                            setError(statusRes.error);
+                            setIsGenerating(false);
+                        } else if (statusRes.status === 'failed') {
+                            clearInterval(pollInterval);
+                            setError("Generation failed during processing.");
+                            setIsGenerating(false);
+                        } else if (statusRes.status === 'completed' && statusRes.result) {
+                            clearInterval(pollInterval);
+                            const result = statusRes.result;
+
+                            // Adapt v3.1 output for the existing UI flow
+                            const adaptedModules = adaptModulesForRendering(result.courseJson);
+                            const adaptedQuiz = adaptQuizForRendering(result.quizJson);
+
+                            const content = {
+                                modules: adaptedModules,
+                                quiz: adaptedQuiz,
+                                // Preserve raw v3.1 JSON for DB persistence
+                                rawCourseJson: result.courseJson,
+                                rawQuizJson: result.quizJson,
+                                sourceText: result.sourceText,
+                                // Pass along any partial errors (e.g., quiz failed)
+                                ...(result.error ? { warning: result.error } : {}),
+                            };
+
+                            setGeneratedContent(content);
+                            if (content.modules) {
+                                setEditedModules(content.modules);
+                            }
+                            onComplete(content);
+                            setIsGenerating(false);
+                        }
+                        // If status is 'processing', keep polling
+                    } catch (pollErr) {
+                        console.error("Polling failed", pollErr);
                     }
-                    onComplete(content);
-                }
-                setIsGenerating(false);
+                }, 3000);
+
             } catch (err) {
                 console.error("Generation failed", err);
                 setError("An unexpected response was received from the server.");

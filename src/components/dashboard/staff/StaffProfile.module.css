@@ -146,6 +146,15 @@
     gap: 16px;
 }
 
+/* Stats Row */
+.statsRow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+
 /* Info Cards (Bio / Background) */
 .infoCard {
     background: white;

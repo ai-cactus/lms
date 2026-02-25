@@ -6,6 +6,8 @@ import { callVertexAI, truncateToContext } from '@/lib/ai-client';
 import { buildPromptA, buildPromptB } from '@/lib/prompts';
 import { CourseV3Schema, QuizV3Schema } from '@/lib/prompt-schemas';
 import type { CourseV3, QuizV3, QuizDifficulty } from '@/lib/prompt-types';
+import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 // Token budget for source content
 const MAX_SOURCE_TOKENS = 100000;
@@ -65,11 +67,13 @@ function extractJsonFromResponse(text: string): string {
 
 async function generateCourseJsonV3(
     sourceText: string,
-    documents: { docId: string; label: string; hint?: string }[]
+    documents: { docId: string; label: string; hint?: string }[],
+    requestedSlideCount?: number
 ): Promise<{ courseJson: CourseV3; raw: string }> {
     const prompt = buildPromptA({
         sourceTexts: sourceText,
         documents,
+        requestedSlideCount,
     });
 
     const rawResponse = await callVertexAI(prompt, {
@@ -121,106 +125,182 @@ async function generateQuizJsonV3(
 
 // ─── Orchestrator (Prompt A → Prompt B) ──────────
 
-export async function generateCourseAndQuizV3(formData: FormData): Promise<GeneratedCourseV3> {
+export async function generateCourseAndQuizV3(formData: FormData): Promise<{ jobId?: string, error?: string }> {
     // Extract data from FormData
     const rawData = formData.get('data');
     if (!rawData || typeof rawData !== 'string') {
-        return { courseJson: null, quizJson: null, error: 'Missing course data' };
+        return { error: 'Missing course data' };
     }
 
     const data: CourseDataV3 = JSON.parse(rawData);
     const file = formData.get('file') as File | null;
+    const documentId = formData.get('documentId') as string | null;
 
     let sourceText = '';
+    let docFilename = 'User-provided document';
+
     if (file) {
+        // Freshly uploaded file — read from blob
         try {
             console.log(`[v3.1] Processing file: ${file.name} (${file.type})`);
+            docFilename = file.name;
             sourceText = await extractTextFromFile(file);
             console.log(`[v3.1] Extracted ${sourceText.length} characters from file.`);
             sourceText = truncateToContext(sourceText, MAX_SOURCE_TOKENS);
         } catch (err: any) {
             console.error('[v3.1] File parsing error:', err);
-            return { courseJson: null, quizJson: null, error: `Failed to read document: ${err.message}` };
+            return { error: `Failed to read document: ${err.message}` };
         }
-    }
-
-    // Build document metadata for the prompt
-    const documents = [
-        { docId: 'doc-1', label: file?.name || 'User-provided document' }
-    ];
-
-    const maxAttempts = 3;
-
-    // ── Stage 1: Generate Course JSON ──
-    let courseJson: CourseV3;
-    let courseRaw: string;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    } else if (documentId) {
+        // Pre-existing document — read stored content from DB
         try {
-            console.log(`[v3.1] Course generation attempt ${attempt}/${maxAttempts}`);
-            const result = await generateCourseJsonV3(sourceText, documents);
-            courseJson = result.courseJson;
-            courseRaw = result.raw;
-
-            // Check if sources were insufficient
-            if (courseJson.meta.status === 'needs_sources') {
-                return {
-                    courseJson,
-                    quizJson: null,
-                    sourceText,
-                    error: `Insufficient source material: ${courseJson.meta.gaps.join('; ')}`,
-                };
+            const session = await auth();
+            if (!session?.user?.id) {
+                return { error: 'Unauthorized' };
             }
 
-            break; // Success
-        } catch (error: any) {
-            console.error(`[v3.1] Course attempt ${attempt} failed:`, error.message);
-            if (attempt === maxAttempts) {
-                return {
-                    courseJson: null,
-                    quizJson: null,
-                    sourceText,
-                    error: `Failed to generate course after ${maxAttempts} attempts: ${error.message}`,
-                };
+            const doc = await prisma.document.findUnique({
+                where: { id: documentId, userId: session.user.id },
+                include: { versions: { orderBy: { version: 'desc' }, take: 1 } }
+            });
+
+            if (!doc) {
+                return { error: 'Document not found' };
             }
-            await new Promise(r => setTimeout(r, 1000 * attempt));
+
+            docFilename = doc.filename;
+            const latestVersion = doc.versions[0];
+            sourceText = latestVersion?.content || '';
+
+            if (!sourceText || sourceText.length < 50) {
+                return { error: 'Document content is empty or too short to generate a course.' };
+            }
+
+            console.log(`[v3.1] Read ${sourceText.length} characters from stored document: ${docFilename}`);
+            sourceText = truncateToContext(sourceText, MAX_SOURCE_TOKENS);
+        } catch (err: any) {
+            console.error('[v3.1] DB document read error:', err);
+            return { error: `Failed to read stored document: ${err.message}` };
         }
+    } else {
+        return { error: 'No document provided. Please select or upload a document.' };
     }
 
-    // ── Stage 2: Generate Quiz JSON ──
-    const questionCount = Math.max(8, Math.min(30, parseInt(data.quizQuestionCount) || 10));
-    const difficulty = (['easy', 'medium', 'hard'].includes(data.quizDifficulty)
-        ? data.quizDifficulty
-        : 'medium') as QuizDifficulty;
+    const session = await auth();
 
-    let quizJson: QuizV3;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            console.log(`[v3.1] Quiz generation attempt ${attempt}/${maxAttempts}`);
-            const result = await generateQuizJsonV3(courseRaw!, questionCount, difficulty);
-            quizJson = result.quizJson;
-            break; // Success
-        } catch (error: any) {
-            console.error(`[v3.1] Quiz attempt ${attempt} failed:`, error.message);
-            if (attempt === maxAttempts) {
-                // Return course without quiz (partial success)
-                return {
-                    courseJson: courseJson!,
-                    quizJson: null,
-                    sourceText,
-                    error: `Course generated successfully, but quiz generation failed: ${error.message}`,
-                };
-            }
-            await new Promise(r => setTimeout(r, 1000 * attempt));
+    // Create a job
+    const job = await prisma.job.create({
+        data: {
+            type: 'GENERATE_V3_COURSE',
+            status: 'processing',
+            userId: session?.user?.id
         }
+    });
+
+    // Start background processing immediately, DO NOT AWAIT IT
+    processBackgroundV3(job.id, sourceText, docFilename, rawData).catch(err => {
+        console.error("[v3.1] Background job failed fatally:", err);
+    });
+
+    // Return job ID immediately to the client to avoid 524 Gateway Timeout
+    return { jobId: job.id };
+}
+
+async function processBackgroundV3(jobId: string, sourceText: string, docFilename: string, rawData: string) {
+    try {
+        const data: CourseDataV3 = JSON.parse(rawData);
+        const documents = [{ docId: 'doc-1', label: docFilename }];
+        const maxAttempts = 3;
+
+        // ── Stage 1: Generate Course JSON ──
+        let courseJson: CourseV3 | null = null;
+        let courseRaw = '';
+        let errorMsg = '';
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                console.log(`[v3.1 Background] Course generation attempt ${attempt}/${maxAttempts} for job ${jobId}`);
+                const result = await generateCourseJsonV3(sourceText, documents, parseInt(data.notesCount) || 10);
+                courseJson = result.courseJson;
+                courseRaw = result.raw;
+
+                if (courseJson.meta.status === 'needs_sources') {
+                    throw new Error(`Insufficient source material: ${courseJson.meta.gaps.join('; ')}`);
+                }
+                break;
+            } catch (error: any) {
+                console.error(`[v3.1 Background] Course attempt ${attempt} failed:`, error.message);
+                if (attempt === maxAttempts) errorMsg = error.message;
+                await new Promise(r => setTimeout(r, 1000 * attempt));
+            }
+        }
+
+        if (!courseJson) {
+            await prisma.job.update({
+                where: { id: jobId },
+                data: { status: 'failed', payload: { error: `Failed to generate course: ${errorMsg}` } }
+            });
+            return;
+        }
+
+        // ── Stage 2: Generate Quiz JSON ──
+        const questionCount = Math.max(8, Math.min(30, parseInt(data.quizQuestionCount) || 10));
+        const difficulty = (['easy', 'medium', 'hard'].includes(data.quizDifficulty)
+            ? data.quizDifficulty
+            : 'medium') as QuizDifficulty;
+
+        let quizJson: QuizV3 | null = null;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                console.log(`[v3.1 Background] Quiz generation attempt ${attempt}/${maxAttempts} for job ${jobId}`);
+                const result = await generateQuizJsonV3(courseRaw, questionCount, difficulty);
+                quizJson = result.quizJson;
+                break;
+            } catch (error: any) {
+                console.error(`[v3.1 Background] Quiz attempt ${attempt} failed:`, error.message);
+                if (attempt === maxAttempts) errorMsg = error.message;
+                await new Promise(r => setTimeout(r, 1000 * attempt));
+            }
+        }
+
+        console.log(`[v3.1 Background] Pipeline complete for job ${jobId}. Course modules: ${courseJson.modules.length}`);
+
+        const resultPayload = {
+            courseJson,
+            quizJson,
+            sourceText,
+            error: !quizJson ? `Course generated successfully, but quiz failed: ${errorMsg}` : undefined
+        };
+
+        await prisma.job.update({
+            where: { id: jobId },
+            data: { status: 'completed', result: resultPayload as any }
+        });
+
+    } catch (err: any) {
+        console.error(`[v3.1 Background] Uncaught fatal error in job ${jobId}:`, err);
+        await prisma.job.update({
+            where: { id: jobId },
+            data: { status: 'failed', payload: { error: err.message || 'Unknown server error during background processing' } }
+        });
     }
+}
 
-    console.log(`[v3.1] Pipeline complete. ${courseJson!.modules.length} modules, ${quizJson!.questions.length} questions.`);
+export async function checkCourseGenerationJob(jobId: string) {
+    try {
+        const job = await prisma.job.findUnique({ where: { id: jobId } });
+        if (!job) return { error: 'Job not found' };
 
-    return {
-        courseJson: courseJson!,
-        quizJson: quizJson!,
-        sourceText,
-    };
+        if (job.status === 'completed') {
+            return { status: 'completed', result: job.result as any };
+        } else if (job.status === 'failed') {
+            const payload = job.payload as any;
+            return { status: 'failed', error: payload?.error || 'Generation failed' };
+        }
+
+        return { status: job.status };
+    } catch (err: any) {
+        return { error: `Failed to check job: ${err.message}` };
+    }
 }

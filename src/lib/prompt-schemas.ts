@@ -85,67 +85,65 @@ const CourseModuleSchema = z.object({
     objectivesCovered: z.array(z.string()),
     keyTerms: z.array(z.string()),
     sourceRefs: z.array(z.string()),
-    sections: z.array(CourseSectionSchema).min(2),
-    slides: z.array(CourseSlideSchema).min(1),
+    sections: z.array(CourseSectionSchema).min(1),
+    slides: z.array(CourseSlideSchema).default([]),
 }).passthrough();
 
 export const CourseV3Schema = z.object({
     meta: CourseMetaSchema,
     learningObjectives: z.array(LearningObjectiveSchema).min(1),
-    modules: z.array(CourseModuleSchema).min(3),
-    assessmentFocus: z.array(AssessmentFocusSchema),
+    modules: z.array(CourseModuleSchema).min(1),
+    assessmentFocus: z.array(AssessmentFocusSchema).default([]),
 }).passthrough();
 
 // ─── Prompt B: Quiz JSON Schema ──────────────────
 
 const QuestionEvidenceSchema = z.object({
-    moduleSectionId: z.string(),
-    moduleSectionHeading: z.string(),
-    sourceAnchors: z.array(SourceAnchorSchema),
+    moduleSectionId: z.string().optional().default(''),
+    moduleSectionHeading: z.string().optional().default(''),
+    sourceAnchors: z.array(SourceAnchorSchema).default([]),
 }).passthrough();
 
 const QuestionExplanationSchema = z.object({
-    correctExplanation: z.string(),
-    incorrectOptions: z.record(z.string(), z.string()),
+    correctExplanation: z.string().optional().default(''),
+    incorrectOptions: z.record(z.string(), z.string()).optional().default({}),
 }).passthrough();
 
 const QuizQuestionSchema = z.object({
     id: z.string(),
-    moduleId: z.string(),
-    moduleNumber: z.number(),
-    moduleTitle: z.string(),
-    objectiveId: z.string(),
-    difficulty: z.enum(['easy', 'medium', 'hard']),
-    archetype: z.enum(['best-next-action', 'identify-noncompliance', 'sequence', 'escalation', 'modality-check']),
-    text: z.string().refine(s => s.startsWith('Scenario: '), {
-        message: 'Question text must start with "Scenario: "',
-    }),
-    options: z.array(z.string()).min(4).max(4),
-    correctAnswer: z.number().min(0).max(3),
-    evidence: QuestionEvidenceSchema,
-    explanation: QuestionExplanationSchema,
-    qualityFlags: z.array(z.string()),
+    moduleId: z.string().optional().default(''),
+    moduleNumber: z.number().optional().default(0),
+    moduleTitle: z.string().optional().default(''),
+    objectiveId: z.string().optional().default(''),
+    difficulty: z.string().optional().default('medium'),
+    archetype: z.string().optional().default('best-next-action'),
+    text: z.string(),
+    options: z.array(z.string()).min(2).max(6),
+    correctAnswer: z.number().min(0),
+    evidence: QuestionEvidenceSchema.optional().default({ moduleSectionId: '', moduleSectionHeading: '', sourceAnchors: [] }),
+    explanation: QuestionExplanationSchema.optional().default({ correctExplanation: '', incorrectOptions: {} }),
+    qualityFlags: z.array(z.string()).default([]),
 }).passthrough();
 
 const ArchetypeCountsSchema = z.object({
-    'best-next-action': z.number(),
-    'identify-noncompliance': z.number(),
-    'sequence': z.number(),
-    'escalation': z.number(),
-    'modality-check': z.number(),
+    'best-next-action': z.number().optional().default(0),
+    'identify-noncompliance': z.number().optional().default(0),
+    'sequence': z.number().optional().default(0),
+    'escalation': z.number().optional().default(0),
+    'modality-check': z.number().optional().default(0),
 }).passthrough();
 
 const QuizMetaSchema = z.object({
-    promptVersion: z.string(),
-    requestedQuestionCount: z.number(),
-    quizDifficulty: z.enum(['easy', 'medium', 'hard']),
-    totalQuestions: z.number(),
-    moduleCount: z.number(),
-    objectiveCount: z.number(),
-    coverageNote: z.string(),
-    archetypeCounts: ArchetypeCountsSchema,
-    gaps: z.array(z.string()),
-    reviewerNotes: z.array(ReviewerNoteSchema),
+    promptVersion: z.string().optional().default(''),
+    requestedQuestionCount: z.number().optional().default(0),
+    quizDifficulty: z.string().optional().default('medium'),
+    totalQuestions: z.number().optional().default(0),
+    moduleCount: z.number().optional().default(0),
+    objectiveCount: z.number().optional().default(0),
+    coverageNote: z.string().optional().default(''),
+    archetypeCounts: ArchetypeCountsSchema.optional().default({ 'best-next-action': 0, 'identify-noncompliance': 0, 'sequence': 0, 'escalation': 0, 'modality-check': 0 }),
+    gaps: z.array(z.string()).default([]),
+    reviewerNotes: z.array(ReviewerNoteSchema).default([]),
 }).passthrough();
 
 export const QuizV3Schema = z.object({

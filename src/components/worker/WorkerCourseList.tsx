@@ -121,7 +121,7 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                             <th style={{ width: '20%' }}>Progress</th>
                             <th style={{ width: '15%' }}>Deadline</th>
                             <th style={{ width: '15%' }}>Status</th>
-                            <th style={{ width: '15%', textAlign: 'right' }}>Action</th>
+
                         </tr>
                     </thead>
                     <tbody>
@@ -163,47 +163,13 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                                         <td>
                                             {getStatusBadge(course.status, course.progress, course.quizAttempts)}
                                         </td>
-                                        <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
-                                                {isCompleted ? (
-                                                    <button
-                                                        className={styles.actionButton}
-                                                        onClick={() => handleViewResultClick(course.id)}
-                                                    >
-                                                        View
-                                                    </button>
-                                                ) : isFailed ? (
-                                                    <button
-                                                        className={`${styles.actionButton} ${styles.actionRetry}`}
-                                                        onClick={() => handleStartClick(course.id)}
-                                                    >
-                                                        Retry
-                                                    </button>
-                                                ) : (
-                                                    <button
-                                                        className={styles.actionButton}
-                                                        onClick={() => handleStartClick(course.id)}
-                                                        style={{ color: '#D97706' }} // Amber for In progress
-                                                    >
-                                                        {isStarted ? 'Resume' : 'Start'}
-                                                    </button>
-                                                )}
 
-                                                <button className={styles.menuButton}>
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                        <circle cx="12" cy="12" r="1"></circle>
-                                                        <circle cx="12" cy="5" r="1"></circle>
-                                                        <circle cx="12" cy="19" r="1"></circle>
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </td>
                                     </tr>
                                 );
                             })
                         ) : (
                             <tr>
-                                <td colSpan={5} style={{ textAlign: 'center', padding: '40px', color: '#94A3B8' }}>
+                                <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: '#94A3B8' }}>
                                     No courses found.
                                 </td>
                             </tr>
