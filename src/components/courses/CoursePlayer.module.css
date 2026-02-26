@@ -1,6 +1,7 @@
 /* Main Player Layout */
 .playerContainer {
     display: flex;
+    flex-direction: row-reverse;
     height: 100vh;
     width: 100%;
     background: var(--background-secondary);
@@ -20,7 +21,7 @@
     align-items: center;
     padding: 24px 12px;
     gap: 12px;
-    border-right: 1px solid #E8E6E1;
+    border-left: 1px solid #E8E6E1;
     background: var(--background);
     flex-shrink: 0;
     height: 100%;
@@ -266,13 +267,8 @@
 .slideCard {
     width: 100%;
     max-width: 800px;
-    /* aspect-ratio: 16/9; Remove fixed aspect ratio */
     min-height: 60vh;
-    background: white;
-    border-radius: 16px;
-    border: 1px solid #E8E6E1;
-    /* Match previous articlePaper shadow */
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    background: transparent;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -280,15 +276,12 @@
 }
 
 .slideAccent {
-    height: 4px;
-    background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
-    flex-shrink: 0;
+    display: none;
 }
 
 .slideInner {
     flex: 1;
-    padding: 64px 80px;
-    /* Increased padding to match article look */
+    padding: 32px 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -341,16 +334,13 @@
 .slideBody {
     flex: 1;
     overflow-y: auto;
-    font-size: 19px;
+    font-size: 16px;
     font-weight: 400;
-    line-height: 1.8;
+    line-height: 1.6;
     color: var(--text-secondary);
     overflow-wrap: break-word;
-    /* Allows long words to break if they overflow */
     word-break: normal !important;
-    /* Standard word breaking */
     hyphens: none !important;
-    /* Prevent hyphenation */
     white-space: normal !important;
     font-family: 'Inter', sans-serif;
 }
@@ -361,6 +351,35 @@
     overflow-wrap: break-word !important;
     text-wrap: pretty !important;
     text-align: left !important;
+}
+
+.slideBody h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 24px 0 8px 0;
+}
+
+.slideBody h3:first-child {
+    margin-top: 0;
+}
+
+.slideBody ul {
+    padding-left: 20px;
+    margin: 8px 0 16px 0;
+}
+
+.slideBody ul li {
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 6px;
+    color: var(--text-secondary);
+}
+
+.slideBody p {
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 8px 0;
 }
 
 /* Hide duplicate title in body if it's the first element */

@@ -103,15 +103,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                                                 e.stopPropagation();
                                                 router.push(`/dashboard/courses/create?documentId=${doc.id}`);
                                             }}
-                                            style={{
-                                                backgroundColor: '#2563EB',
-                                                color: 'white',
-                                                border: 'none',
-                                                padding: '6px 12px',
-                                                borderRadius: '4px',
-                                                cursor: 'pointer',
-                                                fontSize: '12px'
-                                            }}
+                                            className={styles.actionBtn}
                                         >
                                             Create Course
                                         </button>

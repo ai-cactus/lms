@@ -72,7 +72,7 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
             isOpen={isOpen}
             onClose={onClose}
             size="md"
-            title="Share this course"
+            title="Assign this course"
             description="Enter one or more emails to invite to your course."
         >
             <div className={styles.inputGroup}>
@@ -109,7 +109,7 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
                     onClick={handleShare}
                     disabled={emails.length === 0 || isLoading}
                 >
-                    {isLoading ? 'Sharing...' : 'Share'}
+                    {isLoading ? 'Assigning...' : 'Assign'}
                 </button>
             </div>
 

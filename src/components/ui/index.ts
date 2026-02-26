@@ -7,3 +7,4 @@ export { default as FileUpload } from './FileUpload';
 export { default as Checkbox } from './Checkbox';
 export { default as TagInput } from './TagInput';
 export { PhoneInput } from './PhoneInput';
+export { default as EmptyTableState } from './EmptyTableState';

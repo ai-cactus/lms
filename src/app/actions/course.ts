@@ -423,6 +423,11 @@ export async function createFullCourse(data: {
     // v3.1 raw JSON for persistence
     rawCourseJson?: any;
     rawQuizJson?: any;
+    // v4.6 raw artifacts for persistence
+    rawArticleMeta?: any;
+    rawArticleMarkdown?: string;
+    rawSlidesJson?: any;
+    rawJudgeJson?: any;
 }) {
     const session = await auth();
     if (!session?.user?.id) {
@@ -439,6 +444,9 @@ export async function createFullCourse(data: {
         throw new Error('Organization not found');
     }
 
+    // Detect prompt version
+    const promptVersion = data.rawArticleMeta ? 'v4.6' : (data.rawCourseJson ? 'v3.1' : undefined);
+
     // 1. Create Course, Lessons, Quiz in one transaction (nested write)
     const course = await prisma.course.create({
         data: {
@@ -449,10 +457,16 @@ export async function createFullCourse(data: {
             objectives: data.objectives || [],
             status: 'published',
             createdBy: session.user.id,
+            // Pipeline version tracking
+            promptVersion,
             // v3.1 fields
-            promptVersion: data.rawCourseJson ? 'v3.1' : undefined,
             rawCourseJson: data.rawCourseJson || undefined,
             rawQuizJson: data.rawQuizJson || undefined,
+            // v4.6 fields
+            rawArticleMeta: data.rawArticleMeta || undefined,
+            rawArticleMarkdown: data.rawArticleMarkdown || undefined,
+            rawSlidesJson: data.rawSlidesJson || undefined,
+            rawJudgeJson: data.rawJudgeJson || undefined,
             lessons: {
                 create: data.modules.map((mod, index) => ({
                     title: mod.title,

@@ -195,8 +195,6 @@ export default function InviteStaffModal({ isOpen, onClose, organizationId }: In
                         onChange={(val) => setRole(val)}
                         options={[
                             { label: 'Worker', value: 'worker' },
-                            { label: 'Supervisor', value: 'supervisor' },
-                            { label: 'Manager', value: 'manager' },
                             { label: 'Admin', value: 'admin' }
                         ]}
                     />

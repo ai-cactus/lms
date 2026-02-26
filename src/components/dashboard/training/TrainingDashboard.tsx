@@ -6,6 +6,8 @@ import { Button, Input } from '@/components/ui';
 import Image from 'next/image';
 import { CourseWithStats } from '@/app/actions/course';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 
 
 
@@ -607,11 +609,12 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
                         </thead>
                         <tbody>
                             {courses.length === 0 ? (
-                                <tr>
-                                    <td colSpan={4} style={{ textAlign: 'center', color: '#718096' }}>
-                                        No courses found. Create your first course above.
-                                    </td>
-                                </tr>
+                                <EmptyTableState
+                                    message="No courses found."
+                                    subMessage="Create your first course above."
+                                    colSpan={4}
+                                    asTableRow
+                                />
                             ) : (
                                 courses.map((course) => (
                                     <tr
@@ -651,14 +654,13 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
                     </table>
                 </div>
 
-                <div className={styles.viewAllContainer}>
-                    <Button variant="outline" size="sm" className={styles.viewAllButton}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', paddingRight: '24px' }}>
+                    <Link href="/dashboard/courses" style={{ color: '#4C6EF5', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                         View all
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: '4px' }}>
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                            <polyline points="15 3 21 3 21 9"></polyline>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="9 18 15 12 9 6"></polyline>
                         </svg>
-                    </Button>
+                    </Link>
                 </div>
             </div>
         </div>

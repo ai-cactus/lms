@@ -100,9 +100,8 @@ export default function OnboardingStep4() {
                                         value={field.value}
                                         onChange={field.onChange}
                                         options={[
-                                            { label: 'Admin', value: 'admin' },
-                                            { label: 'Supervisor', value: 'supervisor' },
-                                            { label: 'Manager', value: 'manager' }
+                                            { label: 'Worker', value: 'worker' },
+                                            { label: 'Admin', value: 'admin' }
                                         ]}
                                         placeholder="Select role"
                                     />

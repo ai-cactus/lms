@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import styles from '@/components/dashboard/courses/CourseWizard.module.css'; // Reusing exact styles
 import { updateQuizQuestions } from '@/app/actions/course';
 import { useRouter } from 'next/navigation';
+import { generateSingleQuestion } from '@/app/actions/quiz-ai';
 
 interface QuizQuestion {
     question: string;
@@ -38,6 +39,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
     );
 
     const [isAdding, setIsAdding] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
@@ -62,6 +64,28 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
         const newOptions = [...newQuestion.options];
         newOptions[index] = value;
         setNewQuestion({ ...newQuestion, options: newOptions });
+    };
+
+    const handleGenerateQuestion = async () => {
+        try {
+            setIsGenerating(true);
+            const res = await generateSingleQuestion(courseId);
+            if (res.success && res.question) {
+                setNewQuestion({
+                    question: res.question.question,
+                    options: res.question.options,
+                    answer: res.question.answer,
+                    type: res.question.type
+                });
+            } else {
+                alert(res.error || 'Failed to generate question with AI.');
+            }
+        } catch (error) {
+            console.error('Failed to call AI generation:', error);
+            alert('An unexpected error occurred.');
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const handleSaveQuiz = async () => {
@@ -313,9 +337,35 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                             </div>
                         </div>
 
-                        <div className={styles.formActions}>
-                            <button className={styles.btnCancel} onClick={() => setIsAdding(false)}>Cancel</button>
-                            <button className={styles.btnSave} onClick={handleAddQuestion}>Save Question</button>
+                        <div className={styles.formActions} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <button
+                                    className={styles.btnAddQuestion}
+                                    onClick={(e) => { e.preventDefault(); handleGenerateQuestion(); }}
+                                    disabled={isGenerating}
+                                    style={{ width: 'auto', margin: 0, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                >
+                                    {isGenerating ? 'Generating...' : (
+                                        <>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M12 2v4"></path>
+                                                <path d="M12 18v4"></path>
+                                                <path d="M4.93 4.93l2.83 2.83"></path>
+                                                <path d="M16.24 16.24l2.83 2.83"></path>
+                                                <path d="M2 12h4"></path>
+                                                <path d="M18 12h4"></path>
+                                                <path d="M4.93 19.07l2.83-2.83"></path>
+                                                <path d="M16.24 7.76l2.83-2.83"></path>
+                                            </svg>
+                                            Generate with AI
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <button className={styles.btnCancel} onClick={() => setIsAdding(false)}>Cancel</button>
+                                <button className={styles.btnSave} onClick={handleAddQuestion}>Save Question</button>
+                            </div>
                         </div>
                     </div>
                 )}

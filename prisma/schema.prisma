@@ -135,6 +135,11 @@ model Course {
   promptVersion  String?         // e.g. "v3.1" — tracks which prompt pipeline generated this course
   rawCourseJson  Json?           // Full v3.1 Prompt A output (CourseV3 schema)
   rawQuizJson    Json?           // Full v3.1 Prompt B output (QuizV3 schema)
+  // v4.6 pipeline artifacts
+  rawArticleMeta     Json?      // v4.6 articleMeta JSON
+  rawArticleMarkdown String?    @db.Text  // v4.6 article markdown
+  rawSlidesJson      Json?      // v4.6 slides JSON
+  rawJudgeJson       Json?      // v4.6 judge results
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 }

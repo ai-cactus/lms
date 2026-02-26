@@ -307,33 +307,30 @@
 }
 
 .viewButton {
-    padding: 6px 20px;
-    background: var(--primary);
-    /* Use project primary color */
-    color: white;
+    padding: 0;
+    background: transparent;
+    color: var(--primary);
     border: none;
-    border-radius: 6px;
     font-size: 14px;
-    /* Increased slightly for alignment */
     font-family: var(--font-body);
-    /* Ensure Manrope/Inter */
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: color 0.2s;
 }
 
 .viewButton:hover {
-    background: var(--primary-hover);
+    color: var(--primary-hover);
 }
 
 .viewButtonDisabled {
-    background: #CBD5E0;
+    color: #CBD5E0;
+    background: transparent;
     cursor: not-allowed;
     opacity: 0.6;
 }
 
 .viewButtonDisabled:hover {
-    background: #CBD5E0;
+    color: #CBD5E0;
 }
 
 .dotsButton {

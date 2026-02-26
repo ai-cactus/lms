@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import styles from '../CourseWizard.module.css';
+import { generateSingleQuestion } from '@/app/actions/quiz-ai';
 
 interface QuizQuestion {
     question: string;
@@ -26,6 +27,7 @@ interface QuizQuestion {
 interface Step6QuizReviewProps {
     data: any;
     quiz?: QuizQuestion[];
+    courseId?: string;
 }
 
 const ARCHETYPE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -36,9 +38,10 @@ const ARCHETYPE_COLORS: Record<string, { bg: string; color: string }> = {
     'modality-check': { bg: '#E9D8FD', color: '#6B46C1' },
 };
 
-export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizReviewProps & { onQuizUpdate: (quiz: QuizQuestion[]) => void }) {
+export default function Step6QuizReview({ data, quiz, courseId, onQuizUpdate }: Step6QuizReviewProps & { onQuizUpdate: (quiz: QuizQuestion[]) => void }) {
     const questions = quiz || [];
     const [isAdding, setIsAdding] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
     const [expandedExplanation, setExpandedExplanation] = useState<number | null>(null);
@@ -67,6 +70,36 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
         setNewQuestion({ ...newQuestion, options: newOptions });
     };
 
+    const handleGenerateQuestion = async () => {
+        // Find courseId from data if not passed directly
+        const targetCourseId = courseId || (data?.course?.id);
+
+        if (!targetCourseId) {
+            alert('Cannot generate a question right now. The course may not be fully saved yet.');
+            return;
+        }
+
+        try {
+            setIsGenerating(true);
+            const res = await generateSingleQuestion(targetCourseId);
+            if (res.success && res.question) {
+                setNewQuestion({
+                    question: res.question.question,
+                    options: res.question.options,
+                    answer: res.question.answer,
+                    type: res.question.type
+                });
+            } else {
+                alert(res.error || 'Failed to generate question with AI.');
+            }
+        } catch (error) {
+            console.error('Failed to call AI generation:', error);
+            alert('An unexpected error occurred.');
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
     // Count archetypes for summary
     const archetypeCounts: Record<string, number> = {};
     questions.forEach(q => {
@@ -91,26 +124,7 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
                     </div>
                 </div>
 
-                {/* Archetype Summary (v3.1) */}
-                {Object.keys(archetypeCounts).length > 0 && (
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px', padding: '0 0 16px 0', borderBottom: '1px solid #EDF2F7' }}>
-                        {Object.entries(archetypeCounts).map(([archetype, count]) => {
-                            const colors = ARCHETYPE_COLORS[archetype] || { bg: '#EDF2F7', color: '#4A5568' };
-                            return (
-                                <span key={archetype} style={{
-                                    background: colors.bg,
-                                    color: colors.color,
-                                    padding: '4px 10px',
-                                    borderRadius: '12px',
-                                    fontSize: '12px',
-                                    fontWeight: 600,
-                                }}>
-                                    {archetype}: {count}
-                                </span>
-                            );
-                        })}
-                    </div>
-                )}
+
 
                 {/* Flat Question List */}
                 <div className={styles.questionListWrapper}>
@@ -123,7 +137,7 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
                             const isEditing = editingIndex === index;
                             if (isEditing && editingQuestion) {
                                 return (
-                                    <div key={index} className={styles.questionCard} style={{ border: '2px solid #4C6EF5' }}>
+                                    <div key={index} className={styles.questionCard}>
                                         <h4 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Edit Question {index + 1}</h4>
                                         <div className={styles.formGroup}>
                                             <label>Question Type</label>
@@ -208,36 +222,7 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
                                         <div className={styles.questionText}>
                                             <span style={{ fontWeight: 'bold', marginRight: 8 }}>{index + 1}.</span>
                                             {q.question}
-                                            {/* Type badge */}
-                                            {q.type && (
-                                                <span className={styles.badge} style={{
-                                                    marginLeft: 10,
-                                                    background: q.type === 'true_false' ? '#E9D8FD' : '#EBF8FF',
-                                                    color: q.type === 'true_false' ? '#6B46C1' : '#3182CE'
-                                                }}>
-                                                    {q.type.replace('_', ' ')}
-                                                </span>
-                                            )}
-                                            {/* Archetype badge (v3.1) */}
-                                            {q.archetype && archetypeColors && (
-                                                <span className={styles.badge} style={{
-                                                    marginLeft: 6,
-                                                    background: archetypeColors.bg,
-                                                    color: archetypeColors.color,
-                                                }}>
-                                                    {q.archetype}
-                                                </span>
-                                            )}
-                                            {/* Difficulty badge (v3.1) */}
-                                            {q.difficulty && (
-                                                <span className={styles.badge} style={{
-                                                    marginLeft: 6,
-                                                    background: q.difficulty === 'hard' ? '#FED7D7' : q.difficulty === 'medium' ? '#FEFCBF' : '#C6F6D5',
-                                                    color: q.difficulty === 'hard' ? '#C53030' : q.difficulty === 'medium' ? '#975A16' : '#276749',
-                                                }}>
-                                                    {q.difficulty}
-                                                </span>
-                                            )}
+
                                         </div>
                                         <div style={{ display: 'flex', gap: 6 }}>
                                             {/* Explanation toggle (v3.1) */}
@@ -299,12 +284,14 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
                                             fontSize: '13px',
                                             lineHeight: '1.6',
                                         }}>
-                                            <div style={{ fontWeight: 600, color: '#2D3748', marginBottom: 6 }}>
-                                                ✓ Correct: {q.explanation.correctExplanation}
+                                            <div style={{ fontWeight: 600, color: '#38A169', marginBottom: 6, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                                                <span>✓</span>
+                                                <span style={{}}>Correct: {q.explanation.correctExplanation}</span>
                                             </div>
                                             {q.explanation.incorrectOptions && Object.entries(q.explanation.incorrectOptions).map(([key, text]) => (
-                                                <div key={key} style={{ color: '#718096', marginTop: 4 }}>
-                                                    ✕ Option {String.fromCharCode(65 + parseInt(key))}: {text}
+                                                <div key={key} style={{ color: '#E53E3E', marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                                                    <span>✕</span>
+                                                    <span>Option {String.fromCharCode(65 + parseInt(key))}: {text}</span>
                                                 </div>
                                             ))}
                                             {q.evidence?.moduleSectionHeading && (
@@ -384,9 +371,35 @@ export default function Step6QuizReview({ data, quiz, onQuizUpdate }: Step6QuizR
                             </div>
                         </div>
 
-                        <div className={styles.formActions}>
-                            <button className={styles.btnCancel} onClick={() => setIsAdding(false)}>Cancel</button>
-                            <button className={styles.btnSave} onClick={handleAddQuestion}>Save Question</button>
+                        <div className={styles.formActions} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <button
+                                    className={styles.btnAddQuestion}
+                                    onClick={(e) => { e.preventDefault(); handleGenerateQuestion(); }}
+                                    disabled={isGenerating}
+                                    style={{ width: 'auto', margin: 0, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                >
+                                    {isGenerating ? 'Generating...' : (
+                                        <>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M12 2v4"></path>
+                                                <path d="M12 18v4"></path>
+                                                <path d="M4.93 4.93l2.83 2.83"></path>
+                                                <path d="M16.24 16.24l2.83 2.83"></path>
+                                                <path d="M2 12h4"></path>
+                                                <path d="M18 12h4"></path>
+                                                <path d="M4.93 19.07l2.83-2.83"></path>
+                                                <path d="M16.24 7.76l2.83-2.83"></path>
+                                            </svg>
+                                            Generate with AI
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <button className={styles.btnCancel} onClick={() => setIsAdding(false)}>Cancel</button>
+                                <button className={styles.btnSave} onClick={handleAddQuestion}>Save Question</button>
+                            </div>
                         </div>
                     </div>
                 )}

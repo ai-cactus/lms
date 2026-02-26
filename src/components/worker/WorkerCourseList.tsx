@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import styles from './WorkerDashboard.module.css';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 
 interface Course {
     id: string;
@@ -168,11 +169,12 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                                 );
                             })
                         ) : (
-                            <tr>
-                                <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: '#94A3B8' }}>
-                                    No courses found.
-                                </td>
-                            </tr>
+                            <EmptyTableState
+                                message="No courses found."
+                                subMessage="You haven't been assigned any courses yet."
+                                colSpan={4}
+                                asTableRow
+                            />
                         )}
                     </tbody>
                 </table>

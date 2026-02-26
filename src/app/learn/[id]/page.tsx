@@ -44,6 +44,7 @@ interface CourseData {
     id: string;
     title: string;
     description: string;
+    duration: number | null;
     lessons: Lesson[];
     quiz?: Quiz;
 }
@@ -443,7 +444,11 @@ export default function LearnPage() {
                 onSelect={handleRailSelect}
                 unlockedIndex={railUnlockedIndex}
                 quiz={course.quiz}
-                onLogoClick={() => !isQuizLocked && router.push('/dashboard/worker')}
+                onExitClick={() => {
+                    if (!isQuizLocked) {
+                        router.push(userData?.role === 'admin' ? '/dashboard/courses' : '/dashboard/worker');
+                    }
+                }}
                 disableNav={isQuizLocked}
             />
 
@@ -456,7 +461,7 @@ export default function LearnPage() {
                         <span className={styles.breadcrumbActive}>
                             {isQuizIndex ? (course.quiz?.title || 'Quiz') : currentLesson?.title}
                         </span>
-                        {!isQuizIndex && <span className={styles.durationPill}>{currentLesson?.duration || 5} min</span>}
+                        {!isQuizIndex && <span className={styles.durationPill}>{course.duration || currentLesson?.duration || 5} min</span>}
                     </div>
 
                     <div className={styles.topbarRight}>
@@ -644,25 +649,41 @@ export default function LearnPage() {
                             >
                                 {course.lessons.map((lesson, idx) => (
                                     <div key={lesson.id} id={`module-${idx}`} style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}>
-                                        <h2 style={{
-                                            fontSize: '22px',
-                                            fontWeight: 700,
-                                            marginBottom: '8px',
-                                            color: '#4C6EF5',
-                                            letterSpacing: '0.5px'
-                                        }}>
-                                            Module {idx + 1}
-                                        </h2>
-                                        <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px', color: '#1A202C' }}>
-                                            {lesson.title}
-                                        </h3>
-                                        <div dangerouslySetInnerHTML={{
-                                            __html: (lesson.content || '')
-                                                .replace(/&nbsp;/g, ' ')
-                                                .replace(/<br\s*\/?>/gi, ' ')
-                                                .replace(/\s+/g, ' ')
-                                        }} />
-                                        {idx < course.lessons.length - 1 && <hr style={{ marginTop: '48px', border: 'none', borderTop: '2px solid #EDF2F7' }} />}
+                                        {userData?.role === 'admin' ? (
+                                            <AdminLessonEditor
+                                                lesson={{
+                                                    ...lesson,
+                                                    moduleIndex: idx,
+                                                    totalModules: course.lessons.length
+                                                }}
+                                                onNext={handleNext}
+                                                onPrev={handlePrev}
+                                                isFirst={idx === 0}
+                                                isLast={idx === course.lessons.length - 1 && !course.quiz}
+                                            />
+                                        ) : (
+                                            <>
+                                                <h2 style={{
+                                                    fontSize: '22px',
+                                                    fontWeight: 700,
+                                                    marginBottom: '8px',
+                                                    color: '#4C6EF5',
+                                                    letterSpacing: '0.5px'
+                                                }}>
+                                                    Module {idx + 1}
+                                                </h2>
+                                                <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px', color: '#1A202C' }}>
+                                                    {lesson.title}
+                                                </h3>
+                                                <div dangerouslySetInnerHTML={{
+                                                    __html: (lesson.content || '')
+                                                        .replace(/&nbsp;/g, ' ')
+                                                        .replace(/<br\s*\/?>/gi, ' ')
+                                                        .replace(/\s+/g, ' ')
+                                                }} />
+                                                {idx < course.lessons.length - 1 && <hr style={{ marginTop: '48px', border: 'none', borderTop: '2px solid #EDF2F7' }} />}
+                                            </>
+                                        )}
                                     </div>
                                 ))}
                             </CourseArticle>

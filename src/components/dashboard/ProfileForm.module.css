@@ -468,7 +468,6 @@
 }
 
 .code {
-    font-family: monospace;
     font-size: 24px;
     font-weight: 700;
     letter-spacing: 4px;
@@ -476,19 +475,21 @@
 }
 
 .copyButton {
-    background: none;
+    background: var(--primary);
     border: none;
     cursor: pointer;
-    color: var(--text-secondary);
-    padding: 4px;
-    border-radius: 4px;
+    color: white;
+    padding: 8px;
+    border-radius: 6px;
     display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all 0.2s;
 }
 
 .copyButton:hover {
-    color: var(--primary);
-    background: var(--primary-light);
+    background: var(--primary-dark);
+    transform: scale(1.05);
 }
 
 .codeMeta {

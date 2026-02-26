@@ -220,9 +220,14 @@ export default function CourseWizard() {
                     quizDuration: formData.quizDuration,
                     quizDifficulty: formData.quizDifficulty,
                     documentId: selectedDocId,
-                    // v3.1 raw JSON for persistence
-                    rawCourseJson: generatedContent?.rawCourseJson || undefined,
+                    // v4.6 raw artifacts for persistence
+                    rawArticleMeta: generatedContent?.rawArticleMeta || undefined,
+                    rawArticleMarkdown: generatedContent?.rawArticleMarkdown || undefined,
+                    rawSlidesJson: generatedContent?.rawSlidesJson || undefined,
+                    rawJudgeJson: generatedContent?.rawJudgeJson || undefined,
                     rawQuizJson: generatedContent?.rawQuizJson || undefined,
+                    // v3.1 fallback (if somehow v3.1 data exists)
+                    rawCourseJson: generatedContent?.rawCourseJson || undefined,
                 });
 
                 if (result.success) {

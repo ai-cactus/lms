@@ -120,8 +120,6 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
                         onChange={(val) => setRole(val)}
                         options={[
                             { label: 'Worker', value: 'worker' },
-                            { label: 'Supervisor', value: 'supervisor' },
-                            { label: 'Manager', value: 'manager' },
                             { label: 'Admin', value: 'admin' }
                         ]}
                     />

@@ -43,14 +43,60 @@ const STAFF_COUNT_OPTIONS = [
 
 const COUNTRY_OPTIONS = [
     { label: 'United States', value: 'US' },
-    { label: 'Canada', value: 'CA' },
-    { label: 'United Kingdom', value: 'UK' }
 ];
 
 const STATE_OPTIONS = [
+    { label: 'Alabama', value: 'AL' },
+    { label: 'Alaska', value: 'AK' },
+    { label: 'Arizona', value: 'AZ' },
+    { label: 'Arkansas', value: 'AR' },
     { label: 'California', value: 'CA' },
+    { label: 'Colorado', value: 'CO' },
+    { label: 'Connecticut', value: 'CT' },
+    { label: 'Delaware', value: 'DE' },
+    { label: 'District of Columbia', value: 'DC' },
+    { label: 'Florida', value: 'FL' },
+    { label: 'Georgia', value: 'GA' },
+    { label: 'Hawaii', value: 'HI' },
+    { label: 'Idaho', value: 'ID' },
+    { label: 'Illinois', value: 'IL' },
+    { label: 'Indiana', value: 'IN' },
+    { label: 'Iowa', value: 'IA' },
+    { label: 'Kansas', value: 'KS' },
+    { label: 'Kentucky', value: 'KY' },
+    { label: 'Louisiana', value: 'LA' },
+    { label: 'Maine', value: 'ME' },
+    { label: 'Maryland', value: 'MD' },
+    { label: 'Massachusetts', value: 'MA' },
+    { label: 'Michigan', value: 'MI' },
+    { label: 'Minnesota', value: 'MN' },
+    { label: 'Mississippi', value: 'MS' },
+    { label: 'Missouri', value: 'MO' },
+    { label: 'Montana', value: 'MT' },
+    { label: 'Nebraska', value: 'NE' },
+    { label: 'Nevada', value: 'NV' },
+    { label: 'New Hampshire', value: 'NH' },
+    { label: 'New Jersey', value: 'NJ' },
+    { label: 'New Mexico', value: 'NM' },
     { label: 'New York', value: 'NY' },
-    { label: 'Texas', value: 'TX' }
+    { label: 'North Carolina', value: 'NC' },
+    { label: 'North Dakota', value: 'ND' },
+    { label: 'Ohio', value: 'OH' },
+    { label: 'Oklahoma', value: 'OK' },
+    { label: 'Oregon', value: 'OR' },
+    { label: 'Pennsylvania', value: 'PA' },
+    { label: 'Rhode Island', value: 'RI' },
+    { label: 'South Carolina', value: 'SC' },
+    { label: 'South Dakota', value: 'SD' },
+    { label: 'Tennessee', value: 'TN' },
+    { label: 'Texas', value: 'TX' },
+    { label: 'Utah', value: 'UT' },
+    { label: 'Vermont', value: 'VT' },
+    { label: 'Virginia', value: 'VA' },
+    { label: 'Washington', value: 'WA' },
+    { label: 'West Virginia', value: 'WV' },
+    { label: 'Wisconsin', value: 'WI' },
+    { label: 'Wyoming', value: 'WY' },
 ];
 
 // Exact options from onboarding/step2
@@ -68,7 +114,7 @@ const PRIMARY_BUSINESS_TYPES = [
 ];
 
 const ADDITIONAL_BUSINESS_TYPES = [
-    { label: 'None', value: 'none' },
+    { label: 'Other', value: 'none' },
     { label: 'Non-Profit', value: 'non-profit' },
     { label: 'Private', value: 'private' },
     { label: 'Public', value: 'public' }
@@ -144,7 +190,7 @@ function OrgCodeGenerator() {
                     <div className={styles.codeBox}>
                         <span className={styles.code}>{code}</span>
                         {!isExpired && (
-                            <button type="button" onClick={copyToClipboard} className={styles.copyButton} title="Copy Code">
+                            <button type="button" onClick={copyToClipboard} className={styles.copyButton}>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -192,7 +238,7 @@ function OrgCodeGenerator() {
                     </p>
                     <Button
                         type="button"
-                        variant="secondary"
+                        variant="primary"
                         onClick={handleGenerate}
                         loading={loading}
                     >

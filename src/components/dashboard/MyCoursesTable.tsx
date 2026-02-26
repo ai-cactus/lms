@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import styles from './MyCoursesTable.module.css';
 import { Input } from '@/components/ui';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -105,11 +106,12 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                                 </tr>
                             ))
                         ) : (
-                            <tr>
-                                <td colSpan={4} className={styles.emptyState}>
-                                    No courses found.
-                                </td>
-                            </tr>
+                            <EmptyTableState
+                                message="No courses found."
+                                subMessage="Create a course to get started."
+                                colSpan={4}
+                                asTableRow
+                            />
                         )}
                     </tbody>
                 </table>
@@ -119,13 +121,11 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
             {
                 // Show View All if there are more items than displayed OR if we are just showing the default list
                 // User's image shows "View all" at bottom right.
-                <div className={styles.viewAllContainer}>
-                    <Link href="/dashboard/courses" className={styles.viewAllButton}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', paddingRight: '24px' }}>
+                    <Link href="/dashboard/courses" style={{ color: '#4C6EF5', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                         View all
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                            <polyline points="15 3 21 3 21 9"></polyline>
-                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="9 18 15 12 9 6"></polyline>
                         </svg>
                     </Link>
                 </div>

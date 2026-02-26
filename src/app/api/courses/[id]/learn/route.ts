@@ -164,6 +164,7 @@ export async function GET(
                 id: course.id,
                 title: course.title,
                 description: course.description,
+                duration: course.duration,
                 lessons: course.lessons.map(l => ({
                     id: l.id,
                     title: l.title,

@@ -373,6 +373,7 @@
 
 .tallDropdown {
     max-height: 350px !important;
+    overflow-y: auto !important;
 }
 
 /* Upload Zone Styles */
@@ -1335,16 +1336,8 @@
 }
 
 .questionCard {
-    background: white;
-    border: 1px solid #E2E8F0;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
-    transition: box-shadow 0.2s;
-}
-
-.questionCard:hover {
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    width: 100%;
+    margin-bottom: 32px;
 }
 
 .questionHeader {
@@ -1445,12 +1438,8 @@
 }
 
 .addQuestionForm {
+    width: 100%;
     margin-top: 24px;
-    background: white;
-    border: 1px solid #E2E8F0;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 
 .formTitle {

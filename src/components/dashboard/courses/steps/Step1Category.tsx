@@ -26,6 +26,7 @@ export default function Step1Category({ value, onChange }: Step1CategoryProps) {
         { label: 'Office-Based Opioid Treatment', value: 'opioid_treatment' },
         { label: 'Court Treatment Programs', value: 'court_treatment' },
         { label: 'Health Home Programs', value: 'health_home_programs' },
+        { label: 'Other', value: 'other' },
     ];
 
     return (

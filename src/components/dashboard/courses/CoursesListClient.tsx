@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import styles from './CoursesList.module.css';
 import { Button, Input, Select } from '@/components/ui';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -120,11 +121,12 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
                                 </tr>
                             ))
                         ) : (
-                            <tr>
-                                <td colSpan={3} style={{ textAlign: 'center', padding: '40px', color: '#718096' }}>
-                                    No courses found.
-                                </td>
-                            </tr>
+                            <EmptyTableState
+                                message="No courses found."
+                                subMessage="Try adjusting your search or create a new course."
+                                colSpan={3}
+                                asTableRow
+                            />
                         )}
                     </tbody>
                 </table>

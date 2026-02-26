@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { generateCourseAndQuizV3, checkCourseGenerationJob } from '@/app/actions/course-ai-v3';
+import { generateCourseAndQuizV46, checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import styles from '@/components/courses/CoursePlayer.module.css';
 
 // Reusable Components
@@ -18,61 +18,39 @@ interface Step5ReviewProps {
 }
 
 /**
- * Converts v3.1 structured sections into an HTML string for backward-compatible rendering.
- * This is the adapter between the new plain-text `paragraphs[]` format and
- * the existing HTML-based rendering in CourseSlide/CourseArticle.
+ * Converts v4.6 article Markdown into HTML for backward-compatible rendering.
+ * Handles ## headings, ### subheadings, paragraphs, and bullet lists.
  */
-function sectionsToHtml(sections: any[]): string {
-    if (!sections || sections.length === 0) return '';
+function articleMarkdownToHtml(markdown: string): string {
+    if (!markdown) return '';
 
-    return sections.map(section => {
-        let html = '';
-
-        // Section heading
-        if (section.heading) {
-            html += `<h3>${section.heading}</h3>`;
-        }
-
-        // Paragraphs
-        if (section.paragraphs && section.paragraphs.length > 0) {
-            html += section.paragraphs.map((p: string) => `<p>${p}</p>`).join('');
-        }
-
-        // Do This
-        if (section.doThis && section.doThis.length > 0) {
-            html += `<h4 style="color:#38A169;margin-top:16px;">✓ Do This</h4><ul>`;
-            html += section.doThis.map((item: string) => `<li>${item}</li>`).join('');
-            html += '</ul>';
-        }
-
-        // Avoid This
-        if (section.avoidThis && section.avoidThis.length > 0) {
-            html += `<h4 style="color:#E53E3E;margin-top:16px;">✕ Avoid This</h4><ul>`;
-            html += section.avoidThis.map((item: string) => `<li>${item}</li>`).join('');
-            html += '</ul>';
-        }
-
-        // Signals to Escalate
-        if (section.signalsToEscalate && section.signalsToEscalate.length > 0) {
-            html += `<h4 style="color:#D69E2E;margin-top:16px;">⚠ Escalation Signals</h4><ul>`;
-            html += section.signalsToEscalate.map((item: string) => `<li>${item}</li>`).join('');
-            html += '</ul>';
-        }
-
-        return html;
-    }).join('');
+    return markdown
+        .split('\n')
+        .map(line => {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('### ')) return `<h4>${trimmed.slice(4)}</h4>`;
+            if (trimmed.startsWith('## ')) return `<h3>${trimmed.slice(3)}</h3>`;
+            if (trimmed.startsWith('# ')) return `<h2>${trimmed.slice(2)}</h2>`;
+            if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) return `<li>${trimmed.slice(2)}</li>`;
+            if (trimmed.length === 0) return '';
+            return `<p>${trimmed}</p>`;
+        })
+        .join('\n')
+        // Wrap consecutive <li> tags in <ul>
+        .replace(/(<li>[\s\S]*?<\/li>)(\n?)(?!<li>)/g, (match) => `<ul>${match}</ul>`)
+        .replace(/<\/ul>\n?<ul>/g, '\n');
 }
 
 /**
- * Converts v3.1 slides into a single HTML string for the Slide view.
+ * Converts v4.6 slides into a single HTML string for the Slide view.
  */
-function slidesToHtml(slides: any[]): string {
+function slidesV46ToHtml(slides: any[]): string {
     if (!slides || slides.length === 0) return '';
 
     return slides.map(slide => {
         let html = '';
-        if (slide.slideTitle) {
-            html += `<h3>${slide.slideTitle}</h3>`;
+        if (slide.title) {
+            html += `<h3>${slide.title}</h3>`;
         }
         if (slide.bullets && slide.bullets.length > 0) {
             html += '<ul>';
@@ -84,47 +62,139 @@ function slidesToHtml(slides: any[]): string {
 }
 
 /**
- * Adapts v3.1 CourseV3 modules into the format expected by existing rendering components
- * and CourseWizard data flow: { title, content, duration, ... }
+ * Splits article markdown into sections by ## headings.
+ * Returns an array of { title, content } for mapping to modules.
  */
-const adaptModulesForRendering = (courseJson: any) => {
-    if (!courseJson?.modules) return [];
-    return courseJson.modules.map((m: any, mIdx: number) => ({
-        id: `m-${mIdx}`,
-        title: m.moduleTitle,
-        content: sectionsToHtml(m.sections),
-        slideContent: slidesToHtml(m.slides),
-        duration: `${Math.round((courseJson.meta?.estimatedDurationMinutes || 60) / courseJson.modules.length)} min`,
-        order: mIdx,
-        moduleId: m.moduleId,
-        moduleSummary: m.moduleSummary,
-        sections: m.sections,
-        slides: m.slides,
-        keyTerms: m.keyTerms,
-        objectivesCovered: m.objectivesCovered,
-    }));
+function splitMarkdownSections(markdown: string): { title: string; content: string }[] {
+    if (!markdown) return [];
+
+    const sections: { title: string; content: string }[] = [];
+    const lines = markdown.split('\n');
+    let currentTitle = '';
+    let currentLines: string[] = [];
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('## ') || trimmed.startsWith('# ')) {
+            // Save previous section
+            if (currentTitle || currentLines.length > 0) {
+                sections.push({
+                    title: currentTitle || 'Untitled Section',
+                    content: currentLines.join('\n'),
+                });
+            }
+            currentTitle = trimmed.replace(/^#{1,2}\s+/, '');
+            currentLines = [];
+        } else {
+            currentLines.push(line);
+        }
+    }
+
+    // Push last section
+    if (currentTitle || currentLines.length > 0) {
+        sections.push({
+            title: currentTitle || 'Untitled Section',
+            content: currentLines.join('\n'),
+        });
+    }
+
+    return sections;
+}
+
+/**
+ * Adapts v4.6 output into the module format expected by existing UI components
+ * and CourseWizard data flow: { title, content, slideContent, duration, ... }
+ */
+const adaptModulesForRenderingV46 = (
+    articleMeta: any,
+    articleMarkdown: string,
+    slidesJson: any,
+    estimatedDurationMinutes?: number
+) => {
+    const markdownSections = splitMarkdownSections(articleMarkdown);
+    const metaSections = articleMeta?.sections || [];
+    const slides = slidesJson?.slides || [];
+
+    // Map each articleMeta section to a module
+    return metaSections.map((section: any, idx: number) => {
+        // Find matching markdown section by title
+        const mdSection = markdownSections.find(s =>
+            s.title.toLowerCase().includes(section.title.toLowerCase()) ||
+            section.title.toLowerCase().includes(s.title.toLowerCase())
+        ) || markdownSections[idx];
+
+        // Find slides that reference this section
+        const sectionSlides = slides.filter((sl: any) =>
+            sl.sourceSections?.includes(section.sectionId)
+        );
+
+        // If no slides match by sourceSections, distribute evenly
+        const fallbackSlides = sectionSlides.length > 0
+            ? sectionSlides
+            : slides.slice(
+                Math.floor(idx * slides.length / metaSections.length),
+                Math.floor((idx + 1) * slides.length / metaSections.length)
+            );
+
+        const sectionDuration = Math.round(
+            (estimatedDurationMinutes || 60) / metaSections.length
+        );
+
+        return {
+            id: `m-${idx}`,
+            title: section.title,
+            content: mdSection ? articleMarkdownToHtml(mdSection.content) : '',
+            slideContent: slidesV46ToHtml(fallbackSlides),
+            duration: `${sectionDuration} min`,
+            order: idx,
+            sectionId: section.sectionId,
+            keyPoints: section.keyPoints,
+        };
+    });
 };
 
 /**
- * Adapts v3.1 QuizV3 questions into the format expected by Step6QuizReview
- * and createFullCourse: { question, options, answer, type, ... }
+ * Adapts v4.6 quiz questions into the format expected by Step6QuizReview
+ * and createFullCourse: { question, options: string[], answer: number, ... }
  */
-const adaptQuizForRendering = (quizJson: any): any[] => {
+const adaptQuizForRenderingV46 = (quizJson: any): any[] => {
     if (!quizJson?.questions) return [];
-    return quizJson.questions.map((q: any) => ({
-        // Legacy-compatible fields expected by Step6QuizReview
-        question: q.text,
-        options: q.options || [],
-        answer: q.correctAnswer,
-        type: 'multiple_choice',
-        // v3.1 rich data
-        archetype: q.archetype,
-        difficulty: q.difficulty,
-        explanation: q.explanation,
-        evidence: q.evidence,
-        moduleTitle: q.moduleTitle,
-        qualityFlags: q.qualityFlags,
-    }));
+    return quizJson.questions.map((q: any) => {
+        // Find correct answer index
+        const correctIdx = q.options.findIndex((o: any) => o.isCorrect);
+
+        // Build explanation from option explanations
+        const correctOption = q.options.find((o: any) => o.isCorrect);
+        const incorrectOptions: Record<string, string> = {};
+        q.options.forEach((o: any, idx: number) => {
+            if (!o.isCorrect) {
+                incorrectOptions[String(idx)] = o.explanation || '';
+            }
+        });
+
+        return {
+            // Legacy-compatible fields expected by Step6QuizReview
+            question: q.question,
+            options: q.options.map((o: any) => o.text),
+            answer: correctIdx >= 0 ? correctIdx : 0,
+            type: 'multiple_choice',
+            // v4.6 rich data
+            archetype: q.skill || q.templateId,
+            difficulty: q.difficulty,
+            explanation: {
+                correctExplanation: correctOption?.explanation || '',
+                incorrectOptions,
+            },
+            evidence: q.evidence ? {
+                moduleSectionId: q.evidence.sectionId,
+                moduleSectionHeading: q.sectionId,
+                sourceAnchors: [],
+            } : undefined,
+            moduleTitle: q.sectionId,
+            stimulus: q.stimulus,
+            templateId: q.templateId,
+        };
+    });
 };
 
 export default function Step5Review({ data, documents, initialContent, onComplete, onBack }: Step5ReviewProps) {
@@ -142,7 +212,7 @@ export default function Step5Review({ data, documents, initialContent, onComplet
     const hasStartedRef = useRef(false);
     const hasInitialContent = !!initialContent;
 
-    // Generate Request — v3.1 two-stage pipeline
+    // Generate Request — v4.6 five-stage pipeline
     useEffect(() => {
         if (hasInitialContent) return;
         if (hasStartedRef.current) return;
@@ -166,7 +236,7 @@ export default function Step5Review({ data, documents, initialContent, onComplet
                     formData.append('documentId', selectedDoc.id);
                 }
 
-                const { jobId, error: startError } = await generateCourseAndQuizV3(formData);
+                const { jobId, error: startError } = await generateCourseAndQuizV46(formData);
 
                 if (startError || !jobId) {
                     setError(startError || "Failed to start generation job");
@@ -177,7 +247,7 @@ export default function Step5Review({ data, documents, initialContent, onComplet
                 // Poll for completion
                 const pollInterval = setInterval(async () => {
                     try {
-                        const statusRes = await checkCourseGenerationJob(jobId);
+                        const statusRes = await checkCourseGenerationJobV46(jobId);
 
                         if (statusRes.error) {
                             clearInterval(pollInterval);
@@ -191,18 +261,26 @@ export default function Step5Review({ data, documents, initialContent, onComplet
                             clearInterval(pollInterval);
                             const result = statusRes.result;
 
-                            // Adapt v3.1 output for the existing UI flow
-                            const adaptedModules = adaptModulesForRendering(result.courseJson);
-                            const adaptedQuiz = adaptQuizForRendering(result.quizJson);
+                            // Adapt v4.6 output for the existing UI flow
+                            const adaptedModules = adaptModulesForRenderingV46(
+                                result.articleMeta,
+                                result.articleMarkdown,
+                                result.slidesJson,
+                                parseInt(data.duration) || 60
+                            );
+                            const adaptedQuiz = adaptQuizForRenderingV46(result.quizJson);
 
                             const content = {
                                 modules: adaptedModules,
                                 quiz: adaptedQuiz,
-                                // Preserve raw v3.1 JSON for DB persistence
-                                rawCourseJson: result.courseJson,
+                                // Preserve raw v4.6 JSON for DB persistence
+                                rawArticleMeta: result.articleMeta,
+                                rawArticleMarkdown: result.articleMarkdown,
+                                rawSlidesJson: result.slidesJson,
+                                rawJudgeJson: result.judgeJson,
                                 rawQuizJson: result.quizJson,
                                 sourceText: result.sourceText,
-                                // Pass along any partial errors (e.g., quiz failed)
+                                // Pass along any partial errors
                                 ...(result.error ? { warning: result.error } : {}),
                             };
 
@@ -261,12 +339,29 @@ export default function Step5Review({ data, documents, initialContent, onComplet
     if (isGenerating) {
         return (
             <div className={styles.playerContainer} style={{ alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: 40, height: 40, border: '3px solid #E5E7EB', borderTopColor: '#1a1a1a', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }}></div>
+                <div style={{ textAlign: 'center', maxWidth: 420 }}>
+                    <div style={{ width: 40, height: 40, border: '3px solid #E5E7EB', borderTopColor: '#1a1a1a', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 24px' }}></div>
                     <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-                    <h2 style={{ fontSize: 18, fontWeight: 600 }}>Generation in progress...</h2>
-                    <p style={{ color: '#6B7280', fontSize: 14 }}>AI is analyzing your documents and building the course and quiz.</p>
-                    <p style={{ color: '#9CA3AF', fontSize: 12, marginTop: 8 }}>This uses a two-stage pipeline for higher quality output.</p>
+                    <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1A202C', marginBottom: 8 }}>Creating your course and quiz…</h2>
+                    <p style={{ color: '#4A5568', fontSize: 15, lineHeight: 1.6, marginBottom: 8 }}>
+                        We're reading your documents, pulling out the key points, and turning them into a clear course with a quiz.
+                    </p>
+                    <p style={{ color: '#A0AEC0', fontSize: 13 }}>
+                        You'll be able to review and edit everything before publishing.
+                    </p>
+                    <a
+                        href="/dashboard"
+                        style={{
+                            display: 'inline-block',
+                            marginTop: 32,
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: '#4C6EF5',
+                            textDecoration: 'none',
+                        }}
+                    >
+                        ← Back to Dashboard
+                    </a>
                 </div>
             </div>
         );

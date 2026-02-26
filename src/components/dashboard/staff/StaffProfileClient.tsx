@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import styles from './StaffProfile.module.css';
 import { Button, Input } from '@/components/ui';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import Link from 'next/link';
 import Image from 'next/image';
 import EditStaffModal from './EditStaffModal';
@@ -284,9 +285,12 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                             </tr>
                         ))}
                         {filteredEnrollments.length === 0 && (
-                            <tr>
-                                <td colSpan={4} style={{ textAlign: 'center', color: '#718096', padding: '24px' }}>No courses found.</td>
-                            </tr>
+                            <EmptyTableState
+                                message="No courses found."
+                                subMessage="This staff member has no enrolled courses."
+                                colSpan={4}
+                                asTableRow
+                            />
                         )}
                     </tbody>
                 </table>
