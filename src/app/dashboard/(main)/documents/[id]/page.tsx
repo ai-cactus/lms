@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import styles from './page.module.css'; // We'll need to create this
+import PdfViewer from '@/components/dashboard/documents/PdfViewer';
 
 export default async function DocumentViewerPage({ params }: { params: Promise<{ id: string }> }) {
     const session = await auth();
@@ -60,14 +61,16 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
                 </div>
 
                 <div className={styles.mainContent}>
-                    {latest.content ? (
+                    {doc.mimeType === 'application/pdf' ? (
+                        <PdfViewer fileUrl={latest.storagePath} />
+                    ) : latest.content ? (
                         <div className={styles.textContent}>
                             <pre>{latest.content}</pre>
                         </div>
                     ) : (
                         <div className={styles.noContent}>
                             <p>Preview not available for this file type.</p>
-                            <p className={styles.subtext}>Only text-based documents can be previewed here.</p>
+                            <p className={styles.subtext}>Only PDF and text-based documents can be previewed here.</p>
                         </div>
                     )}
                 </div>
