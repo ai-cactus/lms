@@ -5,8 +5,23 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 
+import { headers } from 'next/headers';
+
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
+    const headersList = await headers();
+    const referer = headersList.get('referer');
+    const isWorkerRoute = referer?.includes('/worker');
+
+    if (isWorkerRoute) {
+        const worker = await workerAuth();
+        if (worker?.user?.id) return worker;
+    } else {
+        const admin = await adminAuth();
+        if (admin?.user?.id) return admin;
+    }
+
+    // Fallback if referer doesn't help or we are outside known bounds
     const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
     return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
 }
@@ -137,9 +152,12 @@ export async function updateProfile(data: {
     company_name?: string;
     avatarUrl?: string; // New field
 }) {
+    console.log('[UpdateProfile Action] Called with data:', data);
     const session = await resolveSession();
+    console.log('[UpdateProfile Action] Session:', session?.user?.id);
 
     if (!session?.user?.email) {
+        console.log('[UpdateProfile Action] Failed: Not authenticated');
         return { success: false, error: 'Not authenticated' };
     }
 
@@ -147,10 +165,12 @@ export async function updateProfile(data: {
         const fullName = `${data.first_name} ${data.last_name}`.trim();
 
         if (!session.user.id) {
+            console.log('[UpdateProfile Action] Failed: User ID missing');
             return { success: false, error: 'User ID missing' };
         }
 
-        await prisma.profile.upsert({
+        console.log(`[UpdateProfile Action] Upserting profile for user ${session.user.id}...`);
+        const result = await prisma.profile.upsert({
             where: {
                 id: session.user.id,
             },
@@ -159,8 +179,6 @@ export async function updateProfile(data: {
                 lastName: data.last_name,
                 fullName: fullName,
                 companyName: data.company_name,
-                // Email is unique and tied to the user, typically we shouldn't overwrite it unless they explicitly requested an email change. 
-                // However, the schema has `email` on Profile as unique. We will ensure it is synced.
                 email: session.user.email,
                 avatarUrl: data.avatarUrl,
             },
@@ -175,11 +193,14 @@ export async function updateProfile(data: {
             },
         });
 
+        console.log('[UpdateProfile Action] Upsert successful:', result);
+
         revalidatePath('/dashboard/profile');
         revalidatePath('/worker/profile');
+        console.log('[UpdateProfile Action] Paths revalidated');
         return { success: true };
     } catch (error) {
-        console.error('Failed to update profile:', error);
+        console.error('[UpdateProfile Action] Failed to update profile:', error);
         return { success: false, error: 'Failed to update profile' };
     }
 }

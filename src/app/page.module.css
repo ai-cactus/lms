@@ -1,141 +1,149 @@
-.page {
-  --background: #fafafa;
-  --foreground: #fff;
-
-  --text-primary: #000;
-  --text-secondary: #666;
-
-  --button-primary-hover: #383838;
-  --button-secondary-hover: #f2f2f2;
-  --button-secondary-border: #ebebeb;
-
+.container {
   display: flex;
   min-height: 100vh;
+  background-color: var(--background-secondary, #F9FAFB);
   align-items: center;
   justify-content: center;
-  font-family: var(--font-geist-sans);
-  background-color: var(--background);
+  padding: 24px;
 }
 
-.main {
-  display: flex;
-  min-height: 100vh;
+.card {
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+  padding: 48px;
+  max-width: 520px;
   width: 100%;
-  max-width: 800px;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  background-color: var(--foreground);
-  padding: 120px 60px;
+  text-align: center;
+  border: 1px solid var(--border-light, #F3F4F6);
 }
 
-.intro {
+.logoWrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.header {
+  margin-bottom: 40px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 12px;
+  margin-top: 24px;
+}
+
+.subtitle {
+  font-size: 16px;
+  color: #6B7280;
+  line-height: 1.5;
+}
+
+.options {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-  gap: 24px;
-}
-
-.intro h1 {
-  max-width: 320px;
-  font-size: 40px;
-  font-weight: 600;
-  line-height: 48px;
-  letter-spacing: -2.4px;
-  text-wrap: balance;
-  color: var(--text-primary);
-}
-
-.intro p {
-  max-width: 440px;
-  font-size: 18px;
-  line-height: 32px;
-  text-wrap: balance;
-  color: var(--text-secondary);
-}
-
-.intro a {
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.ctas {
-  display: flex;
-  flex-direction: row;
-  width: 100%;
-  max-width: 440px;
   gap: 16px;
+  margin-bottom: 32px;
+}
+
+.optionCard {
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  border: 2px solid transparent;
+  background-color: #F9FAFB;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  color: inherit;
+  text-align: left;
+}
+
+.optionCard:hover {
+  background-color: #F3F4F6;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.04);
+}
+
+.optionCardPrimary {
+  border-color: #Eef2ff;
+  background-color: #F5F7FF;
+}
+
+.optionCardPrimary:hover {
+  background-color: #EEF2FF;
+  border-color: #E0E7FF;
+}
+
+.optionIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16px;
+  flex-shrink: 0;
+}
+
+.workerIcon {
+  background-color: #E0F2FE;
+  color: #0284C7;
+}
+
+.adminIcon {
+  background-color: #E0E7FF;
+  color: var(--primary, #4730F7);
+}
+
+.optionContent {
+  flex: 1;
+}
+
+.optionTitle {
+  font-weight: 600;
+  font-size: 16px;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.optionDesc {
+  font-size: 14px;
+  color: #6B7280;
+}
+
+.divider {
+  height: 1px;
+  background-color: #E5E7EB;
+  margin: 32px 0;
+  position: relative;
+}
+
+.divider span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: white;
+  padding: 0 16px;
+  color: #9CA3AF;
   font-size: 14px;
 }
 
-.ctas a {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 128px;
-  border: 1px solid transparent;
-  transition: 0.2s;
-  cursor: pointer;
-  width: fit-content;
-  font-weight: 500;
+.signupPrompt {
+  color: #4B5563;
+  font-size: 15px;
 }
 
-a.primary {
-  background: var(--text-primary);
-  color: var(--background);
-  gap: 8px;
+.signupLink {
+  color: var(--primary, #4730F7);
+  font-weight: 600;
+  text-decoration: none;
 }
 
-a.secondary {
-  border-color: var(--button-secondary-border);
-}
-
-/* Enable hover only on non-touch devices */
-@media (hover: hover) and (pointer: fine) {
-  a.primary:hover {
-    background: var(--button-primary-hover);
-    border-color: transparent;
-  }
-
-  a.secondary:hover {
-    background: var(--button-secondary-hover);
-    border-color: transparent;
-  }
-}
-
-@media (max-width: 600px) {
-  .main {
-    padding: 48px 24px;
-  }
-
-  .intro {
-    gap: 16px;
-  }
-
-  .intro h1 {
-    font-size: 32px;
-    line-height: 40px;
-    letter-spacing: -1.92px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  .logo {
-    filter: invert();
-  }
-
-  .page {
-    --background: #000;
-    --foreground: #000;
-
-    --text-primary: #ededed;
-    --text-secondary: #999;
-
-    --button-primary-hover: #ccc;
-    --button-secondary-hover: #1a1a1a;
-    --button-secondary-border: #1a1a1a;
-  }
+.signupLink:hover {
+  text-decoration: underline;
 }
