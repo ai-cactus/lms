@@ -159,7 +159,9 @@ export async function updateProfile(data: {
                 lastName: data.last_name,
                 fullName: fullName,
                 companyName: data.company_name,
-                email: session.user.email, // Ensure email is synced if changed
+                // Email is unique and tied to the user, typically we shouldn't overwrite it unless they explicitly requested an email change. 
+                // However, the schema has `email` on Profile as unique. We will ensure it is synced.
+                email: session.user.email,
                 avatarUrl: data.avatarUrl,
             },
             create: {
