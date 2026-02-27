@@ -1,5 +1,6 @@
 import React from 'react';
 import styles from './layout.module.css';
+import { AdminSessionProvider } from '@/components/providers/AdminSessionProvider';
 
 export default function AuthLayout({
     children,
@@ -7,8 +8,10 @@ export default function AuthLayout({
     children: React.ReactNode;
 }) {
     return (
-        <div className={styles.authLayout}>
-            {children}
-        </div>
+        <AdminSessionProvider>
+            <div className={styles.authLayout}>
+                {children}
+            </div>
+        </AdminSessionProvider>
     );
 }

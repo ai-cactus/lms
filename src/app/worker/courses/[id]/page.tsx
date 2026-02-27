@@ -1,6 +1,6 @@
 
 import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
+import { auth } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
 import CoursePreview from '@/components/dashboard/training/CoursePreview';
 import { getCourseById } from '@/app/actions/course';

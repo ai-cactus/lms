@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import DashboardLayoutClient from '@/components/dashboard/DashboardLayoutClient';
 import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
+import { AdminSessionProvider } from '@/components/providers/AdminSessionProvider';
 
 export default async function DashboardLayout({
     children,
@@ -38,7 +39,7 @@ export default async function DashboardLayout({
     const organizationId = user?.organizationId; // Fetch from DB for freshest data
 
     return (
-        <>
+        <AdminSessionProvider>
             <OrganizationActivationModal hasOrganization={!!organizationId} />
             <DashboardLayoutClient
                 userEmail={session.user.email || ''}
@@ -47,6 +48,6 @@ export default async function DashboardLayout({
             >
                 {children}
             </DashboardLayoutClient>
-        </>
+        </AdminSessionProvider>
     );
 }

@@ -1,4 +1,4 @@
-import { auth } from '@/auth';
+import { auth } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
 import styles from '@/components/worker/WorkerDashboard.module.css';
 import WorkerTrainingList from '@/components/worker/WorkerTrainingList';

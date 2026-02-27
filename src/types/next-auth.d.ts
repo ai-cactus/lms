@@ -1,25 +1,40 @@
-import NextAuth, { DefaultSession } from "next-auth"
+export type Role = "admin" | "worker" | "supervisor" | string;
+import "next-auth";
+import "next-auth/jwt";
 
 declare module "next-auth" {
-    /**
-     * Returned by `useSession`, `getSession` and received as a prop on the `SessionProvider` React Context
-     */
-    interface Session {
-        user: {
-            organizationId?: string
-            role?: string
-        } & DefaultSession["user"]
-    }
+  interface User {
+    id: string;
+    role: Role;
+    organizationId: string | null;
+  }
 
-    interface User {
-        organizationId?: string | null
-        role?: string
-    }
+  interface Session {
+    user: {
+      id: string;
+      email: string;
+      name?: string | null;
+      role: Role;
+      organizationId: string | null;
+    };
+  }
 }
 
 declare module "next-auth/jwt" {
-    interface JWT {
-        organizationId?: string | null
-        role?: string
-    }
+  interface JWT {
+    id: string;
+    role: Role;
+    organizationId: string | null;
+  }
 }
+
+// ✅ Typed helper so you never access session fields without knowing their shape
+export type AuthSession = {
+  user: {
+    id: string;
+    email: string;
+    name?: string | null;
+    role: Role;
+    organizationId: string | null;
+  };
+};

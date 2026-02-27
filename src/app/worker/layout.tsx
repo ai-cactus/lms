@@ -1,8 +1,9 @@
 import React from 'react';
-import { auth } from '@/auth';
+import { auth } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import WorkerDashboardLayout from '@/components/worker/WorkerDashboardLayout';
+import { WorkerSessionProvider } from '@/components/providers/WorkerSessionProvider';
 
 
 export default async function WorkerLayout({
@@ -13,7 +14,7 @@ export default async function WorkerLayout({
     const session = await auth();
 
     if (!session?.user?.email) {
-        redirect('/login');
+        redirect('/login-worker');
     }
 
     // Fetch profile for full name
@@ -38,14 +39,13 @@ export default async function WorkerLayout({
     }
 
     return (
-        <>
-
+        <WorkerSessionProvider>
             <WorkerDashboardLayout
                 userEmail={session.user.email || ''}
                 fullName={fullName}
             >
                 {children}
             </WorkerDashboardLayout>
-        </>
+        </WorkerSessionProvider>
     );
 }

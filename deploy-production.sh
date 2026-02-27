@@ -2,7 +2,7 @@
 set -e
 cd /home/homepc/lms2-production
 git checkout main
-git pull origin master
+git pull new-origin main
 npm install --legacy-peer-deps
 npx prisma migrate deploy
 npx prisma generate

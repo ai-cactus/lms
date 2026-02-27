@@ -3,7 +3,7 @@
 import React from 'react';
 import styles from '@/app/dashboard/(main)/layout.module.css';
 import { Logo } from '@/components/ui';
-import Header from '@/components/dashboard/Header';
+import WorkerHeader from '@/components/worker/WorkerHeader';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -56,7 +56,7 @@ export default function WorkerDashboardLayout({
             {/* Main Content Area */}
             <main className={styles.main}>
                 {/* Top Header */}
-                <Header userEmail={userEmail} fullName={fullName} />
+                <WorkerHeader userEmail={userEmail} fullName={fullName} />
 
                 <div className={styles.content}>
                     {children}

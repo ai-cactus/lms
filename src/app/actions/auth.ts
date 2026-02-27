@@ -17,11 +17,13 @@ export async function authenticate(prevState: AuthState | undefined, formData: F
     try {
         await signIn('credentials', {
             ...Object.fromEntries(formData),
-            redirect: false, // Prevent server-side redirect to stop reload
+            redirectTo: '/dashboard',
         });
         return { success: true };
     } catch (error) {
+        console.error("[Auth Action Admin] Intercepted Error:", error);
         if (error instanceof AuthError) {
+            console.error("[Auth Action Admin] AuthError Type:", error.type);
             switch (error.type) {
                 case 'CredentialsSignin':
                     return { error: 'Invalid credentials.' };
