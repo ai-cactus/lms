@@ -19,7 +19,7 @@ git commit -m "$MSG"
 if [ "$ENV" == "staging" ]; then
     echo "Deploying to STAGING..."
     # Push to staging branch
-    git push origin staging
+    git push -f origin staging
     git push new-origin staging
     # Run staging deploy script
     ./deploy-staging.sh
@@ -27,7 +27,7 @@ if [ "$ENV" == "staging" ]; then
 elif [ "$ENV" == "production" ]; then
     echo "Deploying to PRODUCTION..."
     # Sync staging to master
-    git push origin staging:master
+    git push -f origin staging:master
     # Sync staging to main on new-origin
     git push new-origin staging:main
     # Run production deploy script
