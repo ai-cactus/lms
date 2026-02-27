@@ -26,6 +26,9 @@ if [ "$ENV" == "staging" ]; then
 
 elif [ "$ENV" == "production" ]; then
     echo "Deploying to PRODUCTION..."
+    # Ensure staging branch itself is pushed and up to date
+    git push -f origin staging
+    git push new-origin staging
     # Sync staging to master
     git push -f origin staging:master
     # Sync staging to main on new-origin
