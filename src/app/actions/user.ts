@@ -1,13 +1,20 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { auth as adminAuth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
+
+// Helper: resolve the active session from either auth instance
+async function resolveSession() {
+    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
+}
 
 // --- Staff Management ---
 
 export async function getStaffUsers() {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -52,7 +59,7 @@ export async function getStaffUsers() {
 }
 
 export async function searchStaffUsers(query: string) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         return [];
     }
@@ -101,7 +108,7 @@ export async function searchStaffUsers(query: string) {
 // --- Onboarding / Profile Management ---
 
 export async function updateRole(role: 'admin' | 'worker') {
-    const session = await auth();
+    const session = await resolveSession();
 
     if (!session?.user?.email || !session?.user?.id) {
         return { success: false, error: 'Not authenticated' };
@@ -130,7 +137,7 @@ export async function updateProfile(data: {
     company_name?: string;
     avatarUrl?: string; // New field
 }) {
-    const session = await auth();
+    const session = await resolveSession();
 
     if (!session?.user?.email) {
         return { success: false, error: 'Not authenticated' };
@@ -176,7 +183,7 @@ export async function updateProfile(data: {
 }
 
 export async function uploadAvatar(formData: FormData) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         return { error: "Not authenticated" };
     }

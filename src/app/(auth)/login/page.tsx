@@ -57,7 +57,10 @@ function LoginForm() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!validateForm()) return;
+        console.log("[Login Client] Submit clicked! Current form data:", formData);
+        const isValid = validateForm();
+        console.log("[Login Client] Validation result:", isValid, errors);
+        if (!isValid) return;
 
         setErrors({});
         // Construct FormData manually 
@@ -65,15 +68,19 @@ function LoginForm() {
         form.append('email', formData.email);
         form.append('password', formData.password);
 
+        console.log("[Login Client] Dispatching form to authenticate action...");
         React.startTransition(() => {
             dispatch(form);
         });
     };
 
     useEffect(() => {
+        console.log("[Login Client] Action state changed:", state);
         if (state?.success) {
+            console.log("[Login Client] Success! Redirecting to /dashboard");
             router.push('/dashboard');
         } else if (state?.error) {
+            console.log("[Login Client] Error returned from action:", state.error);
             setErrors(prev => ({ ...prev, email: state.error }));
         }
     }, [state, router]);

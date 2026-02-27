@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { auth as adminAuth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
 
 
 
@@ -10,8 +11,10 @@ export async function GET(
 ) {
     const params = await props.params;
     try {
-        const session = await auth();
-        if (!session?.user?.id) {
+        let session = await workerAuth();
+        let adminSession = await adminAuth();
+
+        if (!session?.user?.id && !adminSession?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -47,19 +50,34 @@ export async function GET(
             return NextResponse.json({ error: 'Course not found' }, { status: 404 });
         }
 
-        // Check if user is admin
-        const isAdmin = session.user.role === 'admin' || session.user.role === 'superadmin' || session.user.role === 'organization_admin';
+        // Check both potential user IDs for an enrollment to resolve cookie collision
+        let activeUserId = session?.user?.id;
+        let activeRole = session?.user?.role;
+        let enrollment = null;
 
-        // Get user's enrollment
-        const enrollment = await prisma.enrollment.findFirst({
-            where: {
-                courseId: courseId,
-                userId: session.user.id
-            },
-            include: {
-                quizAttempts: true
+        if (activeUserId) {
+            enrollment = await prisma.enrollment.findFirst({
+                where: { courseId: courseId, userId: activeUserId },
+                include: { quizAttempts: true }
+            });
+        }
+
+        // If no enrollment found for worker, and admin session exists, check admin
+        if (!enrollment && adminSession?.user?.id) {
+            const adminEnroll = await prisma.enrollment.findFirst({
+                where: { courseId: courseId, userId: adminSession.user.id },
+                include: { quizAttempts: true }
+            });
+            if (adminEnroll || ['admin', 'superadmin', 'organization_admin'].includes(adminSession.user.role || '')) {
+                activeUserId = adminSession.user.id;
+                activeRole = adminSession.user.role;
+                enrollment = adminEnroll;
+                session = adminSession;
             }
-        });
+        }
+
+        // Check if resolved user is admin
+        const isAdmin = ['admin', 'superadmin', 'organization_admin'].includes(activeRole || '');
 
         if (!enrollment && !isAdmin) {
             return NextResponse.json({ error: 'Not enrolled in this course' }, { status: 403 });
@@ -93,10 +111,10 @@ export async function GET(
         } : null;
 
         // Get user details for attestation
-        const user = await prisma.user.findUnique({
-            where: { id: session.user.id },
+        const user = activeUserId ? await prisma.user.findUnique({
+            where: { id: activeUserId },
             include: { profile: true }
-        });
+        }) : null;
 
         // Build detailed quiz results if the user has completed the quiz
         let quizResultsData = null;

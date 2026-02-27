@@ -1,8 +1,15 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { auth as adminAuth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
+
+// Helper: resolve the active session from either auth instance
+async function resolveSession() {
+    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
+}
 
 export type CourseWithStats = {
     id: string;
@@ -21,7 +28,7 @@ export type CourseWithStats = {
 
 // Get all courses for current user (admin)
 export async function getCourses(): Promise<CourseWithStats[]> {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -60,7 +67,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
 
 // Get single course by ID with lessons
 export async function getCourseById(courseId: string) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -106,7 +113,7 @@ export async function createCourse(data: {
     description?: string;
     category?: string;
 }) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -135,7 +142,7 @@ export async function updateCourse(
         duration?: number;
     }
 ) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -158,7 +165,7 @@ export async function updateCourse(
 
 // Publish a course
 export async function publishCourse(courseId: string) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -179,7 +186,7 @@ export async function publishCourse(courseId: string) {
 
 // Delete a course
 export async function deleteCourse(courseId: string) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -197,7 +204,7 @@ export async function deleteCourse(courseId: string) {
 
 // Get dashboard statistics
 export async function getDashboardStats() {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -316,7 +323,7 @@ export async function getDashboardStats() {
 
 // Assign course to users
 export async function assignCourseToUsers(courseId: string, emails: string[], dueAt?: Date) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -429,7 +436,7 @@ export async function createFullCourse(data: {
     rawSlidesJson?: any;
     rawJudgeJson?: any;
 }) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -672,7 +679,7 @@ export async function createFullCourse(data: {
 }
 // Attest a course completion
 export async function attestCourse(enrollmentId: string, signature: string, role: string) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -720,7 +727,7 @@ export async function attestCourse(enrollmentId: string, signature: string, role
 
 // Start a course (mark as in_progress)
 export async function startCourse(courseId: string) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -762,7 +769,7 @@ export async function updateQuizQuestions(courseId: string, questions: {
     answer: number;
     type?: string;
 }[]) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -813,7 +820,7 @@ export async function updateQuizQuestions(courseId: string, questions: {
 
 // Update lesson content (Admin)
 export async function updateLessonContent(lessonId: string, content: string, title?: string) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -841,7 +848,7 @@ export async function updateLessonContent(lessonId: string, content: string, tit
 
 // Retake a quiz (reset status to in_progress)
 export async function retakeQuiz(enrollmentId: string) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }

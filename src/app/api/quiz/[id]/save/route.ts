@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { auth as adminAuth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
 
 export async function POST(
     request: NextRequest,
@@ -8,10 +9,8 @@ export async function POST(
 ) {
     const params = await props.params;
     try {
-        const session = await auth();
-        if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        const workerSession = await workerAuth();
+        const adminSession = await adminAuth();
 
         const quizId = params.id;
         const body = await request.json();
@@ -25,11 +24,16 @@ export async function POST(
         const attempt = await prisma.quizAttempt.findUnique({
             where: {
                 enrollmentId_quizId: { enrollmentId, quizId }
-            }
+            },
+            include: { enrollment: true }
         });
 
         if (!attempt) {
             return NextResponse.json({ error: 'No attempt found' }, { status: 404 });
+        }
+
+        if (attempt.enrollment.userId !== workerSession?.user?.id && attempt.enrollment.userId !== adminSession?.user?.id) {
+            return NextResponse.json({ error: 'Enrollment does not belong to active sessions' }, { status: 403 });
         }
 
         if (attempt.timeTaken !== null) {

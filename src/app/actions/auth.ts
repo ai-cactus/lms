@@ -15,13 +15,15 @@ export type AuthState = {
 
 export async function authenticate(prevState: AuthState | undefined, formData: FormData): Promise<AuthState> {
     try {
+        console.log("[Auth Action Admin] authenticate server action called with entries:", Object.fromEntries(formData));
         await signIn('credentials', {
             ...Object.fromEntries(formData),
             redirectTo: '/dashboard',
         });
+        console.log("[Auth Action Admin] signIn completed (usually means redirection if successful)");
         return { success: true };
     } catch (error) {
-        console.error("[Auth Action Admin] Intercepted Error:", error);
+        console.error("[Auth Action Admin] Intercepted Error in authenticate action:", error);
         if (error instanceof AuthError) {
             console.error("[Auth Action Admin] AuthError Type:", error.type);
             switch (error.type) {

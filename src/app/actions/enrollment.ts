@@ -1,15 +1,22 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { auth as adminAuth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
+
+// Helper: resolve the active session from either auth instance
+async function resolveSession() {
+    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
+}
 
 /**
  * Get all available users (workers) that can be enrolled in courses.
  * Used by Share Modal to show selectable users.
  */
 export async function getAvailableUsers() {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -39,7 +46,7 @@ export async function getAvailableUsers() {
  * For emails not in the system, creates new user accounts and sends invite emails.
  */
 export async function enrollUsers(courseId: string, emails: string[]) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -185,7 +192,7 @@ export async function enrollUsers(courseId: string, emails: string[]) {
  * Used by the Quiz Results page.
  */
 export async function getEnrollmentWithResults(enrollmentId: string) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }
@@ -251,7 +258,7 @@ export async function submitQuizAttempt(
     answers: { questionId: string; selectedAnswer: string }[],
     timeTaken?: number
 ) {
-    const session = await auth();
+    const session = await resolveSession();
     if (!session?.user?.id) {
         throw new Error('Unauthorized');
     }

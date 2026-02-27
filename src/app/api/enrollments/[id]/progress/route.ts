@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { auth as adminAuth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
 
 export async function POST(
     request: NextRequest,
@@ -8,10 +9,8 @@ export async function POST(
 ) {
     const params = await props.params;
     try {
-        const session = await auth();
-        if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        const workerSession = await workerAuth();
+        const adminSession = await adminAuth();
 
         const enrollmentId = params.id;
         const body = await request.json();
@@ -22,8 +21,12 @@ export async function POST(
             where: { id: enrollmentId }
         });
 
-        if (!enrollment || enrollment.userId !== session.user.id) {
-            return NextResponse.json({ error: 'Enrollment not found' }, { status: 403 });
+        if (!enrollment) {
+            return NextResponse.json({ error: 'Enrollment not found' }, { status: 404 });
+        }
+
+        if (enrollment.userId !== workerSession?.user?.id && enrollment.userId !== adminSession?.user?.id) {
+            return NextResponse.json({ error: 'Enrollment does not belong to active sessions' }, { status: 403 });
         }
 
         // Only allow forward progress (never decrease)

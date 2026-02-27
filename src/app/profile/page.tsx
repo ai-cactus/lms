@@ -1,8 +1,11 @@
-import { auth } from '@/auth';
+import { auth as adminAuth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
 import { redirect } from 'next/navigation';
 
 export default async function ProfileRedirectPage() {
-    const session = await auth();
+    const [adminSession, workerSession] = await Promise.all([adminAuth(), workerAuth()]);
+    const session = adminSession?.user ? adminSession : workerSession;
+
 
     if (!session?.user) {
         redirect('/login');
