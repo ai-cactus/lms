@@ -1,90 +1,94 @@
-# LMS2 - Compliance & Safety Training Platform
+# LMS2 - AI-Powered Compliance & Safety Training Platform
 
-LMS2 is a modern, robust Learning Management System (LMS) designed for delivering and tracking compliance and safety training. Built with the latest web technologies, it offers a seamless experience for both administrators creating content and workers completing their training.
+LMS2 is a cutting-edge Learning Management System (LMS) designed for delivering, tracking, and automating compliance and safety training. Built with modern web technologies, it features an advanced AI pipeline (v4.6) for generating course content and quizzes directly from documents and specifications.
 
 ## 🚀 Project Overview
 
-The platform allows organizations to:
-- **Create & Manage Courses**: Build potential multi-module courses with rich content.
-- **Interactive Learning**: Engage users with lessons and verify knowledge through quizzes.
-- **Track Progress**: Monitor enrollment status, completion rates, and quiz scores in real-time.
-- **Role-Based Access**: Distinct distinct interfaces and permissions for creating content (Admins) vs. consuming it (Workers).
-- **Secure Authentication**: Robust user session management and protection.
+The platform serves distinct user roles with specific workflows:
+- **Workers**: Engage with assigned courses, take interactive quizzes, and provide completion attestations.
+- **Admin/Staff**: Manage organization settings, invite users, and leverage AI to generate complex training materials based on uploaded documents.
+
+### ✨ Key Features
+- **Org & User Management**: Multi-tenant architecture with `Organization` models. Secure invites and robust role-based access (`admin` vs `worker`).
+- **AI-Powered Course Generation (v4.6 Pipeline)**: Uses Google Vertex AI & Generative AI to automatically generate courses. The 5-stage pipeline creates article metadata, rich markdown articles, interactive slide decks, and comprehensive quizzes with AI judging.
+- **Document & PHI Management**: Securely upload documents (PDF, Word, Excel) with built-in PHI (Protected Health Information) scanning and entity detection.
+- **Interactive Quizzes**: Time limits, passing scores, multiple question types, and evidence-based explanations (archetypes like sequence, escalation, modality-check).
+- **Compliance Tracking & Attestations**: Real-time progress monitoring, quiz attempt tracking, and cryptographically secure digital signatures for attestations.
+- **Auditor Evidence Pack**: Generate automated packages linking training materials directly to compliance standards (e.g., CARF).
 
 ## 🛠 Tech Stack
 
-This project leverages a cutting-edge stack focused on performance, type safety, and developer experience.
+- **Framework**: [Next.js 16 (App Router)](https://nextjs.org/)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) & [Framer Motion](https://www.framer.com/motion/)
+- **Database**: [PostgreSQL](https://www.postgresql.org/)
+- **ORM**: [Prisma](https://www.prisma.io/) (`v5.22.0`)
+- **Authentication**: [NextAuth.js (v5 Beta)](https://authjs.dev/) & [Bcryptjs](https://www.npmjs.com/package/bcryptjs)
+- **AI/ML**: `@google-cloud/vertexai`, `@google/generative-ai`
+- **Document Processing**: `pdf-parse`, `react-pdf`, `mammoth` (DOCX), `xlsx`
+- **Rich Text**: `quill`, `react-quill`
+- **Analytics/Vis**: `recharts`
+- **Time/Dates**: `react-timekeeper`
 
-- **Framework**: [Next.js 16 (App Router)](https://nextjs.org/) - The React Framework for the Web.
-- **Language**: [TypeScript](https://www.typescriptlang.org/) - Statically typed JavaScript.
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS framework (implied via `globals.css` and layout).
-- **Database**: [PostgreSQL](https://www.postgresql.org/) - Robust relational database system.
-- **ORM**: [Prisma](https://www.prisma.io/) - Next-generation Node.js and TypeScript ORM (`v5.22.0`).
-- **Authentication**: [NextAuth.js (v5 Beta)](https://authjs.dev/) - Authentication for Next.js.
-- **Utilities**:
-  - `react-timekeeper` - Time selection components.
-  - `recharts` - Data visualization for dashboards.
-  - `nodemailer` - Email sending services.
-  - `bcryptjs` - Password hashing.
+## 📂 Project Structure
+
+A high-level overview:
+```
+lms2/
+├── prisma/
+│   └── schema.prisma      # DB schema, incl. Organization, Course, Document, Quiz, etc.
+├── src/
+│   ├── actions/           # Server Actions (Auth, AI Generation, Document upload)
+│   ├── app/               # Next.js App Router (/(auth), /dashboard, /onboarding, /worker)
+│   ├── api/               # API endpoints
+│   ├── components/        # Reusable UI components and feature widgets
+│   └── lib/               # Shared utilities (AI orchestration, PDF processing)
+├── scripts/               # Utility scripts
+├── public/                # Static assets (images, icons)
+└── deploy-*.sh            # Deployment scripts (Staging, Production)
+```
 
 ## ⚙️ Prerequisites
 
-Before getting started, ensure you have the following installed:
-
-- **Node.js** (v20 or higher recommended)
-- **npm** (comes with Node.js)
-- **PostgreSQL** Database instance (Local or Cloud)
-- **Cloudflared CLI** (Optional, for using the provided tunnel scripts)
+- **Node.js** (v20+)
+- **PostgreSQL** Database
+- **Cloudflared CLI** (Optional, for remote access)
+- **PM2** (For production deployment management)
 
 ## 📥 Installation & Setup
 
-1.  **Clone the Repository**
+1. **Clone & Install**
+   ```bash
+   git clone <repository-url>
+   cd lms2
+   npm install
+   ```
 
-    ```bash
-    git clone <repository-url>
-    cd lms2
-    ```
+2. **Environment Configuration**
+   Create a `.env` file based on the following template:
+   ```env
+   # Database Connection
+   DATABASE_URL="postgresql://user:password@localhost:5432/lms2?schema=public"
 
-2.  **Install Dependencies**
+   # NextAuth Configuration
+   NEXTAUTH_SECRET="your-super-secret-key"
+   NEXTAUTH_URL="http://localhost:3000"
 
-    ```bash
-    npm install
-    ```
+   # Email Service
+   EMAIL_SERVER_HOST="smtp.example.com"
+   EMAIL_SERVER_PORT=587
+   EMAIL_SERVER_USER="apikey"
+   EMAIL_SERVER_PASSWORD="your-email-password"
+   EMAIL_FROM="noreply@theraptly.com"
+   ```
 
-3.  **Environment Configuration**
-
-    Create a `.env` file in the root directory. You can use the example below as a template:
-
-    ```env
-    # Database Connection
-    DATABASE_URL="postgresql://user:password@localhost:5432/lms2?schema=public"
-
-    # NextAuth Configuration
-    NEXTAUTH_SECRET="your-super-secret-key"
-    NEXTAUTH_URL="http://localhost:3000"
-
-    # Email Service (if applicable)
-    EMAIL_SERVER_HOST="smtp.example.com"
-    EMAIL_SERVER_PORT=587
-    EMAIL_SERVER_USER="apikey"
-    EMAIL_SERVER_PASSWORD="your-email-password"
-    EMAIL_FROM="noreply@theraptly.com"
-    ```
-
-4.  **Database Setup**
-
-    Run the Prisma migrations to set up your database schema:
-
-    ```bash
-    npx prisma generate
-    npx prisma migrate dev --name init
-    ```
-
-    Alternatively, to push the schema without creating a migration history (good for rapid prototyping):
-
-    ```bash
-    npx prisma db push
-    ```
+3. **Database Setup**
+   Run Prisma migrations or push the schema to set up your database:
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   # or npx prisma migrate dev --name init
+   ```
 
 ## 📜 Scripts
 
@@ -95,61 +99,15 @@ Before getting started, ensure you have the following installed:
 | `npm run start` | Starts the production server. |
 | `npm run lint` | Runs ESLint to check for code quality issues. |
 | `./start-tunnel.sh` | Starts the Cloudflare tunnel (requires `cloudflared` config). |
-
-## 📂 Project Structure
-
-A high-level overview of the implementation:
-
-```
-lms2/
-├── prisma/
-│   └── schema.prisma      # Database models and configuration
-├── public/                # Static assets (images, icons)
-├── src/
-│   ├── actions/           # Server Actions for data mutations (User, Staff, Courses)
-│   ├── app/               # Next.js App Router pages
-│   │   ├── (auth)/        # Authentication routes
-│   │   ├── dashboard/     # Main authenticated user interface
-│   │   ├── onboarding/    # User setup flows
-│   │   ├── api/           # API routes
-│   │   └── ...
-│   ├── components/        # Reusable UI components
-│   │   ├── dashboard/     # Dashboard-specific widgets
-│   │   └── ui/            # Generic design system components
-│   └── lib/               # Utility functions and shared logic (Email, Auth)
-├── cloudflared_config.yml # Configuration for Cloudflare Tunnel
-└── start-tunnel.sh        # Script to launch external access
-```
-
-## 💎 Features & Key Modules
-
-### Data Models (`prisma/schema.prisma`)
-- **User & Profile**: Core identity management with role support (`admin`, `worker`).
-- **Course System**: Hierarchical structure of `Course` -> `Lesson` -> `Quiz`.
-- **Engagement**: `Enrollment` tracks a user's progress through a course. `QuizAttempt` records scores and pass/fail status.
-- **Documents**: System for managing user-uploaded files or resource documents.
-
-### Dashboard
-The dashboard (`src/app/dashboard`) is the central hub, adapting to the user's role:
-- **Workers**: View assigned courses, continue where they left off, and see completion certificates.
-- **Admins**: Manage staff, creating new courses, and view analytics on training effectiveness.
-
-### Cloudflare Tunnel Integration
-The project is configured for secure remote access using Cloudflare Tunnel.
-- **Config**: `cloudflared_config.yml` maps `lms.theraptly.com` to your local service.
-- **Execution**: Run `./start-tunnel.sh` to expose your local dev server securely to the internet.
+| `./deploy-staging.sh` | Deploys the application to the staging environment. |
+| `./deploy-production.sh`| Deploys the application to the production environment. |
 
 ## 🚀 Deployment
 
-### Standard Deployment (Vercel/Node)
-1.  Build the project: `npm run build`
-2.  Start the server: `npm start`
+The project includes bash scripts to streamline deployments across different environments (Staging/Production). Process management is handled with **PM2** via `ecosystem.config.js`.
 
-### Using Cloudflare Tunnel
-For exposing a local instance or a private server:
-1.  Ensure `cloudflared` is installed.
-2.  Update `cloudflared_config.yml` with your tunnel ID and credentials path.
-3.  Run `./start-tunnel.sh`.
+- Use `deploy-staging.sh` and `deploy-production.sh` to pull updates, install dependencies, build the Next.js app, and restart PM2.
+- For local tunneling and quick remote access, the `cloudflared` configurations and `start-tunnel.sh` allow securely exposing `localhost:3000`.
 
 ---
 *Generated for LMS2 Team.*
