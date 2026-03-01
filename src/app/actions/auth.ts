@@ -15,6 +15,14 @@ export type AuthState = {
 
 export async function authenticate(prevState: AuthState | undefined, formData: FormData): Promise<AuthState> {
     try {
+        const email = formData.get('email') as string;
+        if (email) {
+            const user = await prisma.user.findUnique({ where: { email }, select: { role: true } });
+            if (user && user.role !== 'admin') {
+                return { error: 'Your account is registered as a Worker. Please use the Worker Login page.' };
+            }
+        }
+
         console.log("[Auth Action Admin] authenticate server action called with entries:", Object.fromEntries(formData));
         await signIn('credentials', {
             ...Object.fromEntries(formData),

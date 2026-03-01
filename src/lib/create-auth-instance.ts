@@ -78,13 +78,14 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
         },
       }),
 
-      // Only expose Microsoft OAuth on the admin instance if env vars are present
-      ...(allowedRole === "admin" && process.env.AUTH_MICROSOFT_ENTRA_ID_ID
+      // Expose Microsoft OAuth on both admin and worker instances if env vars are present
+      ...(process.env.AUTH_MICROSOFT_ENTRA_ID_ID
         ? [
           MicrosoftEntraID({
             clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
             clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
             issuer: `https://login.microsoftonline.com/${process.env.AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}/v2.0`,
+            allowDangerousEmailAccountLinking: true,
           }),
         ]
         : []),
@@ -93,13 +94,70 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
     callbacks: {
       async signIn({ user, account }) {
         if (account?.provider === "microsoft-entra-id") {
-          const dbUser = await prisma.user.findUnique({
+          let dbUser = await prisma.user.findUnique({
             where: { email: user.email! },
             select: { id: true, organizationId: true, role: true }
           });
-          if (!dbUser) return '/login?error=NoAccount';
 
-          if (dbUser.role !== allowedRole) return '/login?error=AccessDenied';
+          // Check for pending invites
+          const pendingInvite = await prisma.invite.findFirst({
+            where: { email: user.email!, status: 'pending' },
+            orderBy: { createdAt: 'desc' }
+          });
+
+          if (!dbUser) {
+            // New user Signup Flow
+            console.log(`[NextAuth] Creating new ${allowedRole} user via Microsoft OAuth: ${user.email}`);
+
+            let matchedOrgId = null;
+            let matchedRole = allowedRole;
+
+            if (pendingInvite) {
+              matchedOrgId = pendingInvite.organizationId;
+              matchedRole = pendingInvite.role; // Override role from invite if present
+              console.log(`[NextAuth] Found pending invite for ${user.email}, joining org ${matchedOrgId} as ${matchedRole}`);
+            }
+
+            dbUser = await prisma.user.create({
+              data: {
+                email: user.email!,
+                password: '', // OAuth users don't need a password initially
+                role: matchedRole,
+                organizationId: matchedOrgId,
+                emailVerified: true // Trust OAuth provider email verification
+              },
+              select: { id: true, organizationId: true, role: true }
+            });
+
+            // Mark invite as accepted if we used one
+            if (pendingInvite) {
+              await prisma.invite.update({
+                where: { id: pendingInvite.id },
+                data: { status: 'accepted' }
+              });
+            }
+          } else {
+            // Existing user login
+            if (pendingInvite && !dbUser.organizationId) {
+              // User exists but has no org yet, and has a new invite
+              console.log(`[NextAuth] Existing user ${user.email} accepting invite to org ${pendingInvite.organizationId}`);
+              dbUser = await prisma.user.update({
+                where: { id: dbUser.id },
+                data: {
+                  organizationId: pendingInvite.organizationId,
+                  role: pendingInvite.role
+                },
+                select: { id: true, organizationId: true, role: true }
+              });
+
+              await prisma.invite.update({
+                where: { id: pendingInvite.id },
+                data: { status: 'accepted' }
+              });
+            }
+          }
+
+          if (dbUser.role !== allowedRole) return `${config.pages?.signIn}?error=AccessDenied`;
 
           user.id = dbUser.id;
           user.organizationId = dbUser.organizationId;

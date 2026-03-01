@@ -13,6 +13,7 @@ function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const joined = searchParams.get('joined');
+    const oauthError = searchParams.get('error');
 
     const [state, dispatch, isPending] = useActionState(authenticate, undefined);
 
@@ -149,6 +150,46 @@ function LoginForm() {
                 </div>
             )}
 
+            {oauthError === 'AccessDenied' && (
+                <div style={{
+                    backgroundColor: '#FEF2F2',
+                    color: '#991B1B',
+                    padding: '16px 20px',
+                    borderRadius: '12px',
+                    marginBottom: '24px',
+                    border: '1px solid #FCA5A5',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    width: '100%'
+                }}>
+                    <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '50%',
+                        backgroundColor: '#EF4444',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                    }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </div>
+                    <div>
+                        <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '2px' }}>
+                            Access Denied
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#B91C1C' }}>
+                            Your account exists but is registered as a <strong>Worker</strong>. 
+                            Please use the <Link href="/login-worker" style={{ textDecoration: 'underline', color: 'inherit' }}>Worker Login</Link> instead.
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className={styles.socialLogin}>
                 <Button variant="outline" type="button" className={styles.microsoftButton} onClick={handleMicrosoftLogin}>
                     <Image
@@ -210,7 +251,7 @@ function LoginForm() {
                     Sign Up
                 </Link>
             </p>
-        </div>
+        </div >
     );
 }
 

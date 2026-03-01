@@ -242,3 +242,37 @@
 .saveBtn.active:hover {
     background: #1d4ed8;
 }
+
+/* Additional Mobile Tweaks */
+@media (max-width: 480px) {
+    .container {
+        padding: 12px;
+        min-height: auto;
+    }
+
+    .card {
+        min-height: auto;
+        border-radius: 8px;
+    }
+
+    .profileWrapper {
+        padding: 16px;
+        gap: 20px;
+    }
+
+    .avatarLarge {
+        width: 80px;
+        height: 80px;
+        font-size: 32px;
+    }
+
+    .actions {
+        flex-direction: column;
+    }
+
+    .discardBtn,
+    .saveBtn {
+        width: 100%;
+        text-align: center;
+    }
+}
