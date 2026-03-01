@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # LMS2 Unified Deployer
 # Usage: ./deploy.sh [staging|production] "Commit message"
@@ -20,7 +21,7 @@ if [ "$ENV" == "staging" ]; then
     echo "Deploying to STAGING..."
     # Push to staging branch
     git push -f origin staging
-    git push new-origin staging
+    git push -f new-origin staging
     # Run staging deploy script
     ./deploy-staging.sh
 
@@ -28,7 +29,7 @@ elif [ "$ENV" == "production" ]; then
     echo "Deploying to PRODUCTION..."
     # Ensure staging branch itself is pushed and up to date
     git push -f origin staging
-    git push new-origin staging
+    git push -f new-origin staging
     # Sync staging to master
     git push -f origin staging:master
     # Sync staging to main on new-origin
