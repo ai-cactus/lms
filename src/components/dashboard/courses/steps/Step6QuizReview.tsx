@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import styles from '../CourseWizard.module.css';
 import { generateSingleQuestion } from '@/app/actions/quiz-ai';
+import { Button } from '@/components/ui';
 
 interface QuizQuestion {
     question: string;
@@ -197,8 +198,8 @@ export default function Step6QuizReview({ data, quiz, courseId, onQuizUpdate }: 
                                         </div>
 
                                         <div className={styles.formActions}>
-                                            <button className={styles.btnCancel} onClick={() => { setEditingIndex(null); setEditingQuestion(null); }}>Cancel</button>
-                                            <button className={styles.btnSave} onClick={() => {
+                                            <Button variant="ghost" size="sm" onClick={() => { setEditingIndex(null); setEditingQuestion(null); }}>Cancel</Button>
+                                            <Button variant="primary" size="sm" onClick={() => {
                                                 if (!editingQuestion.question.trim() || editingQuestion.options.some(o => !o.trim())) {
                                                     alert("Please fill in all fields.");
                                                     return;
@@ -208,7 +209,7 @@ export default function Step6QuizReview({ data, quiz, courseId, onQuizUpdate }: 
                                                 onQuizUpdate(updatedQuiz);
                                                 setEditingIndex(null);
                                                 setEditingQuestion(null);
-                                            }}>Save Changes</button>
+                                            }}>Save Changes</Button>
                                         </div>
                                     </div>
                                 );
@@ -227,38 +228,25 @@ export default function Step6QuizReview({ data, quiz, courseId, onQuizUpdate }: 
                                         <div style={{ display: 'flex', gap: 6 }}>
                                             {/* Explanation toggle (v3.1) */}
                                             {q.explanation && (
-                                                <button
+                                                <Button
+                                                    variant="outline"
+                                                    size="xs"
                                                     onClick={() => setExpandedExplanation(expandedExplanation === index ? null : index)}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: '1px solid #E2E8F0',
-                                                        borderRadius: '6px',
-                                                        padding: '4px 10px',
-                                                        fontSize: '12px',
-                                                        color: expandedExplanation === index ? '#4C6EF5' : '#718096',
-                                                        cursor: 'pointer'
-                                                    }}
+                                                    style={{ color: expandedExplanation === index ? '#4C6EF5' : '#718096' }}
                                                 >
                                                     {expandedExplanation === index ? 'Hide' : 'Why?'}
-                                                </button>
+                                                </Button>
                                             )}
-                                            <button
+                                            <Button
+                                                variant="outline"
+                                                size="xs"
                                                 onClick={() => {
                                                     setEditingIndex(index);
                                                     setEditingQuestion(q);
                                                 }}
-                                                style={{
-                                                    background: 'transparent',
-                                                    border: '1px solid #E2E8F0',
-                                                    borderRadius: '6px',
-                                                    padding: '4px 12px',
-                                                    fontSize: '13px',
-                                                    color: '#4A5568',
-                                                    cursor: 'pointer'
-                                                }}
                                             >
                                                 Edit
-                                            </button>
+                                            </Button>
                                         </div>
                                     </div>
                                     <div className={styles.optionList}>
@@ -309,9 +297,9 @@ export default function Step6QuizReview({ data, quiz, courseId, onQuizUpdate }: 
 
                 {/* Add Question Section */}
                 {!isAdding ? (
-                    <button className={styles.btnAddQuestion} onClick={() => setIsAdding(true)}>
+                    <Button variant="outline" size="md" onClick={() => setIsAdding(true)} fullWidth>
                         + Add New Question
-                    </button>
+                    </Button>
                 ) : (
                     <div className={styles.addQuestionForm}>
                         <h3 className={styles.formTitle}>Add New Question</h3>
@@ -373,15 +361,15 @@ export default function Step6QuizReview({ data, quiz, courseId, onQuizUpdate }: 
 
                         <div className={styles.formActions} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
-                                <button
-                                    className={styles.btnAddQuestion}
+                                <Button
+                                    variant="outline"
+                                    size="md"
                                     onClick={(e) => { e.preventDefault(); handleGenerateQuestion(); }}
                                     disabled={isGenerating}
-                                    style={{ width: 'auto', margin: 0, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}
                                 >
                                     {isGenerating ? 'Generating...' : (
                                         <>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px' }}>
                                                 <path d="M12 2v4"></path>
                                                 <path d="M12 18v4"></path>
                                                 <path d="M4.93 4.93l2.83 2.83"></path>
@@ -394,11 +382,11 @@ export default function Step6QuizReview({ data, quiz, courseId, onQuizUpdate }: 
                                             Generate with AI
                                         </>
                                     )}
-                                </button>
+                                </Button>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
-                                <button className={styles.btnCancel} onClick={() => setIsAdding(false)}>Cancel</button>
-                                <button className={styles.btnSave} onClick={handleAddQuestion}>Save Question</button>
+                                <Button variant="ghost" size="md" onClick={() => setIsAdding(false)}>Cancel</Button>
+                                <Button variant="primary" size="md" onClick={handleAddQuestion}>Save Question</Button>
                             </div>
                         </div>
                     </div>

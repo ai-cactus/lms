@@ -3,7 +3,7 @@
 import { useActionState, useState, useEffect, useRef } from 'react';
 import { uploadDocument } from '@/app/actions/documents';
 import styles from './modal.module.css';
-import { Modal } from '@/components/ui';
+import { Modal, Button } from '@/components/ui';
 
 export default function UploadModal({ onClose }: { onClose: () => void }) {
     const [state, action, isPending] = useActionState(uploadDocument, null);
@@ -112,18 +112,17 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
                 )}
 
                 <div className={styles.actions}>
-                    <button type="button" onClick={onClose} className={styles.cancelBtn}>Cancel</button>
-                    <button
+                    <Button variant="ghost" size="md" type="button" onClick={onClose}>
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="md"
                         type="submit"
-                        className={styles.uploadBtn}
                         disabled={!file || isPending || !!validationError}
                     >
-                        {isPending ? (
-                            <span className={styles.scanningFlex}>
-                                <span className={styles.spinner}></span> Scanning for PHI...
-                            </span>
-                        ) : 'Upload'}
-                    </button>
+                        {isPending ? 'Scanning for PHI…' : 'Upload'}
+                    </Button>
                 </div>
             </form>
         </Modal>

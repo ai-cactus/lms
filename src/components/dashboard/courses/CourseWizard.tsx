@@ -11,6 +11,7 @@ import Step5Review from './steps/Step5Review';
 import Step6QuizReview from './steps/Step6QuizReview';
 import Step7Publish from './steps/Step7Publish';
 import Logo from '@/components/ui/Logo';
+import Button from '@/components/ui/Button';
 import { createFullCourse } from '@/app/actions/course';
 import { analyzeStoredDocument } from '@/app/actions/course-ai';
 
@@ -464,9 +465,9 @@ export default function CourseWizard() {
 
                 <div className={styles.headerContent}>
                     <span className={styles.stepText}>Step {currentStep} of {totalSteps}</span>
-                    <button className={styles.exitButton} onClick={() => router.push('/dashboard/courses')}>
+                    <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/courses')}>
                         Exit
-                    </button>
+                    </Button>
                 </div>
                 {/* Dynamic Progress Bar */}
                 <div
@@ -486,16 +487,23 @@ export default function CourseWizard() {
                             <div className={styles.errorMessage}>{publishError}</div>
                         )}
                         <div className={styles.footerButtons}>
-                            <button className={styles.btnBack} onClick={handleBack} disabled={isPublishing}>
-                                Back
-                            </button>
-                            <button
-                                className={`${styles.btnNext} ${!isNextDisabled() && !isPublishing && !isAnalyzing ? styles.btnNextEnabled : ''}`}
-                                onClick={handleNext}
-                                disabled={isNextDisabled() || isPublishing || isAnalyzing}
+                            <Button
+                                variant="secondary"
+                                size="md"
+                                onClick={handleBack}
+                                disabled={isPublishing}
                             >
-                                {isPublishing ? 'Publishing...' : currentStep === totalSteps ? 'Publish' : 'Next'}
-                            </button>
+                                Back
+                            </Button>
+                            <Button
+                                variant="primary"
+                                size="md"
+                                onClick={handleNext}
+                                disabled={isNextDisabled() || isAnalyzing}
+                                loading={isPublishing}
+                            >
+                                {currentStep === totalSteps ? 'Publish' : 'Next'}
+                            </Button>
                         </div>
                     </div>
                 )}

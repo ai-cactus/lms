@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import styles from './Modal.module.css';
+import Button from './Button';
 
 interface ModalProps {
     isOpen: boolean;
@@ -98,12 +99,12 @@ export const Modal = ({
                             aria-modal="true"
                         >
                             {showCloseButton && (
-                                <button onClick={onClose} className={styles.closeButton} aria-label="Close modal">
+                                <Button variant="ghost" size="icon-sm" onClick={onClose} className={styles.closeButton} aria-label="Close modal">
                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <line x1="18" y1="6" x2="6" y2="18"></line>
                                         <line x1="6" y1="6" x2="18" y2="18"></line>
                                     </svg>
-                                </button>
+                                </Button>
                             )}
 
                             {(title || description) && (

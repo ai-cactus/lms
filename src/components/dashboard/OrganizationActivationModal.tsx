@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import styles from './OrganizationActivationModal.module.css';
-import { Logo, Modal } from '@/components/ui';
+import { Logo, Modal, Button } from '@/components/ui';
 import { useModalContext } from '@/components/ui/ModalContext';
 
 interface OrganizationActivationModalProps {
@@ -101,19 +101,22 @@ export default function OrganizationActivationModal({
                     </p>
 
                     <div className={styles.actions}>
-                        <button
+                        <Button
+                            variant="primary"
+                            size="md"
+                            pill
                             onClick={() => router.push('/onboarding')}
-                            className={styles.primaryButton}
+                            style={{ width: '100%' }}
                         >
                             {actionLabel || defaultAction}
-                        </button>
-
-                        <button
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="md"
                             onClick={handleClose}
-                            className={styles.secondaryButton}
                         >
                             Skip for now
-                        </button>
+                        </Button>
                     </div>
                 </div>
 

@@ -5,6 +5,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import styles from './PdfViewer.module.css';
+import { Button } from '@/components/ui';
 
 // Configure the worker using unpkg (recommended by react-pdf docs for simplicity)
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -27,31 +28,35 @@ export default function PdfViewer({ fileUrl }: PdfViewerProps) {
         <div className={styles.viewerContainer}>
             <div className={styles.toolbar}>
                 <div className={styles.pageControls}>
-                    <button
+                    <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
                         disabled={pageNumber <= 1}
                         className={styles.toolBtn}
                     >
                         &larr; Prev
-                    </button>
+                    </Button>
                     <span className={styles.pageInfo}>
                         Page {pageNumber} of {numPages || '--'}
                     </span>
-                    <button
+                    <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages || 1))}
                         disabled={pageNumber >= (numPages || 1)}
                         className={styles.toolBtn}
                     >
                         Next &rarr;
-                    </button>
+                    </Button>
                 </div>
 
                 <div className={styles.zoomControls}>
-                    <button onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className={styles.toolBtn}>-</button>
+                    <Button variant="outline" size="sm" onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className={styles.toolBtn}>-</Button>
                     <span style={{ fontSize: '14px', fontWeight: 500, minWidth: '40px', textAlign: 'center' }}>
                         {Math.round(scale * 100)}%
                     </span>
-                    <button onClick={() => setScale(s => Math.min(3.0, s + 0.25))} className={styles.toolBtn}>+</button>
+                    <Button variant="outline" size="sm" onClick={() => setScale(s => Math.min(3.0, s + 0.25))} className={styles.toolBtn}>+</Button>
                 </div>
             </div>
 

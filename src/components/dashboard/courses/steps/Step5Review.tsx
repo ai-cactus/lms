@@ -8,6 +8,7 @@ import styles from '@/components/courses/CoursePlayer.module.css';
 import CourseRail from '@/components/courses/CourseRail';
 import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
+import { Button } from '@/components/ui';
 
 interface Step5ReviewProps {
     data: any;
@@ -329,8 +330,8 @@ export default function Step5Review({ data, documents, initialContent, onComplet
             <div className={styles.playerContainer} style={{ alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ textAlign: 'center' }}>
                     <h2 style={{ color: '#EF4444', marginBottom: 8 }}>Generation Failed</h2>
-                    <p style={{ color: '#6B7280' }}>{error}</p>
-                    <button onClick={() => window.location.reload()} style={{ marginTop: 16, padding: '8px 16px', background: '#1a1a1a', color: 'white', borderRadius: 6, border: 'none', cursor: 'pointer' }}>Try Again</button>
+                    <p style={{ color: '#6B7280', marginBottom: 16 }}>{error}</p>
+                    <Button variant="primary" size="md" onClick={() => window.location.reload()}>Try Again</Button>
                 </div>
             </div>
         );

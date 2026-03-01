@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal } from '@/components/ui';
+import { Modal, Button } from '@/components/ui';
 
 interface PhiErrorModalProps {
     isOpen: boolean;
@@ -58,26 +58,17 @@ export default function PhiErrorModal({ isOpen, onClose, onRetry, reason }: PhiE
                     {reason && <span style={{ display: 'block', marginTop: '8px', fontSize: '14px', color: '#E53E3E' }}>Reason: {reason}</span>}
                 </p>
 
-                <button
+                <Button
                     onClick={onRetry}
+                    variant="primary"
                     style={{
-                        background: '#4C6EF5',
-                        color: 'white',
                         padding: '12px 32px',
-                        borderRadius: '8px',
-                        fontWeight: 600,
-                        fontSize: '16px',
-                        border: 'none',
-                        cursor: 'pointer',
                         width: '100%',
                         maxWidth: '300px',
-                        transition: 'background 0.2s'
                     }}
-                    onMouseOver={(e) => e.currentTarget.style.background = '#4361e6'}
-                    onMouseOut={(e) => e.currentTarget.style.background = '#4C6EF5'}
                 >
                     Upload another document
-                </button>
+                </Button>
             </div>
         </Modal>
     );

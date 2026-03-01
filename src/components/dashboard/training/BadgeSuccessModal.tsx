@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './BadgeSuccessModal.module.css';
-import { Modal } from '@/components/ui';
+import { Modal, Button } from '@/components/ui';
 
 interface BadgeSuccessModalProps {
     isOpen: boolean;
@@ -69,9 +69,9 @@ export default function BadgeSuccessModal({
                         </div>
                     </div>
 
-                    <button className={styles.dashboardBtn} onClick={handleDashboard}>
+                    <Button variant="primary" className={styles.dashboardBtn} onClick={handleDashboard}>
                         View Course Status
-                    </button>
+                    </Button>
 
                     <div className={styles.startNewLink}>
                         or <span onClick={() => router.push('/worker')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>start a new course here</span>

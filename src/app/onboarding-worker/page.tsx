@@ -188,20 +188,18 @@ export default function WorkerOnboardingPage() {
                         <p style={{ fontSize: '14px', color: '#718096', marginBottom: '8px' }}>
                             Wrong account?
                         </p>
-                        <button
+                        <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => signOut({ callbackUrl: '/login' })}
                             style={{
-                                background: 'none',
-                                border: 'none',
                                 color: '#4C6EF5',
-                                fontSize: '14px',
                                 fontWeight: 500,
-                                cursor: 'pointer',
                                 textDecoration: 'underline'
                             }}
                         >
                             Log Out
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </div>

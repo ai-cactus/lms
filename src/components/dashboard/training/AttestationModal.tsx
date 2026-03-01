@@ -4,7 +4,7 @@ import { useState } from 'react';
 import styles from './AttestationModal.module.css';
 import { attestCourse } from '@/app/actions/course';
 import { useRouter } from 'next/navigation';
-import { Modal } from '@/components/ui';
+import { Modal, Button } from '@/components/ui';
 
 interface AttestationModalProps {
     isOpen: boolean;
@@ -129,14 +129,18 @@ export default function AttestationModal({
             </div>
 
             <div className={styles.footer}>
-                <button className={styles.cancelBtn} onClick={onClose} disabled={isSubmitting}>Cancel</button>
-                <button
-                    className={styles.confirmBtn}
+                <Button variant="ghost" size="sm" onClick={onClose} disabled={isSubmitting}>
+                    Cancel
+                </Button>
+                <Button
+                    variant="primary"
                     onClick={handleSubmit}
                     disabled={!isFormValid || isSubmitting}
+                    loading={isSubmitting}
+                    style={{ flex: 1 }}
                 >
-                    {isSubmitting ? 'Confirming...' : 'Confirm'}
-                </button>
+                    Confirm
+                </Button>
             </div>
         </Modal>
     );

@@ -150,7 +150,7 @@ function LoginForm() {
             )}
 
             <div className={styles.socialLogin}>
-                <button type="button" className={styles.microsoftButton} onClick={handleMicrosoftLogin}>
+                <Button variant="outline" type="button" className={styles.microsoftButton} onClick={handleMicrosoftLogin}>
                     <Image
                         src="/icons/microsoft.svg"
                         alt="Microsoft"
@@ -158,7 +158,7 @@ function LoginForm() {
                         height={20}
                     />
                     <span>Log In with Microsoft</span>
-                </button>
+                </Button>
             </div>
 
             <div className={styles.divider}>

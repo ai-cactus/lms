@@ -1,6 +1,7 @@
 import React from 'react';
 import styles from './CoursePlayer.module.css';
 import Logo from '@/components/ui/Logo';
+import { Button } from '@/components/ui';
 
 export interface CourseRailProps {
     lessons: { id?: string; title: string }[];
@@ -31,29 +32,19 @@ export default function CourseRail({
     return (
         <nav className={`${styles.rail} ${className}`}>
             <div className={styles.railLogo}>
-                <button
+                <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={onExitClick}
-                    style={{
-                        background: 'transparent',
-                        border: '1px solid #E5E7EB',
-                        borderRadius: '6px',
-                        padding: '6px 16px',
-                        color: '#4B5563',
-                        cursor: disableNav ? 'not-allowed' : 'pointer',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        opacity: disableNav ? 0.5 : 1
-                    }}
+                    disabled={disableNav}
+                    style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
                     Exit
-                </button>
+                </Button>
             </div>
 
             {lessons.map((lesson, i) => {

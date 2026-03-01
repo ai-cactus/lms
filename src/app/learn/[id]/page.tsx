@@ -12,6 +12,7 @@ import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
+import { Button } from '@/components/ui';
 
 interface Lesson {
     id: string;
@@ -476,18 +477,20 @@ export default function LearnPage() {
 
                         {!isQuizIndex && (
                             <div className={styles.toggle}>
-                                <button
-                                    className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
+                                <Button
+                                    variant={viewMode === 'article' ? 'primary' : 'ghost'}
+                                    className={styles.toggleBtn}
                                     onClick={() => setViewMode('article')}
                                 >
                                     ARTICLE
-                                </button>
-                                <button
-                                    className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
+                                </Button>
+                                <Button
+                                    variant={viewMode === 'slides' ? 'primary' : 'ghost'}
+                                    className={styles.toggleBtn}
                                     onClick={() => setViewMode('slides')}
                                 >
                                     SLIDE
-                                </button>
+                                </Button>
                             </div>
                         )}
                     </div>
@@ -565,9 +568,9 @@ export default function LearnPage() {
                                                         </span>
                                                     )}
                                                 </p>
-                                                <button className={styles.btnPrimary} style={{ fontSize: 16, padding: '12px 32px' }} onClick={handleStartQuiz}>
+                                                <Button variant="primary" style={{ fontSize: 16, padding: '12px 32px' }} onClick={handleStartQuiz}>
                                                     Start Quiz
-                                                </button>
+                                                </Button>
                                             </div>
                                         )}
 
@@ -596,22 +599,22 @@ export default function LearnPage() {
                                                     ))}
                                                 </div>
                                                 <div className={styles.quizFooter}>
-                                                    <button
-                                                        className={styles.modalBtnSecondary}
+                                                    <Button
+                                                        variant="outline"
                                                         onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
                                                         disabled={currentQuestionIndex === 0 || submitting}
                                                         style={currentQuestionIndex === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                                                     >
                                                         Previous Question
-                                                    </button>
-                                                    <button
-                                                        className={styles.btnPrimary}
+                                                    </Button>
+                                                    <Button
+                                                        variant="primary"
                                                         onClick={handleNextQuestion}
                                                         disabled={!quizAnswers[course.quiz.questions[currentQuestionIndex].id] || submitting}
                                                         style={!quizAnswers[course.quiz.questions[currentQuestionIndex].id] ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                                                     >
                                                         {currentQuestionIndex === course.quiz.questions.length - 1 ? (submitting ? 'Submitting...' : 'Submit Quiz') : 'Next Question'}
-                                                    </button>
+                                                    </Button>
                                                 </div>
                                             </>
                                         )}
@@ -700,8 +703,8 @@ export default function LearnPage() {
                         <h2 className={styles.modalTitle}>Ready for the Quiz?</h2>
                         <p className={styles.modalText}>You've completed all the course modules. Would you like to proceed to the quiz now?</p>
                         <div className={styles.modalActions}>
-                            <button className={styles.modalBtnSecondary} onClick={() => setShowQuizGateModal(false)}>Review Modules</button>
-                            <button className={styles.modalBtnPrimary} onClick={handleConfirmQuiz}>Start Quiz</button>
+                            <Button variant="outline" onClick={() => setShowQuizGateModal(false)}>Review Modules</Button>
+                            <Button variant="primary" onClick={handleConfirmQuiz}>Start Quiz</Button>
                         </div>
                     </div>
                 </div>
@@ -716,7 +719,7 @@ export default function LearnPage() {
                             Please complete all modules in order.
                         </p>
                         <div className={styles.modalActions}>
-                            <button className={styles.modalBtnPrimary} onClick={() => setShowIncompleteModal(false)}>Continue Learning</button>
+                            <Button variant="primary" onClick={() => setShowIncompleteModal(false)}>Continue Learning</Button>
                         </div>
                     </div>
                 </div>

@@ -80,8 +80,9 @@ export default function StaffListClient({ users: initialUsers, hasOrganization, 
                     <h1 className={styles.title}>Staff Details</h1>
                     <p className={styles.subtitle}>Here is an overview of your staff details</p>
                 </div>
-                <button
-                    className={styles.addButton}
+                <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                         if (!hasOrganization) {
                             setShowFeatureGate(true);
@@ -90,12 +91,12 @@ export default function StaffListClient({ users: initialUsers, hasOrganization, 
                         }
                     }}
                 >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19"></line>
                         <line x1="5" y1="12" x2="19" y2="12"></line>
                     </svg>
                     Add Worker
-                </button>
+                </Button>
             </div>
 
             {/* Content Card */}
@@ -189,35 +190,38 @@ export default function StaffListClient({ users: initialUsers, hasOrganization, 
                     </div>
 
                     <div className={styles.paginationCenter}>
-                        <button
-                            className={styles.pageButton}
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
                             disabled={currentPage === 1}
                             onClick={() => handlePageChange(currentPage - 1)}
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="15 18 9 12 15 6"></polyline>
                             </svg>
-                        </button>
+                        </Button>
 
                         {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                            <button
+                            <Button
                                 key={page}
-                                className={`${styles.pageButton} ${page === currentPage ? styles.active : ''}`}
+                                variant={page === currentPage ? "primary" : "ghost"}
+                                size="icon-sm"
                                 onClick={() => handlePageChange(page)}
                             >
                                 {page}
-                            </button>
+                            </Button>
                         ))}
 
-                        <button
-                            className={styles.pageButton}
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
                             disabled={currentPage === totalPages || totalPages === 0}
                             onClick={() => handlePageChange(currentPage + 1)}
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="9 18 15 12 9 6"></polyline>
                             </svg>
-                        </button>
+                        </Button>
                     </div>
 
                     <div className={styles.paginationRight}>

@@ -1,3 +1,4 @@
+/* ─── Base ─────────────────────────────────────────────── */
 .button {
     display: inline-flex;
     align-items: center;
@@ -7,20 +8,23 @@
     font-weight: 600;
     border: none;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: all var(--btn-transition);
     white-space: nowrap;
+    text-decoration: none;
 }
 
 .button:disabled {
-    opacity: 0.6;
+    opacity: 0.5;
     cursor: not-allowed;
 }
 
-/* Variants */
+/* ─── Variants ─────────────────────────────────────────── */
+
+/* Primary */
 .primary {
     background: var(--primary);
     color: var(--text-white);
-    border-radius: var(--radius-md);
+    border-radius: var(--btn-radius);
 }
 
 .primary:hover:not(:disabled) {
@@ -33,21 +37,25 @@
     transform: translateY(0);
 }
 
+/* Secondary */
 .secondary {
     background: var(--background-secondary);
     color: var(--text-primary);
-    border-radius: var(--radius-md);
+    border-radius: var(--btn-radius);
+    border: 1px solid var(--border);
 }
 
 .secondary:hover:not(:disabled) {
     background: var(--border);
+    border-color: var(--border);
 }
 
+/* Outline */
 .outline {
     background: transparent;
     color: var(--primary);
-    border: 2px solid var(--primary);
-    border-radius: var(--radius-md);
+    border: 1.5px solid var(--primary);
+    border-radius: var(--btn-radius);
 }
 
 .outline:hover:not(:disabled) {
@@ -55,10 +63,12 @@
     color: var(--text-white);
 }
 
+/* Ghost — transparent, no border (but 1px transparent border for layout stability) */
 .ghost {
     background: transparent;
     color: var(--text-secondary);
-    border-radius: var(--radius-md);
+    border-radius: var(--btn-radius);
+    border: 1px solid transparent;
 }
 
 .ghost:hover:not(:disabled) {
@@ -66,37 +76,111 @@
     color: var(--text-primary);
 }
 
-/* Sizes */
+/* Ghost — active/selected toggle state */
+.ghost.active {
+    background: var(--text-primary);
+    color: var(--text-white);
+    border-color: var(--text-primary);
+}
+
+.ghost.active:hover:not(:disabled) {
+    background: var(--text-secondary);
+    color: var(--text-white);
+    border-color: var(--text-secondary);
+}
+
+/* Danger */
+.danger {
+    background: var(--error);
+    color: var(--text-white);
+    border-radius: var(--btn-radius);
+}
+
+.danger:hover:not(:disabled) {
+    background: #DC2626;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.danger:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+/* Danger Outline */
+.dangerOutline {
+    background: transparent;
+    color: var(--error);
+    border: 1.5px solid var(--error);
+    border-radius: var(--btn-radius);
+}
+
+.dangerOutline:hover:not(:disabled) {
+    background: var(--error);
+    color: var(--text-white);
+}
+
+/* ─── Sizes ─────────────────────────────────────────────── */
+
+/* Extra small — filter chips, table actions */
+.xs {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+}
+
+/* Small — modal footers, secondary actions */
 .sm {
     height: 36px;
     padding: 0 16px;
     font-size: 14px;
 }
 
+/* Medium — primary form actions (default) */
 .md {
-    height: 48px;
+    height: 44px;
     padding: 0 24px;
+    font-size: 15px;
+}
+
+/* Large — hero / onboarding CTAs */
+.lg {
+    height: 56px;
+    padding: 0 32px;
     font-size: 16px;
 }
 
-.lg {
-    height: 64px;
-    padding: 0 32px;
-    font-size: 18px;
-    border-radius: var(--radius-md);
+/* Icon small — 32×32 square icon button */
+.iconSm {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
 }
 
-/* Full Width */
+/* Icon medium — 40×40 square icon button */
+.iconMd {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+
+/* ─── Modifiers ──────────────────────────────────────────── */
+
+/* Full width */
 .fullWidth {
     width: 100%;
 }
 
-/* Pill variant modifier - use with primary/secondary */
+/* Pill shape */
 .pill {
     border-radius: var(--radius-full);
 }
 
-/* Loader */
+/* ─── Loader ─────────────────────────────────────────────── */
 .loader {
     display: flex;
     align-items: center;
@@ -104,8 +188,8 @@
 }
 
 .spinner {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     animation: spin 1s linear infinite;
 }
 

@@ -129,8 +129,9 @@ export default function OnboardingStep4() {
                     ))}
                 </div>
 
-                <button
-                    type="button"
+                <Button
+                    variant="ghost"
+                    size="md"
                     onClick={() => append({ email: '', role: '', permissions: '' })}
                     style={{
                         display: 'flex',
@@ -138,11 +139,6 @@ export default function OnboardingStep4() {
                         gap: '8px',
                         color: '#4C6EF5',
                         fontWeight: 600,
-                        fontSize: '14px',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: '8px 0',
                         marginTop: '8px',
                         width: 'fit-content'
                     }}
@@ -153,7 +149,7 @@ export default function OnboardingStep4() {
                         <line x1="8" y1="12" x2="16" y2="12"></line>
                     </svg>
                     Add team member
-                </button>
+                </Button>
 
                 <div className={styles.actions}>
                     <Button variant="outline" type="button" onClick={() => router.push('/dashboard')}>

@@ -138,7 +138,9 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
                     </div>
 
                     <div className={styles.paginationCenter}>
-                        <button
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
                             className={styles.pageButton}
                             disabled={currentPage === 1}
                             onClick={() => handlePageChange(currentPage - 1)}
@@ -146,19 +148,23 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="15 18 9 12 15 6"></polyline>
                             </svg>
-                        </button>
+                        </Button>
 
                         {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                            <button
+                            <Button
                                 key={page}
+                                variant={page === currentPage ? "primary" : "ghost"}
+                                size="sm"
                                 className={`${styles.pageButton} ${page === currentPage ? styles.active : ''}`}
                                 onClick={() => handlePageChange(page)}
                             >
                                 {page}
-                            </button>
+                            </Button>
                         ))}
 
-                        <button
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
                             className={styles.pageButton}
                             disabled={currentPage === totalPages || totalPages === 0}
                             onClick={() => handlePageChange(currentPage + 1)}
@@ -166,7 +172,7 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="9 18 15 12 9 6"></polyline>
                             </svg>
-                        </button>
+                        </Button>
                     </div>
 
                     <div className={styles.paginationRight}>

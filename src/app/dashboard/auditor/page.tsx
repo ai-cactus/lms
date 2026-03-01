@@ -1,4 +1,5 @@
 import styles from './auditor.module.css';
+import { Button } from '@/components/ui';
 
 export default function AuditorPage() {
     return (
@@ -24,9 +25,9 @@ export default function AuditorPage() {
                         <input type="date" className={styles.input} />
                     </div>
 
-                    <button type="button" className={styles.generateBtn} disabled>
+                    <Button type="button" variant="primary" className={styles.generateBtn} disabled>
                         Generate Pack (Coming Soon)
-                    </button>
+                    </Button>
                 </form>
             </div>
         </div>

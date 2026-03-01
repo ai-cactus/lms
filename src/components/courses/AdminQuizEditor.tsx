@@ -5,6 +5,7 @@ import styles from '@/components/dashboard/courses/CourseWizard.module.css'; // 
 import { updateQuizQuestions } from '@/app/actions/course';
 import { useRouter } from 'next/navigation';
 import { generateSingleQuestion } from '@/app/actions/quiz-ai';
+import { Button } from '@/components/ui';
 
 interface QuizQuestion {
     question: string;
@@ -124,14 +125,15 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                         <div className={styles.quizSectionTitle}>Questions</div>
                         <div className={styles.quizSubtitle}>{questions.length} Questions</div>
                     </div>
-                    <button
+                    <Button
+                        variant="primary"
                         className={styles.btnNext}
                         style={{ width: 'auto', padding: '8px 24px', height: '40px' }}
                         onClick={handleSaveQuiz}
                         disabled={isSaving}
                     >
                         {isSaving ? 'Saving...' : 'Save Changes'}
-                    </button>
+                    </Button>
                 </div>
 
                 {/* Flat Question List */}
@@ -205,8 +207,8 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                                         </div>
 
                                         <div className={styles.formActions}>
-                                            <button className={styles.btnCancel} onClick={() => { setEditingIndex(null); setEditingQuestion(null); }}>Cancel</button>
-                                            <button className={styles.btnSave} onClick={() => {
+                                            <Button variant="outline" className={styles.btnCancel} onClick={() => { setEditingIndex(null); setEditingQuestion(null); }}>Cancel</Button>
+                                            <Button variant="primary" className={styles.btnSave} onClick={() => {
                                                 if (!editingQuestion.question.trim() || editingQuestion.options.some(o => !o.trim())) {
                                                     alert("Please fill in all fields.");
                                                     return;
@@ -216,7 +218,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                                                 setQuestions(updatedQuiz);
                                                 setEditingIndex(null);
                                                 setEditingQuestion(null);
-                                            }}>Save Changes</button>
+                                            }}>Save Changes</Button>
                                         </div>
                                     </div>
                                 );
@@ -239,7 +241,9 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                                             )}
                                         </div>
                                         <div style={{ display: 'flex', gap: '8px' }}>
-                                            <button
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
                                                 style={{ background: 'transparent', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '4px 12px', fontSize: '12px', color: '#4A5568', cursor: 'pointer' }}
                                                 onClick={() => {
                                                     setEditingIndex(index);
@@ -247,13 +251,15 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                                                 }}
                                             >
                                                 Edit
-                                            </button>
-                                            <button
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
                                                 style={{ background: 'transparent', border: '1px solid #FED7D7', borderRadius: '6px', padding: '4px 12px', color: '#EF4444', cursor: 'pointer', fontSize: '12px' }}
                                                 onClick={() => handleDeleteQuestion(index)}
                                             >
                                                 Delete
-                                            </button>
+                                            </Button>
                                         </div>
                                     </div>
                                     <div className={styles.optionList}>
@@ -275,9 +281,9 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
                 {/* Add Question Section */}
                 {!isAdding ? (
-                    <button className={styles.btnAddQuestion} onClick={() => setIsAdding(true)}>
+                    <Button variant="outline" className={styles.btnAddQuestion} onClick={() => setIsAdding(true)}>
                         + Add New Question
-                    </button>
+                    </Button>
                 ) : (
                     <div className={styles.addQuestionForm}>
                         <h3 className={styles.formTitle}>Add New Question</h3>
@@ -339,7 +345,8 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
                         <div className={styles.formActions} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
-                                <button
+                                <Button
+                                    variant="outline"
                                     className={styles.btnAddQuestion}
                                     onClick={(e) => { e.preventDefault(); handleGenerateQuestion(); }}
                                     disabled={isGenerating}
@@ -360,11 +367,11 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                                             Generate with AI
                                         </>
                                     )}
-                                </button>
+                                </Button>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
-                                <button className={styles.btnCancel} onClick={() => setIsAdding(false)}>Cancel</button>
-                                <button className={styles.btnSave} onClick={handleAddQuestion}>Save Question</button>
+                                <Button variant="outline" className={styles.btnCancel} onClick={() => setIsAdding(false)}>Cancel</Button>
+                                <Button variant="primary" className={styles.btnSave} onClick={handleAddQuestion}>Save Question</Button>
                             </div>
                         </div>
                     </div>

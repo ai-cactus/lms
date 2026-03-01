@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import styles from './WorkerDashboard.module.css';
 import Image from 'next/image';
 import { useModalContext } from '@/components/ui/ModalContext';
+import { Button } from '@/components/ui';
 
 export default function WorkerEmptyState() {
     const { registerModal, unregisterModal, requestOpen, isModalOpen, dismissModal, shouldShowModal } = useModalContext();
@@ -68,12 +69,12 @@ export default function WorkerEmptyState() {
                         Join professionals learning with Theraptly in a clear, accessible, and supportive way.
                     </p>
 
-                    <button className={styles.startButton} onClick={() => {
+                    <Button variant="primary" size="lg" pill onClick={() => {
                         handleClose(); // Close modal on start
                         // Ideally we focus somewhere relevant or navigate
-                    }}>
+                    }} style={{ marginTop: '24px', width: '100%', maxWidth: '240px' }}>
                         Start your first course
-                    </button>
+                    </Button>
                 </div>
 
                 {/* Right Panel */}

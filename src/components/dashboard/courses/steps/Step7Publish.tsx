@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import styles from '../CourseWizard.module.css';
 import DatePicker from '@/components/ui/DatePicker';
 import TimePicker from '@/components/ui/TimePicker';
+import { Button } from '@/components/ui';
 
 interface Step7PublishProps {
     data: any;
@@ -142,12 +143,12 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
                                 <div key={index} className={`${styles.chip} ${isNewInvite ? styles.chipInvite : ''}`}>
                                     {item}
                                     {isNewInvite && <span className={styles.inviteBadge}>New</span>}
-                                    <button className={styles.removeChip} onClick={(e) => { e.stopPropagation(); removeAssignment(index); }}>
+                                    <Button variant="ghost" size="icon-sm" className={styles.removeChip} onClick={(e) => { e.stopPropagation(); removeAssignment(index); }}>
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <line x1="18" y1="6" x2="6" y2="18"></line>
                                             <line x1="6" y1="6" x2="18" y2="18"></line>
                                         </svg>
-                                    </button>
+                                    </Button>
                                 </div>
                             );
                         })}

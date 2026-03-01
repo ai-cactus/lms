@@ -33,7 +33,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
     });
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-    
+
     // DEBUG: Client-side mount check
     React.useEffect(() => {
         console.log('[WorkerProfileForm] MOUNTED');
@@ -134,12 +134,12 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                             ) : (
                                 <span>{formData.first_name?.[0] || user.email[0].toUpperCase()}</span>
                             )}
-                            <button className={styles.editAvatarBtn} title="Change Avatar" type="button" onClick={handleAvatarClick}>
+                            <Button variant="ghost" size="icon-sm" className={styles.editAvatarBtn} title="Change Avatar" type="button" onClick={handleAvatarClick}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                                 </svg>
-                            </button>
+                            </Button>
                             <input
                                 type="file"
                                 ref={fileInputRef}

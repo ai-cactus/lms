@@ -132,18 +132,18 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
 
             <div className={styles.card}>
                 <div className={styles.tabs}>
-                    <button
-                        className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
+                    <Button
+                        variant={activeTab === 'profile' ? 'primary' : 'ghost'}
                         onClick={() => setActiveTab('profile')}
                     >
                         EDIT PROFILE
-                    </button>
-                    <button
-                        className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
+                    </Button>
+                    <Button
+                        variant={activeTab === 'organization' ? 'primary' : 'ghost'}
                         onClick={() => setActiveTab('organization')}
                     >
                         YOUR ORGANIZATION
-                    </button>
+                    </Button>
                 </div>
 
                 {activeTab === 'profile' ? (
@@ -151,12 +151,12 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                         <div className={styles.avatarSection}>
                             <div className={styles.avatarLarge}>
                                 {formData.first_name ? formData.first_name[0] : 'U'}
-                                <button className={styles.editAvatarButton}>
+                                <Button variant="primary" size="icon-sm" className={styles.editAvatarButton}>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M12 20h9"></path>
                                         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                                     </svg>
-                                </button>
+                                </Button>
                             </div>
                         </div>
 

@@ -10,6 +10,7 @@ import {
     Label
 } from 'recharts';
 import styles from '@/app/dashboard/(main)/page.module.css';
+import Button from '@/components/ui/Button';
 
 interface DashboardChartsProps {
     stats?: {
@@ -128,39 +129,23 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                 <div className={styles.chartHeader}>
                     <h3 className={styles.chartTitle}>Performance of Learners</h3>
                     {/* ... (buttons remain the same) ... */}
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                        <Button
+                            variant="ghost"
+                            size="xs"
+                            isActive={filter === 'all'}
                             onClick={() => setFilter('all')}
-                            style={{
-                                fontSize: '12px',
-                                fontWeight: '600',
-                                padding: '6px 12px',
-                                borderRadius: '8px',
-                                border: '1px solid ' + (filter === 'all' ? '#1F2937' : '#E5E7EB'),
-                                background: filter === 'all' ? '#1F2937' : 'white',
-                                color: filter === 'all' ? 'white' : '#6B7280',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease'
-                            }}
                         >
                             All
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="xs"
+                            isActive={filter === 'top'}
                             onClick={() => setFilter('top')}
-                            style={{
-                                fontSize: '12px',
-                                fontWeight: '600',
-                                padding: '6px 12px',
-                                borderRadius: '8px',
-                                border: '1px solid ' + (filter === 'top' ? '#1F2937' : '#E5E7EB'),
-                                background: filter === 'top' ? '#1F2937' : 'white',
-                                color: filter === 'top' ? 'white' : '#6B7280',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease'
-                            }}
                         >
                             Top
-                        </button>
+                        </Button>
                     </div>
                 </div>
 

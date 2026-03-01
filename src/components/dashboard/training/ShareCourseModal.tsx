@@ -3,7 +3,7 @@
 import React from 'react';
 import styles from './ShareCourseModal.module.css';
 import { enrollUsers } from '@/app/actions/enrollment';
-import { Modal } from '@/components/ui';
+import { Modal, Button } from '@/components/ui';
 
 interface ShareCourseModalProps {
     isOpen: boolean;
@@ -85,12 +85,12 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
                     {emails.map((email, index) => (
                         <span key={index} className={styles.chip}>
                             {email}
-                            <button className={styles.removeChip} onClick={() => removeEmail(index)}>
+                            <Button variant="ghost" size="icon-sm" className={styles.removeChip} onClick={() => removeEmail(index)}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <line x1="18" y1="6" x2="6" y2="18"></line>
                                     <line x1="6" y1="6" x2="18" y2="18"></line>
                                 </svg>
-                            </button>
+                            </Button>
                         </span>
                     ))}
 
@@ -104,13 +104,14 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
                         disabled={isLoading}
                     />
                 </div>
-                <button
+                <Button
+                    variant="primary"
                     className={`${styles.shareButton} ${emails.length > 0 ? styles.shareButtonActive : ''}`}
                     onClick={handleShare}
                     disabled={emails.length === 0 || isLoading}
                 >
                     {isLoading ? 'Assigning...' : 'Assign'}
-                </button>
+                </Button>
             </div>
 
             {/* Result feedback */}

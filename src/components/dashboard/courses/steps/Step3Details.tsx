@@ -2,7 +2,7 @@
 
 import React from 'react';
 import styles from '../CourseWizard.module.css';
-import { Select, Input } from '@/components/ui';
+import { Select, Input, Button } from '@/components/ui';
 
 interface Step3DetailsProps {
     data: any;
@@ -113,43 +113,33 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                                     }}
                                     placeholder={`Objective ${index + 1}`}
                                 />
-                                <button
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
                                     onClick={() => {
                                         const newObjectives = data.objectives.filter((_: any, i: number) => i !== index);
                                         onChange('objectives', newObjectives);
                                     }}
-                                    style={{
-                                        background: 'transparent',
-                                        border: 'none',
-                                        color: '#E53E3E',
-                                        cursor: 'pointer',
-                                        padding: '0 8px'
-                                    }}
+                                    style={{ color: '#E53E3E' }}
                                     title="Remove Objective"
                                 >
                                     ✕
-                                </button>
+                                </Button>
                             </div>
                         ))}
-                        <button
+                        <Button
+                            variant="outline"
                             onClick={() => {
                                 onChange('objectives', [...data.objectives, '']);
                             }}
                             style={{
                                 marginTop: '8px',
-                                background: 'transparent',
-                                border: '1px dashed #CBD5E0',
-                                borderRadius: '6px',
-                                padding: '8px 16px',
-                                color: '#4A5568',
-                                cursor: 'pointer',
                                 width: '100%',
-                                fontSize: '14px',
-                                fontWeight: 500
+                                borderStyle: 'dashed'
                             }}
                         >
                             + Add Objective
-                        </button>
+                        </Button>
                     </div>
                 </div>
 

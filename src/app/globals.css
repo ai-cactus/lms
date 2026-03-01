@@ -38,11 +38,15 @@
   --font-body: 'Geist', 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
   --font-logo: 'Roboto', system-ui, sans-serif;
 
-  /* Spacing */
+  /* Layout Spacing */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-full: 100px;
+
+  /* Button System */
+  --btn-radius: var(--radius-md);
+  --btn-transition: var(--transition-fast);
 
   /* Transitions */
   --transition-fast: 150ms ease;

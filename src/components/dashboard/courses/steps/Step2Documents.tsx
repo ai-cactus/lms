@@ -2,7 +2,7 @@
 
 import React, { useRef } from 'react';
 import styles from '../CourseWizard.module.css';
-import { Select } from '@/components/ui';
+import { Select, Button } from '@/components/ui';
 import Link from 'next/link';
 
 interface Document {
@@ -155,7 +155,7 @@ export default function Step2Documents({
                                                 className={styles.checkbox}
                                                 disabled={isAnalyzing}
                                             />
-                                            <button className={styles.trashBtn} disabled={isAnalyzing}>
+                                            <Button variant="ghost" size="icon-sm" className={styles.trashBtn} disabled={isAnalyzing}>
                                                 <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                                     <path d="M2.5 4H13.5" />
                                                     <path d="M6.5 7V11" />
@@ -163,7 +163,7 @@ export default function Step2Documents({
                                                     <path d="M3.5 4L4.5 13C4.5 13.55 4.95 14 5.5 14H10.5C11.05 14 11.5 13.55 11.5 13L12.5 4" />
                                                     <path d="M6 4V2.5C6 2.22386 6.22386 2 6.5 2H9.5C9.77614 2 10 2.22386 10 2.5V4" />
                                                 </svg>
-                                            </button>
+                                            </Button>
                                         </div>
                                     </div>
                                 ))}

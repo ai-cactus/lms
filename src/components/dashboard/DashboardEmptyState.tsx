@@ -5,6 +5,7 @@ import Link from 'next/link';
 import styles from './DashboardEmptyState.module.css';
 
 import { useModalContext } from '@/components/ui/ModalContext';
+import { Button } from '@/components/ui';
 
 interface DashboardEmptyStateProps {
     totalCourses: number;
@@ -39,12 +40,17 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
     return (
         <div className={styles.overlay}>
             <div className={styles.modal}>
-                <button className={styles.closeButton} onClick={handleClose}>
+                <Button
+                    variant="ghost"
+                    size="icon-md"
+                    className={styles.closeButton}
+                    onClick={handleClose}
+                >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
-                </button>
+                </Button>
 
                 <div className={styles.content}>
                     {/* Left Side - Illustration */}

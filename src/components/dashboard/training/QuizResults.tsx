@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import styles from './QuizResults.module.css';
 import Link from 'next/link';
+import Button from '@/components/ui/Button';
 import AttestationModal from './AttestationModal';
 import BadgeSuccessModal from './BadgeSuccessModal';
 
@@ -106,30 +107,29 @@ export default function QuizResults({
                         )}
                     </div>
                     {!hideActions && (
-                        <div className={styles.headerActions}>
+                        <div className={styles.headerActions} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             {showAttestation && isPassed && (
-                                <button
-                                    className={`${styles.actionButton} ${styles.btnPrimary}`}
-                                    style={{ backgroundColor: '#4C6EF5', marginRight: 8 }}
+                                <Button
+                                    variant="primary"
+                                    size="sm"
                                     onClick={() => setIsAttestationOpen(true)}
                                 >
                                     Attestate
-                                </button>
+                                </Button>
                             )}
                             {canRetake && (
-                                <button
-                                    className={`${styles.actionButton} ${styles.btnPrimary}`}
-                                    style={{ backgroundColor: '#ED8936', marginRight: 8, borderColor: '#ED8936' }}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={handleRetake}
                                 >
                                     Retake Quiz
-                                </button>
+                                </Button>
                             )}
-
                             {isPassed && (
                                 <>
-                                    <button className={`${styles.actionButton} ${styles.btnSecondary}`}>
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 8 }}>
+                                    <Button variant="secondary" size="sm">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <circle cx="18" cy="5" r="3"></circle>
                                             <circle cx="6" cy="12" r="3"></circle>
                                             <circle cx="18" cy="19" r="3"></circle>
@@ -137,9 +137,9 @@ export default function QuizResults({
                                             <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
                                         </svg>
                                         Share
-                                    </button>
+                                    </Button>
                                     <Link href="/worker">
-                                        <button className={`${styles.actionButton} ${styles.btnPrimary}`}>Done</button>
+                                        <Button variant="primary" size="sm">Done</Button>
                                     </Link>
                                 </>
                             )}

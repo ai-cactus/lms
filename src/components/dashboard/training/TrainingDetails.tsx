@@ -247,12 +247,12 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, alignItems: 'center' }}>
                                         {enrollment.status === 'completed' ? (
                                             <Link href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}>
-                                                <button className={styles.viewButton}>View</button>
+                                                <Button size="sm" variant="outline" className={styles.viewButton}>View</Button>
                                             </Link>
                                         ) : (
-                                            <button className={`${styles.viewButton} ${styles.viewButtonDisabled}`} disabled>
+                                            <Button size="sm" variant="outline" className={`${styles.viewButton} ${styles.viewButtonDisabled}`} disabled>
                                                 View
-                                            </button>
+                                            </Button>
                                         )}
                                     </div>
                                 </td>

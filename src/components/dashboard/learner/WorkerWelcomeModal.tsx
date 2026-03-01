@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import styles from './WorkerWelcomeModal.module.css';
-import { Modal } from '@/components/ui';
+import { Modal, Button } from '@/components/ui';
 import { useModalContext } from '@/components/ui/ModalContext';
 
 interface WorkerWelcomeModalProps {
@@ -95,19 +95,19 @@ export default function WorkerWelcomeModal({ courseCount, firstCourseId, hasProg
                         Join professionals learning with Theraply in a clear, accessible, and supportive way.
                     </p>
 
-                    <button className={styles.startButton} onClick={handleStart}>
+                    <Button variant="primary" size="lg" pill onClick={handleStart} style={{ marginTop: '24px', width: '100%', maxWidth: '240px' }}>
                         Start your first course
-                    </button>
+                    </Button>
                 </div>
 
                 {/* Right Panel */}
                 <div className={styles.rightPanel}>
-                    <button className={styles.closeButton} onClick={handleClose}>
+                    <Button variant="ghost" size="icon-sm" className={styles.closeButton} onClick={handleClose}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
                         </svg>
-                    </button>
+                    </Button>
 
                     <h3 className={styles.stepsTitle}>How to get started</h3>
 

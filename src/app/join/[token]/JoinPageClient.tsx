@@ -98,7 +98,9 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
                         <span className={styles.notificationText}>
                             You've been invited to join <strong>{orgName}</strong> as a <strong>{displayRole}</strong>.
                         </span>
-                        <button
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
                             className={styles.closeButton}
                             onClick={() => setShowBanner(false)}
                             type="button"
@@ -107,7 +109,7 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
                                 <line x1="18" y1="6" x2="6" y2="18" />
                                 <line x1="6" y1="6" x2="18" y2="18" />
                             </svg>
-                        </button>
+                        </Button>
                     </div>
                 )}
 

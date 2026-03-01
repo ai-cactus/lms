@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './DatePicker.module.css';
+import { Button } from '@/components/ui';
 
 interface DatePickerProps {
     value: string; // YYYY-MM-DD
@@ -139,19 +140,19 @@ export default function DatePicker({ value, onChange, placeholder = 'Select date
                     }}
                 >
                     <div className={styles.header}>
-                        <button className={styles.navButton} onClick={handlePrevMonth}>
+                        <Button variant="ghost" size="icon-sm" className={styles.navButton} onClick={handlePrevMonth}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="15 18 9 12 15 6"></polyline>
                             </svg>
-                        </button>
+                        </Button>
                         <div className={styles.monthTitle}>
                             {monthNames[currentMonth]} {currentYear}
                         </div>
-                        <button className={styles.navButton} onClick={handleNextMonth}>
+                        <Button variant="ghost" size="icon-sm" className={styles.navButton} onClick={handleNextMonth}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="9 18 15 12 9 6"></polyline>
                             </svg>
-                        </button>
+                        </Button>
                     </div>
 
                     <div className={styles.grid}>
