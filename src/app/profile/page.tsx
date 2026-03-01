@@ -8,7 +8,7 @@ export default async function ProfileRedirectPage() {
 
 
     if (!session?.user) {
-        redirect('/login');
+        redirect('/');
     }
 
     const role = session.user.role;

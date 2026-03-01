@@ -173,3 +173,33 @@
 .logout:hover svg {
     color: #C53030;
 }
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .header {
+        padding: 0 16px;
+        height: 64px;
+        justify-content: space-between;
+    }
+
+    .headerEnd {
+        gap: 12px;
+    }
+
+    .profileName {
+        display: none;
+    }
+
+    .profile {
+        padding: 6px;
+    }
+
+    .profile svg:last-of-type {
+        display: none;
+    }
+
+    .dropdown {
+        right: -8px;
+        width: 200px;
+    }
+}

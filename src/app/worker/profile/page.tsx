@@ -8,7 +8,7 @@ export default async function WorkerProfilePage() {
     const session = await auth();
 
     if (!session?.user?.id) {
-        redirect('/login');
+        redirect('/login-worker');
     }
 
     // Fetch user with profile and organization
@@ -22,7 +22,7 @@ export default async function WorkerProfilePage() {
     });
 
     if (!user) {
-        redirect('/login');
+        redirect('/login-worker');
     }
 
     const userData = {

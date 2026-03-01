@@ -4,6 +4,7 @@ import React, { useState, useActionState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import { Logo, Input, Button } from '@/components/ui';
 import { signup, SignupResult } from '@/app/actions/auth';
 import styles from './page.module.css';
@@ -21,6 +22,12 @@ export default function SignupPage() {
         agreeTerms: false,
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
+
+    const handleMicrosoftSignup = () => {
+        // Calling signIn will route through create-auth-instance.ts logic 
+        // which creates new users if they don't exist
+        signIn('microsoft-entra-id', { callbackUrl: '/signup/role-selection' });
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = e.target;
@@ -112,6 +119,22 @@ export default function SignupPage() {
                         <p className={styles.subtitle}>
                             Start your learning journey with Theraptly
                         </p>
+                    </div>
+
+                    <div className={styles.socialLogin}>
+                        <button type="button" className={styles.microsoftButton} onClick={handleMicrosoftSignup}>
+                            <Image
+                                src="/icons/microsoft.svg"
+                                alt="Microsoft"
+                                width={20}
+                                height={20}
+                            />
+                            <span>Sign up with Microsoft</span>
+                        </button>
+                    </div>
+
+                    <div className={styles.divider}>
+                        <span>or continue with email</span>
                     </div>
 
                     <form onSubmit={handleSubmit} className={styles.form}>

@@ -911,4 +911,304 @@
     line-height: 1.6;
 }
 
-/* Force Update */
+/* =========================================
+   MOBILE — Rail Toggle Button
+   ========================================= */
+.railToggle {
+    display: none;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 70;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 1px solid #E5E7EB;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.railToggle:hover {
+    background: #F9FAFB;
+    transform: scale(1.05);
+}
+
+.railBackdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 55;
+}
+
+/* =========================================
+   MOBILE RESPONSIVE — Course Player
+   ========================================= */
+@media (max-width: 768px) {
+    /* Player Container */
+    .playerContainer {
+        flex-direction: column;
+    }
+
+    /* Rail — hidden by default, overlay when open */
+    .rail {
+        position: fixed;
+        right: 0;
+        top: 0;
+        height: 100%;
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 60;
+        width: 160px;
+        border-left: 1px solid #E8E6E1;
+        box-shadow: -4px 0 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .railOpen {
+        transform: translateX(0);
+    }
+
+    .railBackdrop {
+        display: block;
+    }
+
+    .railToggle {
+        display: flex;
+    }
+
+    /* Main fills full width */
+    .main {
+        width: 100%;
+    }
+
+    /* Topbar */
+    .topbar {
+        height: 52px;
+        padding: 0 12px;
+        gap: 8px;
+    }
+
+    .topbarLeft {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    .breadcrumb,
+    .breadcrumbSep {
+        display: none;
+    }
+
+    .breadcrumbActive {
+        font-size: 12px;
+        max-width: 200px;
+    }
+
+    .durationPill {
+        display: none;
+    }
+
+    .topbarRight {
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+    .toggle {
+        padding: 2px;
+    }
+
+    .toggleBtn {
+        font-size: 10px;
+        padding: 5px 10px;
+    }
+
+    .progressIndicator {
+        display: none;
+    }
+
+    /* Slide View */
+    .slideStage {
+        padding: 16px 12px;
+    }
+
+    .slideCard {
+        max-width: 100%;
+        min-height: auto;
+    }
+
+    .slideInner {
+        padding: 16px 0;
+    }
+
+    .slideTitle {
+        font-size: 24px;
+        margin-bottom: 16px;
+    }
+
+    .slideBody {
+        font-size: 14px;
+    }
+
+    .slideBody h3 {
+        font-size: 16px;
+    }
+
+    .slideBody ul li,
+    .slideBody p {
+        font-size: 14px;
+    }
+
+    .slideMeta {
+        margin-bottom: 12px;
+    }
+
+    .slideDivider {
+        margin: 16px 0;
+    }
+
+    /* Nav Buttons — bottom-positioned on mobile */
+    .navBtn {
+        position: fixed;
+        top: auto;
+        bottom: 20px;
+        transform: none;
+        width: 44px;
+        height: 44px;
+        z-index: 50;
+    }
+
+    .navPrev {
+        left: 16px;
+        bottom: 20px;
+    }
+
+    .navNext {
+        right: 76px;
+        bottom: 20px;
+    }
+
+    /* Article View */
+    .articleStage {
+        padding: 20px 12px;
+    }
+
+    .articlePaper {
+        max-width: 100%;
+        margin-bottom: 60px;
+    }
+
+    .articleHeader {
+        margin-bottom: 24px;
+    }
+
+    .articleTitle {
+        font-size: 26px;
+    }
+
+    .articleDivider {
+        margin: 24px 0;
+    }
+
+    .articleContent {
+        font-size: 16px;
+        line-height: 1.7;
+    }
+
+    .articleContent h2 {
+        font-size: 22px;
+        margin-top: 32px;
+        margin-bottom: 16px;
+    }
+
+    .articleContent h3 {
+        font-size: 18px;
+        margin-top: 24px;
+    }
+
+    /* Quiz */
+    .quizCard {
+        max-width: 100%;
+        border-radius: 12px;
+        margin: 0 8px;
+    }
+
+    .quizInner {
+        padding: 20px 16px 16px;
+    }
+
+    .quizQuestion {
+        font-size: 18px;
+    }
+
+    .quizIntroTitle {
+        font-size: 22px;
+    }
+
+    .quizIntroText {
+        font-size: 14px;
+    }
+
+    .optionBox {
+        padding: 12px 14px;
+        gap: 12px;
+    }
+
+    .quizFooter {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .btnPrimary,
+    .modalBtnSecondary {
+        font-size: 13px;
+        padding: 10px 16px;
+    }
+
+    /* Modals */
+    .modalCard {
+        padding: 24px;
+        margin: 16px;
+        border-radius: 12px;
+    }
+
+    .modalTitle {
+        font-size: 20px;
+    }
+
+    .modalText {
+        font-size: 14px;
+    }
+
+    .modalActions {
+        flex-direction: column;
+    }
+
+    .modalIcon {
+        width: 64px;
+        height: 64px;
+        font-size: 36px;
+    }
+}
+
+@media (max-width: 480px) {
+    .slideTitle {
+        font-size: 20px;
+    }
+
+    .articleTitle {
+        font-size: 22px;
+    }
+
+    .quizQuestion {
+        font-size: 16px;
+    }
+
+    .quizIntroTitle {
+        font-size: 20px;
+    }
+}

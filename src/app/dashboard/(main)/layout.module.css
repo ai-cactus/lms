@@ -267,3 +267,87 @@
         padding: 24px;
     }
 }
+
+/* =========================================
+   MOBILE RESPONSIVE — Sidebar & Layout
+   ========================================= */
+.hamburger {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: none;
+    background: #F7FAFC;
+    color: #4A5568;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.2s;
+}
+
+.hamburger:hover {
+    background: #EDF2F7;
+}
+
+.backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 90;
+    animation: backdropIn 0.2s ease-out;
+}
+
+@keyframes backdropIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 100;
+        width: 280px;
+    }
+
+    .sidebarOpen {
+        transform: translateX(0);
+    }
+
+    .backdrop {
+        display: block;
+    }
+
+    .main {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .hamburger {
+        display: flex;
+    }
+
+    .header {
+        padding: 0 16px;
+        height: 64px;
+        justify-content: space-between;
+    }
+
+    .content {
+        padding: 16px;
+    }
+
+    .headerEnd {
+        gap: 12px;
+    }
+
+    .profileName {
+        display: none;
+    }
+
+    .profile svg:last-child {
+        display: none;
+    }
+}

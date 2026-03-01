@@ -2,6 +2,7 @@
 
 import { signIn } from '@/auth.worker';
 import { AuthError } from 'next-auth';
+import { prisma } from '@/lib/prisma';
 
 export type AuthState = {
     error?: string;
@@ -10,6 +11,14 @@ export type AuthState = {
 
 export async function authenticateWorker(prevState: AuthState | undefined, formData: FormData): Promise<AuthState> {
     try {
+        const email = formData.get('email') as string;
+        if (email) {
+            const user = await prisma.user.findUnique({ where: { email }, select: { role: true } });
+            if (user && user.role === 'admin') {
+                return { error: 'Your account is registered as an Admin. Please use the Admin Login page.' };
+            }
+        }
+
         await signIn('credentials', {
             ...Object.fromEntries(formData),
             redirectTo: '/worker',

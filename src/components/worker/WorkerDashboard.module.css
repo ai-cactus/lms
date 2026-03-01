@@ -867,3 +867,163 @@
 .trainingActionBtn:hover {
     background-color: #3720E3;
 }
+
+/* =========================================
+   MOBILE RESPONSIVE — Worker Dashboard
+   ========================================= */
+@media (max-width: 768px) {
+    .container {
+        gap: 20px;
+    }
+
+    .welcome {
+        font-size: 20px;
+    }
+
+    /* Course List */
+    .courseListHeader {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .searchBox {
+        width: 100%;
+    }
+
+    .searchInput {
+        width: 100%;
+    }
+
+    /* Table → Card transformation */
+    .courseTable thead {
+        display: none;
+    }
+
+    .courseTable,
+    .courseTable tbody,
+    .courseTable tr,
+    .courseTable td {
+        display: block;
+        width: 100%;
+    }
+
+    .courseTable tr {
+        padding: 16px;
+        border-bottom: 1px solid #F1F5F9;
+        position: relative;
+    }
+
+    .courseTable tr:last-child {
+        border-bottom: none;
+    }
+
+    .courseTable td {
+        padding: 4px 0;
+        border: none;
+    }
+
+    .courseTable td:first-child {
+        margin-bottom: 8px;
+    }
+
+    .courseInfo {
+        gap: 10px;
+    }
+
+    .courseTitleSmall {
+        font-size: 15px;
+    }
+
+    .progressContainer {
+        max-width: 200px;
+    }
+
+    .colDeadline,
+    .colStatus {
+        display: inline-flex;
+        margin-right: 12px;
+        font-size: 12px;
+    }
+
+    /* Training List */
+    .trainingItem {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 20px 16px;
+    }
+
+    .trainingInfo {
+        gap: 12px;
+        width: 100%;
+    }
+
+    .trainingIcon {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+    }
+
+    .trainingTitle {
+        font-size: 14px;
+    }
+
+    .trainingActionBtn {
+        width: 100%;
+        min-width: unset;
+    }
+
+    /* Badges Grid */
+    .badgesGrid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Empty State Card */
+    .emptyStateCard {
+        margin: 10px;
+    }
+
+    .leftPanel {
+        padding: 24px;
+    }
+
+    .rightPanel {
+        padding: 24px;
+    }
+
+    .welcomeTitle {
+        font-size: 28px;
+    }
+
+    .stepsTitle {
+        font-size: 22px;
+    }
+
+    .illustration {
+        width: 200px;
+    }
+
+    /* Achievements */
+    .achievementsCard {
+        padding: 24px;
+        min-height: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .metricCard {
+        padding: 16px;
+        min-height: 120px;
+    }
+
+    .metricValue {
+        font-size: 24px;
+    }
+
+    .metricIcon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+    }
+}

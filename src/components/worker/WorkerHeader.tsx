@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import styles from '@/components/dashboard/Header.module.css';
+import layoutStyles from '@/app/dashboard/(main)/layout.module.css';
 import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -9,9 +10,10 @@ import Link from 'next/link';
 interface HeaderProps {
     userEmail: string;
     fullName: string;
+    onMenuClick?: () => void;
 }
 
-export default function WorkerHeader({ userEmail, fullName }: HeaderProps) {
+export default function WorkerHeader({ userEmail, fullName, onMenuClick }: HeaderProps) {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
@@ -37,6 +39,19 @@ export default function WorkerHeader({ userEmail, fullName }: HeaderProps) {
 
     return (
         <header className={styles.header}>
+            {/* Hamburger — visible on mobile only */}
+            <button
+                className={layoutStyles.hamburger}
+                onClick={onMenuClick}
+                aria-label="Open menu"
+            >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+            </button>
+
             <div className={styles.headerEnd}>
                 <button className={styles.iconButton}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
