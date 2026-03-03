@@ -33,20 +33,24 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
                 </div>
 
                 {/* Number of Questions */}
-                <div className={styles.formRow}>
-                    <label className={styles.formLabel}>Number of Questions:</label>
-                    <Select
-                        value={data.quizQuestionCount}
-                        onChange={(val) => onChange('quizQuestionCount', val)}
-                        options={[
-                            { label: '8', value: '8' },
-                            { label: '10', value: '10' },
-                            { label: '15', value: '15' },
-                            { label: '20', value: '20' },
-                            { label: '25', value: '25' },
-                            { label: '30', value: '30' },
-                        ]}
-                    />
+                <div className={styles.formRow} style={{ alignItems: 'flex-start' }}>
+                    <label className={styles.formLabel} style={{ marginTop: '8px' }}>Number of Questions</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                        <div style={{ width: '150px' }}>
+                            <Input
+                                type="number"
+                                min="1"
+                                max="25"
+                                value={data.quizQuestionCount || ''}
+                                onChange={(e) => onChange('quizQuestionCount', e.target.value)}
+                                placeholder="1 - 25"
+                            />
+                        </div>
+                        <span style={{ color: '#E53E3E', fontSize: '13px', lineHeight: '1.4' }}>
+                            Questions generated may be fewer than requested if the material does not support the full count. <br />
+                            Estimated supported questions: 4–6
+                        </span>
+                    </div>
                 </div>
 
                 {/* Difficulty */}
