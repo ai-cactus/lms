@@ -147,12 +147,14 @@ export async function POST(
 
         if (existingAttempt) {
             // Check allowed attempts
-            if (quiz.allowedAttempts && existingAttempt.attemptCount >= quiz.allowedAttempts) {
-                // Allow update if they are just re-submitting same attempt (unlikely) or valid logic
-                // But strictly, if they exceeded, we should maybe block or just count it.
-                // For now, let's increment and logic in UI will hide retake.
+            if (quiz.allowedAttempts && existingAttempt.attemptCount > quiz.allowedAttempts) {
+                // Should not happen unless UI fails to block it. 
+                // We'll process it but the attempt count is already recorded correctly in DB.
             }
-            currentAttemptCount = existingAttempt.attemptCount + 1;
+
+            // The start route already increments the attemptCount when the attempt begins.
+            // So existingAttempt.attemptCount is the correct current attempt number.
+            currentAttemptCount = existingAttempt.attemptCount;
 
             await prisma.quizAttempt.update({
                 where: { id: existingAttempt.id },
@@ -160,7 +162,6 @@ export async function POST(
                     answers: enrichedAnswers,
                     score,
                     timeTaken,
-                    // attemptCount is NOT incremented here anymore (handled in start)
                     completedAt: new Date()
                 }
             });

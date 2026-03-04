@@ -25,7 +25,7 @@ function LoginForm() {
     const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
     const handleMicrosoftLogin = () => {
-        signIn('microsoft-entra-id', { callbackUrl: '/dashboard' });
+        signIn('microsoft-entra-id', { callbackUrl: '/worker' });
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

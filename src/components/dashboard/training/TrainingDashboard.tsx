@@ -226,16 +226,9 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
     // We want to show "Top Performers" or "All".
     // "Top Performers" could correspond to highest pass count or highest score?
     // User said "Top Performers" filter. Let's filter by highest pass count.
-    const [filter, setFilter] = useState<'all' | 'top'>('all');
-
     const chartData = React.useMemo(() => {
-        let data = [...coursePerformance];
-        if (filter === 'top') {
-            data.sort((a, b) => b.passCount - a.passCount);
-            data = data.slice(0, 5);
-        }
-        return data;
-    }, [coursePerformance, filter]);
+        return [...coursePerformance];
+    }, [coursePerformance]);
 
     // Calculate max value for Y-axis scaling
     const maxVal = Math.max(...chartData.map(d => Math.max(d.passCount, d.failCount)), 5); // Minimum 5 for scale
@@ -308,21 +301,6 @@ export default function TrainingDashboard({ onCreateCourse, stats, courses }: Tr
                 <div className={`${styles.chartCard} ${styles.performanceCard}`}>
                     <div className={styles.chartHeader}>
                         <h3 className={styles.chartTitle}>Performance of Learners</h3>
-                        <div className={styles.filterContainer}>
-                            <button
-                                onClick={() => setFilter('all')}
-                                className={`${styles.filterButton} ${filter === 'all' ? styles.active : ''}`}
-                                style={{ marginRight: 8 }}
-                            >
-                                All Courses
-                            </button>
-                            <button
-                                onClick={() => setFilter('top')}
-                                className={`${styles.filterButton} ${filter === 'top' ? styles.active : ''}`}
-                            >
-                                Top Performers
-                            </button>
-                        </div>
                     </div>
 
                     {/* Legend */}

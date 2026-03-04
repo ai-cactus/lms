@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
+import { createNotification, notifyOrganizationAdmins } from './notifications';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -164,6 +165,16 @@ export async function enrollUsers(courseId: string, emails: string[]) {
             },
         });
 
+        // Notify the worker in-app
+        await createNotification({
+            userId: user.id,
+            type: 'COURSE_ASSIGNED',
+            title: 'New Course Assigned',
+            message: `You have been assigned a new course: ${course.title}`,
+            linkUrl: `/worker/trainings`,
+            metadata: { courseId }
+        });
+
         // Send enrollment notification email to existing user
         try {
             await sendCourseEnrollmentEmail(
@@ -258,17 +269,26 @@ export async function submitQuizAttempt(
     answers: { questionId: string; selectedAnswer: string }[],
     timeTaken?: number
 ) {
-    const session = await resolveSession();
-    if (!session?.user?.id) {
+    // Resolve BOTH sessions to handle cookie collision
+    const [admin, worker] = await Promise.all([
+        (await import('@/auth')).auth(),
+        (await import('@/auth.worker')).auth()
+    ]);
+    const adminId = admin?.user?.id;
+    const workerId = worker?.user?.id;
+
+    if (!adminId && !workerId) {
         throw new Error('Unauthorized');
     }
 
     // Get enrollment and verify access
     const enrollment = await prisma.enrollment.findUnique({
         where: { id: enrollmentId },
+        include: { course: true },
     });
 
-    if (!enrollment || enrollment.userId !== session.user.id) {
+    // Check if EITHER session owns this enrollment
+    if (!enrollment || (enrollment.userId !== adminId && enrollment.userId !== workerId)) {
         throw new Error('Enrollment not found');
     }
 
@@ -329,6 +349,24 @@ export async function submitQuizAttempt(
         });
     }
 
+    // Notify admins if the worker failed
+    if (!passed) {
+        const user = await prisma.user.findUnique({
+            where: { id: enrollment.userId },
+            include: { profile: true }
+        });
+
+        if (user && user.organizationId) {
+            await notifyOrganizationAdmins(user.organizationId, {
+                type: 'COURSE_FAILED',
+                title: 'Quiz Failed',
+                message: `${user.profile?.fullName || user.email} has failed the quiz for course: ${enrollment.course?.title || 'Unknown Course'}.`,
+                linkUrl: `/dashboard/staff/${user.id}`, // Link to staff profile
+                metadata: { userId: user.id, courseId: enrollment.courseId, score }
+            });
+        }
+    }
+
     // Update enrollment status and score
     // CORE CHANGE: Passing the quiz does NOT complete the course. 
     // Attestation is required for completion.
@@ -349,4 +387,59 @@ export async function submitQuizAttempt(
         correctCount,
         totalQuestions,
     };
+}
+
+/**
+ * Worker requests a retry on a failed course quiz.
+ * Notifies admins and resets the enrollment status.
+ */
+export async function requestCourseRetry(enrollmentId: string) {
+    // Resolve BOTH sessions to handle cookie collision
+    const [admin, worker] = await Promise.all([
+        (await import('@/auth')).auth(),
+        (await import('@/auth.worker')).auth()
+    ]);
+    const adminId = admin?.user?.id;
+    const workerId = worker?.user?.id;
+
+    if (!adminId && !workerId) {
+        throw new Error('Unauthorized');
+    }
+
+    // Get enrollment
+    const enrollment = await prisma.enrollment.findUnique({
+        where: { id: enrollmentId },
+        include: {
+            user: { include: { profile: true } },
+            course: true
+        }
+    });
+
+    // Check if EITHER session owns this enrollment
+    if (!enrollment || (enrollment.userId !== adminId && enrollment.userId !== workerId)) {
+        throw new Error('Enrollment not found');
+    }
+
+    // Reset score and status so they can try again
+    await prisma.enrollment.update({
+        where: { id: enrollmentId },
+        data: {
+            status: 'enrolled',
+            score: null
+        }
+    });
+
+    // Notify Admins
+    if (enrollment.user.organizationId) {
+        await notifyOrganizationAdmins(enrollment.user.organizationId, {
+            type: 'COURSE_RETRY_REQUESTED',
+            title: 'Course Retry Requested',
+            message: `${enrollment.user.profile?.fullName || enrollment.user.email} has requested a retry for the course: ${enrollment.course.title}.`,
+            linkUrl: `/dashboard/staff/${enrollment.user.id}`,
+            metadata: { userId: enrollment.user.id, courseId: enrollment.courseId }
+        });
+    }
+
+    revalidatePath(`/worker/trainings`);
+    return { success: true };
 }

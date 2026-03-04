@@ -393,6 +393,7 @@ export default function CourseWizard() {
                     <Step6QuizReview
                         data={formData}
                         quiz={generatedContent?.quiz}
+                        rawContext={generatedContent?.rawArticleMarkdown}
                         onQuizUpdate={(newQuiz) => setGeneratedContent({ ...generatedContent, quiz: newQuiz })}
                     />
                 );

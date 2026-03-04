@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { AuthError } from 'next-auth';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
+import { cookies } from 'next/headers';
 
 // Define return type
 export type AuthState = {
@@ -22,6 +23,11 @@ export async function authenticate(prevState: AuthState | undefined, formData: F
                 return { error: 'Your account is registered as a Worker. Please use the Worker Login page.' };
             }
         }
+
+        // Clear worker session cookies to prevent crossover
+        const cookieStore = await cookies();
+        cookieStore.delete('worker.session-token');
+        cookieStore.delete('__Secure-worker.session-token');
 
         console.log("[Auth Action Admin] authenticate server action called with entries:", Object.fromEntries(formData));
         await signIn('credentials', {

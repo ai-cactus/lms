@@ -12,7 +12,7 @@ interface LogoProps {
 export default function Logo({
     size = 'md',
     showText = true,
-    variant = 'light',
+    variant = 'blue',
     className = ''
 }: LogoProps) {
     const sizes = {

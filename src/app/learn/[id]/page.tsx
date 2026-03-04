@@ -589,9 +589,11 @@ export default function LearnPage() {
                                                         </span>
                                                     )}
                                                 </p>
-                                                <Button variant="primary" style={{ fontSize: 16, padding: '12px 32px' }} onClick={handleStartQuiz}>
-                                                    Start Quiz
-                                                </Button>
+                                                {!(course.quiz?.allowedAttempts && (enrollment?.quizAttempts?.[0]?.attemptCount || 0) >= course.quiz.allowedAttempts) && (
+                                                    <Button variant="primary" style={{ fontSize: 16, padding: '12px 32px' }} onClick={handleStartQuiz}>
+                                                        Start Quiz
+                                                    </Button>
+                                                )}
                                             </div>
                                         )}
 

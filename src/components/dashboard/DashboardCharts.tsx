@@ -96,7 +96,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
 
     const [mounted, setMounted] = useState(false);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-    const [filter, setFilter] = useState<'all' | 'top'>('all');
 
     useEffect(() => {
         setMounted(true);
@@ -128,25 +127,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
 
                 <div className={styles.chartHeader}>
                     <h3 className={styles.chartTitle}>Performance of Learners</h3>
-                    {/* ... (buttons remain the same) ... */}
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                        <Button
-                            variant="ghost"
-                            size="xs"
-                            isActive={filter === 'all'}
-                            onClick={() => setFilter('all')}
-                        >
-                            All
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="xs"
-                            isActive={filter === 'top'}
-                            onClick={() => setFilter('top')}
-                        >
-                            Top
-                        </Button>
-                    </div>
                 </div>
 
                 {/* Legend */}

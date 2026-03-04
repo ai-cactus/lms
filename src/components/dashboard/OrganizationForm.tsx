@@ -272,21 +272,29 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             programServices: []
         }
     );
+    const [baseData, setBaseData] = useState<OrganizationData | null>(initialData ? {
+        ...initialData,
+        additionalBusinessTypes: initialData.additionalBusinessTypes || [],
+        programServices: initialData.programServices || []
+    } : null);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const router = useRouter();
 
     useEffect(() => {
         if (initialData) {
-            setFormData({
+            const formatted = {
                 ...initialData,
                 additionalBusinessTypes: initialData.additionalBusinessTypes || [],
                 programServices: initialData.programServices || []
-            });
+            };
+            setFormData(formatted);
+            if (!baseData) setBaseData(formatted); // Only set if not already set, or trust the success override. Let's just update baseData fully:
+            setBaseData(formatted);
         }
     }, [initialData]);
 
-    const isDirty = initialData ? JSON.stringify({
+    const isDirty = baseData ? JSON.stringify({
         ...formData,
         name: formData.name || '',
         dba: formData.dba || '',
@@ -303,23 +311,23 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         licenseNumber: formData.licenseNumber || '',
         primaryBusinessType: formData.primaryBusinessType || '',
     }) !== JSON.stringify({
-        ...initialData,
-        name: initialData.name || '',
-        dba: initialData.dba || '',
-        ein: initialData.ein || '',
-        staffCount: initialData.staffCount || '',
-        primaryContact: initialData.primaryContact || '',
-        primaryEmail: initialData.primaryEmail || '',
-        phone: initialData.phone || '',
-        address: initialData.address || '',
-        country: initialData.country || '',
-        state: initialData.state || '',
-        zipCode: initialData.zipCode || '',
-        city: initialData.city || '',
-        licenseNumber: initialData.licenseNumber || '',
-        primaryBusinessType: initialData.primaryBusinessType || '',
-        additionalBusinessTypes: initialData.additionalBusinessTypes || [],
-        programServices: initialData.programServices || []
+        ...baseData,
+        name: baseData.name || '',
+        dba: baseData.dba || '',
+        ein: baseData.ein || '',
+        staffCount: baseData.staffCount || '',
+        primaryContact: baseData.primaryContact || '',
+        primaryEmail: baseData.primaryEmail || '',
+        phone: baseData.phone || '',
+        address: baseData.address || '',
+        country: baseData.country || '',
+        state: baseData.state || '',
+        zipCode: baseData.zipCode || '',
+        city: baseData.city || '',
+        licenseNumber: baseData.licenseNumber || '',
+        primaryBusinessType: baseData.primaryBusinessType || '',
+        additionalBusinessTypes: baseData.additionalBusinessTypes || [],
+        programServices: baseData.programServices || []
     }) : true;
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -392,6 +400,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
             if (result.success) {
                 setMessage({ type: 'success', text: 'Organization updated successfully' });
+                setBaseData({ ...formData, additionalBusinessTypes: additionalBizType ? [additionalBizType] : [] });
                 router.refresh();
             } else {
                 setMessage({ type: 'error', text: result.error || 'Failed to update' });
@@ -404,11 +413,11 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     };
 
     const handleDiscard = () => {
-        if (initialData) {
+        if (baseData) {
             setFormData({
-                ...initialData,
-                additionalBusinessTypes: initialData.additionalBusinessTypes || [],
-                programServices: initialData.programServices || []
+                ...baseData,
+                additionalBusinessTypes: baseData.additionalBusinessTypes || [],
+                programServices: baseData.programServices || []
             });
         }
         setMessage(null);

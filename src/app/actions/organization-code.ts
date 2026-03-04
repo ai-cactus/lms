@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
+import { createNotification, notifyOrganizationAdmins } from './notifications';
 
 // Helper to generate a random 6-digit code
 function generateCode() {
@@ -152,6 +153,28 @@ export async function joinOrganization(code: string) {
                 organizationId: orgId,
                 role: 'worker' // Ensure role is worker
             }
+        });
+
+        // Create welcome notification for worker
+        await createNotification({
+            userId: userId,
+            type: 'WELCOME',
+            title: `Welcome to ${verifyResult.organization.name}`,
+            message: `You have successfully joined the organization. Your training will appear here when assigned.`
+        });
+
+        // Notify admins that a new worker joined
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { profile: true }
+        });
+
+        await notifyOrganizationAdmins(orgId, {
+            type: 'WORKER_JOINED',
+            title: 'New Member Joined',
+            message: `${user?.profile?.fullName || user?.email || 'A new worker'} has joined your organization using the invite code.`,
+            linkUrl: `/dashboard/staff/${userId}`,
+            metadata: { userId }
         });
 
         return { success: true, organizationId: orgId };

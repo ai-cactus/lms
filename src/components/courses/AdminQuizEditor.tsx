@@ -70,7 +70,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
     const handleGenerateQuestion = async () => {
         try {
             setIsGenerating(true);
-            const res = await generateSingleQuestion(courseId);
+            const res = await generateSingleQuestion({ courseId });
             if (res.success && res.question) {
                 setNewQuestion({
                     question: res.question.question,

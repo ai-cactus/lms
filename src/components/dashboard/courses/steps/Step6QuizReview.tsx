@@ -29,6 +29,8 @@ interface Step6QuizReviewProps {
     data: any;
     quiz?: QuizQuestion[];
     courseId?: string;
+    rawContext?: string;
+    onQuizUpdate: (quiz: QuizQuestion[]) => void;
 }
 
 const ARCHETYPE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -39,7 +41,7 @@ const ARCHETYPE_COLORS: Record<string, { bg: string; color: string }> = {
     'modality-check': { bg: '#E9D8FD', color: '#6B46C1' },
 };
 
-export default function Step6QuizReview({ data, quiz, courseId, onQuizUpdate }: Step6QuizReviewProps & { onQuizUpdate: (quiz: QuizQuestion[]) => void }) {
+export default function Step6QuizReview({ data, quiz, courseId, rawContext, onQuizUpdate }: Step6QuizReviewProps) {
     const questions = quiz || [];
     const [isAdding, setIsAdding] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -74,15 +76,16 @@ export default function Step6QuizReview({ data, quiz, courseId, onQuizUpdate }: 
     const handleGenerateQuestion = async () => {
         // Find courseId from data if not passed directly
         const targetCourseId = courseId || (data?.course?.id);
+        const context = rawContext || data?.rawArticleMarkdown || data?.description || '';
 
-        if (!targetCourseId) {
-            alert('Cannot generate a question right now. The course may not be fully saved yet.');
+        if (!targetCourseId && !context) {
+            alert('Cannot generate a question right now. Not enough course context available.');
             return;
         }
 
         try {
             setIsGenerating(true);
-            const res = await generateSingleQuestion(targetCourseId);
+            const res = await generateSingleQuestion({ courseId: targetCourseId, context });
             if (res.success && res.question) {
                 setNewQuestion({
                     question: res.question.question,

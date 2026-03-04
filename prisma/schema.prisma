@@ -66,6 +66,7 @@ model User {
   courses        Course[] // Courses created by this user
   enrollments    Enrollment[]
   documents      Document[]
+  notifications  Notification[]
 }
 
 model Profile {
@@ -277,5 +278,15 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-
-
+model Notification {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String   // 'WORKER_JOINED', 'COURSE_ASSIGNED', 'COURSE_PASSED', 'COURSE_FAILED', 'COURSE_RETRY_REQUESTED', 'WELCOME'
+  title          String
+  message        String   @db.Text
+  isRead         Boolean  @default(false)
+  linkUrl        String?  // Optional link to related content (e.g. course URL or worker profile)
+  metadata       Json?    // Any additional data (e.g. courseId, workerId)
+  createdAt      DateTime @default(now())
+}

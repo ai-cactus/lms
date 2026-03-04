@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
+import { notifyOrganizationAdmins } from './notifications';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -679,8 +680,12 @@ export async function createFullCourse(data: {
 }
 // Attest a course completion
 export async function attestCourse(enrollmentId: string, signature: string, role: string) {
-    const session = await resolveSession();
-    if (!session?.user?.id) {
+    // Resolve BOTH sessions to handle cookie collision (admin + worker in same browser)
+    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    const adminId = admin?.user?.id;
+    const workerId = worker?.user?.id;
+
+    if (!adminId && !workerId) {
         throw new Error('Unauthorized');
     }
 
@@ -691,7 +696,8 @@ export async function attestCourse(enrollmentId: string, signature: string, role
                 include: {
                     profile: true
                 }
-            }
+            },
+            course: true
         }
     });
 
@@ -699,7 +705,8 @@ export async function attestCourse(enrollmentId: string, signature: string, role
         throw new Error('Enrollment not found');
     }
 
-    if (enrollment.userId !== session.user.id) {
+    // Check if EITHER session owns this enrollment (handles cookie collision)
+    if (enrollment.userId !== adminId && enrollment.userId !== workerId) {
         throw new Error('Unauthorized');
     }
 
@@ -720,6 +727,17 @@ export async function attestCourse(enrollmentId: string, signature: string, role
         }
     });
 
+    // Notify Admins of course completion
+    if (enrollment.user.organizationId) {
+        await notifyOrganizationAdmins(enrollment.user.organizationId, {
+            type: 'COURSE_PASSED',
+            title: 'Course Completed',
+            message: `${enrollment.user.profile?.fullName || enrollment.user.email} has completed and attested to the course: ${enrollment.course?.title || 'Unknown Course'}.`,
+            linkUrl: `/dashboard/staff/${enrollment.user.id}`,
+            metadata: { userId: enrollment.user.id, courseId: enrollment.courseId }
+        });
+    }
+
     revalidatePath('/worker');
     revalidatePath(`/learn/${enrollment.courseId}`);
     return { success: true };
@@ -727,17 +745,27 @@ export async function attestCourse(enrollmentId: string, signature: string, role
 
 // Start a course (mark as in_progress)
 export async function startCourse(courseId: string) {
-    const session = await resolveSession();
-    if (!session?.user?.id) {
+    // Resolve BOTH sessions to handle cookie collision
+    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    const adminId = admin?.user?.id;
+    const workerId = worker?.user?.id;
+
+    if (!adminId && !workerId) {
         throw new Error('Unauthorized');
     }
 
-    const enrollment = await prisma.enrollment.findFirst({
-        where: {
-            courseId: courseId,
-            userId: session.user.id
-        }
-    });
+    // Try to find enrollment for either session user
+    let enrollment = null;
+    if (workerId) {
+        enrollment = await prisma.enrollment.findFirst({
+            where: { courseId, userId: workerId }
+        });
+    }
+    if (!enrollment && adminId) {
+        enrollment = await prisma.enrollment.findFirst({
+            where: { courseId, userId: adminId }
+        });
+    }
 
     if (!enrollment) {
         // Should ideally be enrolled already by assignment, but strictly speaking we could auto-enroll if open?
@@ -848,8 +876,12 @@ export async function updateLessonContent(lessonId: string, content: string, tit
 
 // Retake a quiz (reset status to in_progress)
 export async function retakeQuiz(enrollmentId: string) {
-    const session = await resolveSession();
-    if (!session?.user?.id) {
+    // Resolve BOTH sessions to handle cookie collision
+    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    const adminId = admin?.user?.id;
+    const workerId = worker?.user?.id;
+
+    if (!adminId && !workerId) {
         throw new Error('Unauthorized');
     }
 
@@ -870,7 +902,8 @@ export async function retakeQuiz(enrollmentId: string) {
         }
     });
 
-    if (!enrollment || enrollment.userId !== session.user.id) {
+    // Check if EITHER session owns this enrollment
+    if (!enrollment || (enrollment.userId !== adminId && enrollment.userId !== workerId)) {
         throw new Error('Enrollment not found or unauthorized');
     }
 

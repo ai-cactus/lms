@@ -42,6 +42,7 @@ interface ProfileFormProps {
 
 export default function ProfileForm({ initialData, organizationData }: ProfileFormProps) {
     const [activeTab, setActiveTab] = useState<'profile' | 'organization'>('profile');
+    const [baseData, setBaseData] = useState(initialData);
     const [formData, setFormData] = useState(initialData);
     const [isLoading, setIsLoading] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
@@ -55,6 +56,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
 
     React.useEffect(() => {
         setFormData(initialData);
+        setBaseData(initialData);
     }, [initialData]);
 
     React.useEffect(() => {
@@ -67,10 +69,10 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
     }, [message]);
 
     const isDirty =
-        formData.first_name !== initialData.first_name ||
-        formData.last_name !== initialData.last_name ||
-        formData.role !== initialData.role ||
-        (formData.company_name || '') !== (initialData.company_name || '');
+        formData.first_name !== baseData.first_name ||
+        formData.last_name !== baseData.last_name ||
+        formData.role !== baseData.role ||
+        (formData.company_name || '') !== (baseData.company_name || '');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -92,6 +94,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
             if (!result.success) throw new Error(result.error);
 
             setMessage({ type: 'success', text: 'Profile updated successfully' });
+            setBaseData(formData);
             router.refresh();
         } catch (error: any) {
             setMessage({ type: 'error', text: error.message || 'Failed to update profile' });
@@ -262,7 +265,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                                         type="button"
                                         onClick={(e) => {
                                             e.preventDefault();
-                                            setFormData({ ...initialData });
+                                            setFormData({ ...baseData });
                                         }}
                                         className={styles.discardButton}
                                     >

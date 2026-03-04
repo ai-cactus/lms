@@ -14,6 +14,7 @@ interface CoursePreviewProps {
 }
 
 import { startCourse } from '@/app/actions/course';
+import { requestCourseRetry } from '@/app/actions/enrollment';
 
 function WorkerStartButton({ courseId, enrollment }: { courseId: string, enrollment: any }) {
     const router = useRouter();
@@ -22,11 +23,15 @@ function WorkerStartButton({ courseId, enrollment }: { courseId: string, enrollm
     // Determine status
     const isStarted = (enrollment?.progress > 0) || (enrollment?.status === 'in_progress');
     const isCompleted = enrollment?.status === 'completed' || enrollment?.status === 'attested';
+    const isFailed = enrollment?.status === 'failed';
+    const isRetryRequested = enrollment?.status === 'retry_requested';
 
     // Determine button text
     let buttonText = 'Start Course';
-    if (loading) buttonText = 'Starting...';
+    if (loading) buttonText = 'Processing...';
     else if (isCompleted) buttonText = 'Review Course';
+    else if (isFailed) buttonText = 'Request Retry';
+    else if (isRetryRequested) buttonText = 'Retry Requested';
     else if (isStarted) buttonText = 'Continue Course';
 
     const handleClick = async () => {
@@ -35,14 +40,31 @@ function WorkerStartButton({ courseId, enrollment }: { courseId: string, enrollm
             return;
         }
 
+        if (isRetryRequested) {
+            return; // Do nothing
+        }
+
         try {
             setLoading(true);
+
+            if (isFailed && enrollment?.id) {
+                // Handle retry request
+                await requestCourseRetry(enrollment.id);
+                // The server action revalidates the path, but we can also refresh
+                router.refresh();
+                setLoading(false);
+                return;
+            }
+
             await startCourse(courseId);
             router.push(`/learn/${courseId}`);
         } catch (error) {
-            console.error('Failed to start course:', error);
+            console.error('Failed to start/retry course:', error);
             // Fallback navigation even if action fails (e.g. network)
-            router.push(`/learn/${courseId}`);
+            if (!isFailed) {
+                router.push(`/learn/${courseId}`);
+            }
+            setLoading(false);
         }
     };
 
@@ -50,7 +72,8 @@ function WorkerStartButton({ courseId, enrollment }: { courseId: string, enrollm
         <Button
             className={styles.startCourseButton}
             onClick={handleClick}
-            disabled={loading}
+            disabled={loading || isRetryRequested}
+            variant={isFailed ? 'outline' : 'primary'}
         >
             {buttonText}
         </Button>

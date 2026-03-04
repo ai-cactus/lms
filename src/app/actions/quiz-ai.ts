@@ -31,40 +31,50 @@ function extractJsonFromResponse(text: string): string {
     return clean;
 }
 
-export async function generateSingleQuestion(courseId: string): Promise<{ success: boolean; question?: GeneratedQuestion; error?: string }> {
+export async function generateSingleQuestion(options: { courseId?: string, context?: string }): Promise<{ success: boolean; question?: GeneratedQuestion; error?: string }> {
     try {
         const session = await auth();
         if (!session?.user?.id) {
             return { success: false, error: 'Unauthorized' };
         }
 
-        // 1. Fetch Course Context
-        const course = await prisma.course.findUnique({
-            where: { id: courseId },
-            include: {
-                lessons: {
-                    orderBy: { order: 'asc' },
-                    select: { title: true, content: true }
+        let courseContext = '';
+
+        if (options.courseId) {
+            // 1. Fetch Course Context
+            const course = await prisma.course.findUnique({
+                where: { id: options.courseId },
+                include: {
+                    lessons: {
+                        orderBy: { order: 'asc' },
+                        select: { title: true, content: true }
+                    }
                 }
+            });
+
+            if (course) {
+                // Extract some context from the course to guide the AI
+                // We'll limit the context so we don't blow up the token count on a single question
+                courseContext = `Course Title: ${course.title}\nDescription: ${course.description || 'No description'}\n\n`;
+
+                let lessonText = '';
+                for (const lesson of course.lessons) {
+                    const cleanContent = lesson.content?.replace(/<[^>]*>?/gm, ' ') || ''; // Very basic HTML strip
+                    lessonText += `Module: ${lesson.title}\n${cleanContent}\n\n`;
+                    if (lessonText.length > 5000) break; // Keep it bounded
+                }
+
+                courseContext += lessonText.substring(0, 8000); // hard cap
             }
-        });
-
-        if (!course) {
-            return { success: false, error: 'Course not found' };
         }
 
-        // Extract some context from the course to guide the AI
-        // We'll limit the context so we don't blow up the token count on a single question
-        let courseContext = `Course Title: ${course.title}\nDescription: ${course.description || 'No description'}\n\n`;
-
-        let lessonText = '';
-        for (const lesson of course.lessons) {
-            const cleanContent = lesson.content?.replace(/<[^>]*>?/gm, ' ') || ''; // Very basic HTML strip
-            lessonText += `Module: ${lesson.title}\n${cleanContent}\n\n`;
-            if (lessonText.length > 5000) break; // Keep it bounded
+        if (!courseContext && options.context) {
+            courseContext = options.context.substring(0, 8000);
         }
 
-        courseContext += lessonText.substring(0, 8000); // hard cap
+        if (!courseContext) {
+            return { success: false, error: 'No course context provided' };
+        }
 
         // 2. Build Prompt
         const prompt = `

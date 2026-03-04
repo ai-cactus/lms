@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from '@/app/dashboard/(main)/layout.module.css';
 import { Logo } from '@/components/ui';
 import Header from '@/components/dashboard/Header';
@@ -21,7 +21,25 @@ export default function DashboardLayoutClient({
     role
 }: DashboardLayoutClientProps) {
     const pathname = usePathname();
+    const [sidebarOpen, setSidebarOpen] = useState(false);
     const isProfilePage = pathname === '/dashboard/profile';
+
+    // Close sidebar on route change
+    useEffect(() => {
+        setSidebarOpen(false);
+    }, [pathname]);
+
+    // Prevent body scroll when sidebar is open on mobile
+    useEffect(() => {
+        if (sidebarOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [sidebarOpen]);
 
     // If on profile page, render simplified layout
     if (isProfilePage) {
@@ -63,8 +81,16 @@ export default function DashboardLayoutClient({
 
     return (
         <div className={styles.container}>
+            {/* Mobile Backdrop */}
+            {sidebarOpen && (
+                <div
+                    className={styles.backdrop}
+                    onClick={() => setSidebarOpen(false)}
+                />
+            )}
+
             {/* Sidebar */}
-            <aside className={styles.sidebar}>
+            <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
                 <div className={styles.logoWrapper}>
                     <Logo size="sm" />
                 </div>
@@ -120,7 +146,11 @@ export default function DashboardLayoutClient({
             {/* Main Content Area */}
             <main className={styles.main}>
                 {/* Top Header */}
-                <Header userEmail={userEmail} fullName={fullName} />
+                <Header
+                    userEmail={userEmail}
+                    fullName={fullName}
+                    onMenuClick={() => setSidebarOpen(true)}
+                />
 
                 <div className={styles.content}>
                     {children}

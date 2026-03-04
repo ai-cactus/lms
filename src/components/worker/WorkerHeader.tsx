@@ -7,6 +7,7 @@ import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui';
+import { getNotifications, markAsRead, markAllAsRead } from '@/app/actions/notifications';
 
 interface HeaderProps {
     userEmail: string;
@@ -16,10 +17,62 @@ interface HeaderProps {
 
 export default function WorkerHeader({ userEmail, fullName, onMenuClick }: HeaderProps) {
     const [isOpen, setIsOpen] = useState(false);
+    const [isNotifOpen, setIsNotifOpen] = useState(false);
+
+    // Notification state
+    const [notifications, setNotifications] = useState<any[]>([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [isLoadingNotifs, setIsLoadingNotifs] = useState(false);
+
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const notifRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
-    const toggleDropdown = () => setIsOpen(!isOpen);
+    const toggleDropdown = () => {
+        setIsOpen(!isOpen);
+        setIsNotifOpen(false);
+    };
+
+    const toggleNotif = async () => {
+        setIsNotifOpen(!isNotifOpen);
+        setIsOpen(false);
+        if (!isNotifOpen) {
+            fetchNotifications();
+        }
+    };
+
+    const fetchNotifications = async () => {
+        setIsLoadingNotifs(true);
+        const res = await getNotifications();
+        if (res.success && res.notifications !== undefined) {
+            setNotifications(res.notifications);
+            setUnreadCount(res.unreadCount || 0);
+        }
+        setIsLoadingNotifs(false);
+    };
+
+    const handleMarkAsRead = async (id: string, linkUrl?: string) => {
+        await markAsRead(id);
+        // Optimistically update
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+
+        if (linkUrl) {
+            router.push(linkUrl);
+            setIsNotifOpen(false);
+        }
+    };
+
+    const handleMarkAllAsRead = async () => {
+        await markAllAsRead();
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        setUnreadCount(0);
+    };
+
+    // Initial fetch on mount
+    useEffect(() => {
+        fetchNotifications();
+    }, []);
 
     const handleLogout = async () => {
         await signOut({ callbackUrl: '/login-worker' });
@@ -30,6 +83,9 @@ export default function WorkerHeader({ userEmail, fullName, onMenuClick }: Heade
         function handleClickOutside(event: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
+            }
+            if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+                setIsNotifOpen(false);
             }
         }
         document.addEventListener('mousedown', handleClickOutside);
@@ -54,13 +110,65 @@ export default function WorkerHeader({ userEmail, fullName, onMenuClick }: Heade
             </button>
 
             <div className={styles.headerEnd}>
-                <Button variant="ghost" size="icon-sm" className={styles.iconButton}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                    </svg>
-                    <span className={styles.badge}>4</span>
-                </Button>
+                <div className={styles.notificationWrapper} ref={notifRef}>
+                    <Button variant="ghost" size="icon-sm" className={styles.iconButton} onClick={toggleNotif}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                        </svg>
+                        {unreadCount > 0 && <span className={styles.badge}>{unreadCount}</span>}
+                    </Button>
+
+                    {isNotifOpen && (
+                        <div className={styles.notificationsDropdown}>
+                            <div className={styles.notificationsHeader}>
+                                <h3>Notifications</h3>
+                                {unreadCount > 0 && (
+                                    <button className={styles.markAllReadBtn} onClick={handleMarkAllAsRead}>
+                                        Mark all as read
+                                    </button>
+                                )}
+                            </div>
+                            <div className={styles.notificationsBody}>
+                                {isLoadingNotifs ? (
+                                    <div className={styles.emptyState}>
+                                        <p className={styles.emptyStateSubtext}>Loading...</p>
+                                    </div>
+                                ) : notifications.length === 0 ? (
+                                    <div className={styles.emptyState}>
+                                        <div className={styles.emptyStateIcon}>
+                                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                                                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                                            </svg>
+                                        </div>
+                                        <h4 className={styles.emptyStateText}>No new notifications</h4>
+                                        <p className={styles.emptyStateSubtext}>When courses are assigned or new events happen, they will appear here.</p>
+                                    </div>
+                                ) : (
+                                    <div className={styles.notificationList}>
+                                        {notifications.map((notif) => (
+                                            <div
+                                                key={notif.id}
+                                                className={`${styles.notificationItem} ${!notif.isRead ? styles.unread : ''}`}
+                                                onClick={() => handleMarkAsRead(notif.id, notif.linkUrl)}
+                                            >
+                                                <div className={styles.notifContent}>
+                                                    <h4 className={styles.notifTitle}>{notif.title}</h4>
+                                                    <p className={styles.notifMessage}>{notif.message}</p>
+                                                    <span className={styles.notifTime}>
+                                                        {new Date(notif.createdAt).toLocaleDateString()}
+                                                    </span>
+                                                </div>
+                                                {!notif.isRead && <div className={styles.unreadDot} />}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 <div className={styles.profileWrapper} ref={dropdownRef}>
                     <div className={styles.profile} onClick={toggleDropdown}>
