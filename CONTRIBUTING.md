@@ -1,6 +1,6 @@
-# Contributing to LMS2
+# Contributing to LMS
 
-Thank you for your interest in contributing to LMS2! We welcome contributions from the community to help make this AI-powered learning management system even better.
+Thank you for your interest in contributing to LMS! We welcome contributions from the community to help make this AI-powered learning management system even better.
 
 ## 🤝 Code of Conduct
 
@@ -15,6 +15,36 @@ By participating in this project, you agree to abide by our Code of Conduct. We 
 5.  **Make Changes**: Ensure your code follows our style guidelines.
 6.  **Run Linting**: `npm run lint`
 7.  **Submit a Pull Request**: Provide a clear description of your changes and link any relevant issues.
+
+### 🔁 Workflow Breakdown
+
+1. **Pull latest dev**
+
+```bash
+git checkout dev
+git pull origin dev
+```
+
+2. **Create feature branch**
+
+```bash
+git checkout -b feature/auth-refactor
+```
+
+3. **Make changes**
+
+4. **Push branch**
+```bash
+git push origin feature/auth-refactor
+```
+
+5. **Create PR:**
+
+- `Base branch → dev`
+
+- `Compare branch → feature/auth-refactor`
+
+6. **Get review → Merge into dev**
 
 ## 📜 Coding Standards
 

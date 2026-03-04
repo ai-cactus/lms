@@ -1,12 +1,12 @@
-# LMS2 - AI-Powered Compliance & Safety Training Platform
+# LMS - AI-Powered Compliance & Safety Training Platform
 
-LMS2 is a sophisticated, enterprise-ready Learning Management System (LMS) designed to automate and streamline compliance and safety training. It leverages a state-of-the-art AI pipeline to transform raw documents into interactive, high-quality learning experiences.
+LMS is a sophisticated, enterprise-ready Learning Management System (LMS) designed to automate and streamline compliance and safety training. It leverages a state-of-the-art AI pipeline to transform raw documents into interactive, high-quality learning experiences.
 
 ---
 
 ## 🏗 Architecture Overview
 
-LMS2 is built on a modern, scalable stack:
+LMS is built on a modern, scalable stack:
 
 - **Frontend**: Next.js 16 (App Router) for a performant, SEO-friendly user experience.
 - **Backend**: Next.js Server Actions and API Routes for robust business logic.
