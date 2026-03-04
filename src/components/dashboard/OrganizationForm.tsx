@@ -310,12 +310,29 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         e.preventDefault();
         if (!isAdmin) return;
 
+        // Get first value from additionalBusinessTypes array or empty string
+        const additionalBizType = (formData.additionalBusinessTypes || [])[0] || '';
+
+        // Validate required fields
+        if (
+            !formData.name?.trim() ||
+            !formData.dba?.trim() ||
+            !formData.staffCount ||
+            !formData.primaryContact?.trim() ||
+            !formData.primaryEmail?.trim() ||
+            !formData.country ||
+            !formData.phone?.trim() ||
+            !formData.primaryBusinessType ||
+            !additionalBizType
+        ) {
+            setMessage({ type: 'error', text: 'Please fill out all required fields marked with an asterisk (*).' });
+            return;
+        }
+
         setIsLoading(true);
         setMessage(null);
 
         try {
-            // Get first value from additionalBusinessTypes array or empty string
-            const additionalBizType = (formData.additionalBusinessTypes || [])[0] || '';
 
             const result = await updateOrganization({
                 name: formData.name,

@@ -132,18 +132,18 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
 
             <div className={styles.card}>
                 <div className={styles.tabs}>
-                    <Button
-                        variant={activeTab === 'profile' ? 'primary' : 'ghost'}
+                    <button
+                        className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
                         onClick={() => setActiveTab('profile')}
                     >
                         EDIT PROFILE
-                    </Button>
-                    <Button
-                        variant={activeTab === 'organization' ? 'primary' : 'ghost'}
+                    </button>
+                    <button
+                        className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
                         onClick={() => setActiveTab('organization')}
                     >
                         YOUR ORGANIZATION
-                    </Button>
+                    </button>
                 </div>
 
                 {activeTab === 'profile' ? (

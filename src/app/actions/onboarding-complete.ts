@@ -67,7 +67,7 @@ export async function completeOnboarding(data: any) {
                     licenseNumber: step2?.licenseNumber,
                     // Step 3 Data
                     primaryBusinessType: step3?.primaryBusinessType,
-                    additionalBusinessTypes: step3?.additionalBusinessTypes || [],
+                    additionalBusinessTypes: step3?.additionalBusinessType ? [step3.additionalBusinessType] : (step3?.additionalBusinessTypes || []),
                     programServices: step3?.services || [], // Mapped from 'services' in frontend to 'programServices' in DB
                 }
             });
