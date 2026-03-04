@@ -255,28 +255,29 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                                 </div>
                             )}
 
-                            <div className={styles.actions}>
-                                <Button
-                                    variant="outline"
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        setFormData({ ...initialData });
-                                    }}
-                                    disabled={!isDirty}
-                                    className={styles.discardButton}
-                                >
-                                    Discard
-                                </Button>
-                                <Button
-                                    variant="primary"
-                                    type="submit"
-                                    disabled={!isDirty || !isValid || isLoading}
-                                    className={styles.saveButton}
-                                >
-                                    {isLoading ? 'Saving...' : 'Save Changes'}
-                                </Button>
-                            </div>
+                            {isDirty && (
+                                <div className={styles.actions}>
+                                    <Button
+                                        variant="outline"
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            setFormData({ ...initialData });
+                                        }}
+                                        className={styles.discardButton}
+                                    >
+                                        Discard
+                                    </Button>
+                                    <Button
+                                        variant="primary"
+                                        type="submit"
+                                        disabled={!isValid || isLoading}
+                                        className={styles.saveButton}
+                                    >
+                                        {isLoading ? 'Saving...' : 'Save Changes'}
+                                    </Button>
+                                </div>
+                            )}
                         </form>
                     </div>
                 ) : (

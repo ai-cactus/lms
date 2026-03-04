@@ -286,6 +286,42 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         }
     }, [initialData]);
 
+    const isDirty = initialData ? JSON.stringify({
+        ...formData,
+        name: formData.name || '',
+        dba: formData.dba || '',
+        ein: formData.ein || '',
+        staffCount: formData.staffCount || '',
+        primaryContact: formData.primaryContact || '',
+        primaryEmail: formData.primaryEmail || '',
+        phone: formData.phone || '',
+        address: formData.address || '',
+        country: formData.country || '',
+        state: formData.state || '',
+        zipCode: formData.zipCode || '',
+        city: formData.city || '',
+        licenseNumber: formData.licenseNumber || '',
+        primaryBusinessType: formData.primaryBusinessType || '',
+    }) !== JSON.stringify({
+        ...initialData,
+        name: initialData.name || '',
+        dba: initialData.dba || '',
+        ein: initialData.ein || '',
+        staffCount: initialData.staffCount || '',
+        primaryContact: initialData.primaryContact || '',
+        primaryEmail: initialData.primaryEmail || '',
+        phone: initialData.phone || '',
+        address: initialData.address || '',
+        country: initialData.country || '',
+        state: initialData.state || '',
+        zipCode: initialData.zipCode || '',
+        city: initialData.city || '',
+        licenseNumber: initialData.licenseNumber || '',
+        primaryBusinessType: initialData.primaryBusinessType || '',
+        additionalBusinessTypes: initialData.additionalBusinessTypes || [],
+        programServices: initialData.programServices || []
+    }) : true;
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -665,7 +701,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                 </div>
             )}
 
-            {isAdmin && (
+            {isAdmin && isDirty && (
                 <div className={styles.orgActions}>
                     <Button variant="outline" type="button" onClick={handleDiscard}>
                         Discard
