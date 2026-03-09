@@ -1,29 +1,12 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, DM_Sans } from "next/font/google";
-import "./globals.css";
-import { Providers } from "@/components/providers/Providers";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-});
+import type { Metadata } from 'next';
+import './globals.css';
+import { Providers } from '@/components/providers/Providers';
 
 export const metadata: Metadata = {
-  title: "Theraptly",
-  description: "LMS for Healthcare Compliance",
+  title: 'Theraptly',
+  description: 'LMS for Healthcare Compliance',
   icons: {
-    icon: "/icon.svg",
+    icon: '/icon.svg',
   },
 };
 
@@ -34,10 +17,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} ${dmSans.variable}`}>
-        <Providers>
-          {children}
-        </Providers>
+      <body className="">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
