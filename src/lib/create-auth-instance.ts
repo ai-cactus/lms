@@ -1,19 +1,19 @@
-import NextAuth, { NextAuthConfig, User } from "next-auth";
-import Credentials from "next-auth/providers/credentials";
-import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
-import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
-type Role = "admin" | "worker" | "supervisor" | string;
+import NextAuth, { NextAuthConfig, User } from 'next-auth';
+import Credentials from 'next-auth/providers/credentials';
+import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
+import bcrypt from 'bcryptjs';
+import { prisma } from '@/lib/prisma';
+type Role = 'admin' | 'worker' | 'supervisor' | string;
 
 interface AuthInstanceConfig {
-  cookiePrefix: "admin" | "worker";
+  cookiePrefix: 'admin' | 'worker';
   allowedRole: Role;
   basePath: string; // "/api/auth" | "/api/auth-worker"
 }
 
 export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
   const { cookiePrefix, allowedRole, basePath } = instanceConfig;
-  const useSecureCookies = process.env.NODE_ENV === "production";
+  const useSecureCookies = process.env.NODE_ENV === 'production';
 
   const config: NextAuthConfig = {
     basePath,
@@ -22,48 +22,52 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
     // ✅ Cookie isolation — the ONLY thing that differs between instances
     cookies: {
       sessionToken: {
-        name: `${useSecureCookies ? "__Secure-" : ""}${cookiePrefix}.session-token`,
+        name: `${useSecureCookies ? '__Secure-' : ''}${cookiePrefix}.session-token`,
         options: {
           httpOnly: true,
-          sameSite: "lax",
-          path: "/",
+          sameSite: 'lax',
+          path: '/',
           secure: useSecureCookies,
         },
       },
       csrfToken: {
-        name: `${useSecureCookies ? "__Host-" : ""}${cookiePrefix}.csrf-token`,
-        options: { httpOnly: true, sameSite: "lax", path: "/", secure: useSecureCookies },
+        name: `${useSecureCookies ? '__Host-' : ''}${cookiePrefix}.csrf-token`,
+        options: { httpOnly: true, sameSite: 'lax', path: '/', secure: useSecureCookies },
       },
       callbackUrl: {
-        name: `${useSecureCookies ? "__Secure-" : ""}${cookiePrefix}.callback-url`,
-        options: { sameSite: "lax", path: "/", secure: useSecureCookies },
+        name: `${useSecureCookies ? '__Secure-' : ''}${cookiePrefix}.callback-url`,
+        options: { sameSite: 'lax', path: '/', secure: useSecureCookies },
       },
     },
 
     providers: [
       Credentials({
-        async authorize(credentials: any) {
-          const { email, password } = credentials as {
+        async authorize(credentials) {
+          const { email, password } = (credentials || {}) as {
             email: string;
             password: string;
           };
 
-          console.log(`[NextAuth Factory] Attempting login for ${email} on instance ${cookiePrefix}`);
+          console.log(
+            `[NextAuth Factory] Attempting login for ${email} on instance ${cookiePrefix}`,
+          );
           const user = await prisma.user.findUnique({ where: { email } });
 
           if (!user || !user.password) {
-            console.log("[NextAuth Factory] User not found or no password map");
+            console.log('[NextAuth Factory] User not found or no password map');
             return null;
           }
 
           if (user.role !== allowedRole) {
-            console.log(`[NextAuth Factory] Role blocked. Found: ${user.role}, Allowed: ${allowedRole}`);
+            console.log(
+              `[NextAuth Factory] Role blocked. Found: ${user.role}, Allowed: ${allowedRole}`,
+            );
             return null;
           }
 
           const valid = await bcrypt.compare(password, user.password);
           if (!valid) {
-            console.log("[NextAuth Factory] Password bcrypt validation failed");
+            console.log('[NextAuth Factory] Password bcrypt validation failed');
             return null;
           }
 
@@ -81,33 +85,35 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
       // Expose Microsoft OAuth on both admin and worker instances if env vars are present
       ...(process.env.AUTH_MICROSOFT_ENTRA_ID_ID
         ? [
-          MicrosoftEntraID({
-            clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
-            clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
-            issuer: `https://login.microsoftonline.com/${process.env.AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}/v2.0`,
-            allowDangerousEmailAccountLinking: true,
-          }),
-        ]
+            MicrosoftEntraID({
+              clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
+              clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
+              issuer: `https://login.microsoftonline.com/${process.env.AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}/v2.0`,
+              allowDangerousEmailAccountLinking: true,
+            }),
+          ]
         : []),
     ],
 
     callbacks: {
       async signIn({ user, account }) {
-        if (account?.provider === "microsoft-entra-id") {
+        if (account?.provider === 'microsoft-entra-id') {
           let dbUser = await prisma.user.findUnique({
             where: { email: user.email! },
-            select: { id: true, organizationId: true, role: true }
+            select: { id: true, organizationId: true, role: true },
           });
 
           // Check for pending invites
           const pendingInvite = await prisma.invite.findFirst({
             where: { email: user.email!, status: 'pending' },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
           });
 
           if (!dbUser) {
             // New user Signup Flow
-            console.log(`[NextAuth] Creating new ${allowedRole} user via Microsoft OAuth: ${user.email}`);
+            console.log(
+              `[NextAuth] Creating new ${allowedRole} user via Microsoft OAuth: ${user.email}`,
+            );
 
             let matchedOrgId = null;
             let matchedRole = allowedRole;
@@ -115,7 +121,9 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             if (pendingInvite) {
               matchedOrgId = pendingInvite.organizationId;
               matchedRole = pendingInvite.role; // Override role from invite if present
-              console.log(`[NextAuth] Found pending invite for ${user.email}, joining org ${matchedOrgId} as ${matchedRole}`);
+              console.log(
+                `[NextAuth] Found pending invite for ${user.email}, joining org ${matchedOrgId} as ${matchedRole}`,
+              );
             }
 
             dbUser = await prisma.user.create({
@@ -124,35 +132,37 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 password: '', // OAuth users don't need a password initially
                 role: matchedRole,
                 organizationId: matchedOrgId,
-                emailVerified: true // Trust OAuth provider email verification
+                emailVerified: true, // Trust OAuth provider email verification
               },
-              select: { id: true, organizationId: true, role: true }
+              select: { id: true, organizationId: true, role: true },
             });
 
             // Mark invite as accepted if we used one
             if (pendingInvite) {
               await prisma.invite.update({
                 where: { id: pendingInvite.id },
-                data: { status: 'accepted' }
+                data: { status: 'accepted' },
               });
             }
           } else {
             // Existing user login
             if (pendingInvite && !dbUser.organizationId) {
               // User exists but has no org yet, and has a new invite
-              console.log(`[NextAuth] Existing user ${user.email} accepting invite to org ${pendingInvite.organizationId}`);
+              console.log(
+                `[NextAuth] Existing user ${user.email} accepting invite to org ${pendingInvite.organizationId}`,
+              );
               dbUser = await prisma.user.update({
                 where: { id: dbUser.id },
                 data: {
                   organizationId: pendingInvite.organizationId,
-                  role: pendingInvite.role
+                  role: pendingInvite.role,
                 },
-                select: { id: true, organizationId: true, role: true }
+                select: { id: true, organizationId: true, role: true },
               });
 
               await prisma.invite.update({
                 where: { id: pendingInvite.id },
-                data: { status: 'accepted' }
+                data: { status: 'accepted' },
               });
             }
           }
@@ -165,7 +175,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           const profile = await prisma.profile.findUnique({
             where: { id: dbUser.id },
-            select: { fullName: true }
+            select: { fullName: true },
           });
 
           if (profile?.fullName) {
@@ -184,7 +194,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                   firstName,
                   lastName,
                   fullName: oauthName || user.email!,
-                }
+                },
               });
               user.name = oauthName || user.email!;
             } catch (profileErr) {
@@ -210,7 +220,12 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
         if (token.id) {
           const freshUser = await prisma.user.findUnique({
             where: { id: token.id as string },
-            select: { id: true, role: true, organizationId: true, profile: { select: { fullName: true } } },
+            select: {
+              id: true,
+              role: true,
+              organizationId: true,
+              profile: { select: { fullName: true } },
+            },
           });
 
           if (!freshUser) return null; // Invalidates session if user deleted
@@ -235,11 +250,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
     },
 
     pages: {
-      signIn: allowedRole === "admin" ? "/login" : "/login-worker",
-      error: allowedRole === "admin" ? "/login" : "/login-worker",
+      signIn: allowedRole === 'admin' ? '/login' : '/login-worker',
+      error: allowedRole === 'admin' ? '/login' : '/login-worker',
     },
 
-    session: { strategy: "jwt" },
+    session: { strategy: 'jwt' },
   };
 
   return NextAuth(config);
