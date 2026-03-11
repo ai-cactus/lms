@@ -165,9 +165,9 @@ export default function LearnPage() {
 
                     setTimeLeft(remaining);
 
-                } else if ((isCompleted || (hasQuizAttempt && !activeAttempt)) && data.enrollment?.status !== 'in_progress') {
-                    // Course completed or quiz taken (and finished) — lock to results view only
-                    // But if status is 'in_progress' (e.g. retake), allow them to proceed to Intro/Active.
+                } else if (isCompleted || data.enrollment?.status === 'locked' || (hasQuizAttempt && !activeAttempt)) {
+                    // Course completed, locked, or quiz taken (and finished) — show results view
+                    // If they passed but haven't attested, status is 'in_progress', which is caught here.
                     const resultsData = data.quizResultsData || {
                         passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
                         score: data.enrollment.score || 0,
@@ -536,7 +536,7 @@ export default function LearnPage() {
                                     passingScore: course.quiz?.passingScore
                                 } as any}
                                 hideActions={enrollment?.status === 'completed' || enrollment?.status === 'attested'}
-                                showAttestation={justFinished && userData?.role === 'worker' && quizResults.passed}
+                                showAttestation={userData?.role === 'worker' && quizResults.passed}
                                 userRole={userData?.role}
                                 onAttestSuccess={() => {
                                     setJustFinished(false);
@@ -578,21 +578,34 @@ export default function LearnPage() {
                                         {quizStep === 'intro' && (
                                             <div className={styles.quizIntro}>
                                                 <h1 className={styles.quizIntroTitle}>{course.quiz?.title}</h1>
-                                                <p className={styles.quizIntroText}>
-                                                    This quiz contains {course.quiz?.questions.length} questions.<br />
-                                                    Passing score: {course.quiz?.passingScore}%
-                                                    {course.quiz?.allowedAttempts && (
-                                                        <span style={{ display: 'block', marginTop: 8, color: '#E53E3E', fontWeight: 600 }}>
-                                                            {((enrollment?.quizAttempts?.[0]?.attemptCount || 0) >= course.quiz.allowedAttempts)
-                                                                ? `All ${course.quiz.allowedAttempts} attempts used`
-                                                                : `Attempt ${(enrollment?.quizAttempts?.[0]?.attemptCount || 0) + 1} of ${course.quiz.allowedAttempts}`}
-                                                        </span>
-                                                    )}
-                                                </p>
-                                                {!(course.quiz?.allowedAttempts && (enrollment?.quizAttempts?.[0]?.attemptCount || 0) >= course.quiz.allowedAttempts) && (
-                                                    <Button variant="primary" style={{ fontSize: 16, padding: '12px 32px' }} onClick={handleStartQuiz}>
-                                                        Start Quiz
-                                                    </Button>
+                                                
+                                                {enrollment?.status === 'locked' ? (
+                                                    <div style={{ backgroundColor: '#FFF5F5', borderRadius: '12px', padding: '32px 24px', border: '1px solid #FEB2B2', marginTop: '24px' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+                                                            <div style={{ backgroundColor: '#FEE2E2', color: '#DC2626', width: '48px', height: '48px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                                            </div>
+                                                        </div>
+                                                        <h2 style={{ color: '#9B2C2C', fontSize: '20px', fontWeight: 700, margin: '0 0 12px 0' }}>Maximum retries reached</h2>
+                                                        <p style={{ color: '#C53030', margin: 0, fontSize: '15px', lineHeight: 1.5 }}>
+                                                            You have used all {course.quiz?.allowedAttempts} allowed attempts for this quiz. An admin must assign a retake before you can continue.
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p className={styles.quizIntroText}>
+                                                            This quiz contains {course.quiz?.questions.length} questions.<br />
+                                                            Passing score: {course.quiz?.passingScore}%
+                                                            {course.quiz?.allowedAttempts && (
+                                                                <span style={{ display: 'block', marginTop: 8, color: '#4A5568', fontWeight: 600 }}>
+                                                                    Attempt {(enrollment?.quizAttempts?.[0]?.attemptCount || 0) + 1} of {course.quiz.allowedAttempts}
+                                                                </span>
+                                                            )}
+                                                        </p>
+                                                        <Button variant="primary" style={{ fontSize: 16, padding: '12px 32px' }} onClick={handleStartQuiz}>
+                                                            Start Quiz
+                                                        </Button>
+                                                    </>
                                                 )}
                                             </div>
                                         )}

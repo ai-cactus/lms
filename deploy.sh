@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# LMS2 Smart Deployer
+# LMS2 Smart Deployer (Workflow V2)
 # Usage: ./deploy.sh [staging|production] ["Commit message"]
 
 ENV=$1
@@ -12,7 +12,7 @@ if [ -z "$ENV" ]; then
     exit 1
 fi
 
-BRANCH=$(git branch --show-current)
+CURRENT_BRANCH=$(git branch --show-current)
 
 # 1. Check if working directory is clean
 if [ -n "$(git status --porcelain)" ]; then
@@ -33,37 +33,40 @@ fi
 
 if [ "$ENV" == "staging" ]; then
     echo "🚀 Deploying to STAGING..."
+    echo "Pipeline: branch -> dev -> staging"
     
-    if [ "$BRANCH" != "staging" ]; then
-        echo "⚠️ Warning: You're on branch '$BRANCH', not 'staging'. Are you sure? (Press Ctrl+C to cancel)"
-        sleep 3
+    if [ "$CURRENT_BRANCH" != "dev" ]; then
+        echo "❌ Error: Staging deployments MUST start from 'dev'."
+        echo "Please switch to dev, pull the latest changes, and try again:"
+        echo "  git checkout dev && git pull && ./deploy.sh staging"
+        exit 1
     fi
     
-    # Safely push to remotes (will fail if remote is ahead, protecting team's work)
-    echo "⬆️ Pushing to remotes..."
-    git push origin "$BRANCH:staging" || { echo "❌ Push to origin failed. Please pull first."; exit 1; }
-    git push new-origin "$BRANCH:staging" || { echo "❌ Push to new-origin failed. Please pull first."; exit 1; }
+    echo "⬇️ Pulling latest dev from remotes to ensure we are up to date..."
+    git pull new-origin dev || { echo "❌ Failed to pull latest dev."; exit 1; }
+    
+    # Safely push dev to staging branches
+    echo "⬆️ Pushing local dev to staging remotes..."
+    git push origin dev:staging || { echo "❌ Push to origin failed. Please pull first."; exit 1; }
+    git push new-origin dev:staging || { echo "❌ Push to new-origin failed. Please pull first."; exit 1; }
     
     # Run staging deploy script
     ./deploy-staging.sh
 
 elif [ "$ENV" == "production" ]; then
     echo "🚀 Deploying to PRODUCTION..."
+    echo "Pipeline: staging -> production (main)"
     
-    if [ "$BRANCH" != "staging" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
-         echo "⚠️ Warning: You're deploying to production from branch '$BRANCH'. (Press Ctrl+C to cancel)"
-         sleep 3
+    if [ "$CURRENT_BRANCH" != "staging" ] && [ "$CURRENT_BRANCH" != "dev" ] && [ "$CURRENT_BRANCH" != "main" ] && [ "$CURRENT_BRANCH" != "master" ]; then
+         echo "⚠️ Warning: You're deploying to production from branch '$CURRENT_BRANCH'."
+         echo "Normally production is deployed from staging or dev. Press Ctrl+C to cancel within 5 seconds."
+         sleep 5
     fi
     
-    # Update staging branch as well to keep it in sync
-    echo "⬆️ Pushing local branch to staging remotes..."
-    git push origin "$BRANCH:staging" || true
-    git push new-origin "$BRANCH:staging" || true
-    
-    # Promote to production branches
+    # Promote current state to production branches
     echo "🌟 Promoting to production (master/main) on remotes..."
-    git push origin "$BRANCH:master" || { echo "❌ Promotion to origin master failed. Please pull first."; exit 1; }
-    git push new-origin "$BRANCH:main" || { echo "❌ Promotion to new-origin main failed. Please pull first."; exit 1; }
+    git push origin "$CURRENT_BRANCH:master" || { echo "❌ Promotion to origin master failed. Please pull first."; exit 1; }
+    git push new-origin "$CURRENT_BRANCH:main" || { echo "❌ Promotion to new-origin main failed. Please pull first."; exit 1; }
     
     # Run production deploy script
     ./deploy-production.sh

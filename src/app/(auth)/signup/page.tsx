@@ -22,8 +22,11 @@ export default function SignupPage() {
         agreeTerms: false,
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
+    const [isFormLoading, setIsFormLoading] = useState(false);
 
     const handleMicrosoftSignup = () => {
+        setIsMicrosoftLoading(true);
         // Calling signIn will route through create-auth-instance.ts logic 
         // which creates new users if they don't exist
         signIn('microsoft-entra-id', { callbackUrl: '/signup/role-selection' });
@@ -93,6 +96,7 @@ export default function SignupPage() {
         }));
 
         // Redirect to role selection
+        setIsFormLoading(true);
         router.push('/signup/role-selection');
     };
 
@@ -122,14 +126,20 @@ export default function SignupPage() {
                     </div>
 
                     <div className={styles.socialLogin}>
-                        <button type="button" className={styles.microsoftButton} onClick={handleMicrosoftSignup}>
-                            <Image
-                                src="/icons/microsoft.svg"
-                                alt="Microsoft"
-                                width={20}
-                                height={20}
-                            />
-                            <span>Sign up with Microsoft</span>
+                        <button type="button" className={styles.microsoftButton} onClick={handleMicrosoftSignup} disabled={isMicrosoftLoading}>
+                            {isMicrosoftLoading ? (
+                                <span>Loading...</span>
+                            ) : (
+                                <>
+                                    <Image
+                                        src="/icons/microsoft.svg"
+                                        alt="Microsoft"
+                                        width={20}
+                                        height={20}
+                                    />
+                                    <span>Sign up with Microsoft</span>
+                                </>
+                            )}
                         </button>
                     </div>
 
@@ -219,7 +229,7 @@ export default function SignupPage() {
                             type="submit"
                             size="lg"
                             fullWidth
-                            loading={isPending}
+                            loading={isFormLoading}
                         >
                             Create Account
                         </Button>

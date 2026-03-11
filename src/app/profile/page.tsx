@@ -3,7 +3,10 @@ import { auth as workerAuth } from '@/auth.worker';
 import { redirect } from 'next/navigation';
 
 export default async function ProfileRedirectPage() {
-    const [adminSession, workerSession] = await Promise.all([adminAuth(), workerAuth()]);
+    let adminSession = null;
+    let workerSession = null;
+    try { adminSession = await adminAuth(); } catch { /* no admin session */ }
+    try { workerSession = await workerAuth(); } catch { /* no worker session */ }
     const session = adminSession?.user ? adminSession : workerSession;
 
 

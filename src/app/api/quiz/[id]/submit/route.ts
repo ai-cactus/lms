@@ -146,10 +146,13 @@ export async function POST(
         let currentAttemptCount = 1;
 
         if (existingAttempt) {
-            // Check allowed attempts
+            // Hard-enforce attempt limit on submit
             if (quiz.allowedAttempts && existingAttempt.attemptCount > quiz.allowedAttempts) {
-                // Should not happen unless UI fails to block it. 
-                // We'll process it but the attempt count is already recorded correctly in DB.
+                return NextResponse.json({ 
+                    error: 'No attempts remaining',
+                    attemptsUsed: existingAttempt.attemptCount,
+                    allowedAttempts: quiz.allowedAttempts 
+                }, { status: 403 });
             }
 
             // The start route already increments the attemptCount when the attempt begins.
@@ -174,15 +177,88 @@ export async function POST(
         // Update enrollment status and score
         // CORE LOGIC: Passing the quiz does NOT complete the course. 
         // Attestation is required for completion.
+        const isLocked = !passed && quiz.allowedAttempts && currentAttemptCount >= quiz.allowedAttempts;
+
         await prisma.enrollment.update({
             where: { id: enrollmentId },
             data: {
-                status: 'in_progress', // Remains in_progress until attestation
+                status: isLocked ? 'locked' : 'in_progress',
                 score,
                 progress: 100,
-                // completedAt is NOT set here anymore
+                ...(isLocked ? { lockedAt: new Date() } : {}),
             }
         });
+
+        // If locked, notify org admins (in-app + email)
+        if (isLocked) {
+            const enrollmentWithDetails = await prisma.enrollment.findUnique({
+                where: { id: enrollmentId },
+                include: {
+                    user: { include: { profile: true } },
+                    course: { include: { lessons: { include: { quiz: true } } } }
+                }
+            });
+
+            if (enrollmentWithDetails?.user?.organizationId) {
+                const workerName = enrollmentWithDetails.user.profile?.fullName || enrollmentWithDetails.user.email;
+                const courseName = enrollmentWithDetails.course?.title || 'Unknown Course';
+                const quizTitle = quiz.title || 'Quiz';
+                const orgId = enrollmentWithDetails.user.organizationId;
+
+                // Deduplicated notification — only create if no unresolved one exists
+                const existingNotification = await prisma.notification.findFirst({
+                    where: {
+                        type: 'QUIZ_RETRY_LIMIT_REACHED',
+                        resolvedAt: null,
+                        metadata: { path: ['enrollmentId'], equals: enrollmentId }
+                    }
+                });
+
+                if (!existingNotification) {
+                    // Get all org admins
+                    const admins = await prisma.user.findMany({
+                        where: { organizationId: orgId, role: 'admin' },
+                        select: { id: true, email: true }
+                    });
+
+                    // Create in-app notifications
+                    if (admins.length > 0) {
+                        await prisma.notification.createMany({
+                            data: admins.map(admin => ({
+                                userId: admin.id,
+                                type: 'QUIZ_RETRY_LIMIT_REACHED',
+                                title: 'Quiz Attempts Exhausted',
+                                message: `${workerName} has used all ${currentAttemptCount} attempts on "${quizTitle}" in course "${courseName}" and requires a retake assignment.`,
+                                linkUrl: `/dashboard/staff/${enrollmentWithDetails.user.id}`,
+                                metadata: {
+                                    enrollmentId,
+                                    userId: enrollmentWithDetails.user.id,
+                                    courseId: enrollmentWithDetails.courseId,
+                                    workerName,
+                                    quizTitle,
+                                    courseName,
+                                    attemptsUsed: currentAttemptCount
+                                }
+                            }))
+                        });
+                    }
+
+                    // Send emails to admins (fire-and-forget)
+                    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
+                    const { sendQuizLockedEmail } = await import('@/lib/email');
+                    Promise.allSettled(admins.map(admin =>
+                        sendQuizLockedEmail(
+                            admin.email,
+                            workerName,
+                            quizTitle,
+                            courseName,
+                            currentAttemptCount,
+                            `${appUrl}/dashboard/staff/${enrollmentWithDetails.user.id}`
+                        ).catch(err => console.error(`Failed to send quiz locked email to ${admin.email}`, err))
+                    ));
+                }
+            }
+        }
 
         revalidatePath('/worker');
         revalidatePath('/dashboard/worker');

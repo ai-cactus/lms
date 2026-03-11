@@ -12,6 +12,7 @@ import { cookies } from 'next/headers';
 export type AuthState = {
     error?: string;
     success?: boolean;
+    redirect?: string;
 };
 
 export async function authenticate(prevState: AuthState | undefined, formData: FormData): Promise<AuthState> {
@@ -20,7 +21,7 @@ export async function authenticate(prevState: AuthState | undefined, formData: F
         if (email) {
             const user = await prisma.user.findUnique({ where: { email }, select: { role: true } });
             if (user && user.role !== 'admin') {
-                return { error: 'Your account is registered as a Worker. Please use the Worker Login page.' };
+                return { redirect: '/login-worker' };
             }
         }
 

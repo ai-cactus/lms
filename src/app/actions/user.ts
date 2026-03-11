@@ -14,15 +14,16 @@ async function resolveSession() {
     const isWorkerRoute = referer?.includes('/worker');
 
     if (isWorkerRoute) {
-        const worker = await workerAuth();
-        if (worker?.user?.id) return worker;
+        try { const worker = await workerAuth(); if (worker?.user?.id) return worker; } catch { /* no session */ }
     } else {
-        const admin = await adminAuth();
-        if (admin?.user?.id) return admin;
+        try { const admin = await adminAuth(); if (admin?.user?.id) return admin; } catch { /* no session */ }
     }
 
     // Fallback if referer doesn't help or we are outside known bounds
-    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    let admin = null;
+    let worker = null;
+    try { admin = await adminAuth(); } catch { /* no admin session */ }
+    try { worker = await workerAuth(); } catch { /* no worker session */ }
     return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
 }
 

@@ -7,7 +7,10 @@ import { revalidatePath } from 'next/cache';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
-    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    let admin = null;
+    let worker = null;
+    try { admin = await adminAuth(); } catch { /* no admin session */ }
+    try { worker = await workerAuth(); } catch { /* no worker session */ }
     return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
 }
 

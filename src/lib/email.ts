@@ -228,3 +228,52 @@ export const sendCourseEnrollmentEmail = async (
         return { success: false, error };
     }
 };
+
+// Send email to admin when a worker exhausts quiz attempts
+export async function sendQuizLockedEmail(
+    adminEmail: string,
+    workerName: string,
+    quizTitle: string,
+    courseName: string,
+    attemptsUsed: number,
+    actionLink: string
+) {
+    const appName = "Theraptly";
+    const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #E53E3E;">⚠️ Action Required: Worker Locked Out of Quiz</h2>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                A worker has exhausted all quiz attempts and requires a retake assignment:
+            </p>
+            <div style="background: #FFF5F5; border-left: 4px solid #E53E3E; border-radius: 8px; padding: 20px; margin: 24px 0;">
+                <p style="margin: 4px 0;"><strong>Worker:</strong> ${workerName}</p>
+                <p style="margin: 4px 0;"><strong>Course:</strong> ${courseName}</p>
+                <p style="margin: 4px 0;"><strong>Quiz:</strong> ${quizTitle}</p>
+                <p style="margin: 4px 0;"><strong>Attempts Used:</strong> ${attemptsUsed}</p>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Please review and assign a retake if appropriate.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${actionLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Assign Retake</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                This is an automated notification from ${appName}.
+            </p>
+        </div>
+    `;
+
+    try {
+        const info = await transporter.sendMail({
+            from: `"${appName}" <${user}>`,
+            to: adminEmail,
+            subject: `Action Required: ${workerName} locked out of quiz - ${appName}`,
+            html,
+        });
+        console.log('Quiz locked email sent: %s', info.messageId);
+        return { success: true };
+    } catch (error) {
+        console.error('Error sending quiz locked email:', error);
+        return { success: false, error };
+    }
+}

@@ -159,6 +159,19 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
                                                     <span className={styles.notifTime}>
                                                         {new Date(notif.createdAt).toLocaleDateString()}
                                                     </span>
+                                                    {notif.type === 'QUIZ_RETRY_LIMIT_REACHED' && (
+                                                        <div style={{ marginTop: '8px' }}>
+                                                            {notif.resolvedAt ? (
+                                                                <span style={{ fontSize: '11px', color: '#059669', backgroundColor: '#D1FAE5', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 }}>
+                                                                    Retake Assigned
+                                                                </span>
+                                                            ) : (
+                                                                <span style={{ fontSize: '11px', color: '#1E40AF', backgroundColor: '#DBEAFE', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 }}>
+                                                                    ➔ Click here to assign retake
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 {!notif.isRead && <div className={styles.unreadDot} />}
                                             </div>

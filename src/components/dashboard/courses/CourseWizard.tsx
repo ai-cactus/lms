@@ -280,6 +280,7 @@ export default function CourseWizard() {
         // 1. Upload & Validate (Storage, Extraction, PHI Scan)
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('rejectOnPHI', 'true');
 
         try {
             // Simulate progress
@@ -287,15 +288,15 @@ export default function CourseWizard() {
 
             const uploadResult = await uploadDocument(null, formData);
 
-            if (uploadResult.error) {
-                throw new Error(uploadResult.error);
-            }
-
             if (uploadResult.phiDetected) {
                 setPhiReason("PHI Detected in document.");
                 setShowPhiError(true);
                 setIsAnalyzing(false);
                 return;
+            }
+
+            if (uploadResult.error) {
+                throw new Error(uploadResult.error);
             }
 
             // Refresh documents list to get the new ID (and potentially select it)

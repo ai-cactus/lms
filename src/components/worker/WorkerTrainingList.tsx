@@ -17,8 +17,9 @@ interface Course {
     category?: string | null;
     status: string;
     progress: number;
-    deadline?: Date | string | null;
     duration?: number;
+    retakeOf?: string | null;
+    enrollmentId?: string;
 }
 
 interface WorkerTrainingListProps {
@@ -50,7 +51,11 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
                         let onClick = () => handleStartClick(course.id);
                         let buttonClass = styles.trainingActionBtn;
 
-                        if (isCompleted) {
+                        if (course.status === 'locked') {
+                            buttonText = 'Locked';
+                            buttonClass = `${styles.trainingActionBtn} ${styles.disabledBtn}`;
+                            onClick = () => {};
+                        } else if (isCompleted) {
                             buttonText = 'View Result';
                             onClick = () => handleViewResultClick(course.id);
                         } else if (isStarted && !isFailed) {
@@ -69,19 +74,29 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
                                         </svg>
                                     </div>
                                     <div className={styles.trainingDetails}>
-                                        <h3 className={styles.trainingTitle}>{course.title}</h3>
+                                        <h3 className={styles.trainingTitle}>
+                                            {course.retakeOf ? <span style={{ color: '#E53E3E', fontWeight: 600, marginRight: 8 }}>Retake:</span> : null}
+                                            {course.title}
+                                        </h3>
                                         <p className={styles.trainingCategory}>{course.category ? formatCategory(course.category) : 'General'}</p>
                                     </div>
                                 </div>
-                                <button
-                                    className={buttonClass}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onClick();
-                                    }}
-                                >
-                                    {buttonText}
-                                </button>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                    <button
+                                        className={buttonClass}
+                                        style={course.status === 'locked' ? { opacity: 0.5, cursor: 'not-allowed', backgroundColor: '#CBD5E1', color: '#475569' } : {}}
+                                        disabled={course.status === 'locked'}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onClick();
+                                        }}
+                                    >
+                                        {buttonText}
+                                    </button>
+                                    {course.status === 'locked' && (
+                                        <span style={{ fontSize: '10px', color: '#EF4444' }}>Waiting for admin retake</span>
+                                    )}
+                                </div>
                             </div>
                         );
                     })

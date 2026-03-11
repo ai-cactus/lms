@@ -24,7 +24,10 @@ function LoginForm() {
     });
     const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
+    const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
+
     const handleMicrosoftLogin = () => {
+        setIsMicrosoftLoading(true);
         signIn('microsoft-entra-id', { callbackUrl: '/dashboard' });
     };
 
@@ -77,7 +80,10 @@ function LoginForm() {
 
     useEffect(() => {
         console.log("[Login Client] Action state changed:", state);
-        if (state?.success) {
+        if (state?.redirect) {
+            // Auto-route to the correct login page for their role
+            router.push(state.redirect);
+        } else if (state?.success) {
             console.log("[Login Client] Success! Redirecting to /dashboard");
             router.push('/dashboard');
         } else if (state?.error) {
@@ -191,7 +197,13 @@ function LoginForm() {
             )}
 
             <div className={styles.socialLogin}>
-                <Button variant="outline" type="button" className={styles.microsoftButton} onClick={handleMicrosoftLogin}>
+                <Button 
+                    variant="outline" 
+                    type="button" 
+                    className={styles.microsoftButton} 
+                    onClick={handleMicrosoftLogin}
+                    loading={isMicrosoftLoading}
+                >
                     <Image
                         src="/icons/microsoft.svg"
                         alt="Microsoft"

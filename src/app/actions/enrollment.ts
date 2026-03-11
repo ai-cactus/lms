@@ -8,7 +8,10 @@ import { createNotification, notifyOrganizationAdmins } from './notifications';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
-    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    let admin = null;
+    let worker = null;
+    try { admin = await adminAuth(); } catch { /* no admin session */ }
+    try { worker = await workerAuth(); } catch { /* no worker session */ }
     return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
 }
 
@@ -138,13 +141,14 @@ export async function enrollUsers(courseId: string, emails: string[]) {
         if (!user) continue;
 
         // Check if already enrolled
-        const existing = await prisma.enrollment.findUnique({
+        const existing = await prisma.enrollment.findFirst({
             where: {
-                userId_courseId: {
-                    userId: user.id,
-                    courseId: courseId,
-                },
+                userId: user.id,
+                courseId: courseId,
             },
+            orderBy: {
+                startedAt: 'desc'
+            }
         });
 
         if (existing) {
@@ -269,13 +273,11 @@ export async function submitQuizAttempt(
     answers: { questionId: string; selectedAnswer: string }[],
     timeTaken?: number
 ) {
-    // Resolve BOTH sessions to handle cookie collision
-    const [admin, worker] = await Promise.all([
-        (await import('@/auth')).auth(),
-        (await import('@/auth.worker')).auth()
-    ]);
-    const adminId = admin?.user?.id;
-    const workerId = worker?.user?.id;
+    // Resolve BOTH sessions — wrap each to prevent one failure from blocking the other
+    let adminId: string | undefined;
+    let workerId: string | undefined;
+    try { const a = await (await import('@/auth')).auth(); adminId = a?.user?.id; } catch { /* no admin session */ }
+    try { const w = await (await import('@/auth.worker')).auth(); workerId = w?.user?.id; } catch { /* no worker session */ }
 
     if (!adminId && !workerId) {
         throw new Error('Unauthorized');
@@ -394,13 +396,11 @@ export async function submitQuizAttempt(
  * Notifies admins and resets the enrollment status.
  */
 export async function requestCourseRetry(enrollmentId: string) {
-    // Resolve BOTH sessions to handle cookie collision
-    const [admin, worker] = await Promise.all([
-        (await import('@/auth')).auth(),
-        (await import('@/auth.worker')).auth()
-    ]);
-    const adminId = admin?.user?.id;
-    const workerId = worker?.user?.id;
+    // Resolve BOTH sessions — wrap each to prevent one failure from blocking the other
+    let adminId: string | undefined;
+    let workerId: string | undefined;
+    try { const a = await (await import('@/auth')).auth(); adminId = a?.user?.id; } catch { /* no admin session */ }
+    try { const w = await (await import('@/auth.worker')).auth(); workerId = w?.user?.id; } catch { /* no worker session */ }
 
     if (!adminId && !workerId) {
         throw new Error('Unauthorized');

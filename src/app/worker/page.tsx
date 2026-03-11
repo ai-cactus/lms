@@ -40,12 +40,14 @@ export default async function LearnerDashboard() {
     // Map to component props
     const courses = allEnrollments.map(e => ({
         id: e.courseId,
+        enrollmentId: e.id,
         title: e.course.title,
         status: e.status,
         progress: e.progress,
         deadline: null,
         duration: e.course.duration || undefined,
-        quizAttempts: e.quizAttempts
+        quizAttempts: e.quizAttempts,
+        retakeOf: e.retakeOf
     }));
 
     // Check if completely empty (onboarding state)

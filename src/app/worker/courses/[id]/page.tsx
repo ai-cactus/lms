@@ -24,12 +24,13 @@ export default async function WorkerCourseDetailsPage(props: PageProps) {
     const course = await getCourseById(params.id);
 
     // Fetch enrollment for this user and course
-    const enrollment = await prisma.enrollment.findUnique({
+    const enrollment = await prisma.enrollment.findFirst({
         where: {
-            userId_courseId: {
-                userId: session.user.id,
-                courseId: params.id
-            }
+            userId: session.user.id,
+            courseId: params.id
+        },
+        orderBy: {
+            startedAt: 'desc'
         },
         include: {
             user: {

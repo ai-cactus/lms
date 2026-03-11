@@ -45,7 +45,12 @@ export async function uploadDocument(prevState: any, formData: FormData) {
         return { error: "Security Check Failed: Unable to scan document for PHI." };
     }
 
+    const rejectOnPHI = formData.get('rejectOnPHI') === 'true';
+
     if (phiResult.hasPHI) {
+        if (rejectOnPHI) {
+            return { error: "PHI Detected in document.", phiDetected: true };
+        }
         // Ideally we block or warn. For now, we save but flag it.
         // return { error: "PHI Detected: " + JSON.stringify(phiResult.findings) }; 
         // Let's proceed but return warning? Actions usually return state.

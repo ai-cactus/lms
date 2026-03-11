@@ -233,7 +233,7 @@ model Enrollment {
   user         User          @relation(fields: [userId], references: [id])
   courseId     String
   course       Course        @relation(fields: [courseId], references: [id])
-  status       String        @default("enrolled") // 'enrolled' | 'in_progress' | 'completed'
+  status       String        @default("enrolled") // 'enrolled' | 'in_progress' | 'completed' | 'attested' | 'locked'
   progress     Int           @default(0) // percentage
   score        Int?
   startedAt            DateTime      @default(now())
@@ -245,7 +245,13 @@ model Enrollment {
   attestationSignature String?
   attestationRole      String?
 
-  @@unique([userId, courseId])
+  // Retake Fields
+  lockedAt             DateTime?     // Set when attempts exhausted
+  retakeOf             String?       // Parent enrollment ID for retake chains
+  retakeReason         String?
+  assignedByAdminId    String?
+
+  @@index([userId, courseId])
 }
 
 model QuizAttempt {
@@ -282,11 +288,12 @@ model Notification {
   id             String   @id @default(uuid())
   userId         String
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type           String   // 'WORKER_JOINED', 'COURSE_ASSIGNED', 'COURSE_PASSED', 'COURSE_FAILED', 'COURSE_RETRY_REQUESTED', 'WELCOME'
+  type           String   // 'WORKER_JOINED', 'COURSE_ASSIGNED', 'COURSE_PASSED', 'COURSE_FAILED', 'COURSE_RETRY_REQUESTED', 'QUIZ_RETRY_LIMIT_REACHED', 'WELCOME'
   title          String
   message        String   @db.Text
   isRead         Boolean  @default(false)
   linkUrl        String?  // Optional link to related content (e.g. course URL or worker profile)
   metadata       Json?    // Any additional data (e.g. courseId, workerId)
+  resolvedAt     DateTime? // For actionable notifications (e.g. retake assigned)
   createdAt      DateTime @default(now())
 }

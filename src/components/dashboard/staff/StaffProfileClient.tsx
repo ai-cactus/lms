@@ -9,6 +9,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import EditStaffModal from './EditStaffModal';
 import AssignUserCourseModal from './AssignUserCourseModal';
+import AssignRetakeModal from '../training/AssignRetakeModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentQuizResult } from '@/app/actions/staff';
 
@@ -37,6 +38,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+    const [retakeEnrollment, setRetakeEnrollment] = useState<{id: string, courseName: string} | null>(null);
     const [viewingResult, setViewingResult] = useState<any>(null);
     const [isLoadingResult, setIsLoadingResult] = useState(false);
 
@@ -249,6 +251,14 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                                             </svg>
                                             Passed
                                         </span>
+                                    ) : enrollment.status === 'locked' ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                                            <span className={`${styles.badge} ${styles.badgeFailed}`} style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                                Locked
+                                            </span>
+                                            <span style={{ fontSize: '10px', color: '#E53E3E' }}>Limit reached</span>
+                                        </div>
                                     ) : (enrollment.status === 'completed' || enrollment.progress === 100) ? (
                                         <span className={`${styles.badge} ${styles.badgeFailed}`}>
                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -277,15 +287,26 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                                     )}
                                 </td>
                                 <td style={{ textAlign: 'right' }}>
-                                    <Button
-                                        variant="outline"
-                                        size="xs"
-                                        onClick={() => handleViewResult(enrollment.id)}
-                                        disabled={isLoadingResult}
-                                        loading={isLoadingResult}
-                                    >
-                                        View
-                                    </Button>
+                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                        {enrollment.status === 'locked' && (
+                                            <Button
+                                                variant="primary"
+                                                size="xs"
+                                                onClick={() => setRetakeEnrollment({ id: enrollment.id, courseName: enrollment.courseName })}
+                                            >
+                                                Retake
+                                            </Button>
+                                        )}
+                                        <Button
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={() => handleViewResult(enrollment.id)}
+                                            disabled={isLoadingResult}
+                                            loading={isLoadingResult}
+                                        >
+                                            View
+                                        </Button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
@@ -327,6 +348,15 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                     // For client-side, we might want to tell Next.js to refresh
                     window.location.reload();
                 }}
+            />
+
+            {/* Assign Retake Modal */}
+            <AssignRetakeModal
+                isOpen={!!retakeEnrollment}
+                onClose={() => setRetakeEnrollment(null)}
+                enrollmentId={retakeEnrollment?.id || ''}
+                courseName={retakeEnrollment?.courseName || ''}
+                userName={user.name}
             />
 
             {/* Quiz Result Modal */}

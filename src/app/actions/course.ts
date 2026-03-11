@@ -8,7 +8,10 @@ import { notifyOrganizationAdmins } from './notifications';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
-    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+    let admin = null;
+    let worker = null;
+    try { admin = await adminAuth(); } catch { /* no admin session */ }
+    try { worker = await workerAuth(); } catch { /* no worker session */ }
     return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
 }
 
@@ -680,10 +683,25 @@ export async function createFullCourse(data: {
 }
 // Attest a course completion
 export async function attestCourse(enrollmentId: string, signature: string, role: string) {
-    // Resolve BOTH sessions to handle cookie collision (admin + worker in same browser)
-    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-    const adminId = admin?.user?.id;
-    const workerId = worker?.user?.id;
+    // Resolve BOTH sessions — wrap each in try-catch to prevent one failure from blocking the other
+    let adminId: string | undefined;
+    let workerId: string | undefined;
+
+    try {
+        const admin = await adminAuth();
+        adminId = admin?.user?.id;
+    } catch (e) {
+        console.log('[attestCourse] adminAuth() threw — no admin session');
+    }
+
+    try {
+        const worker = await workerAuth();
+        workerId = worker?.user?.id;
+    } catch (e) {
+        console.log('[attestCourse] workerAuth() threw — no worker session');
+    }
+
+    console.log(`[attestCourse] adminId=${adminId}, workerId=${workerId}`);
 
     if (!adminId && !workerId) {
         throw new Error('Unauthorized');
@@ -745,10 +763,11 @@ export async function attestCourse(enrollmentId: string, signature: string, role
 
 // Start a course (mark as in_progress)
 export async function startCourse(courseId: string) {
-    // Resolve BOTH sessions to handle cookie collision
-    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-    const adminId = admin?.user?.id;
-    const workerId = worker?.user?.id;
+    // Resolve BOTH sessions — wrap each to prevent one failure from blocking the other
+    let adminId: string | undefined;
+    let workerId: string | undefined;
+    try { const a = await adminAuth(); adminId = a?.user?.id; } catch { /* no admin session */ }
+    try { const w = await workerAuth(); workerId = w?.user?.id; } catch { /* no worker session */ }
 
     if (!adminId && !workerId) {
         throw new Error('Unauthorized');
@@ -876,10 +895,11 @@ export async function updateLessonContent(lessonId: string, content: string, tit
 
 // Retake a quiz (reset status to in_progress)
 export async function retakeQuiz(enrollmentId: string) {
-    // Resolve BOTH sessions to handle cookie collision
-    const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-    const adminId = admin?.user?.id;
-    const workerId = worker?.user?.id;
+    // Resolve BOTH sessions — wrap each to prevent one failure from blocking the other
+    let adminId: string | undefined;
+    let workerId: string | undefined;
+    try { const a = await adminAuth(); adminId = a?.user?.id; } catch { /* no admin session */ }
+    try { const w = await workerAuth(); workerId = w?.user?.id; } catch { /* no worker session */ }
 
     if (!adminId && !workerId) {
         throw new Error('Unauthorized');
@@ -935,4 +955,88 @@ export async function retakeQuiz(enrollmentId: string) {
 
     revalidatePath(`/learn/${enrollment.courseId}`);
     return { success: true };
+}
+
+// Assign a retake for a locked enrollment (admin only)
+export async function assignRetake(enrollmentId: string, retakeReason?: string) {
+    // Only admins can assign retakes
+    let adminId: string | undefined;
+    try { const a = await adminAuth(); adminId = a?.user?.id; } catch { /* no admin session */ }
+
+    if (!adminId) {
+        throw new Error('Unauthorized — only admins can assign retakes');
+    }
+
+    // Verify admin role
+    const adminUser = await prisma.user.findUnique({
+        where: { id: adminId },
+        select: { role: true }
+    });
+    if (!adminUser || !['admin', 'superadmin', 'organization_admin'].includes(adminUser.role)) {
+        throw new Error('Insufficient permissions');
+    }
+
+    // Get the locked enrollment
+    const lockedEnrollment = await prisma.enrollment.findUnique({
+        where: { id: enrollmentId },
+        include: {
+            user: { include: { profile: true } },
+            course: true
+        }
+    });
+
+    if (!lockedEnrollment) {
+        throw new Error('Enrollment not found');
+    }
+
+    if (lockedEnrollment.status !== 'locked') {
+        throw new Error('Enrollment is not locked — cannot assign retake');
+    }
+
+    // Create a NEW enrollment for the retake
+    const retakeEnrollment = await prisma.enrollment.create({
+        data: {
+            userId: lockedEnrollment.userId,
+            courseId: lockedEnrollment.courseId,
+            status: 'enrolled',
+            progress: 100, // They already completed lessons; only quiz needs retake
+            retakeOf: lockedEnrollment.id,
+            retakeReason: retakeReason || null,
+            assignedByAdminId: adminId,
+        }
+    });
+
+    // Resolve any open QUIZ_RETRY_LIMIT_REACHED notifications for this enrollment
+    await prisma.notification.updateMany({
+        where: {
+            type: 'QUIZ_RETRY_LIMIT_REACHED',
+            resolvedAt: null,
+            metadata: { path: ['enrollmentId'], equals: enrollmentId }
+        },
+        data: {
+            resolvedAt: new Date(),
+            isRead: true,
+        }
+    });
+
+    // Notify the worker that a retake has been assigned
+    const { createNotification } = await import('./notifications');
+    await createNotification({
+        userId: lockedEnrollment.userId,
+        type: 'RETAKE_ASSIGNED',
+        title: 'Retake Assigned',
+        message: `An admin has assigned you a retake for "${lockedEnrollment.course.title}". You can now take the quiz again.`,
+        linkUrl: `/learn/${lockedEnrollment.courseId}`,
+        metadata: {
+            enrollmentId: retakeEnrollment.id,
+            courseId: lockedEnrollment.courseId,
+            parentEnrollmentId: lockedEnrollment.id,
+        }
+    });
+
+    revalidatePath('/dashboard/staff');
+    revalidatePath('/worker/trainings');
+    revalidatePath(`/learn/${lockedEnrollment.courseId}`);
+
+    return { success: true, retakeEnrollmentId: retakeEnrollment.id };
 }

@@ -120,9 +120,9 @@ export async function completeOnboarding(data: any) {
                 }
             }
 
-            // Process Step 5 Invites (Workers)
-            if (step5?.workerEmails && Array.isArray(step5.workerEmails)) {
-                for (const email of step5.workerEmails) {
+            // Process Step 4 CSV Invites (Workers)
+            if (step4?.workerEmails && Array.isArray(step4.workerEmails)) {
+                for (const email of step4.workerEmails) {
                     if (email) {
                         await queueInvite(email, 'worker');
                     }

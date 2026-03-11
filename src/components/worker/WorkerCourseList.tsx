@@ -15,6 +15,8 @@ interface Course {
     deadline?: Date | string | null;
     duration?: number;
     quizAttempts?: any[];
+    retakeOf?: string | null;
+    enrollmentId?: string;
 }
 
 interface WorkerCourseListProps {
@@ -55,6 +57,18 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
                 Failed
             </span>;
+        }
+
+        if (status === 'locked') {
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span className={`${styles.statusBadge} ${styles.statusFailed}`} style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                        Locked
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#EF4444' }}>Max attempts reached</span>
+                </div>
+            );
         }
 
         // Default to In Progress or Assigned
@@ -131,9 +145,15 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                                 const isCompleted = course.status === 'completed' || course.status === 'attested';
                                 const isFailed = course.status === 'failed';
                                 const isStarted = course.progress > 0;
-
                                 return (
-                                    <tr key={course.id} onClick={() => isCompleted ? handleViewResultClick(course.id) : handleStartClick(course.id)} style={{ cursor: 'pointer' }}>
+                                    <tr 
+                                        key={course.id + '-' + course.enrollmentId} 
+                                        onClick={() => {
+                                            if (course.status === 'locked') return;
+                                            isCompleted ? handleViewResultClick(course.id) : handleStartClick(course.id);
+                                        }} 
+                                        style={{ cursor: course.status === 'locked' ? 'not-allowed' : 'pointer', opacity: course.status === 'locked' ? 0.7 : 1 }}
+                                    >
                                         <td>
                                             <div className={styles.courseInfo}>
                                                 <div className={styles.courseIconSmall}>
@@ -141,7 +161,10 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                                                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                                                     </svg>
                                                 </div>
-                                                <span className={styles.courseTitleSmall}>{course.title}</span>
+                                                <span className={styles.courseTitleSmall}>
+                                                    {course.retakeOf ? <span style={{ color: '#E53E3E', fontWeight: 600, marginRight: 8 }}>Retake:</span> : null}
+                                                    {course.title}
+                                                </span>
                                             </div>
                                         </td>
                                         <td>
