@@ -4,397 +4,462 @@ import React, { useState } from 'react';
 import styles from '../CourseWizard.module.css';
 import { generateSingleQuestion } from '@/app/actions/quiz-ai';
 import { Button } from '@/components/ui';
+import { QuizQuestion } from '@/types/quiz';
+import { CourseWizardData } from '@/types/course';
 
-interface QuizQuestion {
-    question: string;
-    options: string[];
-    answer: number;
-    type?: string;
-    // v3.1 fields
-    archetype?: string;
-    difficulty?: string;
-    explanation?: {
-        correctExplanation: string;
-        incorrectOptions: Record<string, string>;
-    };
-    evidence?: {
-        moduleSectionId: string;
-        moduleSectionHeading: string;
-    };
-    moduleTitle?: string;
-    qualityFlags?: string[];
-}
+// QuizQuestion is now imported from '@/types/quiz'
 
 interface Step6QuizReviewProps {
-    data: any;
-    quiz?: QuizQuestion[];
-    courseId?: string;
-    rawContext?: string;
-    onQuizUpdate: (quiz: QuizQuestion[]) => void;
+  data: CourseWizardData;
+  quiz?: QuizQuestion[];
+  courseId?: string;
+  rawContext?: string;
+  onQuizUpdate: (quiz: QuizQuestion[]) => void;
 }
 
 const ARCHETYPE_COLORS: Record<string, { bg: string; color: string }> = {
-    'best-next-action': { bg: '#EBF8FF', color: '#2B6CB0' },
-    'identify-noncompliance': { bg: '#FED7D7', color: '#C53030' },
-    'sequence': { bg: '#FEFCBF', color: '#975A16' },
-    'escalation': { bg: '#FED7E2', color: '#97266D' },
-    'modality-check': { bg: '#E9D8FD', color: '#6B46C1' },
+  'best-next-action': { bg: '#EBF8FF', color: '#2B6CB0' },
+  'identify-noncompliance': { bg: '#FED7D7', color: '#C53030' },
+  sequence: { bg: '#FEFCBF', color: '#975A16' },
+  escalation: { bg: '#FED7E2', color: '#97266D' },
+  'modality-check': { bg: '#E9D8FD', color: '#6B46C1' },
 };
 
-export default function Step6QuizReview({ data, quiz, courseId, rawContext, onQuizUpdate }: Step6QuizReviewProps) {
-    const questions = quiz || [];
-    const [isAdding, setIsAdding] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [editingIndex, setEditingIndex] = useState<number | null>(null);
-    const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
-    const [expandedExplanation, setExpandedExplanation] = useState<number | null>(null);
+export default function Step6QuizReview({
+  data,
+  quiz,
+  courseId,
+  rawContext,
+  onQuizUpdate,
+}: Step6QuizReviewProps) {
+  const questions = quiz || [];
+  const [isAdding, setIsAdding] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
+  const [expandedExplanation, setExpandedExplanation] = useState<number | null>(null);
 
-    const [newQuestion, setNewQuestion] = useState<QuizQuestion>({
-        question: '',
-        options: ['', '', '', ''],
-        answer: 0,
-        type: 'multiple_choice'
-    });
+  const [newQuestion, setNewQuestion] = useState<QuizQuestion>({
+    question: '',
+    options: ['', '', '', ''],
+    answer: 0,
+    type: 'multiple_choice',
+  });
 
-    const handleAddQuestion = () => {
-        if (!newQuestion.question.trim() || newQuestion.options.some(o => !o.trim())) {
-            alert("Please fill in all fields.");
-            return;
-        }
-        const updatedQuiz = [...questions, newQuestion];
-        onQuizUpdate(updatedQuiz);
-        setIsAdding(false);
-        setNewQuestion({ question: '', options: ['', '', '', ''], answer: 0, type: 'multiple_choice' });
-    };
+  const handleAddQuestion = () => {
+    if (!newQuestion.question.trim() || newQuestion.options.some((o) => !o.trim())) {
+      alert('Please fill in all fields.');
+      return;
+    }
+    const updatedQuiz = [...questions, newQuestion];
+    onQuizUpdate(updatedQuiz);
+    setIsAdding(false);
+    setNewQuestion({ question: '', options: ['', '', '', ''], answer: 0, type: 'multiple_choice' });
+  };
 
-    const updateOption = (index: number, value: string) => {
-        const newOptions = [...newQuestion.options];
-        newOptions[index] = value;
-        setNewQuestion({ ...newQuestion, options: newOptions });
-    };
+  const updateOption = (index: number, value: string) => {
+    const newOptions = [...newQuestion.options];
+    newOptions[index] = value;
+    setNewQuestion({ ...newQuestion, options: newOptions });
+  };
 
-    const handleGenerateQuestion = async () => {
-        // Find courseId from data if not passed directly
-        const targetCourseId = courseId || (data?.course?.id);
-        const context = rawContext || data?.rawArticleMarkdown || data?.description || '';
+  const handleGenerateQuestion = async () => {
+    // Find courseId from data if not passed directly
+    const targetCourseId = courseId;
+    const context = rawContext || data?.description || '';
 
-        if (!targetCourseId && !context) {
-            alert('Cannot generate a question right now. Not enough course context available.');
-            return;
-        }
+    if (!targetCourseId && !context) {
+      alert('Cannot generate a question right now. Not enough course context available.');
+      return;
+    }
 
-        try {
-            setIsGenerating(true);
-            const res = await generateSingleQuestion({ courseId: targetCourseId, context });
-            if (res.success && res.question) {
-                setNewQuestion({
-                    question: res.question.question,
-                    options: res.question.options,
-                    answer: res.question.answer,
-                    type: res.question.type
-                });
-            } else {
-                alert(res.error || 'Failed to generate question with AI.');
-            }
-        } catch (error) {
-            console.error('Failed to call AI generation:', error);
-            alert('An unexpected error occurred.');
-        } finally {
-            setIsGenerating(false);
-        }
-    };
+    try {
+      setIsGenerating(true);
+      const res = await generateSingleQuestion({ courseId: targetCourseId, context });
+      if (res.success && res.question) {
+        setNewQuestion({
+          question: res.question.question,
+          options: res.question.options,
+          answer: res.question.answer,
+          type: res.question.type,
+        });
+      } else {
+        alert(res.error || 'Failed to generate question with AI.');
+      }
+    } catch (error) {
+      console.error('Failed to call AI generation:', error);
+      alert('An unexpected error occurred.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
-    // Count archetypes for summary
-    const archetypeCounts: Record<string, number> = {};
-    questions.forEach(q => {
-        if (q.archetype) {
-            archetypeCounts[q.archetype] = (archetypeCounts[q.archetype] || 0) + 1;
-        }
-    });
+  // Count archetypes for summary
+  const archetypeCounts: Record<string, number> = {};
+  questions.forEach((q) => {
+    if (q.archetype) {
+      archetypeCounts[q.archetype] = (archetypeCounts[q.archetype] || 0) + 1;
+    }
+  });
 
-    return (
-        <div className={`${styles.stepWrapper} ${styles.stepWrapperFlex}`}>
-            <h2 className={styles.stepTitle}>Review Quiz Questions</h2>
-            <p className={styles.stepSubtitle}>
-                Review the quiz questions generated by AI or add your own.
-            </p>
+  return (
+    <div className={`${styles.stepWrapper} ${styles.stepWrapperFlex}`}>
+      <h2 className={styles.stepTitle}>Review Quiz Questions</h2>
+      <p className={styles.stepSubtitle}>
+        Review the quiz questions generated by AI or add your own.
+      </p>
 
-            <div className={styles.quizReviewContainer}>
-                {/* Header Row */}
-                <div className={styles.quizHeaderRow}>
-                    <div className={styles.quizHeaderLeft}>
-                        <div className={styles.quizSectionTitle}>Editable quiz questions</div>
-                        <div className={styles.quizSubtitle}>{questions.length} Questions Generated</div>
-                    </div>
-                </div>
-
-
-
-                {/* Flat Question List */}
-                <div className={styles.questionListWrapper}>
-                    {questions.length === 0 ? (
-                        <div className={styles.emptyState}>
-                            No questions available. Add one below.
-                        </div>
-                    ) : (
-                        questions.map((q, index) => {
-                            const isEditing = editingIndex === index;
-                            if (isEditing && editingQuestion) {
-                                return (
-                                    <div key={index} className={styles.questionCard}>
-                                        <h4 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Edit Question {index + 1}</h4>
-                                        <div className={styles.formGroup}>
-                                            <label>Question Type</label>
-                                            <select
-                                                className={styles.typeSelect}
-                                                value={editingQuestion.type}
-                                                onChange={(e) => {
-                                                    const type = e.target.value;
-                                                    setEditingQuestion({
-                                                        ...editingQuestion,
-                                                        type,
-                                                        options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
-                                                        answer: 0
-                                                    });
-                                                }}
-                                            >
-                                                <option value="multiple_choice">Multiple Choice</option>
-                                                <option value="true_false">True / False</option>
-                                            </select>
-                                        </div>
-
-                                        <div className={styles.formGroup}>
-                                            <label>Question Text</label>
-                                            <input
-                                                type="text"
-                                                className={styles.formInput}
-                                                value={editingQuestion.question}
-                                                onChange={(e) => setEditingQuestion({ ...editingQuestion, question: e.target.value })}
-                                            />
-                                        </div>
-
-                                        <div className={styles.formGroup}>
-                                            <label>Options (Select correct answer)</label>
-                                            <div className={styles.optionsGrid}>
-                                                {editingQuestion.options.map((opt, i) => (
-                                                    <div key={i} className={styles.optionInputRow}>
-                                                        <input
-                                                            type="radio"
-                                                            name={`editCorrectAnswer-${index}`}
-                                                            checked={editingQuestion.answer === i}
-                                                            onChange={() => setEditingQuestion({ ...editingQuestion, answer: i })}
-                                                        />
-                                                        <input
-                                                            type="text"
-                                                            className={styles.formInput}
-                                                            value={opt}
-                                                            onChange={(e) => {
-                                                                const newOptions = [...editingQuestion.options];
-                                                                newOptions[i] = e.target.value;
-                                                                setEditingQuestion({ ...editingQuestion, options: newOptions });
-                                                            }}
-                                                            disabled={editingQuestion.type === 'true_false'}
-                                                        />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className={styles.formActions}>
-                                            <Button variant="ghost" size="sm" onClick={() => { setEditingIndex(null); setEditingQuestion(null); }}>Cancel</Button>
-                                            <Button variant="primary" size="sm" onClick={() => {
-                                                if (!editingQuestion.question.trim() || editingQuestion.options.some(o => !o.trim())) {
-                                                    alert("Please fill in all fields.");
-                                                    return;
-                                                }
-                                                const updatedQuiz = [...questions];
-                                                updatedQuiz[index] = editingQuestion;
-                                                onQuizUpdate(updatedQuiz);
-                                                setEditingIndex(null);
-                                                setEditingQuestion(null);
-                                            }}>Save Changes</Button>
-                                        </div>
-                                    </div>
-                                );
-                            }
-
-                            const archetypeColors = q.archetype ? ARCHETYPE_COLORS[q.archetype] : null;
-
-                            return (
-                                <div key={index} className={styles.questionCard}>
-                                    <div className={styles.questionHeader}>
-                                        <div className={styles.questionText}>
-                                            <span style={{ fontWeight: 'bold', marginRight: 8 }}>{index + 1}.</span>
-                                            {q.question}
-
-                                        </div>
-                                        <div style={{ display: 'flex', gap: 6 }}>
-                                            {/* Explanation toggle (v3.1) */}
-                                            {q.explanation && (
-                                                <Button
-                                                    variant="outline"
-                                                    size="xs"
-                                                    onClick={() => setExpandedExplanation(expandedExplanation === index ? null : index)}
-                                                    style={{ color: expandedExplanation === index ? '#4C6EF5' : '#718096' }}
-                                                >
-                                                    {expandedExplanation === index ? 'Hide' : 'Why?'}
-                                                </Button>
-                                            )}
-                                            <Button
-                                                variant="outline"
-                                                size="xs"
-                                                onClick={() => {
-                                                    setEditingIndex(index);
-                                                    setEditingQuestion(q);
-                                                }}
-                                            >
-                                                Edit
-                                            </Button>
-                                        </div>
-                                    </div>
-                                    <div className={styles.optionList}>
-                                        {q.options.map((opt, optIndex) => (
-                                            <div key={optIndex} className={styles.optionItem}>
-                                                <div
-                                                    className={`${styles.radioCircle} ${q.answer === optIndex ? styles.radioSelected : ''}`}
-                                                />
-                                                {opt}
-                                                {q.answer === optIndex && <span style={{ marginLeft: 8, fontSize: 12, color: '#48BB78', fontWeight: 600 }}>(Correct)</span>}
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    {/* Embedded Explanation (v3.1) */}
-                                    {expandedExplanation === index && q.explanation && (
-                                        <div style={{
-                                            marginTop: '12px',
-                                            padding: '12px 16px',
-                                            background: '#F7FAFC',
-                                            borderRadius: '8px',
-                                            border: '1px solid #E2E8F0',
-                                            fontSize: '13px',
-                                            lineHeight: '1.6',
-                                        }}>
-                                            <div style={{ fontWeight: 600, color: '#38A169', marginBottom: 6, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                                                <span>✓</span>
-                                                <span style={{}}>Correct: {q.explanation.correctExplanation}</span>
-                                            </div>
-                                            {q.explanation.incorrectOptions && Object.entries(q.explanation.incorrectOptions).map(([key, text]) => (
-                                                <div key={key} style={{ color: '#E53E3E', marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                                                    <span>✕</span>
-                                                    <span>Option {String.fromCharCode(65 + parseInt(key))}: {text}</span>
-                                                </div>
-                                            ))}
-                                            {q.evidence?.moduleSectionHeading && (
-                                                <div style={{ color: '#A0AEC0', marginTop: 8, fontSize: 11 }}>
-                                                    Source: {q.evidence.moduleSectionHeading}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-
-                {/* Add Question Section */}
-                {!isAdding ? (
-                    <Button variant="outline" size="md" onClick={() => setIsAdding(true)} fullWidth>
-                        + Add New Question
-                    </Button>
-                ) : (
-                    <div className={styles.addQuestionForm}>
-                        <h3 className={styles.formTitle}>Add New Question</h3>
-
-                        <div className={styles.formGroup}>
-                            <label>Question Type</label>
-                            <select
-                                className={styles.typeSelect}
-                                value={newQuestion.type}
-                                onChange={(e) => {
-                                    const type = e.target.value;
-                                    setNewQuestion({
-                                        ...newQuestion,
-                                        type,
-                                        options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
-                                        answer: 0
-                                    });
-                                }}
-                            >
-                                <option value="multiple_choice">Multiple Choice</option>
-                                <option value="true_false">True / False</option>
-                            </select>
-                        </div>
-
-                        <div className={styles.formGroup}>
-                            <label>Question Text</label>
-                            <input
-                                type="text"
-                                className={styles.formInput}
-                                placeholder="Enter your question here..."
-                                value={newQuestion.question}
-                                onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })}
-                            />
-                        </div>
-
-                        <div className={styles.formGroup}>
-                            <label>Options (Select correct answer)</label>
-                            <div className={styles.optionsGrid}>
-                                {newQuestion.options.map((opt, i) => (
-                                    <div key={i} className={styles.optionInputRow}>
-                                        <input
-                                            type="radio"
-                                            name="correctAnswer"
-                                            checked={newQuestion.answer === i}
-                                            onChange={() => setNewQuestion({ ...newQuestion, answer: i })}
-                                        />
-                                        <input
-                                            type="text"
-                                            className={styles.formInput}
-                                            value={opt}
-                                            onChange={(e) => updateOption(i, e.target.value)}
-                                            placeholder={`Option ${i + 1}`}
-                                            disabled={newQuestion.type === 'true_false'}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className={styles.formActions} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <Button
-                                    variant="outline"
-                                    size="md"
-                                    onClick={(e) => { e.preventDefault(); handleGenerateQuestion(); }}
-                                    disabled={isGenerating}
-                                >
-                                    {isGenerating ? 'Generating...' : (
-                                        <>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px' }}>
-                                                <path d="M12 2v4"></path>
-                                                <path d="M12 18v4"></path>
-                                                <path d="M4.93 4.93l2.83 2.83"></path>
-                                                <path d="M16.24 16.24l2.83 2.83"></path>
-                                                <path d="M2 12h4"></path>
-                                                <path d="M18 12h4"></path>
-                                                <path d="M4.93 19.07l2.83-2.83"></path>
-                                                <path d="M16.24 7.76l2.83-2.83"></path>
-                                            </svg>
-                                            Generate with AI
-                                        </>
-                                    )}
-                                </Button>
-                            </div>
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                <Button variant="ghost" size="md" onClick={() => setIsAdding(false)}>Cancel</Button>
-                                <Button variant="primary" size="md" onClick={handleAddQuestion}>Save Question</Button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
+      <div className={styles.quizReviewContainer}>
+        {/* Header Row */}
+        <div className={styles.quizHeaderRow}>
+          <div className={styles.quizHeaderLeft}>
+            <div className={styles.quizSectionTitle}>Editable quiz questions</div>
+            <div className={styles.quizSubtitle}>{questions.length} Questions Generated</div>
+          </div>
         </div>
-    );
+
+        {/* Flat Question List */}
+        <div className={styles.questionListWrapper}>
+          {questions.length === 0 ? (
+            <div className={styles.emptyState}>No questions available. Add one below.</div>
+          ) : (
+            questions.map((q, index) => {
+              const isEditing = editingIndex === index;
+              if (isEditing && editingQuestion) {
+                return (
+                  <div key={index} className={styles.questionCard}>
+                    <h4 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>
+                      Edit Question {index + 1}
+                    </h4>
+                    <div className={styles.formGroup}>
+                      <label>Question Type</label>
+                      <select
+                        className={styles.typeSelect}
+                        value={editingQuestion.type}
+                        onChange={(e) => {
+                          const type = e.target.value;
+                          setEditingQuestion({
+                            ...editingQuestion,
+                            type,
+                            options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
+                            answer: 0,
+                          });
+                        }}
+                      >
+                        <option value="multiple_choice">Multiple Choice</option>
+                        <option value="true_false">True / False</option>
+                      </select>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label>Question Text</label>
+                      <input
+                        type="text"
+                        className={styles.formInput}
+                        value={editingQuestion.question}
+                        onChange={(e) =>
+                          setEditingQuestion({ ...editingQuestion, question: e.target.value })
+                        }
+                      />
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label>Options (Select correct answer)</label>
+                      <div className={styles.optionsGrid}>
+                        {editingQuestion.options.map((opt, i) => (
+                          <div key={i} className={styles.optionInputRow}>
+                            <input
+                              type="radio"
+                              name={`editCorrectAnswer-${index}`}
+                              checked={editingQuestion.answer === i}
+                              onChange={() => setEditingQuestion({ ...editingQuestion, answer: i })}
+                            />
+                            <input
+                              type="text"
+                              className={styles.formInput}
+                              value={opt}
+                              onChange={(e) => {
+                                const newOptions = [...editingQuestion.options];
+                                newOptions[i] = e.target.value;
+                                setEditingQuestion({ ...editingQuestion, options: newOptions });
+                              }}
+                              disabled={editingQuestion.type === 'true_false'}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className={styles.formActions}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditingIndex(null);
+                          setEditingQuestion(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => {
+                          if (
+                            !editingQuestion.question.trim() ||
+                            editingQuestion.options.some((o) => !o.trim())
+                          ) {
+                            alert('Please fill in all fields.');
+                            return;
+                          }
+                          const updatedQuiz = [...questions];
+                          updatedQuiz[index] = editingQuestion;
+                          onQuizUpdate(updatedQuiz);
+                          setEditingIndex(null);
+                          setEditingQuestion(null);
+                        }}
+                      >
+                        Save Changes
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+
+              const archetypeColors = q.archetype ? ARCHETYPE_COLORS[q.archetype] : null;
+
+              return (
+                <div key={index} className={styles.questionCard}>
+                  <div className={styles.questionHeader}>
+                    <div className={styles.questionText}>
+                      <span style={{ fontWeight: 'bold', marginRight: 8 }}>{index + 1}.</span>
+                      {q.question}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {/* Explanation toggle (v3.1) */}
+                      {q.explanation && (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          onClick={() =>
+                            setExpandedExplanation(expandedExplanation === index ? null : index)
+                          }
+                          style={{ color: expandedExplanation === index ? '#4C6EF5' : '#718096' }}
+                        >
+                          {expandedExplanation === index ? 'Hide' : 'Why?'}
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => {
+                          setEditingIndex(index);
+                          setEditingQuestion(q);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
+                  <div className={styles.optionList}>
+                    {q.options.map((opt, optIndex) => (
+                      <div key={optIndex} className={styles.optionItem}>
+                        <div
+                          className={`${styles.radioCircle} ${q.answer === optIndex ? styles.radioSelected : ''}`}
+                        />
+                        {opt}
+                        {q.answer === optIndex && (
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              fontSize: 12,
+                              color: '#48BB78',
+                              fontWeight: 600,
+                            }}
+                          >
+                            (Correct)
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Embedded Explanation (v3.1) */}
+                  {expandedExplanation === index && q.explanation && (
+                    <div
+                      style={{
+                        marginTop: '12px',
+                        padding: '12px 16px',
+                        background: '#F7FAFC',
+                        borderRadius: '8px',
+                        border: '1px solid #E2E8F0',
+                        fontSize: '13px',
+                        lineHeight: '1.6',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          color: '#38A169',
+                          marginBottom: 6,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '6px',
+                        }}
+                      >
+                        <span>✓</span>
+                        <span style={{}}>Correct: {q.explanation.correctExplanation}</span>
+                      </div>
+                      {q.explanation.incorrectOptions &&
+                        Object.entries(q.explanation.incorrectOptions).map(([key, text]) => (
+                          <div
+                            key={key}
+                            style={{
+                              color: '#E53E3E',
+                              marginTop: 8,
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '6px',
+                            }}
+                          >
+                            <span>✕</span>
+                            <span>
+                              Option {String.fromCharCode(65 + parseInt(key))}: {text}
+                            </span>
+                          </div>
+                        ))}
+                      {q.evidence?.moduleSectionHeading && (
+                        <div style={{ color: '#A0AEC0', marginTop: 8, fontSize: 11 }}>
+                          Source: {q.evidence.moduleSectionHeading}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Add Question Section */}
+        {!isAdding ? (
+          <Button variant="outline" size="md" onClick={() => setIsAdding(true)} fullWidth>
+            + Add New Question
+          </Button>
+        ) : (
+          <div className={styles.addQuestionForm}>
+            <h3 className={styles.formTitle}>Add New Question</h3>
+
+            <div className={styles.formGroup}>
+              <label>Question Type</label>
+              <select
+                className={styles.typeSelect}
+                value={newQuestion.type}
+                onChange={(e) => {
+                  const type = e.target.value;
+                  setNewQuestion({
+                    ...newQuestion,
+                    type,
+                    options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
+                    answer: 0,
+                  });
+                }}
+              >
+                <option value="multiple_choice">Multiple Choice</option>
+                <option value="true_false">True / False</option>
+              </select>
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>Question Text</label>
+              <input
+                type="text"
+                className={styles.formInput}
+                placeholder="Enter your question here..."
+                value={newQuestion.question}
+                onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })}
+              />
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>Options (Select correct answer)</label>
+              <div className={styles.optionsGrid}>
+                {newQuestion.options.map((opt, i) => (
+                  <div key={i} className={styles.optionInputRow}>
+                    <input
+                      type="radio"
+                      name="correctAnswer"
+                      checked={newQuestion.answer === i}
+                      onChange={() => setNewQuestion({ ...newQuestion, answer: i })}
+                    />
+                    <input
+                      type="text"
+                      className={styles.formInput}
+                      value={opt}
+                      onChange={(e) => updateOption(i, e.target.value)}
+                      placeholder={`Option ${i + 1}`}
+                      disabled={newQuestion.type === 'true_false'}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div
+              className={styles.formActions}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <div>
+                <Button
+                  variant="outline"
+                  size="md"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleGenerateQuestion();
+                  }}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? (
+                    'Generating...'
+                  ) : (
+                    <>
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ marginRight: '8px' }}
+                      >
+                        <path d="M12 2v4"></path>
+                        <path d="M12 18v4"></path>
+                        <path d="M4.93 4.93l2.83 2.83"></path>
+                        <path d="M16.24 16.24l2.83 2.83"></path>
+                        <path d="M2 12h4"></path>
+                        <path d="M18 12h4"></path>
+                        <path d="M4.93 19.07l2.83-2.83"></path>
+                        <path d="M16.24 7.76l2.83-2.83"></path>
+                      </svg>
+                      Generate with AI
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <Button variant="ghost" size="md" onClick={() => setIsAdding(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" size="md" onClick={handleAddQuestion}>
+                  Save Question
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

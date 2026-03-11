@@ -1,40 +1,40 @@
-import { NextRequest, NextResponse } from "next/server";
-import { decode, JWT } from "next-auth/jwt";
+import { NextRequest, NextResponse } from 'next/server';
+import { decode, JWT } from 'next-auth/jwt';
 
 // ✅ All route rules live in one config object — easy to audit and extend
 const ROUTE_CONFIG = {
   worker: {
-    cookiePrefix: "worker",
-    requiredRole: "worker",
-    loginPath: "/login-worker",
+    cookiePrefix: 'worker',
+    requiredRole: 'worker',
+    loginPath: '/login-worker',
     // All paths that belong to the worker context
-    paths: ["/worker", "/onboarding-worker", "/login-worker", "/api/auth-worker"],
+    paths: ['/worker', '/onboarding-worker', '/login-worker', '/api/auth-worker'],
     // Where a worker lands if they have no org yet
-    onboardingPath: "/onboarding-worker",
-    homePath: "/worker",
+    onboardingPath: '/onboarding-worker',
+    homePath: '/worker',
   },
   admin: {
-    cookiePrefix: "admin",
-    requiredRole: "admin",
-    loginPath: "/login",
-    paths: ["/dashboard", "/onboarding", "/login", "/api/auth"],
-    homePath: "/dashboard",
+    cookiePrefix: 'admin',
+    requiredRole: 'admin',
+    loginPath: '/login',
+    paths: ['/dashboard', '/onboarding', '/login', '/api/auth'],
+    homePath: '/dashboard',
   },
 } as const;
 
-function getContext(pathname: string): "worker" | "admin" | null {
-  if (ROUTE_CONFIG.worker.paths.some((p) => pathname.startsWith(p))) return "worker";
-  if (ROUTE_CONFIG.admin.paths.some((p) => pathname.startsWith(p))) return "admin";
+function getContext(pathname: string): 'worker' | 'admin' | null {
+  if (ROUTE_CONFIG.worker.paths.some((p) => pathname.startsWith(p))) return 'worker';
+  if (ROUTE_CONFIG.admin.paths.some((p) => pathname.startsWith(p))) return 'admin';
   return null; // Public route — skip auth
 }
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  let context = getContext(pathname);
+  const context = getContext(pathname);
 
   // NextAuth API routes handle their own session parsing and JSON responses.
   // We MUST NOT intercept them to return HTML redirects!
-  if (pathname.startsWith("/api/auth")) {
+  if (pathname.startsWith('/api/auth')) {
     return NextResponse.next();
   }
 
@@ -43,10 +43,12 @@ export async function middleware(req: NextRequest) {
 
   const cfg = ROUTE_CONFIG[context];
   const secret = process.env.AUTH_SECRET!;
-  const useSecureCookies = process.env.NODE_ENV === "production";
+  const useSecureCookies = process.env.NODE_ENV === 'production';
 
-  const cookieName = `${useSecureCookies ? "__Secure-" : ""}${cfg.cookiePrefix}.session-token`;
-  const rawToken = req.cookies.get(cookieName)?.value || req.cookies.get(`${cfg.cookiePrefix}.session-token`)?.value;
+  const cookieName = `${useSecureCookies ? '__Secure-' : ''}${cfg.cookiePrefix}.session-token`;
+  const rawToken =
+    req.cookies.get(cookieName)?.value ||
+    req.cookies.get(`${cfg.cookiePrefix}.session-token`)?.value;
 
   console.log(`[Middleware] Target Auth: ${context}`);
   console.log(`[Middleware] Searching for cookie: ${cookieName}. Found token? ${!!rawToken}`);
@@ -85,7 +87,7 @@ export async function middleware(req: NextRequest) {
 
   // Worker-specific: force onboarding if no org
   if (
-    context === "worker" &&
+    context === 'worker' &&
     !token.organizationId &&
     pathname !== ROUTE_CONFIG.worker.onboardingPath
   ) {
@@ -94,7 +96,7 @@ export async function middleware(req: NextRequest) {
 
   // Worker with org trying to hit onboarding — send home
   if (
-    context === "worker" &&
+    context === 'worker' &&
     token.organizationId &&
     pathname === ROUTE_CONFIG.worker.onboardingPath
   ) {
@@ -110,13 +112,13 @@ export async function middleware(req: NextRequest) {
 export const config = {
   // ✅ Explicitly list all protected segments — no catch-all regex surprises
   matcher: [
-    "/dashboard/:path*",
-    "/onboarding/:path*",
-    "/worker/:path*",
-    "/onboarding-worker/:path*",
-    "/login",
-    "/login-worker",
-    "/api/auth/:path*",
-    "/api/auth-worker/:path*",
+    '/dashboard/:path*',
+    '/onboarding/:path*',
+    '/worker/:path*',
+    '/onboarding-worker/:path*',
+    '/login',
+    '/login-worker',
+    '/api/auth/:path*',
+    '/api/auth-worker/:path*',
   ],
 };

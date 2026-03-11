@@ -9,318 +9,337 @@ import Link from 'next/link';
 import OrganizationForm from './OrganizationForm';
 
 interface ProfileData {
-    id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    role: 'admin' | 'worker';
-    company_name?: string;
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: 'admin' | 'worker';
+  company_name?: string;
 }
 
 interface OrganizationData {
-    id: string;
-    name: string;
-    dba?: string | null;
-    ein?: string | null;
-    staffCount?: string | null;
-    primaryContact?: string | null;
-    primaryEmail?: string | null;
-    phone?: string | null;
-    address?: string | null;
-    country?: string | null;
-    state?: string | null;
-    zipCode?: string | null;
-    city?: string | null;
-    licenseNumber?: string | null;
-    isHipaaCompliant?: boolean;
+  id: string;
+  name: string;
+  dba?: string | null;
+  ein?: string | null;
+  staffCount?: string | null;
+  primaryContact?: string | null;
+  primaryEmail?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  country?: string | null;
+  state?: string | null;
+  zipCode?: string | null;
+  city?: string | null;
+  licenseNumber?: string | null;
+  isHipaaCompliant?: boolean;
 }
 
 interface ProfileFormProps {
-    initialData: ProfileData;
-    organizationData?: OrganizationData | null;
+  initialData: ProfileData;
+  organizationData?: OrganizationData | null;
 }
 
 export default function ProfileForm({ initialData, organizationData }: ProfileFormProps) {
-    const [activeTab, setActiveTab] = useState<'profile' | 'organization'>('profile');
-    const [baseData, setBaseData] = useState(initialData);
-    const [formData, setFormData] = useState(initialData);
-    const [isLoading, setIsLoading] = useState(false);
-    const [showConfirm, setShowConfirm] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-    const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'profile' | 'organization'>('profile');
+  const [baseData, setBaseData] = useState(initialData);
+  const [formData, setFormData] = useState(initialData);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const router = useRouter();
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-    React.useEffect(() => {
-        setFormData(initialData);
-        setBaseData(initialData);
-    }, [initialData]);
+  React.useEffect(() => {
+    setFormData(initialData);
+    setBaseData(initialData);
+  }, [initialData]);
 
-    React.useEffect(() => {
-        if (message) {
-            const timer = setTimeout(() => {
-                setMessage(null);
-            }, 10000);
-            return () => clearTimeout(timer);
-        }
-    }, [message]);
-
-    const isDirty =
-        formData.first_name !== baseData.first_name ||
-        formData.last_name !== baseData.last_name ||
-        formData.role !== baseData.role ||
-        (formData.company_name || '') !== (baseData.company_name || '');
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+  React.useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => {
         setMessage(null);
-        setShowConfirm(true);
-    };
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
 
-    const handleConfirmSave = async () => {
-        setShowConfirm(false);
-        setIsLoading(true);
+  const isDirty =
+    formData.first_name !== baseData.first_name ||
+    formData.last_name !== baseData.last_name ||
+    formData.role !== baseData.role ||
+    (formData.company_name || '') !== (baseData.company_name || '');
 
-        try {
-            const result = await updateProfile({
-                first_name: formData.first_name,
-                last_name: formData.last_name,
-                company_name: formData.company_name
-            });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage(null);
+    setShowConfirm(true);
+  };
 
-            if (!result.success) throw new Error(result.error);
+  const handleConfirmSave = async () => {
+    setShowConfirm(false);
+    setIsLoading(true);
 
-            setMessage({ type: 'success', text: 'Profile updated successfully' });
-            setBaseData(formData);
-            router.refresh();
-        } catch (error: any) {
-            setMessage({ type: 'error', text: error.message || 'Failed to update profile' });
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    try {
+      const result = await updateProfile({
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        company_name: formData.company_name,
+      });
 
-    const validateEmail = (email: string) => {
-        return String(email)
-            .toLowerCase()
-            .match(
-                /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
-            );
-    };
+      if (!result.success) throw new Error(result.error);
 
-    const isValid =
-        formData.first_name?.trim() !== '' &&
-        formData.last_name?.trim() !== '' &&
-        formData.first_name?.trim() !== '' &&
-        formData.last_name?.trim() !== '';
-    // Email is read-only, so we won't block saving if it's missing/invalid from the DB side,
-    // though it ideally should be there.
+      setMessage({ type: 'success', text: 'Profile updated successfully' });
+      setBaseData(formData);
+      router.refresh();
+    } catch (error: unknown) {
+      const err = error as Error;
+      setMessage({ type: 'error', text: err.message || 'Failed to update profile' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const isAdmin = initialData.role === 'admin';
+  const validateEmail = (email: string) => {
+    return String(email)
+      .toLowerCase()
+      .match(
+        /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
+      );
+  };
 
-    return (
-        <div className={styles.container}>
-            <div className={styles.header}>
-                <Link href="/dashboard" className={styles.backLink}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="19" y1="12" x2="5" y2="12"></line>
-                        <polyline points="12 19 5 12 12 5"></polyline>
-                    </svg>
-                    Back to dashboard
-                </Link>
-            </div>
+  const isValid =
+    formData.first_name?.trim() !== '' &&
+    formData.last_name?.trim() !== '' &&
+    formData.first_name?.trim() !== '' &&
+    formData.last_name?.trim() !== '';
+  // Email is read-only, so we won't block saving if it's missing/invalid from the DB side,
+  // though it ideally should be there.
 
-            <div className={styles.card}>
-                <div className={styles.tabs}>
-                    <button
-                        className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
-                        onClick={() => setActiveTab('profile')}
-                    >
-                        EDIT PROFILE
-                    </button>
-                    <button
-                        className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
-                        onClick={() => setActiveTab('organization')}
-                    >
-                        YOUR ORGANIZATION
-                    </button>
-                </div>
+  const isAdmin = initialData.role === 'admin';
 
-                {activeTab === 'profile' ? (
-                    <div className={styles.profileWrapper}>
-                        <div className={styles.avatarSection}>
-                            <div className={styles.avatarLarge}>
-                                {formData.first_name ? formData.first_name[0] : 'U'}
-                                <Button variant="primary" size="icon-sm" className={styles.editAvatarButton}>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M12 20h9"></path>
-                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                                    </svg>
-                                </Button>
-                            </div>
-                        </div>
+  return (
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <Link href="/dashboard" className={styles.backLink}>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Back to dashboard
+        </Link>
+      </div>
 
-                        <form onSubmit={handleSubmit} className={styles.form}>
-                            <div className={styles.formGrid}>
-                                <div className={styles.fieldGroup}>
-                                    <label className={styles.label}>First Name</label>
-                                    <Input
-                                        name="first_name"
-                                        value={formData.first_name}
-                                        onChange={handleChange}
-                                        placeholder="Jane"
-                                        error={!formData.first_name.trim() ? 'First name is required' : undefined}
-                                    />
-                                </div>
-                                <div className={styles.fieldGroup}>
-                                    <label className={styles.label}>Last Name</label>
-                                    <Input
-                                        name="last_name"
-                                        value={formData.last_name}
-                                        onChange={handleChange}
-                                        placeholder="Doe"
-                                        error={!formData.last_name.trim() ? 'Last name is required' : undefined}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className={styles.fieldGroup}>
-                                <label className={styles.label}>Company</label>
-                                <Input
-                                    name="company_name"
-                                    value={organizationData?.name || formData.company_name || ''}
-                                    onChange={isAdmin ? handleChange : undefined}
-                                    disabled={!isAdmin}
-                                    className={!isAdmin ? styles.readOnlyInput : undefined}
-                                    placeholder="Your company name"
-                                />
-                            </div>
-
-                            <div className={styles.fieldGroup}>
-                                <label className={styles.label}>Email Address</label>
-                                <Input
-                                    name="email"
-                                    value={formData.email}
-                                    disabled
-                                    className={styles.readOnlyInput}
-                                />
-                            </div>
-
-                            {/* Role Field - Read-only for everyone as per user request */}
-                            <div className={styles.fieldGroup}>
-                                <label className={styles.label}>Role</label>
-                                <Input
-                                    value={formData.role === 'admin' ? 'Compliance Professional (Admin)' : 'Worker'}
-                                    disabled
-                                    className={styles.readOnlyInput}
-                                />
-                            </div>
-
-                            {/* State & Zip Code */}
-                            <div className={styles.formGrid}>
-                                <div className={styles.fieldGroup}>
-                                    <label className={styles.label}>State</label>
-                                    <Input
-                                        value={organizationData?.state || ''}
-                                        disabled
-                                        className={styles.readOnlyInput}
-                                        placeholder="Your state"
-                                    />
-                                </div>
-                                <div className={styles.fieldGroup}>
-                                    <label className={styles.label}>Zip Code</label>
-                                    <Input
-                                        value={organizationData?.zipCode || ''}
-                                        disabled
-                                        className={styles.readOnlyInput}
-                                        placeholder="Your zip code"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Business Address */}
-                            <div className={styles.fieldGroup}>
-                                <label className={styles.label}>Business Address</label>
-                                <Input
-                                    value={organizationData?.address || ''}
-                                    disabled
-                                    className={styles.readOnlyInput}
-                                    placeholder="Your business address"
-                                />
-                            </div>
-
-                            {message && (
-                                <div className={`${styles.message} ${styles[message.type]}`}>
-                                    {message.text}
-                                </div>
-                            )}
-
-                            {isDirty && (
-                                <div className={styles.actions}>
-                                    <Button
-                                        variant="outline"
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            setFormData({ ...baseData });
-                                        }}
-                                        className={styles.discardButton}
-                                    >
-                                        Discard
-                                    </Button>
-                                    <Button
-                                        variant="primary"
-                                        type="submit"
-                                        disabled={!isValid || isLoading}
-                                        className={styles.saveButton}
-                                    >
-                                        {isLoading ? 'Saving...' : 'Save Changes'}
-                                    </Button>
-                                </div>
-                            )}
-                        </form>
-                    </div>
-                ) : (
-                    <OrganizationForm
-                        initialData={organizationData || null}
-                        isAdmin={isAdmin}
-                    />
-                )}
-            </div>
-
-            {/* Confirmation Modal */}
-            <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)}>
-                <div className={styles.modalContent}>
-                    <div className={styles.modalIcon}>
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                    </div>
-                    <h3 className={styles.modalTitle}>Confirm profile update</h3>
-                    <p className={styles.modalText}>
-                        Are you sure you want to make these changes to your profile?
-                    </p>
-                    <div className={styles.modalActions}>
-                        <Button
-                            variant="secondary"
-                            onClick={() => setShowConfirm(false)}
-                            className={styles.modalCancel}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="primary"
-                            onClick={handleConfirmSave}
-                            className={styles.modalConfirm}
-                        >
-                            Confirm
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
+      <div className={styles.card}>
+        <div className={styles.tabs}>
+          <button
+            className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('profile')}
+          >
+            EDIT PROFILE
+          </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('organization')}
+          >
+            YOUR ORGANIZATION
+          </button>
         </div>
-    );
+
+        {activeTab === 'profile' ? (
+          <div className={styles.profileWrapper}>
+            <div className={styles.avatarSection}>
+              <div className={styles.avatarLarge}>
+                {formData.first_name ? formData.first_name[0] : 'U'}
+                <Button variant="primary" size="icon-sm" className={styles.editAvatarButton}>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                  </svg>
+                </Button>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className={styles.form}>
+              <div className={styles.formGrid}>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>First Name</label>
+                  <Input
+                    name="first_name"
+                    value={formData.first_name}
+                    onChange={handleChange}
+                    placeholder="Jane"
+                    error={!formData.first_name.trim() ? 'First name is required' : undefined}
+                  />
+                </div>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>Last Name</label>
+                  <Input
+                    name="last_name"
+                    value={formData.last_name}
+                    onChange={handleChange}
+                    placeholder="Doe"
+                    error={!formData.last_name.trim() ? 'Last name is required' : undefined}
+                  />
+                </div>
+              </div>
+
+              <div className={styles.fieldGroup}>
+                <label className={styles.label}>Company</label>
+                <Input
+                  name="company_name"
+                  value={organizationData?.name || formData.company_name || ''}
+                  onChange={isAdmin ? handleChange : undefined}
+                  disabled={!isAdmin}
+                  className={!isAdmin ? styles.readOnlyInput : undefined}
+                  placeholder="Your company name"
+                />
+              </div>
+
+              <div className={styles.fieldGroup}>
+                <label className={styles.label}>Email Address</label>
+                <Input
+                  name="email"
+                  value={formData.email}
+                  disabled
+                  className={styles.readOnlyInput}
+                />
+              </div>
+
+              {/* Role Field - Read-only for everyone as per user request */}
+              <div className={styles.fieldGroup}>
+                <label className={styles.label}>Role</label>
+                <Input
+                  value={formData.role === 'admin' ? 'Compliance Professional (Admin)' : 'Worker'}
+                  disabled
+                  className={styles.readOnlyInput}
+                />
+              </div>
+
+              {/* State & Zip Code */}
+              <div className={styles.formGrid}>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>State</label>
+                  <Input
+                    value={organizationData?.state || ''}
+                    disabled
+                    className={styles.readOnlyInput}
+                    placeholder="Your state"
+                  />
+                </div>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>Zip Code</label>
+                  <Input
+                    value={organizationData?.zipCode || ''}
+                    disabled
+                    className={styles.readOnlyInput}
+                    placeholder="Your zip code"
+                  />
+                </div>
+              </div>
+
+              {/* Business Address */}
+              <div className={styles.fieldGroup}>
+                <label className={styles.label}>Business Address</label>
+                <Input
+                  value={organizationData?.address || ''}
+                  disabled
+                  className={styles.readOnlyInput}
+                  placeholder="Your business address"
+                />
+              </div>
+
+              {message && (
+                <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>
+              )}
+
+              {isDirty && (
+                <div className={styles.actions}>
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setFormData({ ...baseData });
+                    }}
+                    className={styles.discardButton}
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    disabled={!isValid || isLoading}
+                    className={styles.saveButton}
+                  >
+                    {isLoading ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              )}
+            </form>
+          </div>
+        ) : (
+          <OrganizationForm initialData={organizationData || null} isAdmin={isAdmin} />
+        )}
+      </div>
+
+      {/* Confirmation Modal */}
+      <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)}>
+        <div className={styles.modalContent}>
+          <div className={styles.modalIcon}>
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <h3 className={styles.modalTitle}>Confirm profile update</h3>
+          <p className={styles.modalText}>
+            Are you sure you want to make these changes to your profile?
+          </p>
+          <div className={styles.modalActions}>
+            <Button
+              variant="secondary"
+              onClick={() => setShowConfirm(false)}
+              className={styles.modalCancel}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleConfirmSave} className={styles.modalConfirm}>
+              Confirm
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
 }
