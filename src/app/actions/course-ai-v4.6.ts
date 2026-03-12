@@ -307,7 +307,7 @@ export async function generateCourseAndQuizV46(
     return { error: 'Missing course data' };
   }
 
-  const data: CourseDataV46 = JSON.parse(rawData);
+  JSON.parse(rawData); // Validate format early
   const file = formData.get('file') as File | null;
   const documentId = formData.get('documentId') as string | null;
 
@@ -437,7 +437,6 @@ async function processBackgroundV46(
 
     let slidesJson: SlidesV46 | null = null;
     let quizJson: QuizV46 | null = null;
-    let rawSlidesJson = '';
     let rawQuizJson = '';
 
     // Run B and C in parallel
@@ -483,7 +482,6 @@ async function processBackgroundV46(
 
     if (slidesResult.status === 'fulfilled' && slidesResult.value) {
       slidesJson = slidesResult.value.slidesJson;
-      rawSlidesJson = slidesResult.value.raw;
     } else {
       console.error('[v4.6 Background] Stage B (Slides) failed completely');
     }
@@ -523,7 +521,6 @@ async function processBackgroundV46(
               difficulty,
             );
             quizJson = patchQuiz(quizJson, regenQuestions);
-            rawQuizJson = JSON.stringify(quizJson);
             console.log(
               `[v4.6 Background] Stage E: patched ${regenQuestions.length} questions for job ${jobId}`,
             );

@@ -70,7 +70,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         activeUserId = adminSession.user.id;
         activeRole = adminSession.user.role;
         enrollment = adminEnroll;
-        session = adminSession;
       }
     }
 

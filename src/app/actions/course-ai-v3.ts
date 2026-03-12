@@ -139,7 +139,7 @@ export async function generateCourseAndQuizV3(
     return { error: 'Missing course data' };
   }
 
-  const data: CourseDataV3 = JSON.parse(rawData);
+  JSON.parse(rawData); // Validate format early
   const file = formData.get('file') as File | null;
   const documentId = formData.get('documentId') as string | null;
 
