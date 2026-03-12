@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-// Get base URL for redirects (use APP_URL for Cloudflare Tunnel)
 const getBaseUrl = () => {
     return process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://staging-lms.theraptly.com';
 };
 
+// GET request now just redirects to the frontend verify page
 export async function GET(request: NextRequest) {
     const token = request.nextUrl.searchParams.get('token');
     const baseUrl = getBaseUrl();
@@ -14,7 +14,20 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(`${baseUrl}/verify-email?error=missing_token`);
     }
 
+    // Redirect to the new frontend page that handles the POST
+    return NextResponse.redirect(`${baseUrl}/verify?token=${token}`);
+}
+
+// POST request actually performs the verification (prevents email scanner auto-clicks from consuming the token)
+export async function POST(request: NextRequest) {
     try {
+        const body = await request.json();
+        const { token } = body;
+
+        if (!token) {
+            return NextResponse.json({ success: false, error: 'missing_token' }, { status: 400 });
+        }
+
         // Find the verification token with pending user data
         const verificationToken = await prisma.verificationToken.findFirst({
             where: {
@@ -25,16 +38,16 @@ export async function GET(request: NextRequest) {
         });
 
         if (!verificationToken) {
-            return NextResponse.redirect(`${baseUrl}/verify-email?error=invalid_or_expired`);
+            return NextResponse.json({ success: false, error: 'invalid_or_expired' }, { status: 400 });
         }
 
-        // Check if user already exists (shouldn't happen, but just in case)
+        // Check if user already exists
         const existingUser = await prisma.user.findUnique({
             where: { email: verificationToken.identifier }
         });
 
         if (existingUser) {
-            // User already exists, just delete token and redirect
+            // User already exists, just delete token and return success
             await prisma.verificationToken.delete({
                 where: {
                     identifier_token: {
@@ -43,19 +56,19 @@ export async function GET(request: NextRequest) {
                     }
                 }
             });
-            return NextResponse.redirect(`${baseUrl}/login?verified=true`);
+            return NextResponse.json({ success: true, role: existingUser.role });
         }
 
         // Create the user and profile from pending data
         if (!verificationToken.password || !verificationToken.firstName || !verificationToken.lastName) {
-            return NextResponse.redirect(`${baseUrl}/verify-email?error=invalid_data`);
+            return NextResponse.json({ success: false, error: 'invalid_data' }, { status: 400 });
         }
 
         // Default to 'worker' if role not set
         const userRole = verificationToken.role || 'worker';
 
         await prisma.$transaction(async (tx) => {
-            // Create the user with selected role
+            // Create the user
             const user = await tx.user.create({
                 data: {
                     email: verificationToken.identifier,
@@ -87,11 +100,10 @@ export async function GET(request: NextRequest) {
             });
         });
 
-        // Redirect to login with success message
-        return NextResponse.redirect(`${baseUrl}/login?verified=true`);
+        return NextResponse.json({ success: true, role: userRole });
 
     } catch (error) {
-        console.error('Verification error:', error);
-        return NextResponse.redirect(`${baseUrl}/verify-email?error=server_error`);
+        console.error('Verification POST error:', error);
+        return NextResponse.json({ success: false, error: 'server_error' }, { status: 500 });
     }
 }

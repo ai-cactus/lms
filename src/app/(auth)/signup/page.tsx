@@ -25,9 +25,12 @@ export default function SignupPage() {
     agreeTerms: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
+  const [isFormLoading, setIsFormLoading] = useState(false);
 
   const handleMicrosoftSignup = () => {
-    // Calling signIn will route through create-auth-instance.ts logic
+    setIsMicrosoftLoading(true);
+    // Calling signIn will route through create-auth-instance.ts logic 
     // which creates new users if they don't exist
     signIn('microsoft-entra-id', { callbackUrl: '/signup/role-selection' });
   };
@@ -86,7 +89,6 @@ export default function SignupPage() {
     if (!validateForm()) return;
     setErrors({});
 
-    // Construct FormData manually
     // Store form data in sessionStorage for role selection page
     sessionStorage.setItem(
       'pendingSignup',
@@ -99,6 +101,7 @@ export default function SignupPage() {
     );
 
     // Redirect to role selection
+    setIsFormLoading(true);
     router.push('/signup/role-selection');
   };
 
@@ -131,9 +134,16 @@ export default function SignupPage() {
               type="button"
               className={styles.microsoftButton}
               onClick={handleMicrosoftSignup}
+              disabled={isMicrosoftLoading}
             >
-              <Image src="/icons/microsoft.svg" alt="Microsoft" width={20} height={20} />
-              <span>Sign up with Microsoft</span>
+              {isMicrosoftLoading ? (
+                <span>Loading...</span>
+              ) : (
+                <>
+                  <Image src="/icons/microsoft.svg" alt="Microsoft" width={20} height={20} />
+                  <span>Sign up with Microsoft</span>
+                </>
+              )}
             </button>
           </div>
 
@@ -221,7 +231,7 @@ export default function SignupPage() {
               {errors.agreeTerms && <span className={styles.error}>{errors.agreeTerms}</span>}
             </div>
 
-            <Button type="submit" size="lg" fullWidth loading={isPending}>
+            <Button type="submit" size="lg" fullWidth loading={isFormLoading || isPending}>
               Create Account
             </Button>
           </form>

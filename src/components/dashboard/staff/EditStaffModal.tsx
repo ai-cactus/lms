@@ -111,19 +111,7 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
                     />
                 </div>
 
-                <div>
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: '#4A5568' }}>
-                        Role
-                    </label>
-                    <Select
-                        value={role}
-                        onChange={(val) => setRole(val)}
-                        options={[
-                            { label: 'Worker', value: 'worker' },
-                            { label: 'Admin', value: 'admin' }
-                        ]}
-                    />
-                </div>
+
 
                 <div>
                     <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: '#4A5568' }}>

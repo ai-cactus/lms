@@ -24,7 +24,6 @@ export async function uploadDocument(
   }
 
   // 1. Calculate Hash & Check Duplicates (Conceptually)
-  // For MVP, we just proceed.
   const buffer = Buffer.from(await file.arrayBuffer());
   const hash = await calculateHash(buffer);
 
@@ -53,15 +52,13 @@ export async function uploadDocument(
     return { error: 'Security Check Failed: Unable to scan document for PHI.' };
   }
 
-  if (phiResult.hasPHI) {
-    // Ideally we block or warn. For now, we save but flag it.
-    // return { error: "PHI Detected: " + JSON.stringify(phiResult.findings) };
-    // Let's proceed but return warning? Actions usually return state.
-    // I'll assume we proceed but save the report.
+  const rejectOnPHI = formData.get('rejectOnPHI') === 'true';
+  if (phiResult.hasPHI && rejectOnPHI) {
+    return { error: 'PHI Detected in document.', phiDetected: true };
   }
 
   try {
-    // 3. Save File
+    // 4. Save File
     const storagePath = await saveFile(file);
 
     await prisma.$transaction(async (tx) => {

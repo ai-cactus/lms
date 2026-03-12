@@ -176,11 +176,8 @@ export async function completeOnboarding(data: OnboardingData) {
     });
 
     // 4. Send Emails (Outside Transaction logic, but initiated here)
-    // We do this non-blocking or await it? Await to confirm success.
     console.log(`[completeOnboarding] Sending ${result.invitesToSend.length} emails...`);
 
-    // We won't block the UI for emails, but we trigger them.
-    // In a real queue system we'd push a job. Here we just loop.
     Promise.allSettled(
       result.invitesToSend.map((invite) =>
         sendInviteEmail(

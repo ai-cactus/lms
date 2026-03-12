@@ -1,0 +1,443 @@
+
+> lms2@0.1.0 dev
+> next dev
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.128.0.2:3000
+- Environments: .env
+- Experiments (use with caution):
+  · serverActions
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 11.6s
+[31m[auth][error][0m UnknownAction: Cannot parse action at /api/auth/test-time. Read more at https://errors.authjs.dev#unknownaction
+    at parseActionAndProviderId (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1177:202)
+    at toInternalRequest (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1115:40)
+    at Auth (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:5325:212)
+    at httpHandler (/home/homepc/lms2/.next/dev/server/chunks/[root-of-the-server]__e5671859._.js:4342:198)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:59:14)
+    at AppRouteRouteModule.do (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37945)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47941
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:185:36
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NoopTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18093)
+    at ProxyTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18854)
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:103
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NextTracerImpl.trace (/home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:28)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47780
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45275
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45232
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at AppRouteRouteModule.handle (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45186)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+ GET /api/auth/test-time 400 in 7.1s (compile: 6.4s, proxy.ts: 287ms, render: 391ms)
+[31m[auth][error][0m UnknownAction: Cannot parse action at /api/auth/test-time. Read more at https://errors.authjs.dev#unknownaction
+    at parseActionAndProviderId (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1177:202)
+    at toInternalRequest (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1115:40)
+    at Auth (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:5325:212)
+    at httpHandler (/home/homepc/lms2/.next/dev/server/chunks/[root-of-the-server]__e5671859._.js:4342:198)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:59:14)
+    at AppRouteRouteModule.do (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37945)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47941
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:185:36
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NoopTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18093)
+    at ProxyTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18854)
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:103
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NextTracerImpl.trace (/home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:28)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47780
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45275
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45232
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at AppRouteRouteModule.handle (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45186)
+ GET /api/auth/test-time 400 in 369ms (compile: 230ms, proxy.ts: 69ms, render: 71ms)
+[31m[auth][error][0m UnknownAction: Cannot parse action at /api/auth/test-time. Read more at https://errors.authjs.dev#unknownaction
+    at parseActionAndProviderId (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1177:202)
+    at toInternalRequest (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1115:40)
+    at Auth (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:5325:212)
+    at httpHandler (/home/homepc/lms2/.next/dev/server/chunks/[root-of-the-server]__e5671859._.js:4342:198)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:59:14)
+    at AppRouteRouteModule.do (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37945)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47941
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:185:36
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NoopTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18093)
+    at ProxyTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18854)
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:103
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NextTracerImpl.trace (/home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:28)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47780
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45275
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45232
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at AppRouteRouteModule.handle (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45186)
+ GET /api/auth/test-time 400 in 366ms (compile: 198ms, proxy.ts: 20ms, render: 148ms)
+[31m[auth][error][0m UnknownAction: Cannot parse action at /api/auth/test-time. Read more at https://errors.authjs.dev#unknownaction
+    at parseActionAndProviderId (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1177:202)
+    at toInternalRequest (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1115:40)
+    at Auth (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:5325:212)
+    at httpHandler (/home/homepc/lms2/.next/dev/server/chunks/[root-of-the-server]__e5671859._.js:4342:198)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:59:14)
+    at AppRouteRouteModule.do (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37945)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47941
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:185:36
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NoopTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18093)
+    at ProxyTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18854)
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:103
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NextTracerImpl.trace (/home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:28)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47780
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45275
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45232
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at AppRouteRouteModule.handle (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45186)
+ GET /api/auth/test-time 400 in 267ms (compile: 109ms, proxy.ts: 93ms, render: 65ms)
+[31m[auth][error][0m UnknownAction: Cannot parse action at /api/auth/test-time. Read more at https://errors.authjs.dev#unknownaction
+    at parseActionAndProviderId (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1177:202)
+    at toInternalRequest (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1115:40)
+    at Auth (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:5325:212)
+    at httpHandler (/home/homepc/lms2/.next/dev/server/chunks/[root-of-the-server]__e5671859._.js:4342:198)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:59:14)
+    at AppRouteRouteModule.do (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37945)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47941
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:185:36
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NoopTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18093)
+    at ProxyTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18854)
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:103
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NextTracerImpl.trace (/home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:28)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47780
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45275
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45232
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at AppRouteRouteModule.handle (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45186)
+ GET /api/auth/test-time 400 in 195ms (compile: 93ms, proxy.ts: 10ms, render: 93ms)
+[31m[auth][error][0m UnknownAction: Cannot parse action at /api/auth/test-time. Read more at https://errors.authjs.dev#unknownaction
+    at parseActionAndProviderId (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1177:202)
+    at toInternalRequest (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:1115:40)
+    at Auth (/home/homepc/lms2/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:5325:212)
+    at httpHandler (/home/homepc/lms2/.next/dev/server/chunks/[root-of-the-server]__e5671859._.js:4342:198)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:59:14)
+    at AppRouteRouteModule.do (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37945)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47941
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:185:36
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NoopTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18093)
+    at ProxyTracer.startActiveSpan (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18854)
+    at /home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:103
+    at NoopContextManager.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/homepc/lms2/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NextTracerImpl.trace (/home/homepc/lms2/node_modules/next/dist/server/lib/trace/tracer.js:154:28)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47780
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45275
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at /home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45232
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at AppRouteRouteModule.handle (/home/homepc/lms2/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45186)
+ GET /api/auth/test-time 400 in 125ms (compile: 39ms, proxy.ts: 52ms, render: 34ms)
+Persisting failed: Failed to compact database
+
+Caused by:
+    0: Failed to deserialize used key hashes AMQF from 00011802.meta
+    1: incompatible version
+
+thread 'tokio-runtime-worker' (1084542) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_type (TaskId 827564))
+
+Caused by:
+    0: Looking up data for TaskId 827564 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'tokio-runtime-worker' (1084542) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for read_dir (TaskId 60))
+
+Caused by:
+    0: Looking up data for TaskId 60 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (1086068) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 439223))
+
+Caused by:
+    0: Looking up data for TaskId 439223 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+-----
+[1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to /tmp/next-panic-5151c26021e97c39218b2a7d0f20ba27.log.
+
+To help make Turbopack better, report this error by ]8;;https://github.com/vercel/next.js/discussions/new?category=turbopack-error-report&title=Turbopack%20Error%3A%20Failed%20to%20restore%20task%20data%20%28corrupted%20database%20or%20bug%29%3A%20Data%20for%20get_written_endpoint_with_issues_operation%20%28TaskId%20439223%29%29&body=Turbopack%20version%3A%20%600c06f068%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0AFailed%20to%20restore%20task%20data%20%28corrupted%20database%20or%20bug%29%3A%20Data%20for%20get_written_endpoint_with_issues_operation%20%28TaskId%20439223%29%29%0A%0ADebug%20info%3A%0A-%20Failed%20to%20restore%20task%20data%20%28corrupted%20database%20or%20bug%29%3A%20Data%20for%20get_written_endpoint_with_issues_operation%20%28TaskId%20439223%29%29%0A%20%20%0A%20%20Caused%20by%3A%0A%20%20%20%20%20%200%3A%20Looking%20up%20data%20for%20TaskId%20439223%20from%20database%20failed%0A%20%20%20%20%20%201%3A%20Failed%20to%20deserialize%20AMQF%20from%2000011809.meta%20for%2000011804.sst%0A%20%20%20%20%20%202%3A%20UnexpectedEnd%20%7B%20additional%3A%20864%20%7D%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace\clicking here.]8;;\
+-----
+
+
+thread 'tokio-runtime-worker' (1084542) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Caused by:
+    0: Looking up data for TaskId 566997 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+thread '<unnamed>' (1084342) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_source_map_rope_operation (TaskId 884485))
+
+Caused by:
+    0: Looking up data for TaskId 884485 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+⨯ Error [TurbopackInternalError]: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Debug info:
+- Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+  
+  Caused by:
+      0: Looking up data for TaskId 566997 from database failed
+      1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+      2: UnexpectedEnd { additional: 864 }
+    at <unknown> (TurbopackInternalError: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))) {
+  location: '/build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17'
+}
+
+thread 'tokio-runtime-worker' (1084542) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Caused by:
+    0: Looking up data for TaskId 566997 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+thread '<unnamed>' (1084342) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_source_map_rope_operation (TaskId 884486))
+
+Caused by:
+    0: Looking up data for TaskId 884486 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+Error [TurbopackInternalError]: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 439223))
+
+Debug info:
+- Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 439223))
+  
+  Caused by:
+      0: Looking up data for TaskId 439223 from database failed
+      1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+      2: UnexpectedEnd { additional: 864 }
+    at <unknown> (TurbopackInternalError: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 439223))) {
+  location: '/build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17'
+}
+
+thread 'tokio-runtime-worker' (1084542) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Caused by:
+    0: Looking up data for TaskId 566997 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+thread '<unnamed>' (1084342) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_source_map_rope_operation (TaskId 884485))
+
+Caused by:
+    0: Looking up data for TaskId 884485 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+⨯ Error [TurbopackInternalError]: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Debug info:
+- Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+  
+  Caused by:
+      0: Looking up data for TaskId 566997 from database failed
+      1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+      2: UnexpectedEnd { additional: 864 }
+    at <unknown> (TurbopackInternalError: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))) {
+  location: '/build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17'
+}
+
+thread 'tokio-runtime-worker' (1084542) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Caused by:
+    0: Looking up data for TaskId 566997 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+thread '<unnamed>' (1084342) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_source_map_rope_operation (TaskId 884485))
+
+Caused by:
+    0: Looking up data for TaskId 884485 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+Error [TurbopackInternalError]: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Debug info:
+- Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+  
+  Caused by:
+      0: Looking up data for TaskId 566997 from database failed
+      1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+      2: UnexpectedEnd { additional: 864 }
+    at <unknown> (TurbopackInternalError: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))) {
+  location: '/build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17'
+}
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (1084542) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 439223))
+
+Caused by:
+    0: Looking up data for TaskId 439223 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+-----
+[1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to /tmp/next-panic-5151c26021e97c39218b2a7d0f20ba27.log.
+
+To help make Turbopack better, report this error by ]8;;https://github.com/vercel/next.js/discussions/new?category=turbopack-error-report&title=Turbopack%20Error%3A%20Failed%20to%20restore%20task%20data%20%28corrupted%20database%20or%20bug%29%3A%20Data%20for%20get_written_endpoint_with_issues_operation%20%28TaskId%20439223%29%29&body=Turbopack%20version%3A%20%600c06f068%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0AFailed%20to%20restore%20task%20data%20%28corrupted%20database%20or%20bug%29%3A%20Data%20for%20get_written_endpoint_with_issues_operation%20%28TaskId%20439223%29%29%0A%0ADebug%20info%3A%0A-%20Failed%20to%20restore%20task%20data%20%28corrupted%20database%20or%20bug%29%3A%20Data%20for%20get_written_endpoint_with_issues_operation%20%28TaskId%20439223%29%29%0A%20%20%0A%20%20Caused%20by%3A%0A%20%20%20%20%20%200%3A%20Looking%20up%20data%20for%20TaskId%20439223%20from%20database%20failed%0A%20%20%20%20%20%201%3A%20Failed%20to%20deserialize%20AMQF%20from%2000011809.meta%20for%2000011804.sst%0A%20%20%20%20%20%202%3A%20UnexpectedEnd%20%7B%20additional%3A%20864%20%7D%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace\clicking here.]8;;\
+-----
+
+
+thread 'tokio-runtime-worker' (1086068) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Caused by:
+    0: Looking up data for TaskId 566997 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+thread '<unnamed>' (1084342) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_source_map_rope_operation (TaskId 884485))
+
+Caused by:
+    0: Looking up data for TaskId 884485 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+⨯ Error [TurbopackInternalError]: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Debug info:
+- Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+  
+  Caused by:
+      0: Looking up data for TaskId 566997 from database failed
+      1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+      2: UnexpectedEnd { additional: 864 }
+    at <unknown> (TurbopackInternalError: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))) {
+  location: '/build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17'
+}
+
+thread 'tokio-runtime-worker' (1086068) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Caused by:
+    0: Looking up data for TaskId 566997 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+thread '<unnamed>' (1084342) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_source_map_rope_operation (TaskId 884486))
+
+Caused by:
+    0: Looking up data for TaskId 884486 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+Error [TurbopackInternalError]: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 439223))
+
+Debug info:
+- Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 439223))
+  
+  Caused by:
+      0: Looking up data for TaskId 439223 from database failed
+      1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+      2: UnexpectedEnd { additional: 864 }
+    at <unknown> (TurbopackInternalError: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 439223))) {
+  location: '/build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17'
+}
+
+thread 'tokio-runtime-worker' (1086068) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Caused by:
+    0: Looking up data for TaskId 566997 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+thread '<unnamed>' (1084342) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_source_map_rope_operation (TaskId 884485))
+
+Caused by:
+    0: Looking up data for TaskId 884485 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+⨯ Error [TurbopackInternalError]: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Debug info:
+- Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+  
+  Caused by:
+      0: Looking up data for TaskId 566997 from database failed
+      1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+      2: UnexpectedEnd { additional: 864 }
+    at <unknown> (TurbopackInternalError: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))) {
+  location: '/build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17'
+}
+
+thread 'tokio-runtime-worker' (1086068) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Caused by:
+    0: Looking up data for TaskId 566997 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+
+thread '<unnamed>' (1084342) panicked at /build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for get_source_map_rope_operation (TaskId 884485))
+
+Caused by:
+    0: Looking up data for TaskId 884485 from database failed
+    1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+    2: UnexpectedEnd { additional: 864 }
+Error [TurbopackInternalError]: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+
+Debug info:
+- Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))
+  
+  Caused by:
+      0: Looking up data for TaskId 566997 from database failed
+      1: Failed to deserialize AMQF from 00011809.meta for 00011804.sst
+      2: UnexpectedEnd { additional: 864 }
+    at <unknown> (TurbopackInternalError: Failed to restore task data (corrupted database or bug): Data for get_written_endpoint_with_issues_operation (TaskId 566997))) {
+  location: '/build/turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:156:17'
+}

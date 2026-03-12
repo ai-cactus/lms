@@ -53,8 +53,9 @@ export default function RoleSelectionPage() {
             if (result.success) {
                 // Clear pending signup data
                 sessionStorage.removeItem('pendingSignup');
-                // Store email for resend functionality
+                // Store email and role for verification routing
                 localStorage.setItem('pendingVerificationEmail', pendingSignup.email);
+                localStorage.setItem('pendingVerificationRole', selectedRole);
                 // Redirect to verify email page
                 router.push('/verify-email');
             } else {

@@ -20,10 +20,14 @@ function VerifyEmailContent() {
   const [resendError, setResendError] = useState('');
   const [resendSuccess, setResendSuccess] = useState(false);
 
-  // Handle successful verification - redirect to login for authentication
+  // Handle successful verification - redirect to correct login based on role
   useEffect(() => {
     if (success === 'true' && email) {
-      router.push('/login?verified=true');
+      // Check stored role from signup flow to route to correct login
+      const storedRole = localStorage.getItem('pendingVerificationRole');
+      const loginPath = storedRole === 'worker' ? '/login-worker' : '/login';
+      localStorage.removeItem('pendingVerificationRole');
+      router.push(`${loginPath}?verified=true`);
     }
   }, [success, email, router]);
 

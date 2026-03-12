@@ -23,8 +23,10 @@ function LoginForm() {
     rememberMe: false,
   });
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
 
   const handleMicrosoftLogin = () => {
+    setIsMicrosoftLoading(true);
     signIn('microsoft-entra-id', { callbackUrl: '/worker' });
   };
 
@@ -61,7 +63,6 @@ function LoginForm() {
     if (!validateForm()) return;
 
     setErrors({});
-    // Construct FormData manually
     const form = new FormData();
     form.append('email', formData.email);
     form.append('password', formData.password);
@@ -72,10 +73,11 @@ function LoginForm() {
   };
 
   useEffect(() => {
-    if (state?.success) {
+    if (state?.redirect) {
+      router.push(state.redirect);
+    } else if (state?.success) {
       router.push('/worker');
     } else if (state?.error) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional sync of server error to local state
       setErrors((prev) => ({ ...prev, email: state.error }));
     }
   }, [state, router]);
@@ -219,6 +221,7 @@ function LoginForm() {
           type="button"
           className={styles.microsoftButton}
           onClick={handleMicrosoftLogin}
+          loading={isMicrosoftLoading}
         >
           <Image src="/icons/microsoft.svg" alt="Microsoft" width={20} height={20} />
           <span>Log In with Microsoft</span>

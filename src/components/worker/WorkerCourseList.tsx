@@ -15,6 +15,8 @@ interface Course {
   deadline?: Date | string | null;
   duration?: number;
   quizAttempts?: { id: string; attemptCount: number; timeTaken: number | null }[];
+  retakeOf?: string | null;
+  enrollmentId?: string;
 }
 
 interface WorkerCourseListProps {
@@ -100,6 +102,33 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
       );
     }
 
+    if (status === 'locked') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span
+            className={`${styles.statusBadge} ${styles.statusFailed}`}
+            style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            Locked
+          </span>
+          <span style={{ fontSize: '10px', color: '#EF4444' }}>Max attempts reached</span>
+        </div>
+      );
+    }
+
     // Default to In Progress or Assigned
     const isStarted = progress > 0 || status === 'in_progress';
     return (
@@ -163,7 +192,7 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
         </span>
       );
     }
-    return <span className={styles.deadlineNormal}>{isOverdue ? `Due ${text}` : text}</span>;
+    return <span className={styles.deadlineNormal}>{text}</span>;
   };
 
   return (
@@ -208,16 +237,19 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
             {filtered.length > 0 ? (
               filtered.map((course) => {
                 const isCompleted = course.status === 'completed' || course.status === 'attested';
-                const isFailed = course.status === 'failed';
-                const isStarted = course.progress > 0;
+                const isLocked = course.status === 'locked';
 
                 return (
                   <tr
-                    key={course.id}
-                    onClick={() =>
-                      isCompleted ? handleViewResultClick(course.id) : handleStartClick(course.id)
-                    }
-                    style={{ cursor: 'pointer' }}
+                    key={course.id + '-' + course.enrollmentId}
+                    onClick={() => {
+                      if (isLocked) return;
+                      isCompleted ? handleViewResultClick(course.id) : handleStartClick(course.id);
+                    }}
+                    style={{
+                      cursor: isLocked ? 'not-allowed' : 'pointer',
+                      opacity: isLocked ? 0.7 : 1,
+                    }}
                   >
                     <td>
                       <div className={styles.courseInfo}>
@@ -235,7 +267,14 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                           </svg>
                         </div>
-                        <span className={styles.courseTitleSmall}>{course.title}</span>
+                        <span className={styles.courseTitleSmall}>
+                          {course.retakeOf ? (
+                            <span style={{ color: '#E53E3E', fontWeight: 600, marginRight: 8 }}>
+                              Retake:
+                            </span>
+                          ) : null}
+                          {course.title}
+                        </span>
                       </div>
                     </td>
                     <td>
@@ -245,7 +284,7 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                             className={styles.progressBarFill}
                             style={{
                               width: `${course.progress}%`,
-                              backgroundColor: isCompleted ? '#4730F7' : '#4730F7',
+                              backgroundColor: '#4730F7',
                             }}
                           />
                         </div>

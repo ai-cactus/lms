@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './CourseWizard.module.css';
 import Step1Category from './steps/Step1Category';
@@ -22,7 +22,7 @@ export default function CourseWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialDocId = searchParams.get('documentId');
-  const hasAutoAnalyzed = React.useRef(false);
+  const hasAutoAnalyzed = useRef(false);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -54,8 +54,21 @@ export default function CourseWizard() {
 
   // Documents State
   const [documents, setDocuments] = useState<CourseDocument[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  // Generation/Publishing State
+  const [generatedContent, setGeneratedContent] = useState<GeneratedCourse | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+
+  // PHI Scanning State
+  const [isScanningPhi, setIsScanningPhi] = useState(false);
+  const [showPhiError, setShowPhiError] = useState(false);
+  const [phiReason, setPhiReason] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
     const loadDocs = async () => {
       try {
         const fetchedDocs = await getDocuments();
@@ -74,26 +87,7 @@ export default function CourseWizard() {
 
         if (initialDocId && !hasAutoAnalyzed.current) {
           hasAutoAnalyzed.current = true;
-          // Auto-analyze
-          setIsAnalyzing(true);
-          setAnalysisProgress(30); // Fake progress
-          analyzeStoredDocument(initialDocId).then((result) => {
-            if (!result.error) {
-              setFormData((prev) => ({
-                ...prev,
-                title: result.title,
-                description: result.description,
-                objectives: result.objectives,
-                duration: result.duration,
-                quizTitle: result.quizTitle,
-              }));
-            }
-            setAnalysisProgress(100);
-            setTimeout(() => {
-              setIsAnalyzing(false);
-              setAnalysisProgress(0);
-            }, 500);
-          });
+          handleAutoAnalyze(initialDocId);
         }
       } catch (e) {
         console.error('Failed to load documents', e);
@@ -101,6 +95,32 @@ export default function CourseWizard() {
     };
     loadDocs();
   }, [initialDocId]);
+
+  const handleAutoAnalyze = async (docId: string) => {
+    setIsAnalyzing(true);
+    setAnalysisProgress(30);
+    try {
+      const result = await analyzeStoredDocument(docId);
+      if (!result.error) {
+        setFormData((prev) => ({
+          ...prev,
+          title: result.title,
+          description: result.description,
+          objectives: result.objectives,
+          duration: result.duration,
+          quizTitle: result.quizTitle,
+        }));
+      }
+      setAnalysisProgress(100);
+    } catch (err) {
+      console.error('Auto-analysis failed', err);
+    } finally {
+      setTimeout(() => {
+        setIsAnalyzing(false);
+        setAnalysisProgress(0);
+      }, 500);
+    }
+  };
 
   const handleToggleSelect = (id: string) => {
     setDocuments((docs) =>
@@ -110,36 +130,16 @@ export default function CourseWizard() {
     );
   };
 
-  const [generatedContent, setGeneratedContent] = useState<GeneratedCourse | null>(null);
-
   const handleGenerationComplete = (content: GeneratedCourse) => {
     setGeneratedContent(content);
     setIsGenerating(false);
   };
 
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [publishError, setPublishError] = useState<string | null>(null);
-
-  // PHI Scanning State
-  const [isScanningPhi, setIsScanningPhi] = useState(false);
-  const [showPhiError, setShowPhiError] = useState(false);
-  const [phiReason, setPhiReason] = useState<string | undefined>(undefined);
-
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
   const handleNext = async () => {
     if (currentStep === 2) {
-      // Document Step - Validation check
       const selectedDoc = documents.find((d) => d.selected);
-      if (!selectedDoc) {
-        return;
-      }
+      if (!selectedDoc) return;
 
-      // Trigger analysis for the selected document if we haven't already populated data from it
-      // Or just always re-analyze to be safe/robust?
-      // Let's re-analyze to ensure formData matches the selected doc.
       setIsAnalyzing(true);
       setAnalysisProgress(30);
 
@@ -149,9 +149,6 @@ export default function CourseWizard() {
 
         if (result.error) {
           console.error('Analysis failed:', result.error);
-          // Decide if we should block or just warn?
-          // For now, let's proceed but maybe show a toast?
-          // Or just fall back to placeholders which the user can edit.
         } else {
           setFormData((prev) => ({
             ...prev,
@@ -188,11 +185,9 @@ export default function CourseWizard() {
         return;
       }
 
-      // Submit
       setIsPublishing(true);
       setPublishError(null);
 
-      // Get selected document ID for linking
       const selectedDocId = documents.find((d) => d.selected)?.id;
 
       try {
@@ -215,27 +210,15 @@ export default function CourseWizard() {
           quizDuration: formData.quizDuration,
           quizDifficulty: formData.quizDifficulty,
           documentId: selectedDocId,
-          // v4.6 raw artifacts for persistence
           rawArticleMeta: generatedContent?.rawArticleMeta || undefined,
           rawArticleMarkdown: generatedContent?.rawArticleMarkdown || undefined,
           rawSlidesJson: generatedContent?.rawSlidesJson || undefined,
           rawJudgeJson: generatedContent?.rawJudgeJson || undefined,
           rawQuizJson: generatedContent?.rawQuizJson || undefined,
-          // v3.1 fallback (if somehow v3.1 data exists)
           rawCourseJson: generatedContent?.rawCourseJson || undefined,
         });
 
         if (result.success) {
-          console.log('Course Created:', result.courseId);
-          console.log('Invite Results:', result.inviteResults);
-
-          if (result.inviteResults?.failed?.length > 0) {
-            console.warn('Failed to invite:', result.inviteResults.failed);
-          }
-          if (result.inviteResults?.skipped?.length > 0) {
-            console.warn('Skipped (invalid or in other org):', result.inviteResults.skipped);
-          }
-
           router.push('/dashboard/training');
         } else {
           setPublishError('Failed to create course. Please try again.');
@@ -271,19 +254,13 @@ export default function CourseWizard() {
     setIsAnalyzing(true);
     setAnalysisProgress(10);
 
-    // 1. Upload & Validate (Storage, Extraction, PHI Scan)
-    const formData = new FormData();
-    formData.append('file', file);
+    const uploadFormData = new FormData();
+    uploadFormData.append('file', file);
+    uploadFormData.append('rejectOnPHI', 'true');
 
     try {
-      // Simulate progress
       setAnalysisProgress(30);
-
-      const uploadResult = await uploadDocument(null, formData);
-
-      if (uploadResult.error) {
-        throw new Error(uploadResult.error);
-      }
+      const uploadResult = await uploadDocument(null, uploadFormData);
 
       if (uploadResult.phiDetected) {
         setPhiReason('PHI Detected in document.');
@@ -292,28 +269,27 @@ export default function CourseWizard() {
         return;
       }
 
-      // Refresh documents list to get the new ID (and potentially select it)
+      if (uploadResult.error) {
+        throw new Error(uploadResult.error);
+      }
+
       const updatedDocs = await getDocuments();
       setDocuments((prevDocs) =>
-        updatedDocs.map((d) => {
-          return {
-            id: d.id,
-            name: d.filename,
-            type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
-            status: 'analyzed',
-            selected: d.filename === file.name, // Auto-select ONLY the new file
-          };
-        }),
+        updatedDocs.map((d) => ({
+          id: d.id,
+          name: d.filename,
+          type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
+          status: 'analyzed',
+          selected: d.filename === file.name,
+        })),
       );
       setAnalysisProgress(60);
 
-      // 2. AI Analysis for Course Generation
       const { analyzeDocument } = await import('@/app/actions/course-ai');
       const analysisFormData = new FormData();
       analysisFormData.append('file', file);
 
       const result = await analyzeDocument(analysisFormData);
-
       setAnalysisProgress(100);
 
       if (result.error) {
@@ -329,10 +305,9 @@ export default function CourseWizard() {
           quizTitle: result.quizTitle,
         }));
       }
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error('Upload/Analysis Failed:', error);
-      setUploadError(error.message || 'Upload failed. Please try again.');
+    } catch (err: any) {
+      console.error('Upload/Analysis Failed:', err);
+      setUploadError(err.message || 'Upload failed. Please try again.');
     } finally {
       setTimeout(() => {
         setIsAnalyzing(false);
@@ -410,59 +385,45 @@ export default function CourseWizard() {
 
   const isNextDisabled = () => {
     if (currentStep === 1 && !formData.category) return true;
-
     if (currentStep === 2) {
-      // Must have a selected document and not be processing
       if (!documents.some((d) => d.selected)) return true;
       if (isAnalyzing || isScanningPhi) return true;
       return false;
     }
-
     if (currentStep === 3) {
-      // Title, Description, and at least 3 objectives required
       if (!formData.title?.trim()) return true;
       if (!formData.description?.trim()) return true;
       if (!formData.duration) return true;
       if (!formData.notesCount) return true;
       if (!formData.objectives || formData.objectives.length < 3) return true;
-      // Check for empty objectives
       if (formData.objectives.some((obj) => !obj.trim())) return true;
       return false;
     }
-
     if (currentStep === 4) {
       if (!formData.quizTitle?.trim()) return true;
       if (!formData.quizQuestionCount) return true;
       if (!formData.quizDuration) return true;
-      // Validate pass mark (must be present and valid number)
       const passMark = parseInt(formData.quizPassMark?.replace('%', '') || '0');
       if (!formData.quizPassMark || isNaN(passMark) || passMark <= 0) return true;
       return false;
     }
-
     if (currentStep === 5) {
-      // Must have generated content to proceed
       if (!generatedContent?.modules || generatedContent.modules.length === 0) return true;
       return false;
     }
-
     if (currentStep === 6) {
-      // Must have quiz questions
       if (!generatedContent?.quiz || generatedContent.quiz.length === 0) return true;
       return false;
     }
-
     return false;
   };
 
   return (
     <div className={styles.container}>
-      {/* Header */}
       <header className={styles.header}>
         <div className={styles.logoSection}>
           <Logo variant="blue" size="md" />
         </div>
-
         <div className={styles.headerContent}>
           <span className={styles.stepText}>
             Step {currentStep} of {totalSteps}
@@ -471,18 +432,15 @@ export default function CourseWizard() {
             Exit
           </Button>
         </div>
-        {/* Dynamic Progress Bar */}
         <div
           className={styles.progressBar}
           style={{ width: `${(currentStep / totalSteps) * 100}%` }}
         />
       </header>
 
-      {/* Main Content */}
       <main className={styles.content}>
         {renderStep()}
 
-        {/* Hide footer during generation phase of Step 5 */}
         {(!isGenerating || currentStep !== 5) && (
           <div className={`${styles.footer} ${currentStep === 5 ? styles.footerWide : ''}`}>
             {publishError && <div className={styles.errorMessage}>{publishError}</div>}
@@ -526,7 +484,6 @@ export default function CourseWizard() {
           </div>
         )}
 
-        {/* PHI Error Modal */}
         <PhiErrorModal
           isOpen={showPhiError}
           onClose={() => setShowPhiError(false)}

@@ -343,40 +343,13 @@ export async function assignCourseToUsers(courseId: string, emails: string[], du
   }
 
   // 4. Create Enrollments (skip duplicates)
-  const assignedCount = 0;
-
-  // We use a transaction (or just Promise.all) to insert safest way
-  // Prisma createMany skipDuplicates is handy but let's do upsert or ignore
-  // actually createMany with skipDuplicates is best for PostgreSQL
-
-  // But Enrollment has many fields.
-  // Let's loop for now to be safe with individual checks if needed, or createMany.
-  // user.ts/course.ts doesn't seem to check existing.
-
-  // We want to reset status if they are already enrolled? No, probably keep it.
-  // So we should only create if not exists.
-
   const enrollmentData = usersToAssign.map((u) => ({
     userId: u.id,
     courseId: courseId,
     status: 'enrolled',
     progress: 0,
     startedAt: new Date(),
-    // We might want to store dueDate if Enrollment model had it, but checking schema...
-    // Enrollment doesn't have dueDate?
-    // Schema: Enrollment { ... startedAt, completedAt ... }
-    // Attempting to set dueDate if it existed.
-    // It seems Step7 UI asks for Due Date but where does it go?
-    // Let's check schema again.
   }));
-
-  // Schema check from previous view_file (Step 3480):
-  // Enrollment doesn't have `dueDate`.
-  // So we can't save it yet!
-  // I should probably warn the user or just ignore it for now as per "Placeholder" removal task.
-  // Or I should add it to the schema?
-  // The user didn't ask for schema changes, but "due date" is in the UI.
-  // I will stick to assigning users for now.
 
   const results = await prisma.enrollment.createMany({
     data: enrollmentData,
@@ -641,7 +614,6 @@ export async function createFullCourse(data: {
         const { sendCourseEnrollmentEmail } = await import('@/lib/email');
 
         // We do this asynchronously without awaiting to not block the response
-        // or we can use Promise.allSettled if we want to be safe but fast
         Promise.allSettled(
           existingUsers.map((user) =>
             sendCourseEnrollmentEmail(
@@ -667,6 +639,7 @@ export async function createFullCourse(data: {
     inviteResults,
   };
 }
+
 // Attest a course completion
 export async function attestCourse(enrollmentId: string, signature: string, role: string) {
   // Resolve BOTH sessions to handle cookie collision (admin + worker in same browser)
@@ -699,8 +672,7 @@ export async function attestCourse(enrollmentId: string, signature: string, role
     throw new Error('Unauthorized');
   }
 
-  // Verify signature matches authenticated user name (case-insensitive for better UX?)
-  // Requirement says "must match their account name exactly"
+  // Verify signature matches authenticated user name
   const userName = enrollment.user.profile?.fullName || enrollment.user.email || '';
   if (signature.trim() !== userName) {
     throw new Error(`Signature must match your account name: ${userName}`);
@@ -757,8 +729,6 @@ export async function startCourse(courseId: string) {
   }
 
   if (!enrollment) {
-    // Should ideally be enrolled already by assignment, but strictly speaking we could auto-enroll if open?
-    // For now, assume assignment exists as per flow.
     throw new Error('Enrollment not found');
   }
 
@@ -767,7 +737,7 @@ export async function startCourse(courseId: string) {
       where: { id: enrollment.id },
       data: {
         status: 'in_progress',
-        progress: enrollment.progress === 0 ? 1 : enrollment.progress, // Ensure at least 1% to show in progress
+        progress: enrollment.progress === 0 ? 1 : enrollment.progress, // Ensure at least 1%
         startedAt: enrollment.startedAt || new Date(),
       },
     });
@@ -803,23 +773,14 @@ export async function updateQuizQuestions(
     throw new Error('Unauthorized or Course not found');
   }
 
-  // Find the quiz. Assuming one quiz per course for now or attached to the last lesson.
-  // In createFullCourse, we attach quiz to the last lesson.
-  // Let's find the quiz ID.
   const lessonWithQuiz = course.lessons.find((l) => l.quiz);
   if (!lessonWithQuiz || !lessonWithQuiz.quiz) {
     throw new Error('Quiz not found in this course');
   }
   const quizId = lessonWithQuiz.quiz.id;
 
-  // Transaction to replace questions
   await prisma.$transaction(async (tx) => {
-    // Delete existing questions
-    await tx.question.deleteMany({
-      where: { quizId: quizId },
-    });
-
-    // Create new questions
+    await tx.question.deleteMany({ where: { quizId: quizId } });
     if (questions.length > 0) {
       await tx.question.createMany({
         data: questions.map((q, index) => ({
@@ -899,7 +860,6 @@ export async function retakeQuiz(enrollmentId: string) {
     throw new Error('Enrollment not found or unauthorized');
   }
 
-  // Check allowed attempts
   const lastLesson = enrollment.course.lessons[enrollment.course.lessons.length - 1];
   const quiz = lastLesson?.quiz;
   const latestAttempt = enrollment.quizAttempts[0];
@@ -911,7 +871,6 @@ export async function retakeQuiz(enrollmentId: string) {
     }
   }
 
-  // Reset status to in_progress and clear score/completion time
   await prisma.enrollment.update({
     where: { id: enrollmentId },
     data: {
@@ -920,11 +879,87 @@ export async function retakeQuiz(enrollmentId: string) {
       completedAt: null,
       attestedAt: null,
       attestationSignature: null,
-      // progress: 100 // Keep progress at 100 if they finished lessons?
-      // Actually, keep progress as is (likely 100 or close).
     },
   });
 
   revalidatePath(`/learn/${enrollment.courseId}`);
   return { success: true };
+}
+
+// Assign a retake for a locked enrollment (admin only)
+export async function assignRetake(enrollmentId: string, retakeReason?: string) {
+  // Only admins can assign retakes
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const adminUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true },
+  });
+
+  if (!adminUser || !['admin', 'superadmin', 'organization_admin'].includes(adminUser.role)) {
+    throw new Error('Insufficient permissions');
+  }
+
+  const lockedEnrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+    include: {
+      user: { include: { profile: true } },
+      course: true,
+    },
+  });
+
+  if (!lockedEnrollment) {
+    throw new Error('Enrollment not found');
+  }
+
+  if (lockedEnrollment.status !== 'locked') {
+    throw new Error('Enrollment is not locked');
+  }
+
+  const retakeEnrollment = await prisma.enrollment.create({
+    data: {
+      userId: lockedEnrollment.userId,
+      courseId: lockedEnrollment.courseId,
+      status: 'enrolled',
+      progress: 100,
+      retakeOf: lockedEnrollment.id,
+      retakeReason: retakeReason || null,
+      assignedByAdminId: session.user.id,
+    },
+  });
+
+  await prisma.notification.updateMany({
+    where: {
+      type: 'QUIZ_RETRY_LIMIT_REACHED',
+      resolvedAt: null,
+      metadata: { path: ['enrollmentId'], equals: enrollmentId },
+    },
+    data: {
+      resolvedAt: new Date(),
+      isRead: true,
+    },
+  });
+
+  const { createNotification } = await import('./notifications');
+  await createNotification({
+    userId: lockedEnrollment.userId,
+    type: 'RETAKE_ASSIGNED',
+    title: 'Retake Assigned',
+    message: `An admin has assigned you a retake for "${lockedEnrollment.course.title}". You can now take the quiz again.`,
+    linkUrl: `/learn/${lockedEnrollment.courseId}`,
+    metadata: {
+      enrollmentId: retakeEnrollment.id,
+      courseId: lockedEnrollment.courseId,
+      parentEnrollmentId: lockedEnrollment.id,
+    },
+  });
+
+  revalidatePath('/dashboard/staff');
+  revalidatePath('/worker/trainings');
+  revalidatePath(`/learn/${lockedEnrollment.courseId}`);
+
+  return { success: true, retakeEnrollmentId: retakeEnrollment.id };
 }

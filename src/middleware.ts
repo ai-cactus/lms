@@ -103,6 +103,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL(ROUTE_CONFIG.worker.homePath, req.url));
   }
 
+  // ✅ Both admin and worker sessions can coexist independently.
+  // Each context reads ONLY its own cookie (line 48-49) and validates role (line 80).
+  // Simultaneous admin + worker sessions in different tabs is expected behavior.
   return NextResponse.next();
 }
 

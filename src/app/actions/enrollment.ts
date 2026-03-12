@@ -23,7 +23,7 @@ export async function getAvailableUsers() {
     throw new Error('Unauthorized');
   }
 
-  // Get all users with worker role (or all users if needed)
+  // Get all users with worker role
   const users = await prisma.user.findMany({
     include: {
       profile: true,
@@ -112,7 +112,6 @@ export async function enrollUsers(courseId: string, emails: string[]) {
           },
         });
 
-        // Satisfy type requirement
         user = { ...newUser, profile: null };
 
         // Send invite email with credentials
@@ -126,7 +125,6 @@ export async function enrollUsers(courseId: string, emails: string[]) {
           results.newInvited.push(email);
         } catch (emailErr) {
           console.error(`Failed to send invite email to ${email}:`, emailErr);
-          // User created but email failed - still count as invited
           results.newInvited.push(email);
         }
       } catch (createErr) {
@@ -139,17 +137,15 @@ export async function enrollUsers(courseId: string, emails: string[]) {
     if (!user) continue;
 
     // Check if already enrolled
-    const existing = await prisma.enrollment.findUnique({
+    // Check both unique constraint and startedAt to handle re-enrollment logic if needed
+    const existing = await prisma.enrollment.findFirst({
       where: {
-        userId_courseId: {
-          userId: user.id,
-          courseId: courseId,
-        },
+        userId: user.id,
+        courseId: courseId,
       },
     });
 
     if (existing) {
-      // Don't double-count if we just created them
       if (!results.newInvited.includes(email)) {
         results.alreadyEnrolled.push(email);
       }
@@ -186,10 +182,8 @@ export async function enrollUsers(courseId: string, emails: string[]) {
       );
     } catch (emailErr) {
       console.error(`Failed to send enrollment email to ${email}:`, emailErr);
-      // Email failed but enrollment succeeded, so we don't block
     }
 
-    // Add to success if not already in newInvited
     if (!results.newInvited.includes(email)) {
       results.success.push(email);
     }
@@ -201,7 +195,6 @@ export async function enrollUsers(courseId: string, emails: string[]) {
 
 /**
  * Get enrollment details with quiz results.
- * Used by the Quiz Results page.
  */
 export async function getEnrollmentWithResults(enrollmentId: string) {
   const session = await resolveSession();
@@ -249,7 +242,6 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
     throw new Error('Enrollment not found');
   }
 
-  // Verify access - either the enrolled user or the course creator
   const isEnrolledUser = enrollment.userId === session.user.id;
   const isCourseCreator = enrollment.course.createdBy === session.user.id;
 
@@ -262,7 +254,6 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
 
 /**
  * Submit a quiz attempt with answers.
- * Calculates score and updates enrollment.
  */
 export async function submitQuizAttempt(
   enrollmentId: string,
@@ -270,7 +261,6 @@ export async function submitQuizAttempt(
   answers: { questionId: string; selectedAnswer: string }[],
   timeTaken?: number,
 ): Promise<QuizAttemptResult> {
-  // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([
     (await import('@/auth')).auth(),
     (await import('@/auth.worker')).auth(),
@@ -282,18 +272,15 @@ export async function submitQuizAttempt(
     throw new Error('Unauthorized');
   }
 
-  // Get enrollment and verify access
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: { course: true },
   });
 
-  // Check if EITHER session owns this enrollment
   if (!enrollment || (enrollment.userId !== adminId && enrollment.userId !== workerId)) {
     throw new Error('Enrollment not found');
   }
 
-  // Get quiz with questions
   const quiz = await prisma.quiz.findUnique({
     where: { id: quizId },
     include: { questions: true },
@@ -303,7 +290,6 @@ export async function submitQuizAttempt(
     throw new Error('Quiz not found');
   }
 
-  // Calculate score
   let correctCount = 0;
   for (const answer of answers) {
     const question = quiz.questions.find((q) => q.id === answer.questionId);
@@ -316,7 +302,6 @@ export async function submitQuizAttempt(
   const score = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
   const passed = score >= quiz.passingScore;
 
-  // Check if attempt already exists
   const existingAttempt = await prisma.quizAttempt.findUnique({
     where: {
       enrollmentId_quizId: {
@@ -327,7 +312,6 @@ export async function submitQuizAttempt(
   });
 
   if (existingAttempt) {
-    // Update existing attempt
     await prisma.quizAttempt.update({
       where: { id: existingAttempt.id },
       data: {
@@ -338,7 +322,6 @@ export async function submitQuizAttempt(
       },
     });
   } else {
-    // Create new attempt
     await prisma.quizAttempt.create({
       data: {
         enrollmentId,
@@ -350,7 +333,6 @@ export async function submitQuizAttempt(
     });
   }
 
-  // Notify admins if the worker failed
   if (!passed) {
     const user = await prisma.user.findUnique({
       where: { id: enrollment.userId },
@@ -362,21 +344,17 @@ export async function submitQuizAttempt(
         type: 'COURSE_FAILED',
         title: 'Quiz Failed',
         message: `${user.profile?.fullName || user.email} has failed the quiz for course: ${enrollment.course?.title || 'Unknown Course'}.`,
-        linkUrl: `/dashboard/staff/${user.id}`, // Link to staff profile
+        linkUrl: `/dashboard/staff/${user.id}`,
         metadata: { userId: user.id, courseId: enrollment.courseId, score },
       });
     }
   }
 
-  // Update enrollment status and score
-  // CORE CHANGE: Passing the quiz does NOT complete the course.
-  // Attestation is required for completion.
   await prisma.enrollment.update({
     where: { id: enrollmentId },
     data: {
-      status: 'in_progress', // Remains in_progress until attestation
+      status: 'in_progress',
       score,
-      // completedAt is NOT set here anymore
     },
   });
 
@@ -392,10 +370,8 @@ export async function submitQuizAttempt(
 
 /**
  * Worker requests a retry on a failed course quiz.
- * Notifies admins and resets the enrollment status.
  */
 export async function requestCourseRetry(enrollmentId: string) {
-  // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([
     (await import('@/auth')).auth(),
     (await import('@/auth.worker')).auth(),
@@ -407,7 +383,6 @@ export async function requestCourseRetry(enrollmentId: string) {
     throw new Error('Unauthorized');
   }
 
-  // Get enrollment
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
@@ -416,12 +391,10 @@ export async function requestCourseRetry(enrollmentId: string) {
     },
   });
 
-  // Check if EITHER session owns this enrollment
   if (!enrollment || (enrollment.userId !== adminId && enrollment.userId !== workerId)) {
     throw new Error('Enrollment not found');
   }
 
-  // Reset score and status so they can try again
   await prisma.enrollment.update({
     where: { id: enrollmentId },
     data: {
@@ -430,7 +403,6 @@ export async function requestCourseRetry(enrollmentId: string) {
     },
   });
 
-  // Notify Admins
   if (enrollment.user.organizationId) {
     await notifyOrganizationAdmins(enrollment.user.organizationId, {
       type: 'COURSE_RETRY_REQUESTED',

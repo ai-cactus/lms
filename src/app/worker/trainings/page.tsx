@@ -12,14 +12,17 @@ export default async function WorkerTrainingsPage() {
 
     const activeCoursesData = allEnrollments.filter(e => e.status !== 'attested');
 
-    const activeCourses = activeCoursesData.map(e => ({
+    const activeCourses = activeCoursesData.map((e: any) => ({
         id: e.courseId,
+        enrollmentId: e.id,
         title: e.course.title,
         status: e.status,
         progress: e.progress,
         deadline: null,
         duration: e.course.duration || undefined,
-        category: e.course.category
+        category: e.course.category,
+        retakeOf: e.retakeOf,
+        quizAttempts: [] // Not heavily featured in this simple list, but good for type safety
     }));
 
     return (

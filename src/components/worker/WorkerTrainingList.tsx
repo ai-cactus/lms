@@ -19,6 +19,8 @@ interface Course {
   progress: number;
   deadline?: Date | string | null;
   duration?: number;
+  retakeOf?: string | null;
+  enrollmentId?: string;
 }
 
 interface WorkerTrainingListProps {
@@ -48,9 +50,13 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
             // Button Logic
             let buttonText = 'Start Course';
             let onClick = () => handleStartClick(course.id);
-            const buttonClass = styles.trainingActionBtn;
+            let buttonClass = styles.trainingActionBtn;
 
-            if (isCompleted) {
+            if (course.status === 'locked') {
+              buttonText = 'Locked';
+              buttonClass = `${styles.trainingActionBtn} ${styles.disabledBtn}`;
+              onClick = () => {};
+            } else if (isCompleted) {
               buttonText = 'View Result';
               onClick = () => handleViewResultClick(course.id);
             } else if (isStarted && !isFailed) {
@@ -60,10 +66,9 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
             }
 
             return (
-              <div key={course.id} className={styles.trainingItem}>
+              <div key={course.id + '-' + course.enrollmentId} className={styles.trainingItem}>
                 <div className={styles.trainingInfo}>
                   <div className={styles.trainingIcon}>
-                    {/* Using a generic course icon or passed category icon */}
                     <svg
                       width="24"
                       height="24"
@@ -78,21 +83,48 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
                     </svg>
                   </div>
                   <div className={styles.trainingDetails}>
-                    <h3 className={styles.trainingTitle}>{course.title}</h3>
+                    <h3 className={styles.trainingTitle}>
+                      {course.retakeOf ? (
+                        <span style={{ color: '#E53E3E', fontWeight: 600, marginRight: 8 }}>
+                          Retake:
+                        </span>
+                      ) : null}
+                      {course.title}
+                    </h3>
                     <p className={styles.trainingCategory}>
                       {course.category ? formatCategory(course.category) : 'General'}
                     </p>
                   </div>
                 </div>
-                <button
-                  className={buttonClass}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClick();
-                  }}
+                <div
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}
                 >
-                  {buttonText}
-                </button>
+                  <button
+                    className={buttonClass}
+                    style={
+                      course.status === 'locked'
+                        ? {
+                            opacity: 0.5,
+                            cursor: 'not-allowed',
+                            backgroundColor: '#CBD5E1',
+                            color: '#475569',
+                          }
+                        : {}
+                    }
+                    disabled={course.status === 'locked'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClick();
+                    }}
+                  >
+                    {buttonText}
+                  </button>
+                  {course.status === 'locked' && (
+                    <span style={{ fontSize: '10px', color: '#EF4444' }}>
+                      Waiting for admin retake
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })
