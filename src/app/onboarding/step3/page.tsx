@@ -137,8 +137,8 @@ export default function OnboardingStep3() {
                 </div>
 
                 <div className={styles.actions}>
-                    <Button variant="outline" type="button" onClick={() => router.push('/dashboard')}>
-                        Skip for now
+                    <Button variant="outline" type="button" onClick={() => router.push('/onboarding/step2')}>
+                        Back
                     </Button>
                     <Button variant="primary" type="submit">
                         Next

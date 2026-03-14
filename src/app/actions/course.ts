@@ -217,14 +217,12 @@ export async function getDashboardStats() {
 
   const totalCourses = courses.length;
   const totalStaffAssigned = new Set(enrollments.map((e) => e.userId)).size;
-  const completedEnrollments = enrollments.filter(
-    (e) => e.status === 'completed' || e.status === 'attested',
-  );
+  const enrollmentsWithScore = enrollments.filter((e) => e.score !== null);
   const averageScore =
-    completedEnrollments.length > 0
+    enrollmentsWithScore.length > 0
       ? Math.round(
-          completedEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) /
-            completedEnrollments.length,
+          enrollmentsWithScore.reduce((sum, e) => sum + (e.score || 0), 0) /
+            enrollmentsWithScore.length,
         )
       : 0;
 
@@ -899,7 +897,7 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     select: { role: true },
   });
 
-  if (!adminUser || !['admin', 'superadmin', 'organization_admin'].includes(adminUser.role)) {
+  if (!adminUser || adminUser.role !== 'admin') {
     throw new Error('Insufficient permissions');
   }
 
@@ -933,7 +931,7 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
 
   await prisma.notification.updateMany({
     where: {
-      type: 'QUIZ_RETRY_LIMIT_REACHED',
+      type: { in: ['QUIZ_RETRY_LIMIT_REACHED', 'COURSE_RETRY_REQUESTED'] },
       resolvedAt: null,
       metadata: { path: ['enrollmentId'], equals: enrollmentId },
     },

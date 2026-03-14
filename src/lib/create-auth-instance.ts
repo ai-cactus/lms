@@ -3,7 +3,7 @@ import Credentials from 'next-auth/providers/credentials';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
-type Role = 'admin' | 'worker' | 'supervisor' | string;
+type Role = 'admin' | 'worker';
 
 interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
@@ -120,7 +120,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
             if (pendingInvite) {
               matchedOrgId = pendingInvite.organizationId;
-              matchedRole = pendingInvite.role; // Override role from invite if present
+              const inviteRole = pendingInvite.role;
+              matchedRole = (inviteRole === 'admin' || inviteRole === 'worker') ? inviteRole : 'worker';
               console.log(
                 `[NextAuth] Found pending invite for ${user.email}, joining org ${matchedOrgId} as ${matchedRole}`,
               );
@@ -155,7 +156,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 where: { id: dbUser.id },
                 data: {
                   organizationId: pendingInvite.organizationId,
-                  role: pendingInvite.role,
+                  role: (pendingInvite.role === 'admin' || pendingInvite.role === 'worker') ? pendingInvite.role : 'worker',
                 },
                 select: { id: true, organizationId: true, role: true },
               });

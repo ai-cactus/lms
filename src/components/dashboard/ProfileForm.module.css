@@ -42,17 +42,14 @@
 
 .tabs {
     display: inline-flex;
-    background: #F1F5F9;
-    border-radius: 9999px;
-    padding: 4px;
-    gap: 4px;
+    gap: 24px;
     margin-bottom: 32px;
+    align-items: center;
 }
 
 .tab {
-    padding: 8px 20px;
+    padding: 8px 16px;
     background: transparent;
-    border: none;
     border-radius: 9999px;
     font-weight: 600;
     font-size: 14px;
@@ -60,18 +57,12 @@
     cursor: pointer;
     transition: all 0.2s;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.tab:hover {
-    color: var(--text-primary);
-    background: rgba(0, 0, 0, 0.04);
 }
 
 .activeTab {
-    color: var(--primary);
-    background: white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    color: white !important;
+    background: var(--primary) !important;
+    box-shadow: none !important;
 }
 
 .profileWrapper {

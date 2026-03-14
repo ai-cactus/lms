@@ -163,13 +163,13 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
                 ) : notifications.length === 0 ? (
                   <div className={styles.emptyState}>
                     <div className={styles.emptyStateIcon}>
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
                         <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
                       </svg>
                     </div>
-                    <h4 className={styles.emptyStateText}>No new notifications</h4>
-                    <p className={styles.emptyStateSubtext}>When workers retry courses or new events happen, they will appear here.</p>
+                    <h4 className={styles.emptyStateText}>You're all caught up!</h4>
+                    <p className={styles.emptyStateSubtext}>New notifications will appear here when workers request retries or complete courses.</p>
                   </div>
                 ) : (
                   <div className={styles.notificationList}>
@@ -185,7 +185,7 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
                           <span className={styles.notifTime}>
                             {new Date(notif.createdAt).toLocaleDateString()}
                           </span>
-                          {notif.type === 'QUIZ_RETRY_LIMIT_REACHED' && (
+                          {['QUIZ_RETRY_LIMIT_REACHED', 'COURSE_RETRY_REQUESTED'].includes(notif.type || '') && (
                             <div style={{ marginTop: '8px' }}>
                               {notif.resolvedAt ? (
                                 <span style={{ fontSize: '11px', color: '#059669', backgroundColor: '#D1FAE5', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 }}>

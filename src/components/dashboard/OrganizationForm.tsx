@@ -302,6 +302,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       programServices: [],
     },
   );
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [baseData, setBaseData] = useState<OrganizationData | null>(
     initialData
       ? {
@@ -323,49 +324,30 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         programServices: initialData.programServices || [],
       };
       setFormData(formatted);
-      if (!baseData) setBaseData(formatted); // Only set if not already set, or trust the success override. Let's just update baseData fully:
       setBaseData(formatted);
     }
-  }, [initialData, baseData]);
+  }, [initialData]);
 
-  const isDirty = baseData
-    ? JSON.stringify({
-        ...formData,
-        name: formData.name || '',
-        dba: formData.dba || '',
-        ein: formData.ein || '',
-        staffCount: formData.staffCount || '',
-        primaryContact: formData.primaryContact || '',
-        primaryEmail: formData.primaryEmail || '',
-        phone: formData.phone || '',
-        address: formData.address || '',
-        country: formData.country || '',
-        state: formData.state || '',
-        zipCode: formData.zipCode || '',
-        city: formData.city || '',
-        licenseNumber: formData.licenseNumber || '',
-        primaryBusinessType: formData.primaryBusinessType || '',
-      }) !==
-      JSON.stringify({
-        ...baseData,
-        name: baseData.name || '',
-        dba: baseData.dba || '',
-        ein: baseData.ein || '',
-        staffCount: baseData.staffCount || '',
-        primaryContact: baseData.primaryContact || '',
-        primaryEmail: baseData.primaryEmail || '',
-        phone: baseData.phone || '',
-        address: baseData.address || '',
-        country: baseData.country || '',
-        state: baseData.state || '',
-        zipCode: baseData.zipCode || '',
-        city: baseData.city || '',
-        licenseNumber: baseData.licenseNumber || '',
-        primaryBusinessType: baseData.primaryBusinessType || '',
-        additionalBusinessTypes: baseData.additionalBusinessTypes || [],
-        programServices: baseData.programServices || [],
-      })
-    : true;
+  const isDirty =
+    !baseData ||
+    formData.name !== baseData.name ||
+    formData.dba !== baseData.dba ||
+    formData.ein !== baseData.ein ||
+    formData.staffCount !== baseData.staffCount ||
+    formData.primaryContact !== baseData.primaryContact ||
+    formData.primaryEmail !== baseData.primaryEmail ||
+    formData.phone !== baseData.phone ||
+    formData.address !== baseData.address ||
+    formData.country !== baseData.country ||
+    formData.state !== baseData.state ||
+    formData.zipCode !== baseData.zipCode ||
+    formData.city !== baseData.city ||
+    formData.licenseNumber !== baseData.licenseNumber ||
+    formData.isHipaaCompliant !== baseData.isHipaaCompliant ||
+    formData.primaryBusinessType !== baseData.primaryBusinessType ||
+    JSON.stringify(formData.additionalBusinessTypes || []) !==
+      JSON.stringify(baseData.additionalBusinessTypes || []) ||
+    JSON.stringify(formData.programServices || []) !== JSON.stringify(baseData.programServices || []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -395,17 +377,20 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     const additionalBizType = (formData.additionalBusinessTypes || [])[0] || '';
 
     // Validate required fields
-    if (
-      !formData.name?.trim() ||
-      !formData.dba?.trim() ||
-      !formData.staffCount ||
-      !formData.primaryContact?.trim() ||
-      !formData.primaryEmail?.trim() ||
-      !formData.country ||
-      !formData.phone?.trim() ||
-      !formData.primaryBusinessType ||
-      !additionalBizType
-    ) {
+    const newErrors: Record<string, string> = {};
+    if (!formData.name?.trim()) newErrors.name = 'Legal Business Name is required';
+    if (!formData.dba?.trim()) newErrors.dba = 'DBA is required';
+    if (!formData.staffCount) newErrors.staffCount = 'Staff Count is required';
+    if (!formData.primaryContact?.trim()) newErrors.primaryContact = 'Primary Contact is required';
+    if (!formData.primaryEmail?.trim()) newErrors.primaryEmail = 'Primary Email is required';
+    if (!formData.country) newErrors.country = 'Country is required';
+    if (!formData.phone?.trim()) newErrors.phone = 'Phone Number is required';
+    if (!formData.primaryBusinessType)
+      newErrors.primaryBusinessType = 'Primary Business Type is required';
+    if (!additionalBizType) newErrors.additionalBusinessType = 'Additional Business Type is required';
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       setMessage({
         type: 'error',
         text: 'Please fill out all required fields marked with an asterisk (*).',
@@ -413,6 +398,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       return;
     }
 
+    setErrors({});
     setIsLoading(true);
     setMessage(null);
 
@@ -517,6 +503,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             onChange={handleChange}
             placeholder="e.g. Acme Healthcare Ltd"
             disabled={!isAdmin}
+            error={errors.name}
           />
         </div>
 
@@ -530,6 +517,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             onChange={handleChange}
             placeholder="Enter business name (if applicable)"
             disabled={!isAdmin}
+            error={errors.dba}
           />
         </div>
 
@@ -557,6 +545,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               options={STAFF_COUNT_OPTIONS}
               placeholder="Select an option"
               disabled={!isAdmin}
+              error={errors.staffCount}
             />
           </div>
         </div>
@@ -572,6 +561,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               onChange={handleChange}
               placeholder="Enter the full name of the main contact"
               disabled={!isAdmin}
+              error={errors.primaryContact}
             />
           </div>
           <div className={styles.fieldGroup}>
@@ -585,6 +575,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               placeholder="Enter the email address of the main contact"
               type="email"
               disabled={!isAdmin}
+              error={errors.primaryEmail}
             />
           </div>
         </div>
@@ -600,6 +591,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               options={COUNTRY_OPTIONS}
               placeholder="Select an option"
               disabled={!isAdmin}
+              error={errors.country}
             />
           </div>
           <div className={styles.fieldGroup}>
@@ -612,6 +604,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               onChange={handleChange}
               placeholder="Enter the phone number"
               disabled={!isAdmin}
+              error={errors.phone}
             />
           </div>
         </div>
@@ -739,6 +732,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               options={PRIMARY_BUSINESS_TYPES}
               placeholder="Select an option"
               disabled={!isAdmin}
+              error={errors.primaryBusinessType}
             />
           </div>
           <div className={styles.fieldGroup}>
@@ -753,6 +747,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               options={ADDITIONAL_BUSINESS_TYPES}
               placeholder="Select an option"
               disabled={!isAdmin}
+              error={errors.additionalBusinessType}
             />
           </div>
         </div>

@@ -33,7 +33,7 @@ export default function CourseWizard() {
     description:
       'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
     difficulty: 'moderate',
-    duration: '60',
+    duration: '',
     notesCount: '10',
     objectives: [
       'To train staff on HIPAA compliance in behavioral health.',
@@ -44,7 +44,7 @@ export default function CourseWizard() {
     quizQuestionCount: '15',
     quizDifficulty: 'medium',
     quizQuestionType: 'multiple_choice',
-    quizDuration: '15',
+    quizDuration: '',
     quizPassMark: '80%',
     quizAttempts: '2',
     assignments: [],
@@ -133,6 +133,10 @@ export default function CourseWizard() {
   const handleGenerationComplete = (content: GeneratedCourse) => {
     setGeneratedContent(content);
     setIsGenerating(false);
+    // Flow AI-computed duration back into formData
+    if (content.duration) {
+      setFormData((prev) => ({ ...prev, duration: content.duration }));
+    }
   };
 
   const handleNext = async () => {
@@ -393,7 +397,7 @@ export default function CourseWizard() {
     if (currentStep === 3) {
       if (!formData.title?.trim()) return true;
       if (!formData.description?.trim()) return true;
-      if (!formData.duration) return true;
+
       if (!formData.notesCount) return true;
       if (!formData.objectives || formData.objectives.length < 3) return true;
       if (formData.objectives.some((obj) => !obj.trim())) return true;
@@ -402,7 +406,7 @@ export default function CourseWizard() {
     if (currentStep === 4) {
       if (!formData.quizTitle?.trim()) return true;
       if (!formData.quizQuestionCount) return true;
-      if (!formData.quizDuration) return true;
+
       const passMark = parseInt(formData.quizPassMark?.replace('%', '') || '0');
       if (!formData.quizPassMark || isNaN(passMark) || passMark <= 0) return true;
       return false;

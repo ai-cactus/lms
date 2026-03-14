@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       });
       if (
         adminEnroll ||
-        ['admin', 'superadmin', 'organization_admin'].includes(adminSession.user.role || '')
+        adminSession.user.role === 'admin'
       ) {
         activeUserId = adminSession.user.id;
         activeRole = adminSession.user.role;
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     }
 
     // Check if resolved user is admin
-    const isAdmin = ['admin', 'superadmin', 'organization_admin'].includes(activeRole || '');
+    const isAdmin = activeRole === 'admin';
 
     if (!enrollment && !isAdmin) {
       return NextResponse.json({ error: 'Not enrolled in this course' }, { status: 403 });

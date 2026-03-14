@@ -1,4 +1,4 @@
-export type Role = "admin" | "worker" | "supervisor" | string;
+export type Role = "admin" | "worker";
 import "next-auth";
 import "next-auth/jwt";
 

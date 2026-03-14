@@ -86,18 +86,33 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
           />
         </div>
 
-        {/* Estimated Duration */}
+        {/* Estimated Duration (calculated from question count, read-only) */}
         <div className={styles.formRow}>
           <label className={styles.formLabel}>Estimated Duration</label>
-          <Select
-            value={data.quizDuration}
-            onChange={(val) => onChange('quizDuration', val)}
-            options={[
-              { label: '~15 mins', value: '15' },
-              { label: '~30 mins', value: '30' },
-              { label: '~45 mins', value: '45' },
-            ]}
-          />
+          <div style={{
+            padding: '10px 14px',
+            background: '#F7FAFC',
+            border: '1px solid #E2E8F0',
+            borderRadius: '8px',
+            fontSize: '14px',
+            color: data.quizQuestionCount ? '#2D3748' : '#A0AEC0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}>
+            {data.quizQuestionCount ? (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4C6EF5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                ~{Math.max(5, Math.round(parseInt(data.quizQuestionCount) * 1.5))} mins
+                <span style={{ fontSize: '12px', color: '#718096', marginLeft: '4px' }}>(based on {data.quizQuestionCount} questions)</span>
+              </>
+            ) : (
+              'Set question count to see estimate'
+            )}
+          </div>
         </div>
 
         {/* Pass Mark */}

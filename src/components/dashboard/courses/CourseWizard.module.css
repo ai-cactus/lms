@@ -196,14 +196,12 @@
     justify-content: center;
     gap: 12px;
     font-size: 13px;
-    /* Slightly reduced font */
-    color: #718096;
+    color: #DC2626;
     margin-top: 16px;
     margin-bottom: 0;
     text-align: center;
     width: 100%;
     max-width: 800px;
-    /* Match footer width */
     line-height: 1.5;
 }
 

@@ -42,18 +42,33 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
           />
         </div>
 
-        {/* Estimated Duration */}
+        {/* Estimated Duration (AI-generated, read-only) */}
         <div className={styles.formRow}>
           <label className={styles.formLabel}>Estimated Duration</label>
-          <Select
-            value={data.duration}
-            onChange={(val) => onChange('duration', val)}
-            options={[
-              { label: '~30 mins', value: '30' },
-              { label: '~60 mins', value: '60' },
-              { label: '~90 mins', value: '90' },
-            ]}
-          />
+          <div style={{
+            padding: '10px 14px',
+            background: '#F7FAFC',
+            border: '1px solid #E2E8F0',
+            borderRadius: '8px',
+            fontSize: '14px',
+            color: data.duration ? '#2D3748' : '#A0AEC0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}>
+            {data.duration ? (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4C6EF5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                ~{data.duration} mins
+                <span style={{ fontSize: '12px', color: '#718096', marginLeft: '4px' }}>(AI estimate)</span>
+              </>
+            ) : (
+              'Will be estimated after document analysis'
+            )}
+          </div>
         </div>
 
         {/* No of Notes / Slides */}

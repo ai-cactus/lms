@@ -31,21 +31,29 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
         first_name: user.first_name,
         last_name: user.last_name,
     });
+    const [baseData, setBaseData] = useState({
+        first_name: user.first_name,
+        last_name: user.last_name,
+    });
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     // DEBUG: Client-side mount check
     React.useEffect(() => {
-        console.log('[WorkerProfileForm] MOUNTED');
-        console.log('[WorkerProfileForm] User:', user);
-        return () => console.log('[WorkerProfileForm] UNMOUNTED');
+        setFormData({ first_name: user.first_name, last_name: user.last_name });
+        setBaseData({ first_name: user.first_name, last_name: user.last_name });
+        setAvatarUrl(user.avatarUrl || null);
+        setBaseAvatarUrl(user.avatarUrl || null);
     }, [user]);
 
     const [showConfirm, setShowConfirm] = useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatarUrl || null);
+    const [baseAvatarUrl, setBaseAvatarUrl] = useState<string | null>(user.avatarUrl || null);
 
-    const isDirty = formData.first_name !== user.first_name || formData.last_name !== user.last_name || avatarUrl !== user.avatarUrl;
+    const isDirty = formData.first_name !== baseData.first_name || 
+                   formData.last_name !== baseData.last_name || 
+                   avatarUrl !== baseAvatarUrl;
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -100,6 +108,8 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
 
             if (result.success) {
                 setMessage({ type: 'success', text: 'Profile updated successfully' });
+                setBaseData({ ...formData });
+                setBaseAvatarUrl(avatarUrl);
                 router.refresh();
             } else {
                 setMessage({ type: 'error', text: result.error || 'Failed to update profile' });
@@ -243,7 +253,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                             <button
                                 type="button"
                                 className={styles.discardBtn}
-                                onClick={() => setFormData({ first_name: user.first_name, last_name: user.last_name })}
+                                onClick={() => {
+                                    setFormData({ ...baseData });
+                                    setAvatarUrl(baseAvatarUrl);
+                                }}
                                 disabled={!isDirty}
                             >
                                 Discard

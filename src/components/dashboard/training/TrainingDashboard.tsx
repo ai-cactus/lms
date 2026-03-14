@@ -262,8 +262,6 @@ export default function TrainingDashboard({
   const coverage = stats.trainingCoverage;
   const coursePerformance = stats.coursePerformance || [];
 
-  // Filter defaults
-  const [viewMode, setViewMode] = useState<'Courses'>('Courses');
   const [mounted, setMounted] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
@@ -273,9 +271,6 @@ export default function TrainingDashboard({
   }, []);
 
   // Process data for the chart
-  // We want to show "Top Performers" or "All".
-  // "Top Performers" could correspond to highest pass count or highest score?
-  // User said "Top Performers" filter. Let's filter by highest pass count.
   const chartData = React.useMemo(() => {
     return [...coursePerformance];
   }, [coursePerformance]);
