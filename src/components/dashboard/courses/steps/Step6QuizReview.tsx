@@ -79,7 +79,7 @@ export default function Step6QuizReview({ data, quiz, courseId, rawContext, onQu
         const context = rawContext || data?.rawArticleMarkdown || data?.description || '';
 
         if (!targetCourseId && !context) {
-            alert('Cannot generate a question right now. Not enough course context available.');
+            alert('Cannot generate a question right now. The course may not be fully saved yet.');
             return;
         }
 
