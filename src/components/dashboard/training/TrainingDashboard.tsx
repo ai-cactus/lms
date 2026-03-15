@@ -88,40 +88,66 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
 
   const paths = segments.map((segment) => {
     // Handle 360 degree case for SVG Arc
-    let angle = (segment.value / 100) * 360;
-
-    // If angle is 360, SVG arc command behaves weirdly if start/end points are same.
-    // Cap it slightly or handle full circle.
-    // Easiest fix: if 360, make it 359.99 to ensure it draws.
-    if (angle >= 360) angle = 359.99;
-
+    const angle = (segment.value / 100) * 360;
     const endAngle = startAngle + angle;
 
-    const startRad = (startAngle - 90) * (Math.PI / 180);
-    const endRad = (endAngle - 90) * (Math.PI / 180);
+    let path = '';
 
-    // Outer Arc
-    const x1 = center + radius * Math.cos(startRad);
-    const y1 = center + radius * Math.sin(startRad);
-    const x2 = center + radius * Math.cos(endRad);
-    const y2 = center + radius * Math.sin(endRad);
+    if (angle >= 360) {
+      // For a full circle, we need to use two 180-degree arcs because
+      // a single arc command with same start/end points won't render.
+      const startRad = (startAngle - 90) * (Math.PI / 180);
+      const midRad = (startAngle + 180 - 90) * (Math.PI / 180);
 
-    // Inner Arc (reverse direction for hole)
-    const x3 = center + innerRadius * Math.cos(endRad);
-    const y3 = center + innerRadius * Math.sin(endRad);
-    const x4 = center + innerRadius * Math.cos(startRad);
-    const y4 = center + innerRadius * Math.sin(startRad);
+      // Outer points
+      const x1 = center + radius * Math.cos(startRad);
+      const y1 = center + radius * Math.sin(startRad);
+      const xm = center + radius * Math.cos(midRad);
+      const ym = center + radius * Math.sin(midRad);
 
-    const largeArc = angle > 180 ? 1 : 0;
+      // Inner points
+      const x3 = center + innerRadius * Math.cos(startRad);
+      const y3 = center + innerRadius * Math.sin(startRad);
+      const xim = center + innerRadius * Math.cos(midRad);
+      const yim = center + innerRadius * Math.sin(midRad);
 
-    // Path command: Move to start outer, Arc to end outer, Line to end inner, Arc to start inner, Close
-    const path = `
-            M ${x1} ${y1} 
-            A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} 
-            L ${x3} ${y3} 
-            A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x4} ${y4} 
-            Z
-        `;
+      // Path: outer circle, then jump to inner circle and draw it in reverse
+      path = `
+        M ${x1} ${y1}
+        A ${radius} ${radius} 0 0 1 ${xm} ${ym}
+        A ${radius} ${radius} 0 0 1 ${x1} ${y1}
+        M ${x3} ${y3}
+        A ${innerRadius} ${innerRadius} 0 0 0 ${xim} ${yim}
+        A ${innerRadius} ${innerRadius} 0 0 0 ${x3} ${y3}
+        Z
+      `;
+    } else {
+      const startRad = (startAngle - 90) * (Math.PI / 180);
+      const endRad = (endAngle - 90) * (Math.PI / 180);
+
+      // Outer Arc
+      const x1 = center + radius * Math.cos(startRad);
+      const y1 = center + radius * Math.sin(startRad);
+      const x2 = center + radius * Math.cos(endRad);
+      const y2 = center + radius * Math.sin(endRad);
+
+      // Inner Arc (reverse direction for hole)
+      const x3 = center + innerRadius * Math.cos(endRad);
+      const y3 = center + innerRadius * Math.sin(endRad);
+      const x4 = center + innerRadius * Math.cos(startRad);
+      const y4 = center + innerRadius * Math.sin(startRad);
+
+      const largeArc = angle > 180 ? 1 : 0;
+
+      // Path command: Move to start outer, Arc to end outer, Line to end inner, Arc to start inner, Close
+      path = `
+        M ${x1} ${y1}
+        A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}
+        L ${x3} ${y3}
+        A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x4} ${y4}
+        Z
+      `;
+    }
 
     startAngle = endAngle;
 
