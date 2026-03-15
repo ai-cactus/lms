@@ -23,7 +23,7 @@
 }
 
 .blue {
-    color: #2D4DDD;
+    color: var(--primary, #4730F7);
     /* Brand Blue */
 }
 
