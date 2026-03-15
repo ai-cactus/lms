@@ -1,30 +1,30 @@
 .logo {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
 }
 
 .logoText {
-    font-weight: 700;
-    line-height: 1;
-    font-family: var(--font-heading, sans-serif);
+  font-weight: 700;
+  line-height: 1;
+  font-family: var(--font-heading, sans-serif);
 }
 
 /* Variant: usually refers to the color theme of the logo */
 .light {
-    color: #2D3748;
-    /* Dark text for light backgrounds */
+  color: #2d3748;
+  /* Dark text for light backgrounds */
 }
 
 .dark {
-    color: #FFFFFF;
-    /* Light text for dark backgrounds */
+  color: #ffffff;
+  /* Light text for dark backgrounds */
 }
 
 .blue {
-    color: #2D4DDD;
-    /* Brand Blue */
+  color: var(--primary, #4730f7);
+  /* Brand Blue */
 }
 
 /* Filter removed as we use currentColor in inline SVG */
