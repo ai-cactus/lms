@@ -6,7 +6,7 @@ import { auth as workerAuth } from '@/auth.worker';
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    let session = await workerAuth();
+    const session = await workerAuth();
     const adminSession = await adminAuth();
 
     if (!session?.user?.id && !adminSession?.user?.id) {
