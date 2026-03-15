@@ -127,7 +127,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                     </div>
                     <Button
                         variant="primary"
-                        className={styles.btnNext}
+                        className={`${styles.btnNext} ${styles.btnNextEnabled}`}
                         style={{ width: 'auto', padding: '8px 24px', height: '40px' }}
                         onClick={handleSaveQuiz}
                         disabled={isSaving}

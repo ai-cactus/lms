@@ -66,10 +66,11 @@ export default function Step6QuizReview({
   const handleGenerateQuestion = async () => {
     // Find courseId from data if not passed directly
     const targetCourseId = courseId;
-    const context = rawContext || data?.description || '';
+    // Fall back to title + description if rawContext isn't fully available yet
+    const context = rawContext || `${data?.title || ''}\n${data?.description || ''}`.trim() || '';
 
     if (!targetCourseId && !context) {
-      alert('Cannot generate a question right now. Not enough course context available.');
+      alert('Cannot generate a question right now. The course may not be fully saved yet.');
       return;
     }
 

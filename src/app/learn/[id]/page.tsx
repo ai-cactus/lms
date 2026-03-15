@@ -82,7 +82,7 @@ export default function LearnPage() {
   const [error, setError] = useState('');
 
   // View State
-  const [viewMode, setViewMode] = useState<'slides' | 'article'>('slides');
+  const [viewMode, setViewMode] = useState<'slides' | 'article'>('article');
   const [activeIndex, setActiveIndex] = useState(0);
 
   // Linear progression
