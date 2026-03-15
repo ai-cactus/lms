@@ -139,17 +139,6 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
               <div className={styles.stepItem}>
                 <span className={styles.stepNumber}>1.</span>
                 <div className={styles.stepContent}>
-                  <div className={styles.stepTitle}>Select Type of Training</div>
-                  <div className={styles.stepDescription}>
-                    Choose whether the training is based on compliance, safety, HR, or any internal
-                    policy area.
-                  </div>
-                </div>
-              </div>
-
-              <div className={styles.stepItem}>
-                <span className={styles.stepNumber}>2.</span>
-                <div className={styles.stepContent}>
                   <div className={styles.stepTitle}>Upload Policies</div>
                   <div className={styles.stepDescription}>
                     Upload your organization&apos;s documents. Theraptly will analyze and prepare a
@@ -159,7 +148,7 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
               </div>
 
               <div className={styles.stepItem}>
-                <span className={styles.stepNumber}>3.</span>
+                <span className={styles.stepNumber}>2.</span>
                 <div className={styles.stepContent}>
                   <div className={styles.stepTitle}>Configure Course & Assessment</div>
                   <div className={styles.stepDescription}>
@@ -169,7 +158,7 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
               </div>
 
               <div className={styles.stepItem}>
-                <span className={styles.stepNumber}>4.</span>
+                <span className={styles.stepNumber}>3.</span>
                 <div className={styles.stepContent}>
                   <div className={styles.stepTitle}>Review & Publish Course</div>
                   <div className={styles.stepDescription}>
@@ -181,7 +170,7 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
               </div>
 
               <div className={styles.stepItem}>
-                <span className={styles.stepNumber}>5.</span>
+                <span className={styles.stepNumber}>4.</span>
                 <div className={styles.stepContent}>
                   <div className={styles.stepTitle}>Invite Workers to Course</div>
                   <div className={styles.stepDescription}>

@@ -100,15 +100,7 @@ export default function TrainingClient({ stats, courses }: TrainingClientProps) 
 
             <div className={styles.stepsList}>
               <div className={styles.stepItem}>
-                <h4 className={styles.stepTitle}>1. Select Type of Training</h4>
-                <p className={styles.stepDesc}>
-                  Choose whether the training is based on compliance, safety, HR, or any internal
-                  policy area.
-                </p>
-              </div>
-
-              <div className={styles.stepItem}>
-                <h4 className={styles.stepTitle}>2. Upload Policies</h4>
+                <h4 className={styles.stepTitle}>1. Upload Policies</h4>
                 <p className={styles.stepDesc}>
                   Upload your organization&apos;s documents. Theraptly will analyze and prepare a
                   draft training automatically.
@@ -116,14 +108,14 @@ export default function TrainingClient({ stats, courses }: TrainingClientProps) 
               </div>
 
               <div className={styles.stepItem}>
-                <h4 className={styles.stepTitle}>3. Configure Course & Assessment</h4>
+                <h4 className={styles.stepTitle}>2. Configure Course & Assessment</h4>
                 <p className={styles.stepDesc}>
                   Define course structure, quiz settings, difficulty level, and deadlines.
                 </p>
               </div>
 
               <div className={styles.stepItem}>
-                <h4 className={styles.stepTitle}>4. Review & Publish Course</h4>
+                <h4 className={styles.stepTitle}>3. Review & Publish Course</h4>
                 <p className={styles.stepDesc}>
                   Review AI-generated lessons and quizzes, make adjustments, and approve for
                   publishing. Instantly make your training available for your team to access and
@@ -132,7 +124,7 @@ export default function TrainingClient({ stats, courses }: TrainingClientProps) 
               </div>
 
               <div className={styles.stepItem}>
-                <h4 className={styles.stepTitle}>5. Invite Workers to Course</h4>
+                <h4 className={styles.stepTitle}>4. Invite Workers to Course</h4>
                 <p className={styles.stepDesc}>
                   Assign courses to individuals or departments and track progress directly from your
                   dashboard.
