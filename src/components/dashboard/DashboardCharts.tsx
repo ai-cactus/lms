@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Label } from 'recharts';
 import styles from '@/app/dashboard/(main)/page.module.css';
-import Button from '@/components/ui/Button';
 
 interface DashboardChartsProps {
   stats?: {
