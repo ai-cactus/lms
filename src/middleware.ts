@@ -6,9 +6,9 @@ const ROUTE_CONFIG = {
   worker: {
     cookiePrefix: 'worker',
     requiredRole: 'worker',
-    loginPath: '/login-worker',
+    loginPath: '/login',
     // All paths that belong to the worker context
-    paths: ['/worker', '/onboarding-worker', '/login-worker', '/api/auth-worker'],
+    paths: ['/worker', '/onboarding-worker', '/api/auth-worker'],
     // Where a worker lands if they have no org yet
     onboardingPath: '/onboarding-worker',
     homePath: '/worker',
@@ -117,7 +117,6 @@ export const config = {
     '/worker/:path*',
     '/onboarding-worker/:path*',
     '/login',
-    '/login-worker',
     '/api/auth/:path*',
     '/api/auth-worker/:path*',
   ],

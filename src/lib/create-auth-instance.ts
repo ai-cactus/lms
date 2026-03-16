@@ -168,7 +168,12 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             }
           }
 
-          if (dbUser.role !== allowedRole) return `${config.pages?.signIn}?error=AccessDenied`;
+          if (dbUser.role !== allowedRole) {
+            console.log(`[NextAuth] Role mismatch during SSO. Expected ${allowedRole}, got ${dbUser.role}. Automatically routing to correct instance...`);
+            if (dbUser.role === 'worker') return '/api/auth-worker/signin/microsoft-entra-id?callbackUrl=/worker';
+            if (dbUser.role === 'admin') return '/api/auth/signin/microsoft-entra-id?callbackUrl=/dashboard';
+            return `${config.pages?.signIn}?error=AccessDenied`;
+          }
 
           user.id = dbUser.id;
           user.organizationId = dbUser.organizationId;
@@ -251,8 +256,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
     },
 
     pages: {
-      signIn: allowedRole === 'admin' ? '/login' : '/login-worker',
-      error: allowedRole === 'admin' ? '/login' : '/login-worker',
+      signIn: '/login',
+      error: '/login',
     },
 
     session: { strategy: 'jwt' },

@@ -36,9 +36,8 @@ function VerifyContent() {
             const data = await res.json();
             
             if (data.success) {
-                // Route to the correct login page based on user role
-                const loginPath = data.role === 'worker' ? '/login-worker' : '/login';
-                router.push(`${loginPath}?verified=true`);
+                // Unified login page handles both roles now
+                router.push(`/login?verified=true`);
             } else {
                 router.push(`/verify-email?error=${data.error}`);
             }

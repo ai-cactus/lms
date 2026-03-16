@@ -84,7 +84,7 @@ export default function WorkerHeader({ userEmail, fullName, onMenuClick }: Heade
   }, []);
 
   const handleLogout = async () => {
-    await signOut({ callbackUrl: '/login-worker' });
+    await signOut({ callbackUrl: '/login' });
   };
 
   // Close dropdown when clicking outside

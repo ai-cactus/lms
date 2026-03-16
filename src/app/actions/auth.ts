@@ -7,7 +7,6 @@ import bcrypt from 'bcryptjs';
 import { AuthError } from 'next-auth';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
-import { cookies } from 'next/headers';
 
 // Define return type
 export type AuthState = {

@@ -3,7 +3,6 @@
 import { signIn } from '@/auth.worker';
 import { AuthError } from 'next-auth';
 import { prisma } from '@/lib/prisma';
-import { cookies } from 'next/headers';
 
 export type AuthState = {
     error?: string;
