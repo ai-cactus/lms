@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import styles from './CoursesList.module.css';
 import { Button, Input, Select } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
@@ -20,9 +20,13 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Filter Logic
-  const filteredCourses = courses.filter((course) =>
-    course.title.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  // ⚡ Bolt: Memoize filtered courses to prevent re-calculating on every render,
+  // especially when pagination changes. This reduces O(N) operations.
+  const filteredCourses = useMemo(() => {
+    return courses.filter((course) =>
+      course.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [courses, searchQuery]);
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);

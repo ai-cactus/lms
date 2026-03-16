@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import styles from './MyCoursesTable.module.css';
 import { Input } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
@@ -28,9 +28,13 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
     const [searchQuery, setSearchQuery] = useState('');
 
     // Filter Logic
-    const filteredCourses = courses.filter((course) =>
-        course.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // ⚡ Bolt: Memoize filtered courses to avoid re-evaluating on every re-render.
+    // Useful as the list of courses grows.
+    const filteredCourses = useMemo(() => {
+        return courses.filter((course) =>
+            course.title.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [courses, searchQuery]);
 
     // Limit to maxItems for dashboard view
     const displayCourses = filteredCourses.slice(0, maxItems);

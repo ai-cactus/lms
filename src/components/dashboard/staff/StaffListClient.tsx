@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import styles from './StaffList.module.css';
 import { Button, Input, Select } from '@/components/ui';
 import Link from 'next/link';
@@ -34,10 +34,13 @@ export default function StaffListClient({ users: initialUsers, hasOrganization, 
     const [itemsPerPage, setItemsPerPage] = useState(10);
 
     // Filter Logic
-    const filteredUsers = initialUsers.filter((user) =>
-        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // ⚡ Bolt: Memoize filtered users to avoid re-evaluating on every re-render (e.g. pagination or modal state changes).
+    const filteredUsers = useMemo(() => {
+        return initialUsers.filter((user) =>
+            user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            user.email.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [initialUsers, searchQuery]);
 
     // Pagination Logic
     const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
