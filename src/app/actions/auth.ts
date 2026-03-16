@@ -29,11 +29,6 @@ export async function authenticate(
       }
     }
 
-    // Clear worker session cookies to prevent crossover
-    const cookieStore = await cookies();
-    cookieStore.delete('worker.session-token');
-    cookieStore.delete('__Secure-worker.session-token');
-
     console.log(
       '[Auth Action Admin] authenticate server action called with entries:',
       Object.fromEntries(formData),
