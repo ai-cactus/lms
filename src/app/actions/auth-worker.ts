@@ -3,7 +3,6 @@
 import { signIn } from '@/auth.worker';
 import { AuthError } from 'next-auth';
 import { prisma } from '@/lib/prisma';
-import { cookies } from 'next/headers';
 
 export type AuthState = {
     error?: string;
@@ -20,11 +19,6 @@ export async function authenticateWorker(prevState: AuthState | undefined, formD
                 return { redirect: '/login' };
             }
         }
-
-        // Clear admin session cookies to prevent crossover
-        const cookieStore = await cookies();
-        cookieStore.delete('admin.session-token');
-        cookieStore.delete('__Secure-admin.session-token');
 
         await signIn('credentials', {
             ...Object.fromEntries(formData),

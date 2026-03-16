@@ -14,7 +14,7 @@ export default async function WorkerLayout({
     const session = await auth();
 
     if (!session?.user?.email) {
-        redirect('/login-worker');
+        redirect('/login');
     }
 
     // Fetch profile for full name

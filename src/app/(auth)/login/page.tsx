@@ -169,6 +169,7 @@ function LoginForm() {
         </div>
       )}
 
+
       {oauthError === 'AccessDenied' && (
         <div
           style={{
@@ -215,11 +216,7 @@ function LoginForm() {
               Access Denied
             </div>
             <div style={{ fontSize: '13px', color: '#B91C1C' }}>
-              Your account exists but is registered as a <strong>Worker</strong>. Please use the{' '}
-              <Link href="/login-worker" style={{ textDecoration: 'underline', color: 'inherit' }}>
-                Worker Login
-              </Link>{' '}
-              instead.
+              You do not have authorization to log in with this role.
             </div>
           </div>
         </div>
