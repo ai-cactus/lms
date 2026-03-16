@@ -5,7 +5,7 @@ module.exports = {
         {
             name: "lms-staging",
             script: "npm",
-            args: "run dev",
+            args: "start",
             cwd: "/home/homepc/lms2",
             env: {
                 NODE_ENV: "development",

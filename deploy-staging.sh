@@ -16,6 +16,9 @@ npm install --legacy-peer-deps
 echo "⚡ Generating Prisma Client..."
 npx prisma generate
 
+echo "🏗️ Building app for production..."
+npm run build
+
 echo "🔁 Restarting PM2 process for staging..."
 pm2 startOrRestart ecosystem.config.js --only lms-staging
 
