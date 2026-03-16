@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { createNotification, notifyOrganizationAdmins } from './notifications';
 
@@ -129,7 +130,8 @@ export async function verifyOrganizationCode(code: string) {
 }
 
 export async function joinOrganization(code: string) {
-    const session = await auth();
+    // Workers join organizations, so we need to use the worker auth instance
+    const session = await workerAuth();
 
     if (!session?.user?.email || !session?.user?.id) {
         return { success: false, error: 'Unauthorized' };
