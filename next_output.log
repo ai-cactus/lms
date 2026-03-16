@@ -1,0 +1,38 @@
+
+> lms2@0.1.0 dev
+> next dev
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+- Experiments (use with caution):
+  · serverActions
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 1772ms
+[Middleware] Target Auth: admin
+[Middleware] Searching for cookie: admin.session-token. Found token? false
+○ Compiling /login ...
+Image with src "/images/login-bg.png" is using quality "100" which is not configured in images.qualities [75]. Please update your config to [100, 75].
+Read more: https://nextjs.org/docs/messages/next-image-unconfigured-qualities
+ GET /login 200 in 5.3s (compile: 4.8s, proxy.ts: 119ms, render: 383ms)
+ GET /api/auth/session 200 in 1975ms (proxy.ts: 43ms)
+[31m[auth][error][0m MissingSecret: Please define a `secret`. Read more at https://errors.authjs.dev#missingsecret
+    at assertConfig (/app/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:513:16)
+    at Auth (/app/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:5330:204)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async AppRouteRouteModule.do (/app/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37866)
+[Middleware] Target Auth: admin
+[Middleware] Searching for cookie: admin.session-token. Found token? false
+ GET /login 200 in 88ms (compile: 7ms, proxy.ts: 8ms, render: 72ms)
+[31m[auth][error][0m MissingSecret: Please define a `secret`. Read more at https://errors.authjs.dev#missingsecret
+    at assertConfig (/app/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:513:16)
+    at Auth (/app/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:5330:204)
+    at async AppRouteRouteModule.do (/app/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37866)
+ GET /api/auth/session 500 in 54ms (compile: 37ms, proxy.ts: 8ms, render: 9ms)
+[31m[auth][error][0m MissingSecret: Please define a `secret`. Read more at https://errors.authjs.dev#missingsecret
+    at assertConfig (/app/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:513:16)
+    at Auth (/app/.next/dev/server/chunks/node_modules_@auth_core_d131f128._.js:5330:204)
+    at async AppRouteRouteModule.do (/app/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37866)
+ GET /api/auth/session 500 in 22ms (compile: 8ms, proxy.ts: 7ms, render: 6ms)

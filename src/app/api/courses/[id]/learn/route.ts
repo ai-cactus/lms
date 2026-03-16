@@ -63,10 +63,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         where: { courseId: courseId, userId: adminSession.user.id },
         include: { quizAttempts: true },
       });
-      if (
-        adminEnroll ||
-        adminSession.user.role === 'admin'
-      ) {
+      if (adminEnroll || adminSession.user.role === 'admin') {
         activeUserId = adminSession.user.id;
         activeRole = adminSession.user.role;
         enrollment = adminEnroll;

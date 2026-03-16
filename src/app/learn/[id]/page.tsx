@@ -373,7 +373,9 @@ export default function LearnPage() {
           const remaining = Math.max(0, limit - elapsedSeconds);
           setTimeLeft(remaining);
         } else if (
-          (isCompleted || data.enrollment?.status === 'locked' || (hasQuizAttempt && !activeAttempt)) &&
+          (isCompleted ||
+            data.enrollment?.status === 'locked' ||
+            (hasQuizAttempt && !activeAttempt)) &&
           data.enrollment?.status !== 'in_progress'
         ) {
           const resultsData = data.quizResultsData || {
@@ -623,17 +625,72 @@ export default function LearnPage() {
                     {quizStep === 'intro' && (
                       <div className={styles.quizIntro}>
                         <h1 className={styles.quizIntroTitle}>{course.quiz?.title}</h1>
-                        
+
                         {enrollment?.status === 'locked' ? (
-                          <div style={{ backgroundColor: '#FFF5F5', borderRadius: '12px', padding: '32px 24px', border: '1px solid #FEB2B2', marginTop: '24px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-                              <div style={{ backgroundColor: '#FEE2E2', color: '#DC2626', width: '48px', height: '48px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                          <div
+                            style={{
+                              backgroundColor: '#FFF5F5',
+                              borderRadius: '12px',
+                              padding: '32px 24px',
+                              border: '1px solid #FEB2B2',
+                              marginTop: '24px',
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                marginBottom: '16px',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  backgroundColor: '#FEE2E2',
+                                  color: '#DC2626',
+                                  width: '48px',
+                                  height: '48px',
+                                  borderRadius: '50%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <svg
+                                  width="24"
+                                  height="24"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <circle cx="12" cy="12" r="10"></circle>
+                                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                </svg>
                               </div>
                             </div>
-                            <h2 style={{ color: '#9B2C2C', fontSize: '20px', fontWeight: 700, margin: '0 0 12px 0' }}>Maximum retries reached</h2>
-                            <p style={{ color: '#C53030', margin: 0, fontSize: '15px', lineHeight: 1.5 }}>
-                              You have used all {course.quiz?.allowedAttempts} allowed attempts for this quiz. An admin must assign a retake before you can continue.
+                            <h2
+                              style={{
+                                color: '#9B2C2C',
+                                fontSize: '20px',
+                                fontWeight: 700,
+                                margin: '0 0 12px 0',
+                              }}
+                            >
+                              Maximum retries reached
+                            </h2>
+                            <p
+                              style={{
+                                color: '#C53030',
+                                margin: 0,
+                                fontSize: '15px',
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              You have used all {course.quiz?.allowedAttempts} allowed attempts for
+                              this quiz. An admin must assign a retake before you can continue.
                             </p>
                           </div>
                         ) : (
@@ -643,12 +700,24 @@ export default function LearnPage() {
                               <br />
                               Passing score: {course.quiz?.passingScore}%
                               {course.quiz?.allowedAttempts && (
-                                <span style={{ display: 'block', marginTop: 8, color: '#4A5568', fontWeight: 600 }}>
-                                  Attempt {(enrollment?.quizAttempts?.[0]?.attemptCount || 0) + 1} of {course.quiz.allowedAttempts}
+                                <span
+                                  style={{
+                                    display: 'block',
+                                    marginTop: 8,
+                                    color: '#4A5568',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  Attempt {(enrollment?.quizAttempts?.[0]?.attemptCount || 0) + 1}{' '}
+                                  of {course.quiz.allowedAttempts}
                                 </span>
                               )}
                             </p>
-                            <Button variant="primary" style={{ fontSize: 16, padding: '12px 32px' }} onClick={handleStartQuiz}>
+                            <Button
+                              variant="primary"
+                              style={{ fontSize: 16, padding: '12px 32px' }}
+                              onClick={handleStartQuiz}
+                            >
                               Start Quiz
                             </Button>
                           </>
@@ -659,10 +728,17 @@ export default function LearnPage() {
                     {quizStep === 'active' && course.quiz && (
                       <>
                         <div className={styles.quizHeader}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              marginBottom: 16,
+                            }}
+                          >
                             <span className={styles.slideModuleLabel}>
                               Question {currentQuestionIndex + 1} of {course.quiz.questions.length}
-                              {course.quiz.allowedAttempts && ` | Attempt ${enrollment?.quizAttempts?.[0]?.attemptCount || 1} of ${course.quiz.allowedAttempts}`}
+                              {course.quiz.allowedAttempts &&
+                                ` | Attempt ${enrollment?.quizAttempts?.[0]?.attemptCount || 1} of ${course.quiz.allowedAttempts}`}
                             </span>
                             <span className={styles.slideCounter}>
                               {Math.floor(timeLeft / 60)}:
@@ -692,18 +768,31 @@ export default function LearnPage() {
                             variant="outline"
                             onClick={() => setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))}
                             disabled={currentQuestionIndex === 0 || submitting}
-                            style={currentQuestionIndex === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                            style={
+                              currentQuestionIndex === 0
+                                ? { opacity: 0.5, cursor: 'not-allowed' }
+                                : {}
+                            }
                           >
                             Previous Question
                           </Button>
                           <Button
                             variant="primary"
                             onClick={handleNextQuestion}
-                            disabled={!quizAnswers[course.quiz.questions[currentQuestionIndex].id] || submitting}
-                            style={!quizAnswers[course.quiz.questions[currentQuestionIndex].id] ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                            disabled={
+                              !quizAnswers[course.quiz.questions[currentQuestionIndex].id] ||
+                              submitting
+                            }
+                            style={
+                              !quizAnswers[course.quiz.questions[currentQuestionIndex].id]
+                                ? { opacity: 0.5, cursor: 'not-allowed' }
+                                : {}
+                            }
                           >
                             {currentQuestionIndex === course.quiz.questions.length - 1
-                              ? (submitting ? 'Submitting...' : 'Submit Quiz')
+                              ? submitting
+                                ? 'Submitting...'
+                                : 'Submit Quiz'
                               : 'Next Question'}
                           </Button>
                         </div>
@@ -741,7 +830,11 @@ export default function LearnPage() {
               hasQuiz={!!course.quiz}
             >
               {course.lessons.map((lesson, idx) => (
-                <div key={lesson.id} id={`module-${idx}`} style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}>
+                <div
+                  key={lesson.id}
+                  id={`module-${idx}`}
+                  style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}
+                >
                   {userData?.role === 'admin' ? (
                     <AdminLessonEditor
                       lesson={{
@@ -756,19 +849,44 @@ export default function LearnPage() {
                     />
                   ) : (
                     <>
-                      <h2 style={{ fontSize: '22px', fontWeight: 700, marginBottom: '8px', color: '#4C6EF5', letterSpacing: '0.5px' }}>
+                      <h2
+                        style={{
+                          fontSize: '22px',
+                          fontWeight: 700,
+                          marginBottom: '8px',
+                          color: '#4C6EF5',
+                          letterSpacing: '0.5px',
+                        }}
+                      >
                         Module {idx + 1}
                       </h2>
-                      <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px', color: '#1A202C' }}>
+                      <h3
+                        style={{
+                          fontSize: '20px',
+                          fontWeight: 600,
+                          marginBottom: '16px',
+                          color: '#1A202C',
+                        }}
+                      >
                         {lesson.title}
                       </h3>
-                      <div dangerouslySetInnerHTML={{
-                        __html: (lesson.content || '')
-                          .replace(/&nbsp;/g, ' ')
-                          .replace(/<br\s*\/?>/gi, ' ')
-                          .replace(/\s+/g, ' '),
-                      }} />
-                      {idx < course.lessons.length - 1 && <hr style={{ marginTop: '48px', border: 'none', borderTop: '2px solid #EDF2F7' }} />}
+                      <div
+                        dangerouslySetInnerHTML={{
+                          __html: (lesson.content || '')
+                            .replace(/&nbsp;/g, ' ')
+                            .replace(/<br\s*\/?>/gi, ' ')
+                            .replace(/\s+/g, ' '),
+                        }}
+                      />
+                      {idx < course.lessons.length - 1 && (
+                        <hr
+                          style={{
+                            marginTop: '48px',
+                            border: 'none',
+                            borderTop: '2px solid #EDF2F7',
+                          }}
+                        />
+                      )}
                     </>
                   )}
                 </div>
@@ -785,7 +903,8 @@ export default function LearnPage() {
             <div className={styles.modalIcon}>🎓</div>
             <h2 className={styles.modalTitle}>Ready for the Quiz?</h2>
             <p className={styles.modalText}>
-              You&apos;ve completed all the course modules. Would you like to proceed to the quiz now?
+              You&apos;ve completed all the course modules. Would you like to proceed to the quiz
+              now?
             </p>
             <div className={styles.modalActions}>
               <Button variant="outline" onClick={() => setShowQuizGateModal(false)}>
@@ -804,7 +923,8 @@ export default function LearnPage() {
             <div className={styles.modalIcon}>📚</div>
             <h2 className={styles.modalTitle}>Complete All Modules First</h2>
             <p className={styles.modalText}>
-              You have <strong>{course.lessons.length - (highestUnlockedIndex + 1)}</strong> module(s) remaining. Please complete all modules in order.
+              You have <strong>{course.lessons.length - (highestUnlockedIndex + 1)}</strong>{' '}
+              module(s) remaining. Please complete all modules in order.
             </p>
             <div className={styles.modalActions}>
               <Button variant="primary" onClick={() => setShowIncompleteModal(false)}>
