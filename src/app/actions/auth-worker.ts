@@ -21,11 +21,6 @@ export async function authenticateWorker(prevState: AuthState | undefined, formD
             }
         }
 
-        // Clear admin session cookies to prevent crossover
-        const cookieStore = await cookies();
-        cookieStore.delete('admin.session-token');
-        cookieStore.delete('__Secure-admin.session-token');
-
         await signIn('credentials', {
             ...Object.fromEntries(formData),
             redirectTo: '/worker',
