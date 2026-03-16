@@ -3,7 +3,7 @@
 set -e
 
 echo "➡️ Starting STAGING deployment script..."
-cd /home/homepc/lms2-staging
+cd /home/homepc/lms2
 
 echo "🔄 Fetching remote staging..."
 git checkout staging
