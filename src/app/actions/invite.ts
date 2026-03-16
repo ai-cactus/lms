@@ -1,7 +1,6 @@
 'use server';
 
 import { PrismaClient } from '@prisma/client';
-import { v4 as uuidv4 } from 'uuid';
 import { sendInviteEmail } from '@/lib/email';
 
 const prisma = new PrismaClient();
@@ -74,7 +73,7 @@ export async function createInvites(
           continue;
         }
 
-        const token = uuidv4();
+        const token = crypto.randomUUID();
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
 
