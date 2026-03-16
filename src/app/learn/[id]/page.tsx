@@ -545,15 +545,15 @@ export default function LearnPage() {
             {!isQuizIndex && (
               <div className={styles.toggle}>
                 <Button
-                  variant={viewMode === 'article' ? 'primary' : 'ghost'}
-                  className={styles.toggleBtn}
+                  variant="ghost"
+                  className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
                   onClick={() => setViewMode('article')}
                 >
                   ARTICLE
                 </Button>
                 <Button
-                  variant={viewMode === 'slides' ? 'primary' : 'ghost'}
-                  className={styles.toggleBtn}
+                  variant="ghost"
+                  className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
                   onClick={() => setViewMode('slides')}
                 >
                   SLIDE
