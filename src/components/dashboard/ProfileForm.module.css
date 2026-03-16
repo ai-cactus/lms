@@ -41,35 +41,35 @@
 }
 
 .tabs {
-  display: inline-flex;
-  background: #f1f5f9; /* Slate 100 */
-  padding: 4px;
-  border-radius: 9999px;
+  display: flex;
+  gap: 32px;
   margin-bottom: 32px;
   align-items: center;
-  border: 1px solid #e2e8f0; /* Slate 200 */
+  border-bottom: 1px solid #e2e8f0;
+  width: 100%;
 }
 
 .tab {
-  padding: 8px 24px;
+  padding: 12px 4px;
   background: transparent;
-  border-radius: 9999px;
+  border-radius: 0;
   font-weight: 600;
   font-size: 13px;
-  color: #64748b; /* Slate 500 */
+  color: #64748b;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s;
   text-transform: uppercase;
-  letter-spacing: 0.025em;
-  white-space: nowrap;
+  letter-spacing: 0.05em;
+  position: relative;
+  bottom: -1px;
+  border-bottom: 2px solid transparent;
 }
 
 .activeTab {
   color: var(--primary) !important;
-  background: white !important;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.06) !important;
+  background: transparent !important;
+  border-bottom: 2px solid var(--primary) !important;
+  box-shadow: none !important;
 }
 
 .profileWrapper {
