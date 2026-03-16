@@ -236,7 +236,7 @@ export async function getDashboardStats() {
       year: d.getFullYear(),
     };
   }).map(({ month, monthIdx, year }) => {
-    const inMonth = completedEnrollments.filter((e) => {
+    const inMonth = enrollmentsWithScore.filter((e) => {
       if (!e.completedAt) return false;
       const c = new Date(e.completedAt);
       return c.getMonth() === monthIdx && c.getFullYear() === year;

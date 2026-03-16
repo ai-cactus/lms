@@ -1,17 +1,30 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
+const acceptInviteSchema = z.object({
+  token: z.string().min(1, 'Token is required'),
+  firstName: z.string().min(1, 'First name is required').max(100, 'First name is too long'),
+  lastName: z.string().min(1, 'Last name is required').max(100, 'Last name is too long'),
+  password: z.string().min(8, 'Password must be at least 8 characters long').max(100, 'Password is too long'),
+});
+
 export async function POST(req: Request) {
   try {
-    const { token, firstName, lastName, password } = await req.json();
+    const body = await req.json();
+    const result = acceptInviteSchema.safeParse(body);
 
-    // 1. Validate input
-    if (!token || !firstName || !lastName || !password) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    if (!result.success) {
+      return NextResponse.json(
+        { error: 'Invalid input data', details: result.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
+
+    const { token, firstName, lastName, password } = result.data;
 
     // 2. Find pending invite
     const invite = await prisma.invite.findUnique({
