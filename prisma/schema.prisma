@@ -141,6 +141,8 @@ model Course {
   versions           CourseVersion[]
   enrollments        Enrollment[]
   lessons            Lesson[]
+
+  @@index([createdBy])
 }
 
 model CourseVersion {
@@ -246,6 +248,7 @@ model Enrollment {
   quizAttempts         QuizAttempt[]
 
   @@index([userId, courseId])
+  @@index([courseId])
 }
 
 model QuizAttempt {
@@ -288,4 +291,6 @@ model Notification {
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
