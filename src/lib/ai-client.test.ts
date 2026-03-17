@@ -164,15 +164,11 @@ describe('ai-client utilities', () => {
         candidates: [{ content: { parts: [{ text: 'AI response' }] } }],
       };
 
-<<<<<<< HEAD
       vi.mocked(global.fetch).mockResolvedValue({
-=======
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (global.fetch as any).mockResolvedValue({
->>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         ok: true,
         json: async () => mockResponse,
       } as any);
+
 
       const result = await callVertexAI('test prompt');
       expect(result).toBe('AI response');
@@ -192,12 +188,7 @@ describe('ai-client utilities', () => {
         candidates: [{ content: { parts: [{ text: 'Success after retry' }] } }],
       };
 
-<<<<<<< HEAD
       vi.mocked(global.fetch)
-=======
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (global.fetch as any)
->>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         .mockResolvedValueOnce({
           status: 429,
           statusText: 'Too Many Requests',
@@ -208,6 +199,7 @@ describe('ai-client utilities', () => {
           ok: true,
           json: async () => mockSuccessResponse,
         } as any);
+
 
       const callPromise = callVertexAI('test');
 
@@ -224,12 +216,7 @@ describe('ai-client utilities', () => {
         candidates: [{ content: { parts: [{ text: 'Success after 500' }] } }],
       };
 
-<<<<<<< HEAD
       vi.mocked(global.fetch)
-=======
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (global.fetch as any)
->>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         .mockResolvedValueOnce({
           status: 500,
           statusText: 'Internal Server Error',
@@ -241,6 +228,7 @@ describe('ai-client utilities', () => {
           json: async () => mockSuccessResponse,
         } as any);
 
+
       const callPromise = callVertexAI('test');
       await vi.runAllTimersAsync();
 
@@ -250,12 +238,7 @@ describe('ai-client utilities', () => {
     });
 
     it('should throw error after maximum retries', async () => {
-<<<<<<< HEAD
       vi.mocked(global.fetch).mockResolvedValue({
-=======
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (global.fetch as any).mockResolvedValue({
->>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         status: 429,
         statusText: 'Too Many Requests',
         text: async () => 'Rate limit exceeded',
@@ -301,17 +284,13 @@ describe('ai-client utilities', () => {
     });
 
     it('should throw on non-retryable errors (e.g., 400)', async () => {
-<<<<<<< HEAD
       vi.mocked(global.fetch).mockResolvedValue({
-=======
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (global.fetch as any).mockResolvedValue({
->>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         status: 400,
         statusText: 'Bad Request',
         text: async () => 'Invalid prompt',
         ok: false,
       } as any);
+
 
       await expect(callVertexAI('test')).rejects.toThrow(
         'Vertex AI 400 Bad Request: Invalid prompt',
@@ -398,5 +377,6 @@ describe('ai-client utilities', () => {
       expect(fetchBody.generationConfig.maxOutputTokens).toBe(1000);
       expect(fetchBody.generationConfig.temperature).toBe(0.2);
     });
+
   });
 });
