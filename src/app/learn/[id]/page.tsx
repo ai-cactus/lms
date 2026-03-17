@@ -12,6 +12,7 @@ import CourseArticle from '@/components/courses/CourseArticle';
 import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
 import { Button } from '@/components/ui';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 interface Lesson {
   id: string;
@@ -874,10 +875,12 @@ export default function LearnPage() {
                       </h3>
                       <div
                         dangerouslySetInnerHTML={{
-                          __html: (lesson.content || '')
-                            .replace(/&nbsp;/g, ' ')
-                            .replace(/<br\s*\/?>/gi, ' ')
-                            .replace(/\s+/g, ' '),
+                          __html: sanitizeHtml(
+                            (lesson.content || '')
+                              .replace(/&nbsp;/g, ' ')
+                              .replace(/<br\s*\/?>/gi, ' ')
+                              .replace(/\s+/g, ' ')
+                          ),
                         }}
                       />
                       {idx < course.lessons.length - 1 && (

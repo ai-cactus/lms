@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import styles from './CoursePlayer.module.css';
 import SlideContentFitter from '@/components/ui/SlideContentFitter';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 interface CourseSlideProps {
   lesson: {
@@ -94,7 +95,7 @@ export default function CourseSlide({
           <div
             className={styles.slideBody}
             dangerouslySetInnerHTML={{
-              __html: DOMPurify.sanitize(
+              __html: sanitizeHtml(
                 (lesson.content || '')
                   .replace(/&nbsp;/g, ' ')
                   .replace(/<br\s*\/?>/gi, ' ')

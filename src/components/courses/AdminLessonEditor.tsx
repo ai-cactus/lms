@@ -7,6 +7,7 @@ import styles from '@/components/courses/CoursePlayer.module.css';
 import { updateLessonContent } from '@/app/actions/course';
 import 'react-quill-new/dist/quill.snow.css';
 import { Button } from '@/components/ui';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 // Import React Quill dynamically
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
@@ -157,10 +158,12 @@ export default function AdminLessonEditor({
       ) : (
         <div
           dangerouslySetInnerHTML={{
-            __html: (content || '')
-              .replace(/&nbsp;/g, ' ')
-              .replace(/<br\s*\/?>/gi, ' ')
-              .replace(/\s+/g, ' '),
+            __html: sanitizeHtml(
+              (content || '')
+                .replace(/&nbsp;/g, ' ')
+                .replace(/<br\s*\/?>/gi, ' ')
+                .replace(/\s+/g, ' ')
+            ),
           }}
         />
       )}

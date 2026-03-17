@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useLayoutEffect, useEffect } from 'react';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 interface SlideContentFitterProps {
   content: string;
@@ -132,7 +133,7 @@ export default function SlideContentFitter({
         visibility: isAdjusting ? 'hidden' : 'visible', // Hide while calculating to prevent flash
         overflowY: 'auto', // Fallback
       }}
-      dangerouslySetInnerHTML={{ __html: content }}
+      dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }}
     />
   );
 }
