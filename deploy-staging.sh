@@ -1,44 +1,57 @@
 #!/bin/bash
 # deploy-staging.sh
 set -e
-set -x # Enable command tracing for debugging in GitHub Action logs
+set -x # Extreme verbosity
+
+echo "➡️ Starting STAGING deployment script logic..."
 
 # Load user profile to ensure npm, node, and pm2 are dynamically injected in PATH
-source ~/.bashrc || true
-source ~/.profile || true
+if [ -f "$HOME/.bashrc" ]; then source "$HOME/.bashrc" || true; fi
+if [ -f "$HOME/.profile" ]; then source "$HOME/.profile" || true; fi
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+    \. "$NVM_DIR/nvm.sh"
+else
+    echo "⚠️ NVM not found at $NVM_DIR/nvm.sh"
+fi
 
-echo "➡️ Starting STAGING deployment script..."
+# Verify dependencies with full paths if possible
+export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+echo "PATH is: $PATH"
 
-# Verify dependencies
-command -v npm >/dev/null 2>&1 || { echo >&2 "❌ npm is not installed. Aborting."; exit 1; }
-command -v pm2 >/dev/null 2>&1 || { echo >&2 "❌ pm2 is not installed. Aborting."; exit 1; }
+command -v npm || { echo "❌ npm not found in PATH"; exit 1; }
+command -v git || { echo "❌ git not found in PATH"; exit 1; }
+command -v pm2 || { echo "❌ pm2 not found in PATH"; exit 1; }
 
-cd /home/homepc/lms2
+cd /home/homepc/lms2 || { echo "❌ Could not cd to /home/homepc/lms2"; exit 1; }
 
-echo "🔄 Fetching remote staging..."
+echo "🔄 Git operations..."
+git rev-parse --is-inside-work-tree || { echo "❌ Not a git repository"; exit 1; }
+
 REMOTE="new-origin"
 if ! git remote | grep -q "$REMOTE"; then
-    echo "⚠️  $REMOTE not found, falling back to 'origin'"
+    echo "⚠️  $REMOTE not found, using 'origin'"
     REMOTE="origin"
 fi
 
-git checkout staging
+echo "Using remote: $REMOTE"
 git fetch "$REMOTE" staging
+git checkout -f staging
 git reset --hard "$REMOTE/staging"
+git status
 
-echo "📦 Installing Node dependencies..."
-npm install --legacy-peer-deps
+echo "📦 Dependencies..."
+npm install --legacy-peer-deps --no-audit --no-fund
 
-echo "⚡ Generating Prisma Client..."
+echo "⚡ Prisma..."
 npx prisma generate
 
-echo "🏗️ Building app for production..."
-# Increase memory limit for Next.js build
-NODE_OPTIONS="--max-old-space-size=4096" npm run build
+echo "🏗️ Building..."
+# Use a safer memory limit and clear Next cache if possible
+rm -rf .next
+NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
-echo "🔁 Restarting PM2 process for staging..."
-pm2 startOrRestart ecosystem.config.js --only lms-staging
+echo "🔁 PM2 Restart..."
+pm2 startOrRestart ecosystem.config.js --only lms-staging --env production
 
-echo "✨ Staging updated and restarted successfully!"
+echo "✨ DONE!"

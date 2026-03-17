@@ -14,6 +14,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Debug Environment
+        run: |
+          echo "Node version: $(node -v)"
+          echo "Environment variables check..."
+          env | grep FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 || echo "VAR NOT FOUND"
 
       - name: Deploy to VM via SSH
         uses: appleboy/ssh-action@v1.2.0
@@ -22,6 +28,14 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           debug: true
+          script_stop: true # Stop script execution on first error
           script: |
-            cd /home/homepc/lms2
+            echo "🔍 DIAGNOSTICS START"
+            whoami
+            pwd
+            ls -ld /home/homepc/lms2 || echo "Folder missing"
+            cd /home/homepc/lms2 || exit 1
+            ls -la
+            git remote -v
+            echo "🔍 DIAGNOSTICS END"
             bash deploy-staging.sh
