@@ -6,11 +6,8 @@ import TrainingClient from './TrainingClient';
 export const dynamic = 'force-dynamic';
 
 export default async function TrainingPage() {
-    // Fetch data in parallel
-    const [courses, stats] = await Promise.all([
-        getCourses(),
-        getDashboardStats(),
-    ]);
+  // Fetch data in parallel
+  const [courses, stats] = await Promise.all([getCourses(), getDashboardStats()]);
 
-    return <TrainingClient courses={courses} stats={stats} />;
+  return <TrainingClient courses={courses} stats={stats} />;
 }

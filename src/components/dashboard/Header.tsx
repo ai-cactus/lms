@@ -163,13 +163,25 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
                 ) : notifications.length === 0 ? (
                   <div className={styles.emptyState}>
                     <div className={styles.emptyStateIcon}>
-                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        width="40"
+                        height="40"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
                         <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
                       </svg>
                     </div>
                     <h4 className={styles.emptyStateText}>You're all caught up!</h4>
-                    <p className={styles.emptyStateSubtext}>New notifications will appear here when workers request retries or complete courses.</p>
+                    <p className={styles.emptyStateSubtext}>
+                      New notifications will appear here when workers request retries or complete
+                      courses.
+                    </p>
                   </div>
                 ) : (
                   <div className={styles.notificationList}>
@@ -185,14 +197,34 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
                           <span className={styles.notifTime}>
                             {new Date(notif.createdAt).toLocaleDateString()}
                           </span>
-                          {['QUIZ_RETRY_LIMIT_REACHED', 'COURSE_RETRY_REQUESTED'].includes(notif.type || '') && (
+                          {['QUIZ_RETRY_LIMIT_REACHED', 'COURSE_RETRY_REQUESTED'].includes(
+                            notif.type || '',
+                          ) && (
                             <div style={{ marginTop: '8px' }}>
                               {notif.resolvedAt ? (
-                                <span style={{ fontSize: '11px', color: '#059669', backgroundColor: '#D1FAE5', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 }}>
+                                <span
+                                  style={{
+                                    fontSize: '11px',
+                                    color: '#059669',
+                                    backgroundColor: '#D1FAE5',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontWeight: 500,
+                                  }}
+                                >
                                   Retake Assigned
                                 </span>
                               ) : (
-                                <span style={{ fontSize: '11px', color: '#1E40AF', backgroundColor: '#DBEAFE', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 }}>
+                                <span
+                                  style={{
+                                    fontSize: '11px',
+                                    color: '#1E40AF',
+                                    backgroundColor: '#DBEAFE',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontWeight: 500,
+                                  }}
+                                >
                                   ➔ Click here to assign retake
                                 </span>
                               )}
@@ -212,7 +244,16 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
         <div className={styles.profileWrapper} ref={dropdownRef}>
           <div className={styles.profile} onClick={toggleDropdown}>
             <div className={styles.avatar}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                 <circle cx="12" cy="7" r="4"></circle>
               </svg>
@@ -227,7 +268,10 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+              style={{
+                transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s',
+              }}
             >
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -235,8 +279,21 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
 
           {isOpen && (
             <div className={styles.dropdown}>
-              <Link href="/profile" className={styles.dropdownItem} onClick={() => setIsOpen(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Link
+                href="/profile"
+                className={styles.dropdownItem}
+                onClick={() => setIsOpen(false)}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <circle cx="12" cy="12" r="10"></circle>
                   <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
                   <line x1="9" y1="9" x2="9.01" y2="9"></line>
@@ -244,8 +301,21 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
                 </svg>
                 Edit Profile
               </Link>
-              <Button variant="ghost" className={`${styles.dropdownItem} ${styles.logout}`} onClick={handleLogout}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Button
+                variant="ghost"
+                className={`${styles.dropdownItem} ${styles.logout}`}
+                onClick={handleLogout}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                   <polyline points="16 17 21 12 16 7"></polyline>
                   <line x1="21" y1="12" x2="9" y2="12"></line>

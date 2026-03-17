@@ -98,7 +98,9 @@ describe('ai-client utilities', () => {
       const result = await callVertexAI('test prompt');
       expect(result).toBe('AI response');
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('publishers/google/models/gemini-2.5-flash-lite:generateContent?key=test-key'),
+        expect.stringContaining(
+          'publishers/google/models/gemini-2.5-flash-lite:generateContent?key=test-key',
+        ),
         expect.objectContaining({
           method: 'POST',
           body: expect.stringContaining('test prompt'),
@@ -173,7 +175,9 @@ describe('ai-client utilities', () => {
         await vi.runAllTimersAsync();
       }
 
-      await expect(callPromise).rejects.toThrow('Vertex AI 429 Too Many Requests: Rate limit exceeded');
+      await expect(callPromise).rejects.toThrow(
+        'Vertex AI 429 Too Many Requests: Rate limit exceeded',
+      );
       expect(global.fetch).toHaveBeenCalledTimes(5);
     });
 
@@ -185,7 +189,9 @@ describe('ai-client utilities', () => {
         ok: false,
       });
 
-      await expect(callVertexAI('test')).rejects.toThrow('Vertex AI 400 Bad Request: Invalid prompt');
+      await expect(callVertexAI('test')).rejects.toThrow(
+        'Vertex AI 400 Bad Request: Invalid prompt',
+      );
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
   });

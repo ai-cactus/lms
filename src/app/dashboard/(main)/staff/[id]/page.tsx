@@ -6,16 +6,16 @@ import { notFound } from 'next/navigation';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-    params: Promise<{ id: string }>;
+  params: Promise<{ id: string }>;
 }
 
 export default async function StaffProfilePage({ params }: PageProps) {
-    const { id } = await params;
-    const staff = await getStaffDetails(id);
+  const { id } = await params;
+  const staff = await getStaffDetails(id);
 
-    if (!staff) {
-        notFound();
-    }
+  if (!staff) {
+    notFound();
+  }
 
-    return <StaffProfileClient staff={staff} />;
+  return <StaffProfileClient staff={staff} />;
 }

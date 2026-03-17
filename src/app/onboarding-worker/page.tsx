@@ -83,6 +83,8 @@ export default function WorkerOnboardingPage() {
       {/* Left Side - Form */}
       <div className={styles.formSection}>
         <div className={styles.formContent}>
+          <Logo size="md" />
+
           <div className={styles.formHeader}>
             <h1 className={styles.title}>Join your Organization</h1>
             <p className={styles.subtitle}>
@@ -105,7 +107,6 @@ export default function WorkerOnboardingPage() {
                 maxLength={6}
                 style={{ fontSize: '24px', letterSpacing: '4px', textAlign: 'center' }}
               />
-
               <Button
                 type="submit"
                 size="lg"

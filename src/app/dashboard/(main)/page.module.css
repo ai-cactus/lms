@@ -1,229 +1,220 @@
 .container {
-    padding: 24px 40px;
-    max-width: 1400px;
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 32px;
-    flex: 1;
-    min-width: 0;
+  padding: 24px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  flex: 1;
+  min-width: 0;
 }
 
-
 @media (max-width: 1440px) {
-    .container {
-        padding: 24px 32px;
-        gap: 24px;
-    }
+  .container {
+    padding: 24px 32px;
+    gap: 24px;
+  }
 }
 
 @media (max-width: 1280px) {
-    .container {
-        padding: 24px 20px;
-        gap: 20px;
-    }
+  .container {
+    padding: 24px 20px;
+    gap: 20px;
+  }
 }
 
-
-
 .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
-    flex-wrap: wrap;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 640px) {
-    .header {
-        flex-direction: column;
-    }
+  .header {
+    flex-direction: column;
+  }
 }
 
-
 .titleSection {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .title {
-    font-size: 28px;
-    font-weight: 700;
-    color: #1A202C;
-    margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a202c;
+  margin: 0;
 }
 
 @media (max-width: 1280px) {
-    .title {
-        font-size: 24px;
-    }
+  .title {
+    font-size: 24px;
+  }
 }
 
-
 .subtitle {
-    font-size: 16px;
-    color: #718096;
-    margin: 0;
+  font-size: 16px;
+  color: #718096;
+  margin: 0;
 }
 
 /* Metrics Grid */
 .metricsGrid {
-    display: grid;
-    grid-template-columns: repeat(1, 1fr);
-    gap: 24px;
+  display: grid;
+  grid-template-columns: repeat(1, 1fr);
+  gap: 24px;
 }
 
 @media (min-width: 768px) {
-    .metricsGrid {
-        grid-template-columns: repeat(3, 1fr);
-    }
+  .metricsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 1280px) {
-    .metricsGrid {
-        gap: 16px;
-    }
+  .metricsGrid {
+    gap: 16px;
+  }
 }
-
 
 .metricCard {
-    border-radius: 16px;
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 160px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 160px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 
 @media (max-width: 1280px) {
-    .metricCard {
-        padding: 20px;
-        min-height: 140px;
-    }
+  .metricCard {
+    padding: 20px;
+    min-height: 140px;
+  }
 }
 
-
 .metricIcon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    margin-bottom: 24px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  margin-bottom: 24px;
 }
 
 .metricLabel {
-    font-size: 14px;
-    font-weight: 600;
-    color: #4A5568;
-    margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a5568;
+  margin-bottom: 4px;
 }
 
 .metricValue {
-    font-size: 36px;
-    font-weight: 700;
-    color: #1A202C;
+  font-size: 36px;
+  font-weight: 700;
+  color: #1a202c;
 }
 
 @media (max-width: 1280px) {
-    .metricValue {
-        font-size: 28px;
-    }
+  .metricValue {
+    font-size: 28px;
+  }
 }
-
 
 /* Charts Section */
 .chartsGrid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 24px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
 }
 
 @media (min-width: 1024px) {
-    .chartsGrid {
-        grid-template-columns: 2fr 1fr;
-    }
+  .chartsGrid {
+    grid-template-columns: 2fr 1fr;
+  }
 }
 
 @media (max-width: 1440px) {
-    .chartsGrid {
-        gap: 20px;
-    }
+  .chartsGrid {
+    gap: 20px;
+  }
 }
 
-
 .chartCard {
-    background: white;
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    border: 1px solid #E2E8F0;
-    min-height: 400px;
-    display: flex;
-    flex-direction: column;
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
 }
 
 .chartHeader {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
 }
 
 .chartTitle {
-    font-size: 18px;
-    font-weight: 600;
-    color: #1A202C;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a202c;
 }
 
 .periodSelect {
-    padding: 6px 12px;
-    border: 1px solid #E2E8F0;
-    border-radius: 6px;
-    font-size: 12px;
-    color: #4A5568;
-    background: white;
-    cursor: pointer;
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #4a5568;
+  background: white;
+  cursor: pointer;
 }
 
 /* Legend Styles */
 .legend {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
 }
 
 .legendItem {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
 }
 
 .legendLabel {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #4A5568;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4a5568;
 }
 
 .legendDot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
 .legendValue {
-    font-weight: 600;
-    color: #1A202C;
+  font-weight: 600;
+  color: #1a202c;
 }
 
 /* My Courses placeholder */
 .coursesSection {
-    margin-top: 24px;
+  margin-top: 24px;
 }

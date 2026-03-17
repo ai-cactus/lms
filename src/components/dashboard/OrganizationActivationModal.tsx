@@ -8,129 +8,137 @@ import { Logo, Modal, Button } from '@/components/ui';
 import { useModalContext } from '@/components/ui/ModalContext';
 
 interface OrganizationActivationModalProps {
-    hasOrganization: boolean;
-    mode?: 'welcome' | 'feature_gate'; // 'welcome' for initial onboarding, 'controlled' for external control
-    isOpen?: boolean; // For controlled mode
-    onClose?: () => void; // For controlled mode
-    title?: string;
-    description?: string;
-    actionLabel?: string;
+  hasOrganization: boolean;
+  mode?: 'welcome' | 'feature_gate'; // 'welcome' for initial onboarding, 'controlled' for external control
+  isOpen?: boolean; // For controlled mode
+  onClose?: () => void; // For controlled mode
+  title?: string;
+  description?: string;
+  actionLabel?: string;
 }
 
 export default function OrganizationActivationModal({
-    hasOrganization,
-    mode = 'welcome',
-    isOpen: controlledIsOpen,
-    onClose,
-    title,
-    description,
-    actionLabel
+  hasOrganization,
+  mode = 'welcome',
+  isOpen: controlledIsOpen,
+  onClose,
+  title,
+  description,
+  actionLabel,
 }: OrganizationActivationModalProps) {
-    const router = useRouter();
-    const { registerModal, unregisterModal, requestOpen, isModalOpen, dismissModal, shouldShowModal, closeModal } = useModalContext();
-    const modalId = 'organizationActivation';
+  const router = useRouter();
+  const {
+    registerModal,
+    unregisterModal,
+    requestOpen,
+    isModalOpen,
+    dismissModal,
+    shouldShowModal,
+    closeModal,
+  } = useModalContext();
+  const modalId = 'organizationActivation';
 
-    const isWelcomeMode = mode === 'welcome';
+  const isWelcomeMode = mode === 'welcome';
 
-    // Internal state for controlled mode if needed, but mostly relying on context for welcome mode
-    const [internalOpen, setInternalOpen] = useState(false);
+  // Internal state for controlled mode if needed, but mostly relying on context for welcome mode
+  const [internalOpen, setInternalOpen] = useState(false);
 
-    useEffect(() => {
-        if (isWelcomeMode) {
-            // Register with high priority (10)
-            registerModal(modalId, 10);
+  useEffect(() => {
+    if (isWelcomeMode) {
+      // Register with high priority (10)
+      registerModal(modalId, 10);
 
-            // Check if we should show it
-            if (!hasOrganization && shouldShowModal(modalId)) {
-                requestOpen(modalId);
-            }
-        }
+      // Check if we should show it
+      if (!hasOrganization && shouldShowModal(modalId)) {
+        requestOpen(modalId);
+      }
+    }
 
-        return () => {
-            if (isWelcomeMode) {
-                unregisterModal(modalId);
-            }
-        };
-    }, [isWelcomeMode, hasOrganization, registerModal, unregisterModal, requestOpen, shouldShowModal, modalId]);
-
-    const handleClose = () => {
-        if (isWelcomeMode) {
-            // "Skip for now" - snooze for 24 hours
-            dismissModal(modalId, 24 * 60 * 60 * 1000);
-        } else {
-            onClose?.();
-        }
+    return () => {
+      if (isWelcomeMode) {
+        unregisterModal(modalId);
+      }
     };
+  }, [
+    isWelcomeMode,
+    hasOrganization,
+    registerModal,
+    unregisterModal,
+    requestOpen,
+    shouldShowModal,
+    modalId,
+  ]);
 
-    const isOpen = isWelcomeMode ? isModalOpen(modalId) : controlledIsOpen;
+  const handleClose = () => {
+    if (isWelcomeMode) {
+      // "Skip for now" - snooze for 24 hours
+      dismissModal(modalId, 24 * 60 * 60 * 1000);
+    } else {
+      onClose?.();
+    }
+  };
 
-    if (!isOpen) return null;
+  const isOpen = isWelcomeMode ? isModalOpen(modalId) : controlledIsOpen;
 
-    const defaultTitle = isWelcomeMode
-        ? "Welcome to Theraptly Learning Management Section"
-        : "Organization Required";
+  if (!isOpen) return null;
 
-    const defaultDesc = isWelcomeMode
-        ? "We turn all your long & tedious compliance work into a much shorter and delightful process. Let’s get you started by creating a profile for your organization."
-        : "You haven't activated and created an organization yet. Click here to start activating your account to access this feature.";
+  const defaultTitle = isWelcomeMode
+    ? 'Welcome to Theraptly Learning Management Section'
+    : 'Organization Required';
 
-    const defaultAction = "Activate your account";
+  const defaultDesc = isWelcomeMode
+    ? 'We turn all your long & tedious compliance work into a much shorter and delightful process. Let’s get you started by creating a profile for your organization.'
+    : "You haven't activated and created an organization yet. Click here to start activating your account to access this feature.";
 
-    return (
-        <Modal
-            isOpen={!!isOpen}
-            onClose={handleClose}
-            size="xl"
-            className={styles.modalParams}
-            preventClose={isWelcomeMode} // Force user to choose an action
-            showCloseButton={!isWelcomeMode}
-        >
-            <div className={styles.container}>
-                {/* Content Section */}
-                <div className={styles.content}>
-                    <div className={styles.logoWrapper}>
-                        <Logo variant="blue" size="md" />
-                    </div>
+  const defaultAction = 'Activate your account';
 
-                    <h2 className={styles.title}>
-                        {title || defaultTitle}
-                    </h2>
+  return (
+    <Modal
+      isOpen={!!isOpen}
+      onClose={handleClose}
+      size="xl"
+      className={styles.modalParams}
+      preventClose={isWelcomeMode} // Force user to choose an action
+      showCloseButton={!isWelcomeMode}
+    >
+      <div className={styles.container}>
+        {/* Content Section */}
+        <div className={styles.content}>
+          <div className={styles.logoWrapper}>
+            <Logo variant="blue" size="md" />
+          </div>
 
-                    <p className={styles.description}>
-                        {description || defaultDesc}
-                    </p>
+          <h2 className={styles.title}>{title || defaultTitle}</h2>
 
-                    <div className={styles.actions}>
-                        <Button
-                            variant="primary"
-                            size="md"
-                            pill
-                            onClick={() => router.push('/onboarding')}
-                            style={{ width: '100%' }}
-                        >
-                            {actionLabel || defaultAction}
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="md"
-                            onClick={handleClose}
-                        >
-                            Skip for now
-                        </Button>
-                    </div>
-                </div>
+          <p className={styles.description}>{description || defaultDesc}</p>
 
-                {/* Visual Section - Image Right */}
-                <div className={styles.imageSection}>
-                    <Image
-                        src="/images/onboarding-welcome.png"
-                        alt="Healthcare Professional Working"
-                        fill
-                        className={styles.image}
-                        priority
-                    />
-                </div>
-            </div>
-        </Modal>
-    );
+          <div className={styles.actions}>
+            <Button
+              variant="primary"
+              size="md"
+              pill
+              onClick={() => router.push('/onboarding')}
+              style={{ width: '100%' }}
+            >
+              {actionLabel || defaultAction}
+            </Button>
+            <Button variant="ghost" size="md" onClick={handleClose}>
+              Skip for now
+            </Button>
+          </div>
+        </div>
+
+        {/* Visual Section - Image Right */}
+        <div className={styles.imageSection}>
+          <Image
+            src="/images/onboarding-welcome.png"
+            alt="Healthcare Professional Working"
+            fill
+            className={styles.image}
+            priority
+          />
+        </div>
+      </div>
+    </Modal>
+  );
 }

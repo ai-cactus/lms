@@ -29,10 +29,7 @@ export async function authenticate(
       }
     }
 
-    console.log(
-      '[Auth Action] authenticate server action called for role:',
-      role
-    );
+    console.log('[Auth Action] authenticate server action called for role:', role);
 
     if (role === 'worker') {
       await signInWorker('credentials', {

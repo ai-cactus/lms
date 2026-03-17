@@ -9,7 +9,10 @@ const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
   firstName: z.string().min(1, 'First name is required').max(100, 'First name is too long'),
   lastName: z.string().min(1, 'Last name is required').max(100, 'Last name is too long'),
-  password: z.string().min(8, 'Password must be at least 8 characters long').max(100, 'Password is too long'),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters long')
+    .max(100, 'Password is too long'),
 });
 
 export async function POST(req: Request) {
@@ -20,7 +23,7 @@ export async function POST(req: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: 'Invalid input data', details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
