@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     if (!parsedBody.success) {
       return NextResponse.json(
         { error: 'Invalid input data', details: parsedBody.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       );
     }
 

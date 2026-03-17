@@ -337,90 +337,63 @@ async function main() {
   });
 
   const courseMap = new Map(existingCourses.map((c) => [c.title, c]));
-  const courses = [];
 
-  for (const c of coursesData) {
-    let course = courseMap.get(c.title);
+  // Identify courses that need to be created
+  const coursesToCreate = coursesData.filter((c) => !courseMap.has(c.title));
 
-    if (!course) {
-      console.log(`Creating course with quiz: ${c.title}`);
-      const questions = quizQuestions[c.title] || [];
-
-      course = await prisma.course.create({
-        data: {
-          title: c.title,
-          difficulty: c.difficulty,
-          category: c.category,
-          duration: c.duration,
-          createdBy: admin.id,
-          status: 'published',
-          description: `Comprehensive training on ${c.title.toLowerCase()}.`,
-          thumbnail: `/images/icon-course-${c.difficulty === 'beginner' ? 'blue' : 'dark'}.svg`,
-          lessons: {
-            create: [
-              {
-                title: `${c.title} Assessment`,
-                content: `Complete the following assessment to test your knowledge of ${c.title}.`,
-                order: 1,
-                quiz: {
-                  create: {
-                    title: `${c.title} Quiz`,
-                    passingScore: 70,
-                    questions: {
-                      create: questions.map((q, idx) => ({
-                        text: q.text,
-                        type: 'multiple_choice',
-                        options: q.options,
-                        correctAnswer: q.correctAnswer,
-                        order: idx + 1,
-                      })),
+  if (coursesToCreate.length > 0) {
+    console.log(`Creating ${coursesToCreate.length} missing courses concurrently...`);
+    const createdCourses = await Promise.all(
+      coursesToCreate.map((c) => {
+        const questions = quizQuestions[c.title] || [];
+        return prisma.course.create({
+          data: {
+            title: c.title,
+            difficulty: c.difficulty,
+            category: c.category,
+            duration: c.duration,
+            createdBy: admin.id,
+            status: 'published',
+            description: `Comprehensive training on ${c.title.toLowerCase()}.`,
+            thumbnail: `/images/icon-course-${c.difficulty === 'beginner' ? 'blue' : 'dark'}.svg`,
+            lessons: {
+              create: [
+                {
+                  title: `${c.title} Assessment`,
+                  content: `Complete the following assessment to test your knowledge of ${c.title}.`,
+                  order: 1,
+                  quiz: {
+                    create: {
+                      title: `${c.title} Quiz`,
+                      passingScore: 70,
+                      questions: {
+                        create: questions.map((q, idx) => ({
+                          text: q.text,
+                          type: 'multiple_choice',
+                          options: q.options,
+                          correctAnswer: q.correctAnswer,
+                          order: idx + 1,
+                        })),
+                      },
                     },
                   },
                 },
-              },
-            ],
-          },
-        },
-        include: { lessons: { include: { quiz: { include: { questions: true } } } } },
-      });
-    } else if (course.lessons.length === 0) {
-      // Handle case where course exists but quiz doesn't (legacy/edge case)
-      console.log(`  Creating quiz for existing course: ${c.title}`);
-      const questions = quizQuestions[c.title] || [];
-
-      await prisma.lesson.create({
-        data: {
-          courseId: course.id,
-          title: `${c.title} Assessment`,
-          content: `Complete the following assessment to test your knowledge of ${c.title}.`,
-          order: 1,
-          quiz: {
-            create: {
-              title: `${c.title} Quiz`,
-              passingScore: 70,
-              questions: {
-                create: questions.map((q, idx) => ({
-                  text: q.text,
-                  type: 'multiple_choice',
-                  options: q.options,
-                  correctAnswer: q.correctAnswer,
-                  order: idx + 1,
-                })),
-              },
+              ],
             },
           },
-        },
-      });
+          include: { lessons: { include: { quiz: { include: { questions: true } } } } },
+        });
+      })
+    );
 
-      // Reload course with quiz data
-      course = await prisma.course.findUnique({
-        where: { id: course.id },
-        include: { lessons: { include: { quiz: { include: { questions: true } } } } },
-      });
-    }
-
-    courses.push(course);
+    // Add newly created courses to the map
+    createdCourses.forEach((c) => courseMap.set(c.title, c));
+  } else {
+    console.log('All courses already exist. Skipping creation.');
   }
+
+  // Reconstruct the courses array in the original order for the enrollment steps
+  const courses = coursesData.map((c) => courseMap.get(c.title));
 
   // Enrollment patterns with varied scores
   const enrollmentPatterns = [
