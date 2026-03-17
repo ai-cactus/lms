@@ -19,6 +19,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     const course = await prisma.course.findUnique({
       where: { id: courseId },
       include: {
+        creator: {
+          select: { organizationId: true },
+        },
         lessons: {
           orderBy: { order: 'asc' },
           include: {
@@ -59,13 +62,27 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     // If no enrollment found for worker, and admin session exists, check admin
     if (!enrollment && adminSession?.user?.id) {
+      const adminUser = await prisma.user.findUnique({
+        where: { id: adminSession.user.id },
+        select: { id: true, role: true, organizationId: true },
+      });
+
       const adminEnroll = await prisma.enrollment.findFirst({
         where: { courseId: courseId, userId: adminSession.user.id },
         include: { quizAttempts: true },
       });
-      if (adminEnroll || adminSession.user.role === 'admin') {
+
+      const isSameOrg = Boolean(
+        adminUser?.organizationId &&
+        course.creator?.organizationId &&
+        adminUser.organizationId === course.creator.organizationId
+      );
+
+      if (adminEnroll || (adminUser?.role === 'admin' && isSameOrg)) {
         activeUserId = adminSession.user.id;
-        activeRole = adminSession.user.role;
+        // Cast the role to 'admin' | 'worker' | undefined based on session type if necessary
+        // Or cast as `any` or exactly `typeof session.user.role`
+        activeRole = (adminUser?.role as typeof activeRole) || adminSession.user.role;
         enrollment = adminEnroll;
       }
     }
