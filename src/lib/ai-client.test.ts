@@ -3,11 +3,58 @@ import { estimateTokens, truncateToContext, callVertexAI } from './ai-client';
 
 describe('ai-client utilities', () => {
   describe('estimateTokens', () => {
-    it('should estimate tokens correctly (~4 chars per token)', () => {
-      expect(estimateTokens('abcd')).toBe(1);
-      expect(estimateTokens('abcdefgh')).toBe(2);
-      expect(estimateTokens('abcde')).toBe(2); // Ceiling of 5/4
+    it('should estimate tokens correctly for basic ASCII strings', () => {
       expect(estimateTokens('')).toBe(0);
+      expect(estimateTokens('abcd')).toBe(1);
+      expect(estimateTokens('abcde')).toBe(2); // Ceiling of 5/4
+      expect(estimateTokens('abcdefgh')).toBe(2);
+    });
+
+    it('should return exactly 1 token for boundary conditions (1-4 characters)', () => {
+      expect(estimateTokens('a')).toBe(1);
+      expect(estimateTokens('ab')).toBe(1);
+      expect(estimateTokens('abc')).toBe(1);
+      expect(estimateTokens('abcd')).toBe(1);
+    });
+
+    it('should handle strings with only whitespace', () => {
+      expect(estimateTokens(' ')).toBe(1);
+      expect(estimateTokens('    ')).toBe(1);
+      expect(estimateTokens('     ')).toBe(2);
+      expect(estimateTokens('\n\t\r ')).toBe(1);
+    });
+
+    it('should handle strings with special characters and punctuation', () => {
+      expect(estimateTokens('!@#$')).toBe(1);
+      expect(estimateTokens('!@#$%')).toBe(2);
+      expect(estimateTokens('hello, world!')).toBe(4); // 13 chars
+    });
+
+    it('should handle very long strings', () => {
+      const longString = 'A'.repeat(4000); // 4000 chars
+      expect(estimateTokens(longString)).toBe(1000);
+
+      const longerString = 'A'.repeat(4001); // 4001 chars
+      expect(estimateTokens(longerString)).toBe(1001);
+    });
+
+    it('should handle non-ASCII characters and emojis', () => {
+      // Emojis often have length > 1 due to surrogate pairs, which is fine since the function uses .length
+      expect(estimateTokens('こんにちは')).toBe(2); // 5 chars
+      expect(estimateTokens('😊')).toBe(1); // Usually length 2 in JS
+      expect(estimateTokens('👨‍👩‍👧‍👦')).toBe(3); // Usually length 11 in JS
+    });
+
+    it('should handle strings with only numbers', () => {
+      expect(estimateTokens('1234')).toBe(1);
+      expect(estimateTokens('12345')).toBe(2);
+      expect(estimateTokens('00000000')).toBe(2);
+    });
+
+    it('should handle strings with mixed whitespace and content', () => {
+      expect(estimateTokens('a b c d')).toBe(2); // 7 chars
+      expect(estimateTokens('  hello  ')).toBe(3); // 9 chars
+      expect(estimateTokens(' line1\nline2 ')).toBe(4); // 13 chars
     });
   });
 
