@@ -283,5 +283,76 @@ describe('ai-client utilities', () => {
       await expect(callVertexAI('test')).rejects.toThrow('SyntaxError: Unexpected token');
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
+
+    it('should retry on network errors like "fetch failed"', async () => {
+      const mockSuccessResponse = {
+        candidates: [{ content: { parts: [{ text: 'Success after fetch failed' }] } }],
+      };
+
+      (global.fetch as any)
+        .mockRejectedValueOnce(new Error('fetch failed'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockSuccessResponse,
+        });
+
+      const callPromise = callVertexAI('test network error');
+      await vi.runAllTimersAsync();
+
+      const result = await callPromise;
+      expect(result).toBe('Success after fetch failed');
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should throw error when Vertex AI returns no content in response', async () => {
+      const mockEmptyResponse = {
+        candidates: [{ content: { parts: [] } }],
+      };
+
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        json: async () => mockEmptyResponse,
+      });
+
+      await expect(callVertexAI('test empty')).rejects.toThrow(
+        'Vertex AI returned no content in response.',
+      );
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should pass custom configuration to the API payload', async () => {
+      const mockSuccessResponse = {
+        candidates: [{ content: { parts: [{ text: 'Config test response' }] } }],
+      };
+
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        json: async () => mockSuccessResponse,
+      });
+
+      const config = {
+        temperature: 0.2,
+        maxOutputTokens: 1000,
+        model: 'custom-model-test',
+      };
+
+      await callVertexAI('test config', config);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'publishers/google/models/custom-model-test:generateContent?key=test-key',
+        ),
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"temperature":0.2'),
+        }),
+      );
+
+      // Verify maxOutputTokens is included in the body
+      const fetchCall = (global.fetch as any).mock.calls[0];
+      const fetchBody = JSON.parse(fetchCall[1].body);
+      expect(fetchBody.generationConfig.maxOutputTokens).toBe(1000);
+      expect(fetchBody.generationConfig.temperature).toBe(0.2);
+    });
   });
 });
