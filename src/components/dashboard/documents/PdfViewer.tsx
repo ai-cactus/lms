@@ -11,71 +11,87 @@ import { Button } from '@/components/ui';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface PdfViewerProps {
-    fileUrl: string;
+  fileUrl: string;
 }
 
 export default function PdfViewer({ fileUrl }: PdfViewerProps) {
-    const [numPages, setNumPages] = useState<number>();
-    const [pageNumber, setPageNumber] = useState<number>(1);
-    const [scale, setScale] = useState<number>(1.0);
+  const [numPages, setNumPages] = useState<number>();
+  const [pageNumber, setPageNumber] = useState<number>(1);
+  const [scale, setScale] = useState<number>(1.0);
 
-    function onDocumentLoadSuccess({ numPages }: { numPages: number }): void {
-        setNumPages(numPages);
-        setPageNumber(1);
-    }
+  function onDocumentLoadSuccess({ numPages }: { numPages: number }): void {
+    setNumPages(numPages);
+    setPageNumber(1);
+  }
 
-    return (
-        <div className={styles.viewerContainer}>
-            <div className={styles.toolbar}>
-                <div className={styles.pageControls}>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
-                        disabled={pageNumber <= 1}
-                        className={styles.toolBtn}
-                    >
-                        &larr; Prev
-                    </Button>
-                    <span className={styles.pageInfo}>
-                        Page {pageNumber} of {numPages || '--'}
-                    </span>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages || 1))}
-                        disabled={pageNumber >= (numPages || 1)}
-                        className={styles.toolBtn}
-                    >
-                        Next &rarr;
-                    </Button>
-                </div>
-
-                <div className={styles.zoomControls}>
-                    <Button variant="outline" size="sm" onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className={styles.toolBtn}>-</Button>
-                    <span style={{ fontSize: '14px', fontWeight: 500, minWidth: '40px', textAlign: 'center' }}>
-                        {Math.round(scale * 100)}%
-                    </span>
-                    <Button variant="outline" size="sm" onClick={() => setScale(s => Math.min(3.0, s + 0.25))} className={styles.toolBtn}>+</Button>
-                </div>
-            </div>
-
-            <div className={styles.documentWrapper}>
-                <Document
-                    file={fileUrl}
-                    onLoadSuccess={onDocumentLoadSuccess}
-                    loading={<div className={styles.loading}>Loading PDF...</div>}
-                    error={<div className={styles.error}>Failed to load PDF file.</div>}
-                >
-                    <Page
-                        pageNumber={pageNumber}
-                        scale={scale}
-                        renderTextLayer={true}
-                        renderAnnotationLayer={true}
-                        className={styles.pdfPage}
-                    />
-                </Document>
-            </div>
+  return (
+    <div className={styles.viewerContainer}>
+      <div className={styles.toolbar}>
+        <div className={styles.pageControls}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPageNumber((prev) => Math.max(prev - 1, 1))}
+            disabled={pageNumber <= 1}
+            className={styles.toolBtn}
+          >
+            &larr; Prev
+          </Button>
+          <span className={styles.pageInfo}>
+            Page {pageNumber} of {numPages || '--'}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPageNumber((prev) => Math.min(prev + 1, numPages || 1))}
+            disabled={pageNumber >= (numPages || 1)}
+            className={styles.toolBtn}
+          >
+            Next &rarr;
+          </Button>
         </div>
-    );
+
+        <div className={styles.zoomControls}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setScale((s) => Math.max(0.5, s - 0.25))}
+            className={styles.toolBtn}
+          >
+            -
+          </Button>
+          <span
+            style={{ fontSize: '14px', fontWeight: 500, minWidth: '40px', textAlign: 'center' }}
+          >
+            {Math.round(scale * 100)}%
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setScale((s) => Math.min(3.0, s + 0.25))}
+            className={styles.toolBtn}
+          >
+            +
+          </Button>
+        </div>
+      </div>
+
+      <div className={styles.documentWrapper}>
+        <Document
+          file={fileUrl}
+          onLoadSuccess={onDocumentLoadSuccess}
+          loading={<div className={styles.loading}>Loading PDF...</div>}
+          error={<div className={styles.error}>Failed to load PDF file.</div>}
+        >
+          <Page
+            pageNumber={pageNumber}
+            scale={scale}
+            renderTextLayer={true}
+            renderAnnotationLayer={true}
+            className={styles.pdfPage}
+          />
+        </Document>
+      </div>
+    </div>
+  );
 }

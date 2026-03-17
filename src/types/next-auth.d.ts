@@ -1,8 +1,8 @@
-export type Role = "admin" | "worker";
-import "next-auth";
-import "next-auth/jwt";
+export type Role = 'admin' | 'worker';
+import 'next-auth';
+import 'next-auth/jwt';
 
-declare module "next-auth" {
+declare module 'next-auth' {
   interface User {
     id: string;
     role: Role;
@@ -20,7 +20,7 @@ declare module "next-auth" {
   }
 }
 
-declare module "next-auth/jwt" {
+declare module 'next-auth/jwt' {
   interface JWT {
     id: string;
     role: Role;

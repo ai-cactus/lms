@@ -169,7 +169,6 @@ function LoginForm() {
         </div>
       )}
 
-
       {oauthError === 'AccessDenied' && (
         <div
           style={{

@@ -1,239 +1,225 @@
 .container {
-    background: white;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    flex: 1 1 0;
-    /* Important: allow shrinking */
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #E2E8F0;
-    min-width: 0;
-    max-width: 100%;
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex: 1 1 0;
+  /* Important: allow shrinking */
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e2e8f0;
+  min-width: 0;
+  max-width: 100%;
 }
-
-
-
-
 
 @media (max-width: 1280px) {
-    .container {
-        padding: 20px;
-    }
+  .container {
+    padding: 20px;
+  }
 }
-
 
 .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    gap: 16px;
-    flex-wrap: wrap;
-    /* Add this */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+  /* Add this */
 }
 
-
 .title {
-    font-size: 18px;
-    font-weight: 700;
-    color: #1A202C;
-    margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a202c;
+  margin: 0;
 }
 
 .searchContainer {
-    width: 320px;
+  width: 320px;
 }
 
 @media (max-width: 1280px) {
-    .searchContainer {
-        width: 240px;
-    }
+  .searchContainer {
+    width: 240px;
+  }
 }
-
 
 /* Override input styling via global CSS or ensure Input component handles it. 
    Assuming Input component takes className. */
 .searchInput {
-    background: white;
-    border-color: #E2E8F0;
+  background: white;
+  border-color: #e2e8f0;
 }
 
 .tableWrapper {
-    overflow-x: auto;
-    width: 100%;
-    max-width: 100%;
-    /* Add this */
-    margin-bottom: 24px;
-    padding-bottom: 8px;
-    min-width: 0;
-    -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+  width: 100%;
+  max-width: 100%;
+  /* Add this */
+  margin-bottom: 24px;
+  padding-bottom: 8px;
+  min-width: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
-
-
 .table {
-    width: 100%;
-    min-width: 600px;
-    table-layout: fixed;
-    border-collapse: separate;
-    border-spacing: 0;
+  width: 100%;
+  min-width: 600px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .table td,
 .table th {
-    overflow: hidden;
-    white-space: normal;
-    word-break: break-word;
-    vertical-align: top;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  vertical-align: top;
 }
-
-
-
 
 /* Header Styling */
 .table thead tr {
-    background: #F8FAFC;
-    /* Very light gray/blueish */
+  background: #f8fafc;
+  /* Very light gray/blueish */
 }
 
 .table th {
-    text-align: left;
-    padding: 12px 20px;
-    /* Reduced padding */
-    font-size: 12px;
-    font-weight: 600;
-    color: #64748B;
-    /* Slate 500 */
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: none;
+  text-align: left;
+  padding: 12px 20px;
+  /* Reduced padding */
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  /* Slate 500 */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: none;
 }
 
 @media (max-width: 1280px) {
-    .table th {
-        padding: 12px 16px;
-    }
+  .table th {
+    padding: 12px 16px;
+  }
 }
 
-
 .table th:first-child {
-    border-radius: 8px 0 0 8px;
+  border-radius: 8px 0 0 8px;
 }
 
 .table th:last-child {
-    border-radius: 0 8px 8px 0;
+  border-radius: 0 8px 8px 0;
 }
 
 /* Row Styling */
 .table td {
-    padding: 16px 20px;
-    /* Reduced padding for more space */
-    font-size: 14px;
-    color: #1E293B;
-    /* Slate 800 */
-    border-bottom: 1px dashed #E2E8F0;
-    /* Dotted/dashed separator or none? Ref shows faint lines. */
-    vertical-align: middle;
-    font-weight: 500;
+  padding: 16px 20px;
+  /* Reduced padding for more space */
+  font-size: 14px;
+  color: #1e293b;
+  /* Slate 800 */
+  border-bottom: 1px dashed #e2e8f0;
+  /* Dotted/dashed separator or none? Ref shows faint lines. */
+  vertical-align: middle;
+  font-weight: 500;
 }
 
 @media (max-width: 1280px) {
-    .table td {
-        padding: 16px;
-    }
+  .table td {
+    padding: 16px;
+  }
 }
 
-
 .table tbody tr:last-child td {
-    border-bottom: none;
+  border-bottom: none;
 }
 
 .clickableRow {
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
 }
 
 .clickableRow:hover {
-    background-color: #F8FAFC;
+  background-color: #f8fafc;
 }
 
 .courseInfo {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    /* Limit width to allow text wrapping inside */
-    max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  /* Limit width to allow text wrapping inside */
+  max-width: 100%;
 }
 
 .courseIcon {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #F1F5F9;
-    flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  flex-shrink: 0;
 }
 
 .courseIcon img {
-    object-fit: cover;
+  object-fit: cover;
 }
 
 .courseName {
-    display: block;
-    font-weight: 600;
-    color: #0F172A;
-    font-size: 14px;
-    white-space: normal;
-    /* Allow wrapping */
-    word-break: normal;
-    overflow-wrap: break-word;
-    line-height: 1.4;
+  display: block;
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 14px;
+  white-space: normal;
+  /* Allow wrapping */
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-height: 1.4;
 }
 
 .courseText {
-    min-width: 0;
-    flex: 1;
+  min-width: 0;
+  flex: 1;
 }
 
 .completionRate {
-    font-weight: 600;
-    color: #0F172A;
+  font-weight: 600;
+  color: #0f172a;
 }
 
 .emptyState {
-    text-align: center;
-    padding: 60px !important;
-    color: #64748B;
+  text-align: center;
+  padding: 60px !important;
+  color: #64748b;
 }
 
 .viewAllContainer {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 16px;
-    padding-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 16px;
 }
 
 .viewAllButton {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    border: 1px solid #E2E8F0;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    color: #1E293B;
-    text-decoration: none;
-    background: white;
-    transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+  text-decoration: none;
+  background: white;
+  transition: all 0.2s;
 }
 
 .viewAllButton:hover {
-    background: #F8FAFC;
-    border-color: #CBD5E0;
-    color: #0F172A;
+  background: #f8fafc;
+  border-color: #cbd5e0;
+  color: #0f172a;
 }

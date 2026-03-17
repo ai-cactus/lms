@@ -7,23 +7,18 @@ import { notFound } from 'next/navigation';
 const prisma = new PrismaClient();
 
 export default async function JoinPage({ params }: { params: { token: string } }) {
-    const { token } = await params;
+  const { token } = await params;
 
-    const invite = await prisma.invite.findFirst({
-        where: { token, status: 'pending' },
-        include: { organization: true }
-    });
+  const invite = await prisma.invite.findFirst({
+    where: { token, status: 'pending' },
+    include: { organization: true },
+  });
 
-    if (!invite || new Date() > invite.expiresAt) {
-        // Handle invalid or expired token
-        // In a real app, show a nice error page or redirect to a "Request new invite" page
-        return notFound();
-    }
+  if (!invite || new Date() > invite.expiresAt) {
+    // Handle invalid or expired token
+    // In a real app, show a nice error page or redirect to a "Request new invite" page
+    return notFound();
+  }
 
-    return (
-        <JoinPageClient
-            invite={invite}
-            orgName={invite.organization.name}
-        />
-    );
+  return <JoinPageClient invite={invite} orgName={invite.organization.name} />;
 }

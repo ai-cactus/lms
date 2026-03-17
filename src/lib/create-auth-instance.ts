@@ -121,7 +121,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             if (pendingInvite) {
               matchedOrgId = pendingInvite.organizationId;
               const inviteRole = pendingInvite.role;
-              matchedRole = (inviteRole === 'admin' || inviteRole === 'worker') ? inviteRole : 'worker';
+              matchedRole =
+                inviteRole === 'admin' || inviteRole === 'worker' ? inviteRole : 'worker';
               console.log(
                 `[NextAuth] Found pending invite for ${user.email}, joining org ${matchedOrgId} as ${matchedRole}`,
               );
@@ -156,7 +157,10 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 where: { id: dbUser.id },
                 data: {
                   organizationId: pendingInvite.organizationId,
-                  role: (pendingInvite.role === 'admin' || pendingInvite.role === 'worker') ? pendingInvite.role : 'worker',
+                  role:
+                    pendingInvite.role === 'admin' || pendingInvite.role === 'worker'
+                      ? pendingInvite.role
+                      : 'worker',
                 },
                 select: { id: true, organizationId: true, role: true },
               });
@@ -169,9 +173,13 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           }
 
           if (dbUser.role !== allowedRole) {
-            console.log(`[NextAuth] Role mismatch during SSO. Expected ${allowedRole}, got ${dbUser.role}. Automatically routing to correct instance...`);
-            if (dbUser.role === 'worker') return '/api/auth-worker/signin/microsoft-entra-id?callbackUrl=/worker';
-            if (dbUser.role === 'admin') return '/api/auth/signin/microsoft-entra-id?callbackUrl=/dashboard';
+            console.log(
+              `[NextAuth] Role mismatch during SSO. Expected ${allowedRole}, got ${dbUser.role}. Automatically routing to correct instance...`,
+            );
+            if (dbUser.role === 'worker')
+              return '/api/auth-worker/signin/microsoft-entra-id?callbackUrl=/worker';
+            if (dbUser.role === 'admin')
+              return '/api/auth/signin/microsoft-entra-id?callbackUrl=/dashboard';
             return `${config.pages?.signIn}?error=AccessDenied`;
           }
 

@@ -24,7 +24,7 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
   // especially when pagination changes. This reduces O(N) operations.
   const filteredCourses = useMemo(() => {
     return courses.filter((course) =>
-      course.title.toLowerCase().includes(searchQuery.toLowerCase())
+      course.title.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [courses, searchQuery]);
 

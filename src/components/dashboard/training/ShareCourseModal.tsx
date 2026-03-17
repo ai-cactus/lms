@@ -6,139 +6,167 @@ import { enrollUsers } from '@/app/actions/enrollment';
 import { Modal, Button } from '@/components/ui';
 
 interface ShareCourseModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    courseId: string;
+  isOpen: boolean;
+  onClose: () => void;
+  courseId: string;
 }
 
 export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCourseModalProps) {
-    const [emails, setEmails] = React.useState<string[]>([]);
-    const [inputValue, setInputValue] = React.useState('');
-    const [isLoading, setIsLoading] = React.useState(false);
-    const [result, setResult] = React.useState<{ success: string[]; alreadyEnrolled: string[]; newInvited: string[]; failed: string[] } | null>(null);
+  const [emails, setEmails] = React.useState<string[]>([]);
+  const [inputValue, setInputValue] = React.useState('');
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [result, setResult] = React.useState<{
+    success: string[];
+    alreadyEnrolled: string[];
+    newInvited: string[];
+    failed: string[];
+  } | null>(null);
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (['Enter', 'Tab', ',', ' '].includes(e.key)) {
-            e.preventDefault();
-            const email = inputValue.trim();
-            if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                if (!emails.includes(email)) {
-                    setEmails([...emails, email]);
-                }
-                setInputValue('');
-            }
-        } else if (e.key === 'Backspace' && !inputValue && emails.length > 0) {
-            setEmails(emails.slice(0, -1));
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (['Enter', 'Tab', ',', ' '].includes(e.key)) {
+      e.preventDefault();
+      const email = inputValue.trim();
+      if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (!emails.includes(email)) {
+          setEmails([...emails, email]);
         }
-    };
+        setInputValue('');
+      }
+    } else if (e.key === 'Backspace' && !inputValue && emails.length > 0) {
+      setEmails(emails.slice(0, -1));
+    }
+  };
 
-    const removeEmail = (index: number) => {
-        setEmails(emails.filter((_, i) => i !== index));
-    };
+  const removeEmail = (index: number) => {
+    setEmails(emails.filter((_, i) => i !== index));
+  };
 
-    const handleShare = async () => {
-        if (emails.length === 0) return;
+  const handleShare = async () => {
+    if (emails.length === 0) return;
 
-        setIsLoading(true);
-        setResult(null);
+    setIsLoading(true);
+    setResult(null);
 
-        try {
-            const res = await enrollUsers(courseId, emails);
-            setResult(res);
+    try {
+      const res = await enrollUsers(courseId, emails);
+      setResult(res);
 
-            // Clear successfully enrolled emails
-            if (res.success.length > 0) {
-                const remainingEmails = emails.filter(e => !res.success.includes(e));
-                setEmails(remainingEmails);
-            }
+      // Clear successfully enrolled emails
+      if (res.success.length > 0) {
+        const remainingEmails = emails.filter((e) => !res.success.includes(e));
+        setEmails(remainingEmails);
+      }
 
-            // Auto-close if all successful or invited
-            if (res.success.length + res.newInvited.length === emails.length) {
-                setTimeout(() => {
-                    onClose();
-                    setEmails([]);
-                    setResult(null);
-                }, 1500);
-            }
-        } catch (error) {
-            console.error('Failed to enroll users:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+      // Auto-close if all successful or invited
+      if (res.success.length + res.newInvited.length === emails.length) {
+        setTimeout(() => {
+          onClose();
+          setEmails([]);
+          setResult(null);
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('Failed to enroll users:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            size="md"
-            title="Assign this course"
-            description="Enter one or more emails to invite to your course."
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="md"
+      title="Assign this course"
+      description="Enter one or more emails to invite to your course."
+    >
+      <div className={styles.inputGroup}>
+        <div
+          className={styles.inputWrapper}
+          onClick={() => document.getElementById('email-input')?.focus()}
         >
-            <div className={styles.inputGroup}>
-                <div className={styles.inputWrapper} onClick={() => document.getElementById('email-input')?.focus()}>
-                    <svg className={styles.inputIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                        <polyline points="22,6 12,13 2,6"></polyline>
-                    </svg>
+          <svg
+            className={styles.inputIcon}
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
 
-                    {emails.map((email, index) => (
-                        <span key={index} className={styles.chip}>
-                            {email}
-                            <Button variant="ghost" size="icon-sm" className={styles.removeChip} onClick={() => removeEmail(index)}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
-                            </Button>
-                        </span>
-                    ))}
-
-                    <input
-                        id="email-input"
-                        className={styles.input}
-                        placeholder={emails.length === 0 ? "Emails, comma separated" : ""}
-                        value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        disabled={isLoading}
-                    />
-                </div>
-                <Button
-                    variant="primary"
-                    className={`${styles.shareButton} ${emails.length > 0 ? styles.shareButtonActive : ''}`}
-                    onClick={handleShare}
-                    disabled={emails.length === 0 || isLoading}
+          {emails.map((email, index) => (
+            <span key={index} className={styles.chip}>
+              {email}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={styles.removeChip}
+                onClick={() => removeEmail(index)}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                    {isLoading ? 'Assigning...' : 'Assign'}
-                </Button>
-            </div>
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </Button>
+            </span>
+          ))}
 
-            {/* Result feedback */}
-            {result && (
-                <div className={styles.resultSection}>
-                    {result.success.length > 0 && (
-                        <div className={styles.resultSuccess}>
-                            ✓ Enrolled: {result.success.join(', ')}
-                        </div>
-                    )}
-                    {result.newInvited.length > 0 && (
-                        <div className={styles.resultInvited}>
-                            📧 Invited & Enrolled: {result.newInvited.join(', ')}
-                        </div>
-                    )}
-                    {result.alreadyEnrolled.length > 0 && (
-                        <div className={styles.resultWarning}>
-                            Already enrolled: {result.alreadyEnrolled.join(', ')}
-                        </div>
-                    )}
-                    {result.failed.length > 0 && (
-                        <div className={styles.resultError}>
-                            Failed: {result.failed.join(', ')}
-                        </div>
-                    )}
-                </div>
-            )}
-        </Modal>
-    );
+          <input
+            id="email-input"
+            className={styles.input}
+            placeholder={emails.length === 0 ? 'Emails, comma separated' : ''}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isLoading}
+          />
+        </div>
+        <Button
+          variant="primary"
+          className={`${styles.shareButton} ${emails.length > 0 ? styles.shareButtonActive : ''}`}
+          onClick={handleShare}
+          disabled={emails.length === 0 || isLoading}
+        >
+          {isLoading ? 'Assigning...' : 'Assign'}
+        </Button>
+      </div>
+
+      {/* Result feedback */}
+      {result && (
+        <div className={styles.resultSection}>
+          {result.success.length > 0 && (
+            <div className={styles.resultSuccess}>✓ Enrolled: {result.success.join(', ')}</div>
+          )}
+          {result.newInvited.length > 0 && (
+            <div className={styles.resultInvited}>
+              📧 Invited & Enrolled: {result.newInvited.join(', ')}
+            </div>
+          )}
+          {result.alreadyEnrolled.length > 0 && (
+            <div className={styles.resultWarning}>
+              Already enrolled: {result.alreadyEnrolled.join(', ')}
+            </div>
+          )}
+          {result.failed.length > 0 && (
+            <div className={styles.resultError}>Failed: {result.failed.join(', ')}</div>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
 }
