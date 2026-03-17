@@ -11,6 +11,7 @@ describe('ai-client utilities', () => {
       expect(estimateTokens('abcdefgh')).toBe(2);
     });
 
+
     it('should return exactly 1 token for boundary conditions (1-4 characters)', () => {
       expect(estimateTokens('a')).toBe(1);
       expect(estimateTokens('ab')).toBe(1);
@@ -57,6 +58,22 @@ describe('ai-client utilities', () => {
       expect(estimateTokens('  hello  ')).toBe(3); // 9 chars
       expect(estimateTokens(' line1\nline2 ')).toBe(4); // 13 chars
     });
+
+    it('should approximate well for a long string', () => {
+      // Create a string of 4000 characters
+      const longString = 'a'.repeat(4000);
+      expect(estimateTokens(longString)).toBe(1000);
+
+      const irregularLongString = 'abcd'.repeat(1000) + 'ef';
+      // 4002 characters -> 4002 / 4 = 1000.5 -> ceil = 1001
+      expect(estimateTokens(irregularLongString)).toBe(1001);
+    });
+
+    it('should handle whitespace and special characters', () => {
+      expect(estimateTokens('    ')).toBe(1); // 4 spaces
+      expect(estimateTokens('\n\n\n\n')).toBe(1); // 4 newlines
+      expect(estimateTokens('👨‍👩‍👧‍👦')).toBe(3); // emoji chars, length is 11
+    });
   });
 
   describe('truncateToContext', () => {
@@ -66,14 +83,10 @@ describe('ai-client utilities', () => {
     });
 
     it('should truncate at sentence boundary if possible', () => {
-<<<<<<< HEAD
-      const text = 'First sentence. Second sentence. Third sentence.';
-      const longText = 'This is a sentence. This is another sentence that is quite long.';
-=======
+    it('should truncate at sentence boundary if possible', () => {
       // 10 tokens * 4 = 40 characters
-      // (comments removed for brevity and unused variables cleaned up)
+      // text length needs to be considered for testing boundary cases
 
->>>>>>> 52cd39d (test(ai-client): add missing fetch failure tests and fix unhandled rejection warning)
       const textWithBoundary = 'Hello world. This is a test. Another sentence.';
       // maxTokens = 8 -> maxChars = 32
       // truncated = "Hello world. This is a test. Ano" (32 chars)
@@ -151,7 +164,12 @@ describe('ai-client utilities', () => {
         candidates: [{ content: { parts: [{ text: 'AI response' }] } }],
       };
 
+<<<<<<< HEAD
       vi.mocked(global.fetch).mockResolvedValue({
+=======
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global.fetch as any).mockResolvedValue({
+>>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         ok: true,
         json: async () => mockResponse,
       } as any);
@@ -174,7 +192,12 @@ describe('ai-client utilities', () => {
         candidates: [{ content: { parts: [{ text: 'Success after retry' }] } }],
       };
 
+<<<<<<< HEAD
       vi.mocked(global.fetch)
+=======
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global.fetch as any)
+>>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         .mockResolvedValueOnce({
           status: 429,
           statusText: 'Too Many Requests',
@@ -201,7 +224,12 @@ describe('ai-client utilities', () => {
         candidates: [{ content: { parts: [{ text: 'Success after 500' }] } }],
       };
 
+<<<<<<< HEAD
       vi.mocked(global.fetch)
+=======
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global.fetch as any)
+>>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         .mockResolvedValueOnce({
           status: 500,
           statusText: 'Internal Server Error',
@@ -222,7 +250,12 @@ describe('ai-client utilities', () => {
     });
 
     it('should throw error after maximum retries', async () => {
+<<<<<<< HEAD
       vi.mocked(global.fetch).mockResolvedValue({
+=======
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global.fetch as any).mockResolvedValue({
+>>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         status: 429,
         statusText: 'Too Many Requests',
         text: async () => 'Rate limit exceeded',
@@ -268,7 +301,12 @@ describe('ai-client utilities', () => {
     });
 
     it('should throw on non-retryable errors (e.g., 400)', async () => {
+<<<<<<< HEAD
       vi.mocked(global.fetch).mockResolvedValue({
+=======
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global.fetch as any).mockResolvedValue({
+>>>>>>> 2bfc446 (test: add edge case tests for estimateTokens)
         status: 400,
         statusText: 'Bad Request',
         text: async () => 'Invalid prompt',
