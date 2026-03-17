@@ -1,0 +1,575 @@
+/* -----------------------------------------------------------------------
+   Auditor Pack — CSS Module
+   Design tokens from Figma node 13019:38521
+   Brand indigo: #3730F7 / #4731F7
+   ----------------------------------------------------------------------- */
+
+/* Page Shell */
+.pageHeader {
+  margin-bottom: 28px;
+}
+
+.pageTitle {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.pageSubtitle {
+  font-size: 14px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+/* Welcome Banner */
+.welcomeBanner {
+  background: linear-gradient(135deg, #4731f7 0%, #3a2fd8 100%);
+  border-radius: 16px;
+  padding: 40px 48px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 32px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.welcomeBannerDecoration {
+  position: absolute;
+  right: -20px;
+  top: -20px;
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+.welcomeGreeting {
+  font-size: 14px;
+  font-weight: 400;
+  margin: 0 0 6px;
+  opacity: 0.9;
+}
+
+.welcomeHeading {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  line-height: 1.2;
+  max-width: 540px;
+}
+
+.welcomeDesc {
+  font-size: 14px;
+  opacity: 0.85;
+  margin: 0 0 24px;
+  max-width: 480px;
+  line-height: 1.6;
+}
+
+.uploadBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  color: #4731f7;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    opacity 0.2s,
+    transform 0.15s;
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+.uploadBtn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* Tab Navigation */
+.tabNav {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 28px;
+}
+
+.tabBtn {
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.tabBtn:hover {
+  color: #0f172a;
+}
+
+.tabBtnActive {
+  color: #4731f7;
+  border-bottom-color: #4731f7;
+  font-weight: 600;
+}
+
+/* Stat Cards */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+@media (max-width: 900px) {
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.statCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 22px 24px;
+  background: white;
+  position: relative;
+}
+
+.statCardIcon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+
+.statCardInfo {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  color: #cbd5e0;
+  cursor: default;
+}
+
+.statLabel {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0 0 6px;
+}
+
+.statValue {
+  font-size: 30px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1;
+}
+
+/* Section Card (table container) */
+.sectionCard {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.sectionControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Search */
+.searchWrapper {
+  position: relative;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.searchInput {
+  padding: 8px 14px 8px 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0f172a;
+  background: #f8fafc;
+  width: 220px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.searchInput:focus {
+  border-color: #4731f7;
+  background: white;
+}
+
+/* Export Button */
+.exportBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.exportBtn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e0;
+}
+
+.exportBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Table */
+.tableWrapper {
+  overflow-x: auto;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table thead tr {
+  background: #f8fafc;
+}
+
+.table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.table th:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.table th:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.table td {
+  padding: 14px 16px;
+  font-size: 14px;
+  color: #1e293b;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+  font-weight: 500;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: #f8fafc;
+}
+
+/* Course Cell */
+.courseCell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.courseThumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #1e293b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.courseThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.courseName {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+/* Completion Rate */
+.completionRate {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Date */
+.dateText {
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* Empty State */
+.emptyState {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.emptyIllustration {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 16px;
+  background: #eef2ff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emptyTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+
+.emptyDesc {
+  font-size: 14px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+/* Billing Gate */
+.billingGate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+}
+
+.billingIllustration {
+  width: 100px;
+  height: 100px;
+  margin: 0 auto 20px;
+  background: #eef2ff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.billingTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+.billingDesc {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0 0 24px;
+}
+
+.billingCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #4731f7;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 0.2s,
+    transform 0.15s;
+}
+
+.billingCta:hover {
+  background: #3720d6;
+  transform: translateY(-1px);
+}
+
+/* Export Tab */
+.exportTabContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 24px;
+  text-align: center;
+}
+
+.exportOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 460px;
+}
+
+.exportOptionCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: white;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.exportOptionCard:hover {
+  border-color: #4731f7;
+  box-shadow: 0 0 0 3px rgba(71, 49, 247, 0.08);
+}
+
+.exportOptionIcon {
+  width: 40px;
+  height: 40px;
+  background: #eef2ff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #4731f7;
+}
+
+.exportOptionLabel {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 2px;
+}
+
+.exportOptionDesc {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+.exportAllBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #4731f7;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 28px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    transform 0.15s;
+}
+
+.exportAllBtn:hover {
+  background: #3720d6;
+  transform: translateY(-1px);
+}
+
+.exportAllBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Staff avatar initial */
+.staffAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #eef2ff;
+  color: #4731f7;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.staffCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.staffName {
+  font-weight: 600;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.staffEmail {
+  font-size: 12px;
+  color: #94a3b8;
+}

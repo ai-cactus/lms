@@ -1,278 +1,278 @@
 /* WorkerProfile.module.css */
 .container {
-    max-width: 100%;
-    min-height: calc(100vh - 100px);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
+  max-width: 100%;
+  min-height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
 }
 
 .header {
-    margin-bottom: 24px;
-    width: 100%;
-    max-width: 900px;
+  margin-bottom: 24px;
+  width: 100%;
+  max-width: 900px;
 }
 
 .backLink {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #4A5568;
-    text-decoration: none;
-    font-size: 14px;
-    font-weight: 500;
-    margin-bottom: 24px;
-    width: 100%;
-    max-width: 900px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4a5568;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 24px;
+  width: 100%;
+  max-width: 900px;
 }
 
 .backLink:hover {
-    color: #2D3748;
+  color: #2d3748;
 }
 
 .card {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    border: 1px solid #e2e8f0;
-    width: 100%;
-    max-width: 900px;
-    min-height: 600px;
-    display: flex;
-    flex-direction: column;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+  width: 100%;
+  max-width: 900px;
+  min-height: 600px;
+  display: flex;
+  flex-direction: column;
 }
 
 .profileWrapper {
-    display: flex;
-    gap: 64px;
-    padding: 40px;
-    align-items: flex-start;
+  display: flex;
+  gap: 64px;
+  padding: 40px;
+  align-items: flex-start;
 }
 
 .avatarSection {
-    flex-shrink: 0;
-    width: 120px;
-    display: flex;
-    justify-content: center;
-    padding-top: 8px;
+  flex-shrink: 0;
+  width: 120px;
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
 }
 
 .avatarLarge {
-    width: 120px;
-    height: 120px;
-    border-radius: 50%;
-    background: #e2e8f0;
-    color: #64748b;
-    font-size: 48px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 48px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .avatarLarge img {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    object-fit: cover;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .editAvatarBtn {
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: #2563eb;
-    border: 3px solid white;
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 3px solid white;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .editAvatarBtn:hover {
-    transform: scale(1.1);
-    background: #1d4ed8;
+  transform: scale(1.1);
+  background: #1d4ed8;
 }
 
 .form {
-    flex: 1;
-    max-width: 800px;
-    display: flex;
-    flex-direction: column;
+  flex: 1;
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
 }
 
 .formGrid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
 }
 
 @media (max-width: 768px) {
-    .profileWrapper {
-        flex-direction: column;
-        align-items: center;
-        gap: 32px;
-        padding: 24px;
-    }
+  .profileWrapper {
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    padding: 24px;
+  }
 
-    .formGrid {
-        grid-template-columns: 1fr;
-    }
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
 
-    .avatarSection {
-        width: auto;
-    }
+  .avatarSection {
+    width: auto;
+  }
 }
 
 .fieldGroup {
-    margin-bottom: 24px;
+  margin-bottom: 24px;
 }
 
 .label {
-    display: block;
-    font-size: 14px;
-    font-weight: 600;
-    color: #1a202c;
-    margin-bottom: 8px;
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a202c;
+  margin-bottom: 8px;
 }
 
 .input {
-    width: 100%;
-    height: 40px;
-    padding: 0 12px;
-    border-radius: 6px;
-    border: 1px solid #e2e8f0;
-    background-color: white;
-    font-size: 14px;
-    color: #1a202c;
-    transition: all 0.2s;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background-color: white;
+  font-size: 14px;
+  color: #1a202c;
+  transition: all 0.2s;
 }
 
 .input:focus {
-    outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
 }
 
 .readOnlyInput {
-    background-color: #f7fafc;
-    color: #718096;
-    cursor: not-allowed;
-    border-color: #e2e8f0;
+  background-color: #f7fafc;
+  color: #718096;
+  cursor: not-allowed;
+  border-color: #e2e8f0;
 }
 
 .message {
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 24px;
-    font-size: 14px;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  font-size: 14px;
 }
 
 .message.success {
-    background-color: #f0fdf4;
-    color: #15803d;
-    border: 1px solid #bbf7d0;
+  background-color: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
 }
 
 .message.error {
-    background-color: #fef2f2;
-    color: #b91c1c;
-    border: 1px solid #fecaca;
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
 }
 
 .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 16px;
-    margin-top: 32px;
-    padding-top: 0;
-    border-top: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 32px;
+  padding-top: 0;
+  border-top: none;
 }
 
 .discardBtn {
-    border: 1px solid #2563eb;
-    color: #2563eb;
-    background: white;
-    font-weight: 600;
-    padding: 10px 24px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
+  border: 1px solid #2563eb;
+  color: #2563eb;
+  background: white;
+  font-weight: 600;
+  padding: 10px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .discardBtn:hover {
-    background: #f0f9ff;
+  background: #f0f9ff;
 }
 
 .discardBtn:disabled {
-    border-color: #cbd5e1;
-    color: #94a3b8;
-    cursor: not-allowed;
-    background: white;
+  border-color: #cbd5e1;
+  color: #94a3b8;
+  cursor: not-allowed;
+  background: white;
 }
 
 .saveBtn {
-    background: #e2e8f0;
-    color: #64748b;
-    border: none;
-    font-weight: 600;
-    padding: 10px 24px;
-    border-radius: 6px;
-    cursor: not-allowed;
-    transition: all 0.2s;
+  background: #e2e8f0;
+  color: #64748b;
+  border: none;
+  font-weight: 600;
+  padding: 10px 24px;
+  border-radius: 6px;
+  cursor: not-allowed;
+  transition: all 0.2s;
 }
 
 .saveBtn.active {
-    background: #2563eb;
-    color: white;
-    cursor: pointer;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
 }
 
 .saveBtn.active:hover {
-    background: #1d4ed8;
+  background: #1d4ed8;
 }
 
 /* Additional Mobile Tweaks */
 @media (max-width: 480px) {
-    .container {
-        padding: 12px;
-        min-height: auto;
-    }
+  .container {
+    padding: 12px;
+    min-height: auto;
+  }
 
-    .card {
-        min-height: auto;
-        border-radius: 8px;
-    }
+  .card {
+    min-height: auto;
+    border-radius: 8px;
+  }
 
-    .profileWrapper {
-        padding: 16px;
-        gap: 20px;
-    }
+  .profileWrapper {
+    padding: 16px;
+    gap: 20px;
+  }
 
-    .avatarLarge {
-        width: 80px;
-        height: 80px;
-        font-size: 32px;
-    }
+  .avatarLarge {
+    width: 80px;
+    height: 80px;
+    font-size: 32px;
+  }
 
-    .actions {
-        flex-direction: column;
-    }
+  .actions {
+    flex-direction: column;
+  }
 
-    .discardBtn,
-    .saveBtn {
-        width: 100%;
-        text-align: center;
-    }
+  .discardBtn,
+  .saveBtn {
+    width: 100%;
+    text-align: center;
+  }
 }

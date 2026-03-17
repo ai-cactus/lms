@@ -97,7 +97,12 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
                   </div>
                 </div>
                 <div
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-end',
+                    gap: '4px',
+                  }}
                 >
                   <button
                     className={buttonClass}

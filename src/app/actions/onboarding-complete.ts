@@ -3,7 +3,6 @@
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
-import { v4 as uuidv4 } from 'uuid';
 import { sendInviteEmail } from '@/lib/email';
 
 // Define types for the data we expect
@@ -131,7 +130,7 @@ export async function completeOnboarding(data: OnboardingData) {
         const existingUser = await tx.user.findUnique({ where: { email } });
         if (existingUser) return; // Skip if user exists
 
-        const token = uuidv4();
+        const token = crypto.randomUUID();
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7);
 

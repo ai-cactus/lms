@@ -1,12 +1,12 @@
 'use server';
 
 import { signIn } from '@/auth';
+import { signIn as signInWorker } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { AuthError } from 'next-auth';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
-import { cookies } from 'next/headers';
 
 // Define return type
 export type AuthState = {
@@ -21,28 +21,29 @@ export async function authenticate(
 ): Promise<AuthState> {
   try {
     const email = formData.get('email') as string;
+    let role = 'admin';
     if (email) {
       const user = await prisma.user.findUnique({ where: { email }, select: { role: true } });
-      if (user && user.role !== 'admin') {
-        // Automatically route them to the correct login page
-        return { redirect: '/login-worker' };
+      if (user && user.role === 'worker') {
+        role = 'worker';
       }
     }
 
-    // Clear worker session cookies to prevent crossover
-    const cookieStore = await cookies();
-    cookieStore.delete('worker.session-token');
-    cookieStore.delete('__Secure-worker.session-token');
+    console.log('[Auth Action] authenticate server action called for role:', role);
 
-    console.log(
-      '[Auth Action Admin] authenticate server action called with entries:',
-      Object.fromEntries(formData),
-    );
-    await signIn('credentials', {
-      ...Object.fromEntries(formData),
-      redirectTo: '/dashboard',
-    });
-    console.log('[Auth Action Admin] signIn completed (usually means redirection if successful)');
+    if (role === 'worker') {
+      await signInWorker('credentials', {
+        ...Object.fromEntries(formData),
+        redirectTo: '/worker',
+      });
+    } else {
+      await signIn('credentials', {
+        ...Object.fromEntries(formData),
+        redirectTo: '/dashboard',
+      });
+    }
+
+    console.log('[Auth Action] signIn completed (usually means redirection if successful)');
     return { success: true };
   } catch (error) {
     console.error('[Auth Action Admin] Intercepted Error in authenticate action:', error);

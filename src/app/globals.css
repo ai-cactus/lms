@@ -3,30 +3,30 @@
 
 :root {
   /* Primary Colors */
-  --primary: #4730F7;
-  --primary-hover: #3724C4;
-  --primary-light: #6A56F9;
+  --primary: #4730f7;
+  --primary-hover: #3724c4;
+  --primary-light: #6a56f9;
 
   /* Background Colors */
-  --background: #FFFFFF;
-  --background-secondary: #F9FAFB;
-  --background-hero: linear-gradient(135deg, #4730F7 0%, #6366F1 100%);
+  --background: #ffffff;
+  --background-secondary: #f9fafb;
+  --background-hero: linear-gradient(135deg, #4730f7 0%, #6366f1 100%);
 
   /* Text Colors */
   --text-primary: #101010;
-  --text-secondary: #4B4B4B;
-  --text-muted: #6B7280;
-  --text-white: #FFFFFF;
+  --text-secondary: #4b4b4b;
+  --text-muted: #6b7280;
+  --text-white: #ffffff;
 
   /* Border Colors */
-  --border: #E5E7EB;
-  --border-light: #F3F4F6;
-  --border-focus: #4730F7;
+  --border: #e5e7eb;
+  --border-light: #f3f4f6;
+  --border-focus: #4730f7;
 
   /* Status Colors */
-  --error: #EF4444;
-  --success: #10B981;
-  --warning: #F59E0B;
+  --error: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
 
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -159,7 +159,7 @@ div {
 }
 
 *:hover::-webkit-scrollbar-thumb {
-  background: #CBD5E0;
+  background: #cbd5e0;
   /* Show on hover */
 }
 
@@ -171,5 +171,5 @@ div {
 }
 
 :hover::-webkit-scrollbar-thumb {
-  background-color: #CBD5E0;
+  background-color: #cbd5e0;
 }

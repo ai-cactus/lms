@@ -104,11 +104,11 @@ export default function CourseWizard() {
       if (!result.error) {
         setFormData((prev) => ({
           ...prev,
-          title: result.title,
-          description: result.description,
-          objectives: result.objectives,
-          duration: result.duration,
-          quizTitle: result.quizTitle,
+          title: result.title || prev.title,
+          description: result.description || prev.description,
+          objectives: result.objectives?.length ? result.objectives : prev.objectives,
+          duration: result.duration || prev.duration,
+          quizTitle: result.quizTitle || prev.quizTitle,
         }));
       }
       setAnalysisProgress(100);
@@ -140,6 +140,8 @@ export default function CourseWizard() {
   };
 
   const handleNext = async () => {
+    if (isNextDisabled()) return;
+
     if (currentStep === 2) {
       const selectedDoc = documents.find((d) => d.selected);
       if (!selectedDoc) return;
@@ -156,11 +158,11 @@ export default function CourseWizard() {
         } else {
           setFormData((prev) => ({
             ...prev,
-            title: result.title,
-            description: result.description,
-            objectives: result.objectives,
-            duration: result.duration,
-            quizTitle: result.quizTitle,
+            title: result.title || prev.title,
+            description: result.description || prev.description,
+            objectives: result.objectives?.length ? result.objectives : prev.objectives,
+            duration: result.duration || prev.duration,
+            quizTitle: result.quizTitle || prev.quizTitle,
           }));
         }
       } catch (err) {
@@ -302,16 +304,16 @@ export default function CourseWizard() {
       } else {
         setFormData((prev) => ({
           ...prev,
-          title: result.title,
-          description: result.description,
-          objectives: result.objectives,
-          duration: result.duration,
-          quizTitle: result.quizTitle,
+          title: result.title || prev.title,
+          description: result.description || prev.description,
+          objectives: result.objectives?.length ? result.objectives : prev.objectives,
+          duration: result.duration || prev.duration,
+          quizTitle: result.quizTitle || prev.quizTitle,
         }));
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Upload/Analysis Failed:', err);
-      setUploadError(err.message || 'Upload failed. Please try again.');
+      setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
       setTimeout(() => {
         setIsAnalyzing(false);

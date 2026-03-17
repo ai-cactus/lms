@@ -5,41 +5,42 @@ import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 
 export default async function ProfilePage() {
-    const session = await auth();
+  const session = await auth();
 
-    if (!session?.user) {
-        redirect('/login');
-    }
+  if (!session?.user) {
+    redirect('/login');
+  }
 
-    // Fetch profile
-    const profile = await prisma.profile.findUnique({
-        where: { id: session.user.id },
-    });
+  // Fetch profile
+  const profile = await prisma.profile.findUnique({
+    where: { id: session.user.id },
+  });
 
-    // Fetch user with organization
-    const user = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        include: { organization: true }
-    });
+  // Fetch user with organization
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    include: { organization: true },
+  });
 
-    const role = user?.role || 'worker';
+  const role = user?.role || 'worker';
 
-    console.log('ProfilePage Session:', session?.user?.id);
-    console.log('ProfilePage Profile:', profile);
-    console.log('ProfilePage User:', user);
+  console.log('ProfilePage Session:', session?.user?.id);
+  console.log('ProfilePage Profile:', profile);
+  console.log('ProfilePage User:', user);
 
-    // Construct initial profile data
-    const initialData = {
-        id: session.user.id!,
-        first_name: profile?.firstName || '',
-        last_name: profile?.lastName || '',
-        email: user?.email || session.user.email || '',
-        role: role as 'admin' | 'worker',
-        company_name: profile?.companyName || ''
-    };
+  // Construct initial profile data
+  const initialData = {
+    id: session.user.id!,
+    first_name: profile?.firstName || '',
+    last_name: profile?.lastName || '',
+    email: user?.email || session.user.email || '',
+    role: role as 'admin' | 'worker',
+    company_name: profile?.companyName || '',
+  };
 
-    // Construct organization data
-    const organizationData = user?.organization ? {
+  // Construct organization data
+  const organizationData = user?.organization
+    ? {
         id: user.organization.id,
         name: user.organization.name,
         dba: user.organization.dba,
@@ -58,12 +59,8 @@ export default async function ProfilePage() {
         primaryBusinessType: user.organization.primaryBusinessType,
         additionalBusinessTypes: user.organization.additionalBusinessTypes || [],
         programServices: user.organization.programServices || [],
-    } : null;
+      }
+    : null;
 
-    return (
-        <ProfileForm
-            initialData={initialData}
-            organizationData={organizationData}
-        />
-    );
+  return <ProfileForm initialData={initialData} organizationData={organizationData} />;
 }

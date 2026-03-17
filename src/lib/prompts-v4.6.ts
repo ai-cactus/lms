@@ -477,52 +477,51 @@ JUDGE JSON:
 // ─── Builder Functions ───────────────────────────
 
 export function buildPromptA_v46(documentText: string, metadataJson?: string): string {
-    return PROMPT_A_TEMPLATE
-        .replace('{{DOCUMENT_TEXT}}', documentText)
-        .replace('{{METADATA_JSON}}', metadataJson || 'None');
+  return PROMPT_A_TEMPLATE.replace('{{DOCUMENT_TEXT}}', documentText).replace(
+    '{{METADATA_JSON}}',
+    metadataJson || 'None',
+  );
 }
 
 export function buildPromptB_v46(
-    articleMarkdown: string,
-    articleMetaJson: string,
-    desiredSlideCount: number
+  articleMarkdown: string,
+  articleMetaJson: string,
+  desiredSlideCount: number,
 ): string {
-    return PROMPT_B_TEMPLATE
-        .replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
-        .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
-        .replace('{{DESIRED_SLIDE_COUNT}}', String(desiredSlideCount));
+  return PROMPT_B_TEMPLATE.replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
+    .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
+    .replace('{{DESIRED_SLIDE_COUNT}}', String(desiredSlideCount));
 }
 
 export function buildPromptC_v46(
-    articleMarkdown: string,
-    articleMetaJson: string,
-    requestedQuestionCount: number,
-    quizDifficulty: string
+  articleMarkdown: string,
+  articleMetaJson: string,
+  requestedQuestionCount: number,
+  quizDifficulty: string,
 ): string {
-    return PROMPT_C_TEMPLATE
-        .replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
-        .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
-        .replace('{{REQUESTED_QUESTION_COUNT}}', String(requestedQuestionCount))
-        .replace('{{QUIZ_DIFFICULTY}}', quizDifficulty);
+  return PROMPT_C_TEMPLATE.replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
+    .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
+    .replace('{{REQUESTED_QUESTION_COUNT}}', String(requestedQuestionCount))
+    .replace('{{QUIZ_DIFFICULTY}}', quizDifficulty);
 }
 
 export function buildPromptD_v46(quizJson: string, articleMetaJson: string): string {
-    return PROMPT_D_TEMPLATE
-        .replace('{{QUIZ_JSON}}', quizJson)
-        .replace('{{ARTICLE_META_JSON}}', articleMetaJson);
+  return PROMPT_D_TEMPLATE.replace('{{QUIZ_JSON}}', quizJson).replace(
+    '{{ARTICLE_META_JSON}}',
+    articleMetaJson,
+  );
 }
 
 export function buildPromptE_v46(
-    articleMarkdown: string,
-    articleMetaJson: string,
-    quizJson: string,
-    judgeJson: string,
-    quizDifficulty: string
+  articleMarkdown: string,
+  articleMetaJson: string,
+  quizJson: string,
+  judgeJson: string,
+  quizDifficulty: string,
 ): string {
-    return PROMPT_E_TEMPLATE
-        .replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
-        .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
-        .replace('{{QUIZ_JSON}}', quizJson)
-        .replace('{{JUDGE_JSON}}', judgeJson)
-        .replace('{{QUIZ_DIFFICULTY}}', quizDifficulty);
+  return PROMPT_E_TEMPLATE.replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
+    .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
+    .replace('{{QUIZ_JSON}}', quizJson)
+    .replace('{{JUDGE_JSON}}', judgeJson)
+    .replace('{{QUIZ_DIFFICULTY}}', quizDifficulty);
 }

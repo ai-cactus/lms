@@ -1,0 +1,130 @@
+'use client';
+
+import { useState } from 'react';
+import styles from './auditor-pack.module.css';
+
+const EXPORT_OPTIONS = [
+  {
+    key: 'all',
+    label: 'All Standards',
+    description: 'Export a complete training compliance report for all standards.',
+    icon: (
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="16" y1="13" x2="8" y2="13" />
+        <line x1="16" y1="17" x2="8" y2="17" />
+      </svg>
+    ),
+  },
+  {
+    key: 'hipaa',
+    label: 'HIPAA',
+    description: 'HIPAA-specific training completion records and attestations.',
+    icon: (
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+    ),
+  },
+  {
+    key: 'carf',
+    label: 'CARF',
+    description: 'CARF accreditation-aligned training evidence pack.',
+    icon: (
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
+      </svg>
+    ),
+  },
+];
+
+export default function AuditorExportTab() {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      window.location.href = '/api/auditor/export';
+      // Give time for download to initiate
+      await new Promise((res) => setTimeout(res, 1500));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  return (
+    <div className={styles.sectionCard}>
+      <div className={styles.sectionHeader}>
+        <h2 className={styles.sectionTitle}>Export Auditor Pack</h2>
+      </div>
+
+      <div className={styles.exportTabContent}>
+        <div className={styles.exportOptions}>
+          {EXPORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              className={styles.exportOptionCard}
+              onClick={handleExport}
+              disabled={isExporting}
+              title={`Export ${opt.label}`}
+            >
+              <div className={styles.exportOptionIcon}>{opt.icon}</div>
+              <div>
+                <p className={styles.exportOptionLabel}>{opt.label}</p>
+                <p className={styles.exportOptionDesc}>{opt.description}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <button className={styles.exportAllBtn} onClick={handleExport} disabled={isExporting}>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          {isExporting ? 'Preparing export\u2026' : 'Download Full Pack (CSV)'}
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -53,9 +53,10 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [retakeEnrollment, setRetakeEnrollment] = useState<{ id: string; courseName: string } | null>(
-    null,
-  );
+  const [retakeEnrollment, setRetakeEnrollment] = useState<{
+    id: string;
+    courseName: string;
+  } | null>(null);
   const [viewingResult, setViewingResult] = useState<{
     enrollmentId: string;
     courseName: string;

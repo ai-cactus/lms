@@ -8,7 +8,8 @@ import { z } from 'zod';
 
 // ─── Prompt A: ArticleMeta Schema ────────────────
 
-const ArticleMetaMetaSchema = z.object({
+const ArticleMetaMetaSchema = z
+  .object({
     promptVersion: z.string(),
     status: z.enum(['ok', 'needs_sources']),
     title: z.string(),
@@ -17,72 +18,90 @@ const ArticleMetaMetaSchema = z.object({
     objectiveCount: z.number().optional().default(0),
     gaps: z.array(z.string()).default([]),
     reviewerNotes: z.array(z.string()).default([]),
-}).passthrough();
+  })
+  .passthrough();
 
-const LearningObjectiveV46Schema = z.object({
+const LearningObjectiveV46Schema = z
+  .object({
     id: z.string(),
     text: z.string(),
     primarySections: z.array(z.string()),
-}).passthrough();
+  })
+  .passthrough();
 
-const ArticleSectionV46Schema = z.object({
+const ArticleSectionV46Schema = z
+  .object({
     sectionId: z.string(),
     title: z.string(),
     anchorHint: z.string().optional().default(''),
     keyPoints: z.array(z.string()).min(1),
     normIds: z.array(z.string()).default([]),
     snippetIds: z.array(z.string()).default([]),
-}).passthrough();
+  })
+  .passthrough();
 
-const SnippetV46Schema = z.object({
+const SnippetV46Schema = z
+  .object({
     snippetId: z.string(),
     sectionId: z.string(),
     anchorHint: z.string().optional().default(''),
     text: z.string(),
-}).passthrough();
+  })
+  .passthrough();
 
-const NormV46Schema = z.object({
+const NormV46Schema = z
+  .object({
     normId: z.string(),
     sectionId: z.string(),
     modality: z.enum(['must', 'should', 'may', 'prohibited', 'conditional']),
     statement: z.string(),
     snippetId: z.string().optional().default(''),
-}).passthrough();
+  })
+  .passthrough();
 
-export const ArticleMetaV46Schema = z.object({
+export const ArticleMetaV46Schema = z
+  .object({
     meta: ArticleMetaMetaSchema,
     learningObjectives: z.array(LearningObjectiveV46Schema).min(1),
     sections: z.array(ArticleSectionV46Schema).min(1),
     snippets: z.array(SnippetV46Schema).default([]),
     norms: z.array(NormV46Schema).default([]),
-}).passthrough();
+  })
+  .passthrough();
 
 // ─── Prompt B: Slides Schema ─────────────────────
 
-const SlidesMetaSchema = z.object({
+const SlidesMetaSchema = z
+  .object({
     promptVersion: z.string(),
     basedOnArticleMetaVersion: z.string().optional().default('v4.6-article'),
     desiredSlideCount: z.number().optional().default(0),
     totalSlides: z.number().optional().default(0),
     gaps: z.array(z.string()).default([]),
     reviewerNotes: z.array(z.string()).default([]),
-}).passthrough();
+  })
+  .passthrough();
 
-const SlideV46Schema = z.object({
+const SlideV46Schema = z
+  .object({
     slideId: z.string(),
     title: z.string(),
     bullets: z.array(z.string()).min(1),
     sourceSections: z.array(z.string()).default([]),
-}).passthrough();
+  })
+  .passthrough();
 
-export const SlidesV46Schema = z.object({
+export const SlidesV46Schema = z
+  .object({
     meta: SlidesMetaSchema,
     slides: z.array(SlideV46Schema).min(1),
-}).passthrough();
+  })
+  .passthrough();
 
 // ─── Prompt C: Quiz Schema ───────────────────────
 
-const QuizMetaV46Schema = z.object({
+const QuizMetaV46Schema = z
+  .object({
     promptVersion: z.string(),
     basedOnArticleMetaVersion: z.string().optional().default('v4.6-article'),
     requestedQuestionCount: z.number().optional().default(0),
@@ -91,21 +110,27 @@ const QuizMetaV46Schema = z.object({
     coverageNote: z.string().optional().default(''),
     gaps: z.array(z.string()).default([]),
     reviewerNotes: z.array(z.string()).default([]),
-}).passthrough();
+  })
+  .passthrough();
 
-const QuizOptionV46Schema = z.object({
+const QuizOptionV46Schema = z
+  .object({
     text: z.string(),
     isCorrect: z.boolean(),
     distractorType: z.string().nullable().default(null),
     explanation: z.string().optional().default(''),
-}).passthrough();
+  })
+  .passthrough();
 
-const QuizEvidenceV46Schema = z.object({
+const QuizEvidenceV46Schema = z
+  .object({
     snippetId: z.string(),
     sectionId: z.string(),
-}).passthrough();
+  })
+  .passthrough();
 
-const QuizQuestionV46Schema = z.object({
+const QuizQuestionV46Schema = z
+  .object({
     id: z.string(),
     sectionId: z.string().optional().default(''),
     templateId: z.string().optional().default('T2'),
@@ -115,55 +140,70 @@ const QuizQuestionV46Schema = z.object({
     question: z.string(),
     evidence: QuizEvidenceV46Schema.optional().default({ snippetId: '', sectionId: '' }),
     options: z.array(QuizOptionV46Schema).min(2).max(6),
-}).passthrough();
+  })
+  .passthrough();
 
-export const QuizV46Schema = z.object({
+export const QuizV46Schema = z
+  .object({
     meta: QuizMetaV46Schema,
     questions: z.array(QuizQuestionV46Schema).min(1),
-}).passthrough();
+  })
+  .passthrough();
 
 // ─── Prompt D: Judge Schema ──────────────────────
 
-const JudgeMetaSchema = z.object({
+const JudgeMetaSchema = z
+  .object({
     promptVersion: z.string(),
     totalQuestions: z.number().optional().default(0),
     ambiguousCount: z.number().optional().default(0),
     invalidCount: z.number().optional().default(0),
     notes: z.array(z.string()).default([]),
-}).passthrough();
+  })
+  .passthrough();
 
-const AmbiguousFlagSchema = z.object({
+const AmbiguousFlagSchema = z
+  .object({
     questionId: z.string(),
     why: z.string(),
     defensibleOptions: z.array(z.number()).default([]),
     suggestedFix: z.string().optional().default(''),
-}).passthrough();
+  })
+  .passthrough();
 
-const InvalidFlagSchema = z.object({
+const InvalidFlagSchema = z
+  .object({
     questionId: z.string(),
     type: z.string(),
     why: z.string(),
     suggestedFix: z.string().optional().default(''),
-}).passthrough();
+  })
+  .passthrough();
 
-export const JudgeV46Schema = z.object({
+export const JudgeV46Schema = z
+  .object({
     meta: JudgeMetaSchema,
     ambiguous: z.array(AmbiguousFlagSchema).default([]),
     invalid: z.array(InvalidFlagSchema).default([]),
-}).passthrough();
+  })
+  .passthrough();
 
 // ─── Prompt E: Regen Schema ─────────────────────
 
-const RegenMetaSchema = z.object({
+const RegenMetaSchema = z
+  .object({
     promptVersion: z.string(),
     regeneratedCount: z.number().optional().default(0),
     reviewerNotes: z.array(z.string()).default([]),
-}).passthrough();
+  })
+  .passthrough();
 
-export const RegenV46Schema = z.object({
+export const RegenV46Schema = z
+  .object({
     meta: RegenMetaSchema,
     questions: z.array(QuizQuestionV46Schema).min(1),
-}).passthrough();
+  })
+  .passthrough();
 
 // ─── Inferred types from schemas ─────────────────
 

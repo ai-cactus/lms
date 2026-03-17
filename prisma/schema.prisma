@@ -7,11 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model Organization {
-  id                      String   @id @default(uuid())
+  id                      String    @id @default(uuid())
   name                    String
-  slug                    String   @unique
+  slug                    String    @unique
   dba                     String?
   ein                     String?
   staffCount              String?
@@ -25,15 +24,19 @@ model Organization {
   zipCode                 String?
   licenseNumber           String?
   isHipaaCompliant        Boolean  @default(false)
+  hasAuditorAccess        Boolean  @default(false)
   primaryBusinessType     String?
-  additionalBusinessTypes String[] @default([])
-  programServices         String[] @default([])
-  joinCode                String?  @unique
+  additionalBusinessTypes String[]  @default([])
+  programServices         String[]  @default([])
+  joinCode                String?   @unique
   joinCodeExpiresAt       DateTime?
+  stripeCustomerId        String?  @unique // Stripe customer ID
   users                   User[]
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
   invites                 Invite[]
+  subscription            Subscription?
+  invoices                Invoice[]
 }
 
 model Invite {
@@ -41,145 +44,146 @@ model Invite {
   email          String
   token          String       @unique
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  role           String       @default("worker") // 'admin', 'supervisor', 'worker'
-  status         String       @default("pending") // 'pending', 'accepted', 'expired'
+  role           String       @default("worker")
+  status         String       @default("pending")
   expiresAt      DateTime
   createdAt      DateTime     @default(now())
-  invitedBy      String?      // User ID of the inviter
+  invitedBy      String?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([email])
   @@index([token])
 }
 
 model User {
-  id             String        @id @default(uuid())
-  email          String        @unique
+  id             String         @id @default(uuid())
+  email          String         @unique
   password       String
   organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-  role           String        @default("worker") // 'admin' | 'worker'
-  emailVerified  Boolean       @default(false)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  profile        Profile?
-  courses        Course[] // Courses created by this user
-  enrollments    Enrollment[]
+  role           String         @default("worker")
+  emailVerified  Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  courses        Course[]
   documents      Document[]
+  enrollments    Enrollment[]
   notifications  Notification[]
+  profile        Profile?
+  organization   Organization?  @relation(fields: [organizationId], references: [id])
 }
 
 model Profile {
-  id          String   @id // References User.id
-  user        User     @relation(fields: [id], references: [id], onDelete: Cascade)
+  id          String   @id
   email       String   @unique
   firstName   String?
   lastName    String?
   fullName    String?
-  jobTitle    String? // E.g. 'Compliance Officer'
+  jobTitle    String?
   companyName String?
   avatarUrl   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [id], references: [id], onDelete: Cascade)
 }
 
 model Document {
   id           String            @id @default(uuid())
   userId       String
-  user         User              @relation(fields: [userId], references: [id])
   filename     String
   originalName String
   mimeType     String
   size         Int
-  versions     DocumentVersion[]
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+  user         User              @relation(fields: [userId], references: [id])
+  versions     DocumentVersion[]
 }
 
 model DocumentVersion {
   id             String            @id @default(uuid())
   documentId     String
-  document       Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
   version        Int               @default(1)
   storagePath    String
-  hash           String // SHA-256 for immutability
-  content        String?           @db.Text // Extracted text
-  phiReport      PhiReport?
-  courseVersions CourseVersion[]
-  mapping        MappingEvidence[]
+  hash           String
+  content        String?
   createdAt      DateTime          @default(now())
+  courseVersions CourseVersion[]
+  document       Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  mapping        MappingEvidence[]
+  phiReport      PhiReport?
 }
 
 model PhiReport {
   id                String          @id @default(uuid())
   documentVersionId String          @unique
-  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
   hasPHI            Boolean         @default(false)
-  detectedEntities  Json? // Store locations of detected PHI
+  detectedEntities  Json?
   scannedAt         DateTime        @default(now())
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
 }
 
 model Course {
-  id             String          @id @default(uuid())
-  title          String
-  description    String?
-  thumbnail      String?
-  status         String          @default("draft") // 'draft' | 'published' | 'archived'
-  category       String? // 'compliance' | 'safety' | 'hr' | 'custom'
-  duration       Int? // estimated minutes
-  createdBy      String
-  creator        User            @relation(fields: [createdBy], references: [id])
-  versions       CourseVersion[]
-  lessons        Lesson[]
-  enrollments    Enrollment[]
-  objectives     String[]        @default([])
-  promptVersion  String?         // e.g. "v3.1" — tracks which prompt pipeline generated this course
-  rawCourseJson  Json?           // Full v3.1 Prompt A output (CourseV3 schema)
-  rawQuizJson    Json?           // Full v3.1 Prompt B output (QuizV3 schema)
-  // v4.6 pipeline artifacts
-  rawArticleMeta     Json?      // v4.6 articleMeta JSON
-  rawArticleMarkdown String?    @db.Text  // v4.6 article markdown
-  rawSlidesJson      Json?      // v4.6 slides JSON
-  rawJudgeJson       Json?      // v4.6 judge results
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id                 String          @id @default(uuid())
+  title              String
+  description        String?
+  thumbnail          String?
+  status             String          @default("draft")
+  category           String?
+  duration           Int?
+  createdBy          String
+  objectives         String[]        @default([])
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  promptVersion      String?
+  rawCourseJson      Json?
+  rawQuizJson        Json?
+  rawArticleMarkdown String?
+  rawArticleMeta     Json?
+  rawJudgeJson       Json?
+  rawSlidesJson      Json?
+  creator            User            @relation(fields: [createdBy], references: [id])
+  versions           CourseVersion[]
+  enrollments        Enrollment[]
+  lessons            Lesson[]
+
+  @@index([createdBy])
 }
 
 model CourseVersion {
   id                String          @id @default(uuid())
   courseId          String
-  course            Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   documentVersionId String
-  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
   version           Int
   publishedAt       DateTime        @default(now())
+  course            Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
 }
 
 model MappingEvidence {
   id                String          @id @default(uuid())
   documentVersionId String
-  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
-  standardId        String // e.g. "CARF_1.A.2"
-  snippet           String          @db.Text
+  standardId        String
+  snippet           String
   justification     String?
-  status            String          @default("pending") // 'pending' | 'approved' | 'rejected'
+  status            String          @default("pending")
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
 }
 
 model AuditorPack {
-  id           String   @id @default(uuid())
-  generatedBy  String
-  scope        String // 'all' | 'specific_standards'
-  downloadUrl  String?
-  generatedAt  DateTime @default(now())
+  id          String   @id @default(uuid())
+  generatedBy String
+  scope       String
+  downloadUrl String?
+  generatedAt DateTime @default(now())
 }
 
 model Job {
   id        String   @id @default(uuid())
   userId    String?
-  type      String // 'GENERATE_DRAFT' | 'EXPORT_PACK'
-  status    String   @default("queued") // 'queued' | 'processing' | 'completed' | 'failed'
+  type      String
+  status    String   @default("queued")
   payload   Json?
   result    Json?
   createdAt DateTime @default(now())
@@ -189,82 +193,79 @@ model Job {
 model Lesson {
   id        String   @id @default(uuid())
   courseId  String
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   title     String
-  content   String   @db.Text // HTML/Markdown content (legacy) or plain text (v3.1)
+  content   String
   order     Int
-  duration  Int? // minutes
-  quiz      Quiz?
+  duration  Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quiz      Quiz?
 }
 
 model Quiz {
-  id           String        @id @default(uuid())
-  lessonId     String        @unique
-  lesson       Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  title        String
-  passingScore Int           @default(70)
-  allowedAttempts Int?       @default(1) // null for unlimited
-  timeLimit      Int?        // minutes
-  difficulty     String?     // beginner, moderate, etc.
-  questions    Question[]
-  attempts     QuizAttempt[]
-  createdAt    DateTime      @default(now())
+  id              String        @id @default(uuid())
+  lessonId        String        @unique
+  title           String
+  passingScore    Int           @default(70)
+  allowedAttempts Int?          @default(1)
+  timeLimit       Int?
+  difficulty      String?
+  createdAt       DateTime      @default(now())
+  questions       Question[]
+  lesson          Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  attempts        QuizAttempt[]
 }
 
 model Question {
   id            String  @id @default(uuid())
   quizId        String
-  quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
   text          String
-  type          String  // 'multiple_choice' | 'true_false' | 'short_answer'
-  options       Json?   // Array of options for multiple choice
+  type          String
+  options       Json?
   correctAnswer String
   order         Int
-  explanation   String? @db.Text // v3.1: embedded explanation (correctExplanation)
-  archetype     String? // v3.1: 'best-next-action' | 'identify-noncompliance' | 'sequence' | 'escalation' | 'modality-check'
-  evidence      Json?   // v3.1: { moduleSectionId, moduleSectionHeading, sourceAnchors[] }
+  archetype     String?
+  evidence      Json?
+  explanation   String?
+  quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
 }
 
 model Enrollment {
-  id           String        @id @default(uuid())
-  userId       String
-  user         User          @relation(fields: [userId], references: [id])
-  courseId     String
-  course       Course        @relation(fields: [courseId], references: [id])
-  status       String        @default("enrolled") // 'enrolled' | 'in_progress' | 'completed' | 'attested' | 'locked'
-  progress     Int           @default(0) // percentage
-  score        Int?
+  id                   String        @id @default(uuid())
+  userId               String
+  courseId             String
+  status               String        @default("enrolled")
+  progress             Int           @default(0)
+  score                Int?
   startedAt            DateTime      @default(now())
   completedAt          DateTime?
-  quizAttempts         QuizAttempt[]
-  
-  // Attestation Fields
   attestedAt           DateTime?
   attestationSignature String?
   attestationRole      String?
-
-  // Retake Fields
-  lockedAt             DateTime?     // Set when attempts exhausted
-  retakeOf             String?       // Parent enrollment ID for retake chains
-  retakeReason         String?
   assignedByAdminId    String?
+  lockedAt             DateTime?
+  retakeOf             String?
+  retakeReason         String?
+  course               Course        @relation(fields: [courseId], references: [id])
+  user                 User          @relation(fields: [userId], references: [id])
+  quizAttempts         QuizAttempt[]
 
   @@index([userId, courseId])
+  @@index([courseId])
 }
 
 model QuizAttempt {
   id           String     @id @default(uuid())
   enrollmentId String
-  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
   quizId       String
-  quiz         Quiz       @relation(fields: [quizId], references: [id])
-  answers      Json // Array of { questionId, selectedAnswer }
+  answers      Json
   score        Int
-  timeTaken    Int? // seconds
+  timeTaken    Int?
   attemptCount Int        @default(1)
   completedAt  DateTime   @default(now())
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  quiz         Quiz       @relation(fields: [quizId], references: [id])
 
   @@unique([enrollmentId, quizId])
 }
@@ -272,28 +273,62 @@ model QuizAttempt {
 model VerificationToken {
   identifier String
   token      String
-  type       String   @default("password_reset") // 'email_verification' | 'password_reset'
+  type       String   @default("password_reset")
   expires    DateTime
-  
-  // For email_verification: store pending user data until verified
-  password   String?  // hashed password
+  password   String?
   firstName  String?
   lastName   String?
-  role       String?  // 'admin' | 'worker'
+  role       String?
 
   @@unique([identifier, token])
 }
 
 model Notification {
-  id             String   @id @default(uuid())
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type           String   // 'WORKER_JOINED', 'COURSE_ASSIGNED', 'COURSE_PASSED', 'COURSE_FAILED', 'COURSE_RETRY_REQUESTED', 'QUIZ_RETRY_LIMIT_REACHED', 'WELCOME'
-  title          String
-  message        String   @db.Text
-  isRead         Boolean  @default(false)
-  linkUrl        String?  // Optional link to related content (e.g. course URL or worker profile)
-  metadata       Json?    // Any additional data (e.g. courseId, workerId)
-  resolvedAt     DateTime? // For actionable notifications (e.g. retake assigned)
-  createdAt      DateTime @default(now())
+  id         String    @id @default(uuid())
+  userId     String
+  type       String
+  title      String
+  message    String
+  isRead     Boolean   @default(false)
+  linkUrl    String?
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Subscription {
+  id                   String       @id @default(uuid())
+  organizationId       String       @unique
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String       @unique
+  stripePriceId        String
+  plan                 String       // 'starter' | 'professional' | 'enterprise'
+  billingCycle         String       // 'monthly' | 'quarterly' | 'yearly'
+  status               String       // 'active' | 'past_due' | 'canceled' | 'trialing'
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean      @default(false)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+}
+
+model Invoice {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeInvoiceId String       @unique
+  invoiceNumber   String       // e.g. "TH-8842"
+  amountPaid      Int          // in cents
+  currency        String       @default("usd")
+  status          String       // 'paid' | 'open' | 'void' | 'uncollectible'
+  invoiceUrl      String?      // Stripe-hosted invoice URL
+  pdfUrl          String?      // Direct PDF download link
+  periodStart     DateTime
+  periodEnd       DateTime
+  createdAt       DateTime     @default(now())
+
+  @@index([organizationId])
 }

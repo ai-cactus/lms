@@ -8,7 +8,7 @@ module.exports = {
             args: "start",
             cwd: "/home/homepc/lms2",
             env: {
-                NODE_ENV: "development",
+                NODE_ENV: "production",
                 PORT: 3001
             }
         },

@@ -347,7 +347,8 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     formData.primaryBusinessType !== baseData.primaryBusinessType ||
     JSON.stringify(formData.additionalBusinessTypes || []) !==
       JSON.stringify(baseData.additionalBusinessTypes || []) ||
-    JSON.stringify(formData.programServices || []) !== JSON.stringify(baseData.programServices || []);
+    JSON.stringify(formData.programServices || []) !==
+      JSON.stringify(baseData.programServices || []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -387,7 +388,8 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     if (!formData.phone?.trim()) newErrors.phone = 'Phone Number is required';
     if (!formData.primaryBusinessType)
       newErrors.primaryBusinessType = 'Primary Business Type is required';
-    if (!additionalBizType) newErrors.additionalBusinessType = 'Additional Business Type is required';
+    if (!additionalBizType)
+      newErrors.additionalBusinessType = 'Additional Business Type is required';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
