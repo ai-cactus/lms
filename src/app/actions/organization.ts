@@ -1,5 +1,6 @@
 'use server';
 
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 
@@ -168,7 +169,7 @@ export async function createOrganization(data: OrganizationCreationData) {
         address: data.streetAddress,
         zipCode: data.zipCode,
         state: data.state,
-        slug: `${data.legalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.floor(Math.random() * 10000)}`,
+        slug: `${data.legalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${crypto.randomBytes(4).toString('hex')}`,
         isHipaaCompliant: false,
       },
     });
