@@ -175,30 +175,79 @@ export default function DashboardLayoutClient({
             </Link>
           </div>
 
-          {/* PERFORMANCE Section */}
-          <div className={styles.navSection}>
-            <h4 className={styles.navSectionTitle}>PERFORMANCE</h4>
+          {/* PERFORMANCE Section — admin only */}
+          {role === 'admin' && (
+            <div className={styles.navSection}>
+              <h4 className={styles.navSectionTitle}>PERFORMANCE</h4>
 
-            <Link
-              href="/dashboard/staff"
-              className={`${styles.navItem} ${pathname.startsWith('/dashboard/staff') ? styles.active : ''}`}
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              <Link
+                href="/dashboard/staff"
+                className={`${styles.navItem} ${pathname.startsWith('/dashboard/staff') ? styles.active : ''}`}
               >
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-              <span>Staff Management</span>
-            </Link>
-          </div>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                <span>Staff Management</span>
+              </Link>
+
+              <Link
+                href="/dashboard/auditor-pack"
+                className={`${styles.navItem} ${pathname.startsWith('/dashboard/auditor-pack') ? styles.active : ''}`}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 11l3 3L22 4" />
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                </svg>
+                <span>Auditor Pack</span>
+              </Link>
+            </div>
+          )}
+
+          {/* SETTINGS Section — admin only */}
+          {role === 'admin' && (
+            <div className={styles.navSection}>
+              <h4 className={styles.navSectionTitle}>SETTINGS</h4>
+
+              <Link
+                href="/dashboard/billing"
+                className={`${styles.navItem} ${pathname.startsWith('/dashboard/billing') ? styles.active : ''}`}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                  <line x1="1" y1="10" x2="23" y2="10" />
+                </svg>
+                <span>Billing</span>
+              </Link>
+            </div>
+          )}
         </nav>
       </aside>
 

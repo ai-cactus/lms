@@ -28,7 +28,7 @@ function getContext(pathname: string): 'worker' | 'admin' | null {
   return null; // Public route — skip auth
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const context = getContext(pathname);
 
@@ -50,8 +50,8 @@ export async function middleware(req: NextRequest) {
     req.cookies.get(cookieName)?.value ||
     req.cookies.get(`${cfg.cookiePrefix}.session-token`)?.value;
 
-  console.log(`[Middleware] Target Auth: ${context}`);
-  console.log(`[Middleware] Searching for cookie: ${cookieName}. Found token? ${!!rawToken}`);
+  console.log(`[Proxy] Target Auth: ${context}`);
+  console.log(`[Proxy] Searching for cookie: ${cookieName}. Found token? ${!!rawToken}`);
 
   // Not logged in — send to the correct login page
   if (!rawToken) {
@@ -64,9 +64,9 @@ export async function middleware(req: NextRequest) {
   try {
     const salt = cookieName;
     token = await decode({ token: rawToken, secret, salt });
-    console.log(`[Middleware] Decoded token successfully for ${context}:`, token?.email);
+    console.log(`[Proxy] Decoded token successfully for ${context}:`, token?.email);
   } catch (err) {
-    console.error(`[Middleware] Token decode failed for ${context}:`, err);
+    console.error(`[Proxy] Token decode failed for ${context}:`, err);
     // Malformed/expired token — clear it and redirect
     const res = NextResponse.redirect(new URL(cfg.loginPath, req.url));
     res.cookies.delete(cookieName);
@@ -74,7 +74,7 @@ export async function middleware(req: NextRequest) {
   }
 
   if (!token) {
-    console.log(`[Middleware] Token is null after decode.`);
+    console.log(`[Proxy] Token is null after decode.`);
     return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 

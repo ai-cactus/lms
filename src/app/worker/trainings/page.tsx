@@ -12,7 +12,7 @@ export default async function WorkerTrainingsPage() {
 
   const activeCoursesData = allEnrollments.filter((e) => e.status !== 'attested');
 
-  const activeCourses = activeCoursesData.map((e: any) => ({
+  const activeCourses = activeCoursesData.map((e) => ({
     id: e.courseId,
     enrollmentId: e.id,
     title: e.course.title,

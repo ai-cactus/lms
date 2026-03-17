@@ -39,6 +39,7 @@
     "react-quill-new": "^3.8.3",
     "react-timekeeper": "^2.2.1",
     "recharts": "^3.7.0",
+    "stripe": "^20.4.1",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },

@@ -39,8 +39,10 @@ export default function AssignRetakeModal({
       } else {
         setError('Failed to assign retake. Please try again.');
       }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred while assigning the retake.');
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'An error occurred while assigning the retake.',
+      );
     } finally {
       setIsSubmitting(false);
     }
