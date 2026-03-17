@@ -38,7 +38,6 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     description: course.description,
     thumbnail: course.thumbnail,
     status: course.status,
-    category: course.category,
     duration: course.duration,
     createdAt: course.createdAt,
     updatedAt: course.updatedAt,
@@ -102,7 +101,6 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
 export async function createCourse(data: {
   title: string;
   description?: string;
-  category?: string;
 }) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -113,7 +111,6 @@ export async function createCourse(data: {
     data: {
       title: data.title,
       description: data.description || null,
-      category: data.category || null,
       createdBy: session.user.id,
     },
   });
@@ -129,7 +126,6 @@ export async function updateCourse(
     title?: string;
     description?: string;
     thumbnail?: string;
-    category?: string;
     duration?: number;
   },
 ) {
@@ -358,7 +354,6 @@ export async function assignCourseToUsers(courseId: string, emails: string[], du
 export async function createFullCourse(data: {
   title: string;
   description: string;
-  category: string;
   difficulty: string;
   duration: string;
   objectives?: string[];
@@ -407,7 +402,6 @@ export async function createFullCourse(data: {
     data: {
       title: data.title,
       description: data.description,
-      category: data.category,
       duration: parseInt(data.duration) || 0,
       objectives: data.objectives || [],
       status: 'published',

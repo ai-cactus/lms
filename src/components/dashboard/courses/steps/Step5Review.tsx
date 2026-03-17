@@ -327,7 +327,6 @@ export default function Step5Review({
               const content: GeneratedCourse = {
                 title: data.title,
                 description: data.description,
-                category: data.category,
                 difficulty: data.difficulty,
                 duration: data.duration,
                 objectives: data.objectives || [],

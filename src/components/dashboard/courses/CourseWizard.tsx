@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './CourseWizard.module.css';
-import Step1Category from './steps/Step1Category';
 import Step2Documents from './steps/Step2Documents';
 import Step3Details from './steps/Step3Details';
 import Step4Quiz from './steps/Step4Quiz';
@@ -26,9 +25,8 @@ export default function CourseWizard() {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
-  const totalSteps = 7;
+  const totalSteps = 6;
   const [formData, setFormData] = useState<CourseWizardData>({
-    category: '',
     title: 'HIPAA Privacy and Security Training',
     description:
       'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
@@ -104,11 +102,11 @@ export default function CourseWizard() {
       if (!result.error) {
         setFormData((prev) => ({
           ...prev,
-          title: result.title || prev.title,
-          description: result.description || prev.description,
-          objectives: result.objectives?.length ? result.objectives : prev.objectives,
-          duration: result.duration || prev.duration,
-          quizTitle: result.quizTitle || prev.quizTitle,
+          title: result.title,
+          description: result.description,
+          objectives: result.objectives,
+          duration: result.duration,
+          quizTitle: result.quizTitle,
         }));
       }
       setAnalysisProgress(100);
@@ -140,8 +138,6 @@ export default function CourseWizard() {
   };
 
   const handleNext = async () => {
-    if (isNextDisabled()) return;
-
     if (currentStep === 2) {
       const selectedDoc = documents.find((d) => d.selected);
       if (!selectedDoc) return;
@@ -158,11 +154,11 @@ export default function CourseWizard() {
         } else {
           setFormData((prev) => ({
             ...prev,
-            title: result.title || prev.title,
-            description: result.description || prev.description,
-            objectives: result.objectives?.length ? result.objectives : prev.objectives,
-            duration: result.duration || prev.duration,
-            quizTitle: result.quizTitle || prev.quizTitle,
+            title: result.title,
+            description: result.description,
+            objectives: result.objectives,
+            duration: result.duration,
+            quizTitle: result.quizTitle,
           }));
         }
       } catch (err) {
@@ -200,7 +196,6 @@ export default function CourseWizard() {
         const result = await createFullCourse({
           title: formData.title,
           description: formData.description,
-          category: formData.category,
           difficulty: formData.difficulty,
           duration: formData.duration,
           modules: generatedContent?.modules || [],
@@ -304,14 +299,14 @@ export default function CourseWizard() {
       } else {
         setFormData((prev) => ({
           ...prev,
-          title: result.title || prev.title,
-          description: result.description || prev.description,
-          objectives: result.objectives?.length ? result.objectives : prev.objectives,
-          duration: result.duration || prev.duration,
-          quizTitle: result.quizTitle || prev.quizTitle,
+          title: result.title,
+          description: result.description,
+          objectives: result.objectives,
+          duration: result.duration,
+          quizTitle: result.quizTitle,
         }));
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Upload/Analysis Failed:', err);
       setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
@@ -326,13 +321,6 @@ export default function CourseWizard() {
     switch (currentStep) {
       case 1:
         return (
-          <Step1Category
-            value={formData.category}
-            onChange={(val) => setFormData({ ...formData, category: val })}
-          />
-        );
-      case 2:
-        return (
           <Step2Documents
             documents={documents}
             onToggleSelect={handleToggleSelect}
@@ -343,21 +331,21 @@ export default function CourseWizard() {
             isScanningPhi={isScanningPhi}
           />
         );
-      case 3:
+      case 2:
         return (
           <Step3Details
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
         );
-      case 4:
+      case 3:
         return (
           <Step4Quiz
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
         );
-      case 5:
+      case 4:
         return (
           <Step5Review
             data={formData}
@@ -366,7 +354,7 @@ export default function CourseWizard() {
             onComplete={handleGenerationComplete}
           />
         );
-      case 6:
+      case 5:
         return (
           <Step6QuizReview
             data={formData}
@@ -377,7 +365,7 @@ export default function CourseWizard() {
             }
           />
         );
-      case 7:
+      case 6:
         return (
           <Step7Publish
             data={formData}
@@ -390,13 +378,12 @@ export default function CourseWizard() {
   };
 
   const isNextDisabled = () => {
-    if (currentStep === 1 && !formData.category) return true;
-    if (currentStep === 2) {
+    if (currentStep === 1) {
       if (!documents.some((d) => d.selected)) return true;
       if (isAnalyzing || isScanningPhi) return true;
       return false;
     }
-    if (currentStep === 3) {
+    if (currentStep === 2) {
       if (!formData.title?.trim()) return true;
       if (!formData.description?.trim()) return true;
 
@@ -405,7 +392,7 @@ export default function CourseWizard() {
       if (formData.objectives.some((obj) => !obj.trim())) return true;
       return false;
     }
-    if (currentStep === 4) {
+    if (currentStep === 3) {
       if (!formData.quizTitle?.trim()) return true;
       if (!formData.quizQuestionCount) return true;
 
@@ -413,11 +400,11 @@ export default function CourseWizard() {
       if (!formData.quizPassMark || isNaN(passMark) || passMark <= 0) return true;
       return false;
     }
-    if (currentStep === 5) {
+    if (currentStep === 4) {
       if (!generatedContent?.modules || generatedContent.modules.length === 0) return true;
       return false;
     }
-    if (currentStep === 6) {
+    if (currentStep === 5) {
       if (!generatedContent?.quiz || generatedContent.quiz.length === 0) return true;
       return false;
     }
@@ -447,8 +434,8 @@ export default function CourseWizard() {
       <main className={styles.content}>
         {renderStep()}
 
-        {(!isGenerating || currentStep !== 5) && (
-          <div className={`${styles.footer} ${currentStep === 5 ? styles.footerWide : ''}`}>
+        {(!isGenerating || currentStep !== 4) && (
+          <div className={`${styles.footer} ${currentStep === 4 ? styles.footerWide : ''}`}>
             {publishError && <div className={styles.errorMessage}>{publishError}</div>}
             <div className={styles.footerButtons}>
               <Button variant="secondary" size="md" onClick={handleBack} disabled={isPublishing}>
@@ -467,7 +454,7 @@ export default function CourseWizard() {
           </div>
         )}
 
-        {currentStep === 2 && (
+        {currentStep === 1 && (
           <div className={styles.privacyNotice}>
             <svg
               width="16"

@@ -6,7 +6,6 @@ export type CourseWithStats = {
   description: string | null;
   thumbnail: string | null;
   status: string;
-  category: string | null;
   duration: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -16,7 +15,6 @@ export type CourseWithStats = {
 };
 
 export interface CourseWizardData {
-  category: string;
   title: string;
   description: string;
   difficulty: string;
@@ -63,7 +61,6 @@ import { QuizQuestion } from './quiz';
 export interface GeneratedCourse {
   title: string;
   description: string;
-  category: string;
   difficulty: string;
   duration: string;
   objectives: string[];
