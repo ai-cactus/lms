@@ -14,6 +14,7 @@ import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui';
 import { sanitizeHtml } from '@/lib/sanitize';
 
+import DOMPurify from 'isomorphic-dompurify';
 import {
   CourseWizardData,
   GeneratedCourse,

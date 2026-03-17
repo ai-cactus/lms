@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
 import CourseArticle from '@/components/courses/CourseArticle';
 import styles from '@/components/courses/CoursePlayer.module.css';
+import DOMPurify from 'isomorphic-dompurify';
 import { updateLessonContent } from '@/app/actions/course';
 import 'react-quill-new/dist/quill.snow.css';
 import { Button } from '@/components/ui';
