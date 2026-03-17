@@ -261,6 +261,26 @@ describe('ai-client utilities', () => {
       expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
+    it('should retry on fetch failed errors and eventually succeed', async () => {
+      const mockSuccessResponse = {
+        candidates: [{ content: { parts: [{ text: 'Success after fetch failed' }] } }],
+      };
+
+      (global.fetch as any)
+        .mockRejectedValueOnce(new Error('fetch failed: network error'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockSuccessResponse,
+        });
+
+      const callPromise = callVertexAI('test');
+      await vi.runAllTimersAsync();
+
+      const result = await callPromise;
+      expect(result).toBe('Success after fetch failed');
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
     it('should throw error after maximum retries', async () => {
       vi.mocked(global.fetch).mockResolvedValue({
         status: 429,
@@ -274,6 +294,7 @@ describe('ai-client utilities', () => {
       // during the simulated timer advancement.
       const caughtPromise = callPromise.catch((e) => e);
 
+
       // Run all retries while catching the error to prevent unhandled rejection
       const errorPromise = callPromise.catch((e) => e);
       for (let i = 0; i < 5; i++) {
@@ -283,9 +304,6 @@ describe('ai-client utilities', () => {
       const error = await errorPromise;
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toBe(
-        'Vertex AI 429 Too Many Requests: Rate limit exceeded',
-      );
-
         'Vertex AI 429 Too Many Requests: Rate limit exceeded',
       );
       expect(global.fetch).toHaveBeenCalledTimes(5);
@@ -311,6 +329,15 @@ describe('ai-client utilities', () => {
       const result = await callPromise;
       expect(result).toBe('Success after network error');
       expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should throw immediately on unknown network errors (without fetch failed)', async () => {
+      (global.fetch as any).mockRejectedValueOnce(new Error('Unknown network issue'));
+
+      const callPromise = callVertexAI('test');
+
+      await expect(callPromise).rejects.toThrow('Unknown network issue');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
     it('should throw on non-retryable errors (e.g., 400)', async () => {
