@@ -56,7 +56,7 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
     setIsLoadingNotifs(true);
     const res = await getNotifications();
     if (res.success && res.notifications !== undefined) {
-      setNotifications(res.notifications as any);
+      setNotifications(res.notifications as Notification[]);
       setUnreadCount(res.unreadCount || 0);
     }
     setIsLoadingNotifs(false);
@@ -177,7 +177,7 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
                         <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
                       </svg>
                     </div>
-                    <h4 className={styles.emptyStateText}>You're all caught up!</h4>
+                    <h4 className={styles.emptyStateText}>You&apos;re all caught up!</h4>
                     <p className={styles.emptyStateSubtext}>
                       New notifications will appear here when workers request retries or complete
                       courses.

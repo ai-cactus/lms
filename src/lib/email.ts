@@ -285,3 +285,55 @@ export async function sendQuizLockedEmail(
     return { success: false, error };
   }
 }
+
+export async function sendEnterpriseInquiryEmail({
+  to,
+  contactName,
+  orgName,
+  contactEmail,
+  staffCount,
+  message,
+}: {
+  to: string;
+  contactName: string;
+  orgName: string;
+  contactEmail: string;
+  staffCount: string;
+  message: string;
+}) {
+  const appName = 'Theraptly';
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+      <h2 style="color: #4C6EF5;">New Enterprise Plan Inquiry</h2>
+      <p style="color: #333; font-size: 16px;">An organization has expressed interest in the Enterprise plan.</p>
+      <div style="background: #f7fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
+        <p style="margin: 4px 0;"><strong>Organization:</strong> ${orgName}</p>
+        <p style="margin: 4px 0;"><strong>Contact Name:</strong> ${contactName}</p>
+        <p style="margin: 4px 0;"><strong>Email:</strong> <a href="mailto:${contactEmail}">${contactEmail}</a></p>
+        <p style="margin: 4px 0;"><strong>Staff Count:</strong> ${staffCount}</p>
+      </div>
+      <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+        <p style="margin: 0; font-weight: 600;">Message:</p>
+        <p style="margin: 8px 0 0 0; color: #4a5568;">${message}</p>
+      </div>
+      <p style="color: #718096; font-size: 12px; margin-top: 32px;">
+        This inquiry was submitted via the ${appName} billing page.
+      </p>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      replyTo: contactEmail,
+      subject: `Enterprise Plan Inquiry — ${orgName}`,
+      html,
+    });
+    console.info('[Email] Enterprise inquiry sent: %s', info.messageId);
+    return { success: true };
+  } catch (error) {
+    console.error('[Email] Error sending enterprise inquiry:', error);
+    return { success: false, error };
+  }
+}

@@ -23,16 +23,20 @@ model Organization {
   state                   String?
   zipCode                 String?
   licenseNumber           String?
-  isHipaaCompliant        Boolean   @default(false)
+  isHipaaCompliant        Boolean  @default(false)
+  hasAuditorAccess        Boolean  @default(false)
   primaryBusinessType     String?
   additionalBusinessTypes String[]  @default([])
   programServices         String[]  @default([])
   joinCode                String?   @unique
   joinCodeExpiresAt       DateTime?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-  invites                 Invite[]
+  stripeCustomerId        String?  @unique // Stripe customer ID
   users                   User[]
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  invites                 Invite[]
+  subscription            Subscription?
+  invoices                Invoice[]
 }
 
 model Invite {
@@ -293,4 +297,38 @@ model Notification {
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model Subscription {
+  id                   String       @id @default(uuid())
+  organizationId       String       @unique
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String       @unique
+  stripePriceId        String
+  plan                 String       // 'starter' | 'professional' | 'enterprise'
+  billingCycle         String       // 'monthly' | 'quarterly' | 'yearly'
+  status               String       // 'active' | 'past_due' | 'canceled' | 'trialing'
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean      @default(false)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+}
+
+model Invoice {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeInvoiceId String       @unique
+  invoiceNumber   String       // e.g. "TH-8842"
+  amountPaid      Int          // in cents
+  currency        String       @default("usd")
+  status          String       // 'paid' | 'open' | 'void' | 'uncollectible'
+  invoiceUrl      String?      // Stripe-hosted invoice URL
+  pdfUrl          String?      // Direct PDF download link
+  periodStart     DateTime
+  periodEnd       DateTime
+  createdAt       DateTime     @default(now())
+
+  @@index([organizationId])
 }
