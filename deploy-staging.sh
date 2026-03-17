@@ -2,6 +2,12 @@
 # deploy-staging.sh
 set -e
 
+# Load user profile to ensure npm, node, and pm2 are dynamically injected in PATH
+source ~/.bashrc || true
+source ~/.profile || true
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
 echo "➡️ Starting STAGING deployment script..."
 cd /home/homepc/lms2
 
