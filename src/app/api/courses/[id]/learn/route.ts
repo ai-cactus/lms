@@ -122,7 +122,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     const user = activeUserId
       ? await prisma.user.findUnique({
           where: { id: activeUserId },
-          include: { profile: true },
+          include: { profile: true, organization: true },
         })
       : null;
 
@@ -240,6 +240,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       user: {
         name: user?.profile?.fullName || user?.email || '',
         role: user?.role || 'worker',
+        organizationName: user?.organization?.name || undefined,
       },
     });
   } catch (error) {

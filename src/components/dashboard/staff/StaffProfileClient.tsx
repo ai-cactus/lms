@@ -74,6 +74,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
       correctAnswer: string;
       explanation: string;
     }[];
+    organizationName?: string;
   } | null>(null);
   const [isLoadingResult, setIsLoadingResult] = useState(false);
 
@@ -584,6 +585,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               data={viewingResult}
               hideActions={true}
               userRole="admin"
+              organizationName={viewingResult.organizationName}
             />
           </div>
         </div>

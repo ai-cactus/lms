@@ -35,6 +35,7 @@ interface QuizResultsProps {
     userName?: string;
   };
   userRole?: string;
+  organizationName?: string;
 }
 
 export default function QuizResults({
@@ -46,6 +47,7 @@ export default function QuizResults({
   onRetake,
   data,
   userRole = 'worker',
+  organizationName,
 }: QuizResultsProps) {
   const [isAttestationOpen, setIsAttestationOpen] = useState(false);
   const [isBadgeOpen, setIsBadgeOpen] = useState(false);
@@ -380,7 +382,7 @@ export default function QuizResults({
         isOpen={isBadgeOpen}
         onClose={() => setIsBadgeOpen(false)}
         courseName={stats.courseName}
-        organizationName="Theraptly" // TODO: Get dynamic org name if possible, or use default
+        organizationName={organizationName || 'N/A'}
         issuedDate={new Date().toLocaleDateString()}
         courseId={courseId}
       />

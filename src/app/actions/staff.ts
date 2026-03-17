@@ -161,6 +161,7 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
         user: {
           include: {
             profile: true,
+            organization: true,
           },
         },
         course: true,
@@ -239,6 +240,7 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
       wrong: wrongCount,
       time: latestAttempt.timeTaken || 0,
       userName: enrollment.user.profile?.fullName || enrollment.user.email,
+      organizationName: enrollment.user.organization?.name || undefined,
       questions: questions,
       attemptsUsed: latestAttempt.attemptCount,
       allowedAttempts: quiz.allowedAttempts,

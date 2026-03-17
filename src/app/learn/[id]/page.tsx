@@ -67,6 +67,7 @@ interface EnrollmentData {
 interface UserData {
   name: string;
   role: string;
+  organizationName?: string;
 }
 
 export default function LearnPage() {
@@ -586,6 +587,7 @@ export default function LearnPage() {
                 }
                 showAttestation={userData?.role === 'worker' && quizResults.passed}
                 userRole={userData?.role}
+                organizationName={userData?.organizationName}
                 onAttestSuccess={() => {
                   setJustFinished(false);
                   setEnrollment((prev) => (prev ? { ...prev, status: 'attested' } : prev));
