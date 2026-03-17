@@ -62,6 +62,35 @@ describe('ai-client utilities', () => {
       const result = truncateToContext(text, 10); // 40 chars
       expect(result).toBe('A'.repeat(40) + '\n...[truncated]');
     });
+
+    it('should handle exactly max characters without truncating', () => {
+      const text = 'A'.repeat(40);
+      const result = truncateToContext(text, 10); // exactly 40 chars
+      expect(result).toBe(text);
+    });
+
+    it('should handle 0 maxTokens', () => {
+      const text = 'Some long text';
+      const result = truncateToContext(text, 0);
+      expect(result).toBe('\n...[truncated]');
+    });
+
+    it('should handle negative maxTokens', () => {
+      const text = 'Some long text';
+      const result = truncateToContext(text, -5);
+      expect(result).toBe('\n...[truncated]');
+    });
+
+    it('should handle empty string input', () => {
+      expect(truncateToContext('', 10)).toBe('');
+      expect(truncateToContext('', 0)).toBe('');
+      // For negative maxTokens, maxChars becomes negative.
+      // text.length (0) <= maxChars (-20) is false.
+      // So it executes the truncation logic:
+      // text.substring(0, cutPoint) + '\n...[truncated]'
+      // yielding '\n...[truncated]' for empty string when maxTokens is negative!
+      expect(truncateToContext('', -5)).toBe('\n...[truncated]');
+    });
   });
 
   describe('callVertexAI', () => {
