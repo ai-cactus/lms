@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
 import styles from './CoursePlayer.module.css';
 import SlideContentFitter from '@/components/ui/SlideContentFitter';
 
@@ -93,10 +94,12 @@ export default function CourseSlide({
           <div
             className={styles.slideBody}
             dangerouslySetInnerHTML={{
-              __html: (lesson.content || '')
-                .replace(/&nbsp;/g, ' ')
-                .replace(/<br\s*\/?>/gi, ' ')
-                .replace(/\s+/g, ' '),
+              __html: DOMPurify.sanitize(
+                (lesson.content || '')
+                  .replace(/&nbsp;/g, ' ')
+                  .replace(/<br\s*\/?>/gi, ' ')
+                  .replace(/\s+/g, ' ')
+              ),
             }}
           />
         </div>
