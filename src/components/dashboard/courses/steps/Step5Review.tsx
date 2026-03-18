@@ -385,7 +385,7 @@ export default function Step5Review({
   };
 
   // Loading / Error States
-  if (error) {
+  if (error && !generatedContent) {
     return (
       <div
         className={styles.playerContainer}
@@ -455,7 +455,7 @@ export default function Step5Review({
   const displayContent =
     viewMode === 'slides'
       ? currentModule?.slideContent || currentModule?.content || ''
-      : currentModule?.content || '';
+      : (generatedContent?.rawArticleMarkdown ? articleMarkdownToHtml(generatedContent.rawArticleMarkdown) : currentModule?.content || '');
 
   return (
     <div className={styles.playerContainer}>

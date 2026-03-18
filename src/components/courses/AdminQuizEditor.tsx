@@ -168,25 +168,6 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                     <h4 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>
                       Edit Question {index + 1}
                     </h4>
-                    <div className={styles.formGroup}>
-                      <label>Question Type</label>
-                      <select
-                        className={styles.typeSelect}
-                        value={editingQuestion.type}
-                        onChange={(e) => {
-                          const type = e.target.value;
-                          setEditingQuestion({
-                            ...editingQuestion,
-                            type,
-                            options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
-                            answer: 0,
-                          });
-                        }}
-                      >
-                        <option value="multiple_choice">Multiple Choice</option>
-                        <option value="true_false">True / False</option>
-                      </select>
-                    </div>
 
                     <div className={styles.formGroup}>
                       <label>Question Text</label>
@@ -360,26 +341,6 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
         ) : (
           <div className={styles.addQuestionForm}>
             <h3 className={styles.formTitle}>Add New Question</h3>
-
-            <div className={styles.formGroup}>
-              <label>Question Type</label>
-              <select
-                className={styles.typeSelect}
-                value={newQuestion.type}
-                onChange={(e) => {
-                  const type = e.target.value;
-                  setNewQuestion({
-                    ...newQuestion,
-                    type,
-                    options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
-                    answer: 0,
-                  });
-                }}
-              >
-                <option value="multiple_choice">Multiple Choice</option>
-                <option value="true_false">True / False</option>
-              </select>
-            </div>
 
             <div className={styles.formGroup}>
               <label>Question Text</label>

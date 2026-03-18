@@ -18,7 +18,6 @@ export default function InviteStaffModal({
 }: InviteStaffModalProps) {
   const [emails, setEmails] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [role, setRole] = useState('worker');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const router = useRouter();
@@ -67,7 +66,7 @@ export default function InviteStaffModal({
     setMessage(null);
 
     try {
-      const result = await createInvites(finalEmails, role, organizationId);
+      const result = await createInvites(finalEmails, 'worker', organizationId);
 
       if (result.success) {
         // Analyze results

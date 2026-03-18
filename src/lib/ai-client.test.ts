@@ -294,9 +294,9 @@ describe('ai-client utilities', () => {
       // during the simulated timer advancement.
       const caughtPromise = callPromise.catch((e) => e);
 
-
       // Run all retries while catching the error to prevent unhandled rejection
       const errorPromise = callPromise.catch((e) => e);
+
       for (let i = 0; i < 5; i++) {
         await vi.runAllTimersAsync();
       }
