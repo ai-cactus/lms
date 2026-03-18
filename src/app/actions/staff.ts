@@ -60,6 +60,8 @@ export async function getStaffDetails(userId: string) {
 
     // Active courses are those in progress but NOT failed yet (or failed but we want to count them as active? usually specific bucket)
     // Let's say Active = Total - Completed - Failed
+    // Due Soon logic: Enrollment currently does not have a dueDate field.
+    // TODO: Add dueDate to Enrollment schema and include "Due Soon" (e.g. within 7 days) in this calculation.
     const activeCourses = Math.max(0, totalCourses - completedCourses - failedCourses);
 
     return {

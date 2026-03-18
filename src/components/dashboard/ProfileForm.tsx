@@ -14,6 +14,7 @@ interface ProfileData {
   last_name: string;
   email: string;
   role: 'admin' | 'worker';
+  jobTitle?: string;
   company_name?: string;
 }
 
@@ -228,13 +229,13 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                 />
               </div>
 
-              {/* Role Field - Read-only for everyone as per user request */}
               <div className={styles.fieldGroup}>
-                <label className={styles.label}>Role</label>
+                <label className={styles.label}>Job Title</label>
                 <Input
-                  value={formData.role === 'admin' ? 'Compliance Professional (Admin)' : 'Worker'}
-                  disabled
-                  className={styles.readOnlyInput}
+                  name="jobTitle"
+                  value={formData.jobTitle || ''}
+                  onChange={handleChange}
+                  placeholder="e.g. Compliance Officer"
                 />
               </div>
 

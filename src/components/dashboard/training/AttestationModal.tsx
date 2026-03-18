@@ -82,7 +82,7 @@ export default function AttestationModal({
         </div>
 
         <div className={styles.fieldGroup}>
-          <label className={styles.label}>Job Description</label>
+          <label className={styles.label}>Job Title</label>
           <input
             className={styles.input}
             value={editedJobTitle}

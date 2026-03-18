@@ -258,7 +258,7 @@ export default function Step5Review({
   const [error, setError] = useState<string | null>(null);
 
   // UI View State
-  const [viewMode, setViewMode] = useState<'slides' | 'article'>('slides');
+  const [viewMode, setViewMode] = useState<'slides' | 'article'>('article');
   const [activeModuleIndex, setActiveModuleIndex] = useState(0);
   const [editedModules, setEditedModules] = useState<RenderableModule[]>(
     initialContent?.modules || [],

@@ -14,6 +14,7 @@ interface WorkerProfileProps {
     last_name: string;
     email: string;
     role: string;
+    jobTitle?: string | null;
     avatarUrl?: string | null;
   };
   organization?: {
@@ -30,18 +31,20 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   const [formData, setFormData] = useState({
     first_name: user.first_name,
     last_name: user.last_name,
+    jobTitle: user.jobTitle || '',
   });
   const [baseData, setBaseData] = useState({
     first_name: user.first_name,
     last_name: user.last_name,
+    jobTitle: user.jobTitle || '',
   });
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // DEBUG: Client-side mount check
   React.useEffect(() => {
-    setFormData({ first_name: user.first_name, last_name: user.last_name });
-    setBaseData({ first_name: user.first_name, last_name: user.last_name });
+    setFormData({ first_name: user.first_name, last_name: user.last_name, jobTitle: user.jobTitle || '' });
+    setBaseData({ first_name: user.first_name, last_name: user.last_name, jobTitle: user.jobTitle || '' });
     setAvatarUrl(user.avatarUrl || null);
     setBaseAvatarUrl(user.avatarUrl || null);
   }, [user]);
@@ -232,17 +235,13 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
             </div>
 
             <div className={styles.fieldGroup}>
-              <label className={styles.label}>Role</label>
+              <label className={styles.label}>Job Title</label>
               <input
-                className={`${styles.input} ${styles.readOnlyInput}`}
-                value={
-                  user.role === 'worker'
-                    ? 'Worker'
-                    : user.role === 'admin'
-                      ? 'Compliance Officer'
-                      : user.role
-                }
-                disabled
+                name="jobTitle"
+                className={styles.input}
+                value={formData.jobTitle || ''}
+                onChange={handleChange}
+                placeholder="e.g. Caregiver"
               />
             </div>
 
