@@ -42,10 +42,28 @@ export default async function AuditorPackPage() {
   const firstName = user.profile?.firstName ?? 'there';
   const hasAccess = user.organization?.hasAuditorAccess ?? false;
 
-  // Pre-fetch data server-side so initial render is instant (only if has access)
-  const [initialStats, initialCourses] = hasAccess
-    ? await Promise.all([getAuditorOverviewStats(), getAuditorCourses()])
-    : [{ totalCourses: 0, totalStaffAssigned: 0, completionRate: 0 }, []];
+  // Pre-fetch data server-side so initial render is instant (only if has access).
+  // Wrap in try/catch so any DB or session error falls back gracefully instead of
+  // surfacing as an unhandled 500 on the page.
+  let initialStats: { totalCourses: number; totalStaffAssigned: number; completionRate: number } = {
+    totalCourses: 0,
+    totalStaffAssigned: 0,
+    completionRate: 0,
+  };
+  let initialCourses: Awaited<ReturnType<typeof getAuditorCourses>> = [];
+
+  if (hasAccess) {
+    try {
+      [initialStats, initialCourses] = await Promise.all([
+        getAuditorOverviewStats(),
+        getAuditorCourses(),
+      ]);
+    } catch (err) {
+      console.error('[auditor-pack] Failed to prefetch data', err);
+      // initialStats and initialCourses remain as empty defaults;
+      // the client tabs will re-fetch via API routes and handle their own errors.
+    }
+  }
 
   return (
     <div>

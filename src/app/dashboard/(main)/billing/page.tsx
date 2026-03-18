@@ -1,6 +1,7 @@
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 import BillingPage from '@/components/billing/BillingPage';
 
 export const metadata = {
@@ -33,5 +34,11 @@ export default async function BillingPageRoute() {
       })
     : null;
 
-  return <BillingPage staffCount={organization?.staffCount ?? null} />;
+  // BillingPage uses useSearchParams() — must be wrapped in Suspense so Next.js
+  // App Router can render it correctly in both SSR and streaming modes.
+  return (
+    <Suspense fallback={<div style={{ padding: 48, textAlign: 'center' }}>Loading billing…</div>}>
+      <BillingPage staffCount={organization?.staffCount ?? null} />
+    </Suspense>
+  );
 }
