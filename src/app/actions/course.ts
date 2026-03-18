@@ -200,20 +200,16 @@ export async function getDashboardStats() {
     throw new Error('Unauthorized');
   }
 
-  const [courses, enrollments] = await Promise.all([
-    prisma.course.findMany({
-      where: { createdBy: session.user.id },
-      include: {
-        enrollments: true,
-        lessons: {
-          include: { quiz: true },
-        },
+  const courses = await prisma.course.findMany({
+    where: { createdBy: session.user.id },
+    include: {
+      enrollments: true,
+      lessons: {
+        include: { quiz: true },
       },
-    }),
-    prisma.enrollment.findMany({
-      where: { course: { createdBy: session.user.id } },
-    }),
-  ]);
+    },
+  });
+  const enrollments = courses.flatMap((course) => course.enrollments);
 
   const totalCourses = courses.length;
   const totalStaffAssigned = new Set(enrollments.map((e) => e.userId)).size;

@@ -5,3 +5,7 @@
 ## 2025-03-17 - [Unused Code in DashboardCharts.tsx]
 **Learning:** During a code health task to remove an unused `Button` import in `src/components/dashboard/DashboardCharts.tsx` (which had already been removed), it was noticed that the `COLORS` object and `truncateLabel` function are currently defined but unused in the file.
 **Action:** Log a future task to review, test, and potentially remove the `COLORS` object and `truncateLabel` function in `src/components/dashboard/DashboardCharts.tsx` to improve code maintainability.
+
+## 2024-03-18 - [Prisma N+1 and Redundant Query Opt]
+**Learning:** Found a pattern where data returned implicitly by Prisma `include` is re-queried explicitly in a separate query (e.g. `courses.include({ enrollments: true })` followed by `enrollments.findMany()`). This creates a complete N+1 anti-pattern via redundant `Promise.all` fetching that wastes database connections and compute.
+**Action:** Always inspect the full return shape of existing Prisma queries in a module before initiating a new query. If the data is already eager-loaded via `include`, use JS transformations (e.g., `.flatMap()`) on the application server rather than making a second database trip.

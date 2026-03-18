@@ -227,7 +227,6 @@ describe('ai-client utilities', () => {
 
       // Run all retries while catching the error to prevent unhandled rejection
       const errorPromise = callPromise.catch((e) => e);
-
       for (let i = 0; i < 5; i++) {
         await vi.runAllTimersAsync();
       }
