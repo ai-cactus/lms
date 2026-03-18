@@ -3,6 +3,18 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+
+const submitQuizSchema = z.object({
+  enrollmentId: z.string().min(1, 'Enrollment ID is required'),
+  answers: z.array(
+    z.object({
+      questionId: z.string(),
+      selectedAnswer: z.string(),
+    })
+  ),
+  timeTaken: z.number().nullable().optional(),
+});
 
 interface QuizQuestionWithExplanation {
   id: string;
@@ -97,7 +109,16 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const quizId = params.id;
     const body = await request.json();
-    const { enrollmentId, answers, timeTaken } = body;
+
+    const parsedBody = submitQuizSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: 'Invalid input data', details: parsedBody.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const { enrollmentId, answers, timeTaken } = parsedBody.data;
 
     // Verify enrollment belongs to user
     const enrollment = await prisma.enrollment.findUnique({
@@ -122,11 +143,18 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     // Get quiz with questions
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
-      include: { questions: true },
+      include: { questions: true, lesson: { select: { courseId: true } } },
     });
 
     if (!quiz) {
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
+    }
+
+    if (quiz.lesson.courseId !== enrollment.courseId) {
+      return NextResponse.json(
+        { error: 'Quiz does not belong to the enrolled course' },
+        { status: 403 },
+      );
     }
 
     // Calculate score
