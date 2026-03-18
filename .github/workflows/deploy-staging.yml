@@ -39,3 +39,4 @@ jobs:
             git remote -v
             echo "🔍 DIAGNOSTICS END"
             bash deploy-staging.sh
+ 
