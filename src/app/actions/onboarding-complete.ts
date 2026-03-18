@@ -1,6 +1,7 @@
 'use server';
 
 import { auth } from '@/auth';
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { sendInviteEmail } from '@/lib/email';
@@ -80,7 +81,7 @@ export async function completeOnboarding(data: OnboardingData) {
       }
 
       // 2. Create Organization
-      const slug = `${step1.legalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.floor(Math.random() * 10000)}`;
+      const slug = `${step1.legalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${crypto.randomInt(0, 10000)}`;
 
       console.log('[completeOnboarding] Creating Organization...');
       const org = await tx.organization.create({
