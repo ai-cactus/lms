@@ -66,30 +66,8 @@ describe('ai-client utilities', () => {
     });
 
     it('should truncate at sentence boundary if possible', () => {
-      // 10 tokens * 4 = 40 characters
       const text = 'First sentence. Second sentence. Third sentence.';
-      // "First sentence. Second sentence. " is 33 chars
-      // "First sentence. Second sentence. Third" is 38 chars
-      // Truncated at 40: "First sentence. Second sentence. Third s"
-      // Last sentence end: ". " at index 14 and 31.
-      // 31 is > 40 * 0.8 (32)? No, 31 is not > 32.
-      // Wait, let's re-calculate.
-      // maxChars = 40
-      // truncated = text.substring(0, 40) -> "First sentence. Second sentence. Third s"
-      // lastSentenceEnd:
-      // index 14: ". "
-      // index 31: ". "
-      // lastSentenceEnd = 31
-      // 31 > 32? No.
-      // So it will cut at 40.
-
       const longText = 'This is a sentence. This is another sentence that is quite long.';
-      // maxTokens = 10 -> maxChars = 40
-      // truncated = "This is a sentence. This is another sent" (40 chars)
-      // lastSentenceEnd: ". " at index 18
-      // 18 > 32? No.
-      // Returns "This is a sentence. This is another sent\n...[truncated]"
-
       const textWithBoundary = 'Hello world. This is a test. Another sentence.';
       // maxTokens = 8 -> maxChars = 32
       // truncated = "Hello world. This is a test. Ano" (32 chars)
@@ -138,7 +116,7 @@ describe('ai-client utilities', () => {
         candidates: [{ content: { parts: [{ text: 'AI response' }] } }],
       };
 
-      (global.fetch as any).mockResolvedValue({
+      (global.fetch as unknown as import('vitest').Mock).mockResolvedValue({
         ok: true,
         json: async () => mockResponse,
       });
@@ -161,7 +139,7 @@ describe('ai-client utilities', () => {
         candidates: [{ content: { parts: [{ text: 'Success after retry' }] } }],
       };
 
-      (global.fetch as any)
+      (global.fetch as unknown as import('vitest').Mock)
         .mockResolvedValueOnce({
           status: 429,
           statusText: 'Too Many Requests',
@@ -188,7 +166,7 @@ describe('ai-client utilities', () => {
         candidates: [{ content: { parts: [{ text: 'Success after 500' }] } }],
       };
 
-      (global.fetch as any)
+      (global.fetch as unknown as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce({
           status: 500,
           statusText: 'Internal Server Error',
@@ -209,7 +187,7 @@ describe('ai-client utilities', () => {
     });
 
     it('should throw error after maximum retries', async () => {
-      (global.fetch as any).mockResolvedValue({
+      (global.fetch as unknown as import('vitest').Mock).mockResolvedValue({
         status: 429,
         statusText: 'Too Many Requests',
         text: async () => 'Rate limit exceeded',
@@ -218,19 +196,45 @@ describe('ai-client utilities', () => {
 
       const callPromise = callVertexAI('test');
 
-      // Run all retries
+      // Run all retries while catching the error to prevent unhandled rejection
+      const errorPromise = callPromise.catch((e) => e);
+
       for (let i = 0; i < 5; i++) {
         await vi.runAllTimersAsync();
       }
 
-      await expect(callPromise).rejects.toThrow(
+      const error = await errorPromise;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(
         'Vertex AI 429 Too Many Requests: Rate limit exceeded',
       );
       expect(global.fetch).toHaveBeenCalledTimes(5);
     });
 
+    it('should retry on fetch failed network errors and eventually succeed', async () => {
+      const mockSuccessResponse = {
+        candidates: [{ content: { parts: [{ text: 'Success after network error' }] } }],
+      };
+
+      (global.fetch as unknown as import('vitest').Mock)
+        .mockRejectedValueOnce(new Error('fetch failed: network disconnected'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockSuccessResponse,
+        });
+
+      const callPromise = callVertexAI('test');
+
+      // Advance timers to trigger retry
+      await vi.runAllTimersAsync();
+
+      const result = await callPromise;
+      expect(result).toBe('Success after network error');
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
     it('should throw on non-retryable errors (e.g., 400)', async () => {
-      (global.fetch as any).mockResolvedValue({
+      (global.fetch as unknown as import('vitest').Mock).mockResolvedValue({
         status: 400,
         statusText: 'Bad Request',
         text: async () => 'Invalid prompt',
@@ -240,6 +244,15 @@ describe('ai-client utilities', () => {
       await expect(callVertexAI('test')).rejects.toThrow(
         'Vertex AI 400 Bad Request: Invalid prompt',
       );
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw immediately on non-fetch-failed exceptions', async () => {
+      (global.fetch as unknown as import('vitest').Mock).mockRejectedValueOnce(
+        new Error('SyntaxError: Unexpected token'),
+      );
+
+      await expect(callVertexAI('test')).rejects.toThrow('SyntaxError: Unexpected token');
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
   });
