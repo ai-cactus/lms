@@ -330,7 +330,6 @@ describe('ai-client utilities', () => {
       expect(result).toBe('Success after network error');
       expect(global.fetch).toHaveBeenCalledTimes(2);
     });
-
     it('should throw immediately on unknown network errors (without fetch failed)', async () => {
       (global.fetch as any).mockRejectedValueOnce(new Error('Unknown network issue'));
 
@@ -339,6 +338,7 @@ describe('ai-client utilities', () => {
       await expect(callPromise).rejects.toThrow('Unknown network issue');
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
+
 
     it('should throw on non-retryable errors (e.g., 400)', async () => {
       vi.mocked(global.fetch).mockResolvedValue({
