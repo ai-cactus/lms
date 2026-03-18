@@ -694,10 +694,8 @@ export async function attestCourse(enrollmentId: string, signature: string, role
     throw new Error('Unauthorized');
   }
 
-  // Verify signature matches authenticated user name
-  const userName = enrollment.user.profile?.fullName || enrollment.user.email || '';
-  if (signature.trim() !== userName) {
-    throw new Error(`Signature must match your account name: ${userName}`);
+  if (!signature.trim()) {
+    throw new Error(`Signature is required.`);
   }
 
   await prisma.enrollment.update({
@@ -706,7 +704,7 @@ export async function attestCourse(enrollmentId: string, signature: string, role
       status: 'attested',
       attestedAt: new Date(),
       attestationSignature: signature,
-      attestationRole: role,
+      attestationRole: role, // Now acts as job description
     },
   });
 

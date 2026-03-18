@@ -12,7 +12,8 @@ interface AttestationModalProps {
   enrollmentId: string;
   courseName: string;
   userName: string;
-  userRole: string;
+  userEmail: string;
+  jobTitle: string;
   onSuccess: () => void;
 }
 
@@ -22,10 +23,12 @@ export default function AttestationModal({
   enrollmentId,
   courseName,
   userName,
-  userRole,
+  userEmail,
+  jobTitle,
   onSuccess,
 }: AttestationModalProps) {
   const [signature, setSignature] = useState(userName);
+  const [editedJobTitle, setEditedJobTitle] = useState(jobTitle);
   const [confirmed1, setConfirmed1] = useState(false);
   const [confirmed2, setConfirmed2] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,11 +40,7 @@ export default function AttestationModal({
     setIsSubmitting(true);
 
     try {
-      if (signature.trim() !== userName) {
-        throw new Error('Signature must match your name exactly.');
-      }
-
-      await attestCourse(enrollmentId, signature, userRole);
+      await attestCourse(enrollmentId, signature, editedJobTitle);
       onSuccess();
     } catch (err: unknown) {
       const error = err as Error;
@@ -51,7 +50,7 @@ export default function AttestationModal({
     }
   };
 
-  const isFormValid = signature.trim() === userName && confirmed1 && confirmed2;
+  const isFormValid = signature.trim() !== '' && editedJobTitle.trim() !== '' && confirmed1 && confirmed2;
   const effectiveDate = new Date().toLocaleDateString('en-US', {
     day: '2-digit',
     month: '2-digit',
@@ -74,15 +73,21 @@ export default function AttestationModal({
 
         <div className={styles.fieldGroup}>
           <label className={styles.label}>Name</label>
-          <input className={styles.input} value={signature} readOnly />
+          <input
+            className={styles.input}
+            value={signature}
+            onChange={(e) => setSignature(e.target.value)}
+          />
+          {userEmail && <div style={{ fontSize: 12, color: '#A0AEC0', marginTop: 4 }}>{userEmail}</div>}
         </div>
 
         <div className={styles.fieldGroup}>
-          <label className={styles.label}>Role</label>
+          <label className={styles.label}>Job Description</label>
           <input
             className={styles.input}
-            value={userRole.charAt(0).toUpperCase() + userRole.slice(1)}
-            readOnly
+            value={editedJobTitle}
+            onChange={(e) => setEditedJobTitle(e.target.value)}
+            placeholder="e.g. Direct Support Professional"
           />
         </div>
 

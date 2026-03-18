@@ -33,6 +33,8 @@ interface QuizResultsProps {
       explanation: string;
     }[];
     userName?: string;
+    userEmail?: string;
+    jobTitle?: string;
   };
   userRole?: string;
   organizationName?: string;
@@ -91,9 +93,11 @@ export default function QuizResults({
     }
   };
 
+  const dashboardPath = userRole === 'admin' ? '/dashboard' : '/dashboard/worker';
+
   return (
     <div className={styles.container}>
-      <Link href="/worker" className={styles.backLink}>
+      <Link href={dashboardPath} className={styles.backLink}>
         <svg
           width="16"
           height="16"
@@ -137,32 +141,11 @@ export default function QuizResults({
                 </Button>
               )}
               {isPassed && (
-                <>
-                  <Button variant="secondary" size="sm">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="18" cy="5" r="3"></circle>
-                      <circle cx="6" cy="12" r="3"></circle>
-                      <circle cx="18" cy="19" r="3"></circle>
-                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-                    </svg>
-                    Share
+                <Link href={dashboardPath}>
+                  <Button variant="primary" size="sm">
+                    Done
                   </Button>
-                  <Link href="/worker">
-                    <Button variant="primary" size="sm">
-                      Done
-                    </Button>
-                  </Link>
-                </>
+                </Link>
               )}
             </div>
           )}
@@ -374,7 +357,8 @@ export default function QuizResults({
         enrollmentId={enrollmentId}
         courseName={stats.courseName}
         userName={data?.userName || 'User'}
-        userRole={userRole}
+        userEmail={data?.userEmail || ''}
+        jobTitle={data?.jobTitle || ''}
         onSuccess={handleAttestSuccess}
       />
 

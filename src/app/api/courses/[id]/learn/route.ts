@@ -126,12 +126,20 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
           passingScore: quizData.passingScore,
           allowedAttempts: quizData.allowedAttempts,
           timeLimit: quizData.timeLimit,
-          questions: quizData.questions.map((q) => ({
-            id: q.id,
-            text: q.text,
-            type: q.type,
-            options: Array.isArray(q.options) ? q.options : [],
-          })),
+          questions: quizData.questions.map((q) => {
+            const options = Array.isArray(q.options) ? [...q.options] : [];
+            // Fisher-Yates shuffle
+            for (let i = options.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [options[i], options[j]] = [options[j], options[i]];
+            }
+            return {
+              id: q.id,
+              text: q.text,
+              type: q.type,
+              options,
+            };
+          }),
         }
       : null;
 
@@ -258,6 +266,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         name: user?.profile?.fullName || user?.email || '',
         role: user?.role || 'worker',
         organizationName: user?.organization?.name || undefined,
+        email: user?.email || '',
+        jobTitle: user?.profile?.jobTitle || '',
+
       },
     });
   } catch (error) {

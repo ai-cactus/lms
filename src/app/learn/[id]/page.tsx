@@ -70,6 +70,9 @@ interface UserData {
   name: string;
   role: string;
   organizationName?: string;
+  email: string;
+  jobTitle: string;
+
 }
 
 export default function LearnPage() {
@@ -531,20 +534,6 @@ export default function LearnPage() {
           </div>
 
           <div className={styles.topbarRight}>
-            {enrollment && enrollment.id !== 'preview-mode' && (
-              <div className={styles.progressIndicator}>
-                <span className={styles.progressText}>
-                  {Math.min(enrollment.progress || 0, 100)}%
-                </span>
-                <div className={styles.progressBar}>
-                  <div
-                    className={styles.progressFill}
-                    style={{ width: `${Math.min(enrollment.progress || 0, 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
             {!isQuizIndex && (
               <div className={styles.toggle}>
                 <Button
@@ -583,6 +572,9 @@ export default function LearnPage() {
                   attemptsUsed: quizResults.attemptsUsed,
                   allowedAttempts: quizResults.allowedAttempts,
                   passingScore: course.quiz?.passingScore,
+                  userName: userData?.name,
+                  userEmail: userData?.email,
+                  jobTitle: userData?.jobTitle,
                 }}
                 hideActions={
                   enrollment?.status === 'completed' || enrollment?.status === 'attested'
