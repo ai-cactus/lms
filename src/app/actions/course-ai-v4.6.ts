@@ -131,7 +131,7 @@ function parseDualOutput(rawResponse: string): { jsonStr: string; markdown: stri
 
 // ─── Stage A: Article + ArticleMeta Generation ──
 
-async function generateArticleV46(
+export async function generateArticleV46(
   sourceText: string,
   metadataJson?: string,
 ): Promise<{ articleMeta: ArticleMetaV46; articleMarkdown: string; rawArticleMetaJson: string }> {
