@@ -1,5 +1,13 @@
+# Cloudflare Tunnel configuration
+#
+# Tunnel ID: d2f87791-8003-45d9-a8f3-1de7c220601a
+#
+# This file is committed to the repo. The credentials JSON file must exist
+# on the VM at the path below. Cloudflared should run as a system service
+# (see VM setup guide) so it is independent of any user account.
+
 tunnel: d2f87791-8003-45d9-a8f3-1de7c220601a
-credentials-file: /home/homepc/.cloudflared/d2f87791-8003-45d9-a8f3-1de7c220601a.json
+credentials-file: /home/deploy/.cloudflared/d2f87791-8003-45d9-a8f3-1de7c220601a.json
 
 ingress:
   - hostname: lms.theraptly.com
