@@ -553,44 +553,49 @@ export async function createFullCourse(data: {
 
     // Create new users for new emails
     const newUserIds: string[] = [];
-    for (const email of newEmails) {
-      try {
-        const tempPassword = crypto.randomBytes(8).toString('hex');
-        const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-        // Create user + profile
-        const newUser = await prisma.user.create({
-          data: {
-            email,
-            password: hashedPassword,
-            role: 'worker',
-            organizationId: currentUser.organizationId,
-            emailVerified: true,
-            profile: {
-              create: {
-                email,
-                fullName: email.split('@')[0],
-              },
+    const newUserPromises = newEmails.map(async (email) => {
+      const tempPassword = crypto.randomBytes(8).toString('hex');
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+      // Create user + profile
+      const newUser = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          role: 'worker',
+          organizationId: currentUser.organizationId,
+          emailVerified: true,
+          profile: {
+            create: {
+              email,
+              fullName: email.split('@')[0],
             },
           },
-        });
+        },
+      });
 
-        newUserIds.push(newUser.id);
-
-        // Send invite email (don't fail the whole process if email fails)
-        try {
-          await sendCourseInviteEmail(email, tempPassword, data.title, orgName);
-          inviteResults.newInvited++;
-        } catch (emailError) {
-          console.error(`Failed to send email to ${email}:`, emailError);
-          // User was created, just email failed - still enroll them
-          inviteResults.newInvited++;
-        }
-      } catch (userError) {
-        console.error(`Failed to create user ${email}:`, userError);
-        inviteResults.failed.push(email);
+      // Send invite email (don't fail the whole process if email fails)
+      try {
+        await sendCourseInviteEmail(email, tempPassword, data.title, orgName);
+      } catch (emailError) {
+        console.error(`Failed to send email to ${email}:`, emailError);
       }
-    }
+
+      return newUser.id;
+    });
+
+    const settledResults = await Promise.allSettled(newUserPromises);
+
+    settledResults.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        newUserIds.push(result.value);
+        inviteResults.newInvited++;
+      } else {
+        console.error(`Failed to create user ${newEmails[index]}:`, result.reason);
+        inviteResults.failed.push(newEmails[index]);
+      }
+    });
 
     // Combine all user IDs for enrollment
     const allUserIds = [...existingUsers.map((u) => u.id), ...newUserIds];
