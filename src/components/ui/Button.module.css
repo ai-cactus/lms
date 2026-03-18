@@ -1,5 +1,6 @@
 /* ─── Base ─────────────────────────────────────────────── */
 .button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -182,6 +183,10 @@
 
 /* ─── Loader ─────────────────────────────────────────────── */
 .loader {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -191,6 +196,18 @@
   width: 18px;
   height: 18px;
   animation: spin 1s linear infinite;
+}
+
+.loadingContent {
+  opacity: 0;
+}
+
+/* Ensure children maintain flex layout when wrapped in the loading span */
+.button > span:not(.loader) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: inherit;
 }
 
 @keyframes spin {
