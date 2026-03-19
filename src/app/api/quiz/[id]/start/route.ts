@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
+import { z } from 'zod';
+
+const startQuizSchema = z.object({
+  enrollmentId: z.string().min(1, 'Enrollment ID is required'),
+});
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -11,11 +16,16 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const quizId = params.id;
     const body = await request.json();
-    const { enrollmentId } = body;
 
-    if (!enrollmentId) {
-      return NextResponse.json({ error: 'Enrollment ID required' }, { status: 400 });
+    const parsedBody = startQuizSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: 'Invalid input data', details: parsedBody.error.flatten().fieldErrors },
+        { status: 400 },
+      );
     }
+
+    const { enrollmentId } = parsedBody.data;
 
     // Verify enrollment
     const enrollment = await prisma.enrollment.findUnique({
