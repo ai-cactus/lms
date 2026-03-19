@@ -327,7 +327,22 @@ export default function LearnPage() {
       try {
         const res = await fetch(`/api/courses/${params.id}/learn`);
         if (!res.ok) throw new Error('Failed to load course');
-        const data = await res.json();
+        const data = (await res.json()) as {
+          course: CourseData;
+          enrollment: EnrollmentData;
+          user: UserData & { organizationName?: string };
+          quizResultsData?: {
+            passed: boolean;
+            score: number;
+            totalQuestions: number;
+            correctCount: number;
+            answered: number;
+            correct: number;
+            wrong: number;
+            time: number;
+            questions: unknown[];
+          };
+        };
 
         // Map lesson data to include moduleIndex
         if (data.course.lessons) {
@@ -348,7 +363,7 @@ export default function LearnPage() {
           (a: { timeTaken: number | null }) => a.timeTaken === null,
         );
 
-        const hasQuizAttempt = data.enrollment?.quizAttempts?.length > 0;
+        const hasQuizAttempt = (data.enrollment?.quizAttempts?.length ?? 0) > 0;
         const isCompleted =
           data.enrollment?.status === 'completed' || data.enrollment?.status === 'attested';
 

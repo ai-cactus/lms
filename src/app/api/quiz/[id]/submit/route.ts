@@ -11,11 +11,10 @@ const submitQuizSchema = z.object({
     z.object({
       questionId: z.string(),
       selectedAnswer: z.string(),
-    })
+    }),
   ),
   timeTaken: z.number().nullable().optional(),
 });
-
 
 interface QuizQuestionWithExplanation {
   id: string;
@@ -63,9 +62,18 @@ No markdown, no extra text.`;
 
     // Strictly validate variables to prevent SSRF
     const envSchema = z.object({
-      projectId: z.string().regex(/^[a-zA-Z0-9-]+$/).min(1),
-      location: z.string().regex(/^[a-zA-Z0-9-]+$/).min(1),
-      modelId: z.string().regex(/^[a-zA-Z0-9.-]+$/).min(1),
+      projectId: z
+        .string()
+        .regex(/^[a-zA-Z0-9-]+$/)
+        .min(1),
+      location: z
+        .string()
+        .regex(/^[a-zA-Z0-9-]+$/)
+        .min(1),
+      modelId: z
+        .string()
+        .regex(/^[a-zA-Z0-9.-]+$/)
+        .min(1),
     });
 
     const validatedVars = envSchema.parse({
@@ -76,17 +84,14 @@ No markdown, no extra text.`;
 
     const url = `https://${validatedVars.location}-aiplatform.googleapis.com/v1/projects/${validatedVars.projectId}/locations/${validatedVars.location}/publishers/google/models/${validatedVars.modelId}:generateContent?key=${apiKey}`;
 
-    const response = await fetch(
-      url,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-        }),
-      },
-    );
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+      }),
+    });
 
     if (!response.ok) return {};
 
@@ -126,7 +131,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     if (!parsedBody.success) {
       return NextResponse.json(
         { error: 'Invalid input data', details: parsedBody.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -347,9 +352,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         const userAnswer = answers.find(
           (a: { questionId: string; selectedAnswer: string }) => a.questionId === q.id,
         );
-        const optionsArray = Array.isArray(q.options) ? (q.options as any[]) : [];
-        const optionTexts = optionsArray.map((opt: any) =>
-          typeof opt === 'string' ? opt : opt.text || opt,
+        const optionsArray = Array.isArray(q.options) ? (q.options as unknown[]) : [];
+        const optionTexts = optionsArray.map((opt: unknown) =>
+          typeof opt === 'string' ? opt : (opt as { text?: string })?.text || String(opt),
         );
 
         const selectedText = userAnswer?.selectedAnswer || '';
@@ -363,9 +368,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         return {
           id: q.id,
           text: q.text,
-          options: optionsArray.map((opt: any, idx: number) => ({
+          options: optionsArray.map((opt: unknown, idx: number) => ({
             id: String.fromCharCode(65 + idx),
-            text: typeof opt === 'string' ? opt : opt.text || opt,
+            text: typeof opt === 'string' ? opt : (opt as { text?: string })?.text || String(opt),
           })),
           selectedAnswer: selectedLetter,
           correctAnswer: correctLetter,

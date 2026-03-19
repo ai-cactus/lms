@@ -289,10 +289,8 @@ describe('ai-client utilities', () => {
         ok: false,
       } as any);
 
-      const callPromise = callVertexAI('test');
-      // We must attach a catch handler immediately to prevent unhandled rejections
-      // during the simulated timer advancement.
-      const caughtPromise = callPromise.catch((e) => e);
+      const callPromise = callVertexAI('test').catch((e) => e);
+
 
       // Run all retries while catching the error to prevent unhandled rejection
       const errorPromise = callPromise.catch((e) => e);
@@ -301,7 +299,8 @@ describe('ai-client utilities', () => {
         await vi.runAllTimersAsync();
       }
 
-      const error = await errorPromise;
+      const error = await callPromise;
+
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toBe(
         'Vertex AI 429 Too Many Requests: Rate limit exceeded',
