@@ -9,3 +9,8 @@
 ## 2024-03-18 - [Prisma N+1 and Redundant Query Opt]
 **Learning:** Found a pattern where data returned implicitly by Prisma `include` is re-queried explicitly in a separate query (e.g. `courses.include({ enrollments: true })` followed by `enrollments.findMany()`). This creates a complete N+1 anti-pattern via redundant `Promise.all` fetching that wastes database connections and compute.
 **Action:** Always inspect the full return shape of existing Prisma queries in a module before initiating a new query. If the data is already eager-loaded via `include`, use JS transformations (e.g., `.flatMap()`) on the application server rather than making a second database trip.
+
+## 2025-03-22 - [Merge Dashboard Data Queries]
+**Learning:** Found an anti-pattern in `src/app/dashboard/(main)/page.tsx` and `src/app/dashboard/(main)/training/page.tsx` where both `getCourses()` and `getDashboardStats()` were called in parallel. Both queried the database for all `course` objects and associated `enrollments` + `lessons` using `prisma.course.findMany()`, resulting in a redundant database request (Prisma N+1 / redundant query anti-pattern).
+**Action:** Replaced both calls with a single `getDashboardData()` query that returns `{ courses, stats }` in one pass, slicing database queries in half for dashboard rendering.
+

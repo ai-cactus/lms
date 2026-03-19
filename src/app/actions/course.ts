@@ -189,14 +189,16 @@ export async function deleteCourse(courseId: string) {
   return { success: true };
 }
 
-// Get dashboard statistics
-export async function getDashboardStats() {
+// Get dashboard data (combines courses list and stats to prevent duplicate queries)
+export async function getDashboardData() {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  const courses = await prisma.course.findMany({
+  // ⚡ Bolt: Single query replaces parallel getCourses() and getDashboardStats() calls,
+  // fixing an N+1/redundant query pattern and cutting database hits for dashboard in half.
+  const coursesRaw = await prisma.course.findMany({
     where: { createdBy: session.user.id },
     include: {
       enrollments: true,
@@ -204,10 +206,34 @@ export async function getDashboardStats() {
         include: { quiz: true },
       },
     },
+    orderBy: { createdAt: 'desc' },
   });
-  const enrollments = courses.flatMap((course) => course.enrollments);
 
-  const totalCourses = courses.length;
+  const courses: CourseWithStats[] = coursesRaw.map((course) => ({
+    id: course.id,
+    title: course.title,
+    description: course.description,
+    thumbnail: course.thumbnail,
+    status: course.status,
+    duration: course.duration,
+    createdAt: course.createdAt,
+    updatedAt: course.updatedAt,
+    lessonsCount: course.lessons.length,
+    enrollmentsCount: course.enrollments.length,
+    completionRate:
+      course.enrollments.length > 0
+        ? Math.round(
+            (course.enrollments.filter((e) => e.status === 'completed' || e.status === 'attested')
+              .length /
+              course.enrollments.length) *
+              100,
+          )
+        : 0,
+  }));
+
+  const enrollments = coursesRaw.flatMap((course) => course.enrollments);
+
+  const totalCourses = coursesRaw.length;
   const totalStaffAssigned = new Set(enrollments.map((e) => e.userId)).size;
   const enrollmentsWithScore = enrollments.filter((e) => e.score !== null);
   const averageScore =
@@ -243,7 +269,7 @@ export async function getDashboardStats() {
   });
 
   // Calculate Course Performance (Scores vs Courses)
-  const coursePerformance = courses.map((course) => {
+  const coursePerformance = coursesRaw.map((course) => {
     // Find passing score
     const quiz = course.lessons.find((l) => l.quiz)?.quiz;
     const passingScore = quiz?.passingScore || 70;
@@ -278,16 +304,19 @@ export async function getDashboardStats() {
   const totalEnrollments = enrollments.length;
 
   return {
-    totalCourses,
-    totalStaffAssigned,
-    averageGrade: averageScore,
-    monthlyPerformance,
-    coursePerformance, // New Field
-    trainingCoverage: {
-      completed: totalEnrollments > 0 ? Math.round((completedCount / totalEnrollments) * 100) : 0,
-      inProgress: totalEnrollments > 0 ? Math.round((inProgressCount / totalEnrollments) * 100) : 0,
-      notStarted: totalEnrollments > 0 ? Math.round((enrolledCount / totalEnrollments) * 100) : 0,
-      totalStaff: totalStaffAssigned, // Add total staff for donut label
+    courses,
+    stats: {
+      totalCourses,
+      totalStaffAssigned,
+      averageGrade: averageScore,
+      monthlyPerformance,
+      coursePerformance, // New Field
+      trainingCoverage: {
+        completed: totalEnrollments > 0 ? Math.round((completedCount / totalEnrollments) * 100) : 0,
+        inProgress: totalEnrollments > 0 ? Math.round((inProgressCount / totalEnrollments) * 100) : 0,
+        notStarted: totalEnrollments > 0 ? Math.round((enrolledCount / totalEnrollments) * 100) : 0,
+        totalStaff: totalStaffAssigned, // Add total staff for donut label
+      },
     },
   };
 }
