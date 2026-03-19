@@ -127,9 +127,12 @@ export default function DatePicker({
 
   return (
     <div className={styles.container} ref={containerRef}>
-      <div
+      <button
+        type="button"
         className={`${styles.inputWrapper} ${isOpen ? styles.active : ''}`}
         onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
       >
         <span className={value ? styles.inputText : styles.placeholder}>
           {value ? formatDateDisplay(value) : placeholder}
@@ -151,12 +154,15 @@ export default function DatePicker({
             <line x1="3" y1="10" x2="21" y2="10"></line>
           </svg>
         </div>
-      </div>
+      </button>
 
       {isOpen &&
         createPortal(
           <div
             id="date-picker-popover"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Calendar"
             className={styles.calendarPopover}
             style={{
               position: 'absolute',
