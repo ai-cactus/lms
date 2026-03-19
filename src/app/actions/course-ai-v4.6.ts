@@ -149,17 +149,23 @@ export async function generateArticleV46(
   }
 
   const { jsonStr, markdown } = parseDualOutput(rawResponse);
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
   } catch (error) {
-    console.error('[v4.6] Failed to parse JSON from Vertex AI (ArticleMeta). Raw Response:', rawResponse);
+    console.error(
+      '[v4.6] Failed to parse JSON from Vertex AI (ArticleMeta). Raw Response:',
+      rawResponse,
+    );
     throw new Error('Failed to parse ArticleMeta JSON from Vertex AI response.');
   }
 
   const result = ArticleMetaV46Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v4.6] ArticleMeta validation failed:', JSON.stringify(result.error.format(), null, 2));
+    console.error(
+      '[v4.6] ArticleMeta validation failed:',
+      JSON.stringify(result.error.format(), null, 2),
+    );
     console.error('[v4.6] ArticleMeta Raw Invalid JSON:', jsonStr);
     throw new Error(
       `ArticleMeta validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
@@ -194,17 +200,23 @@ async function generateSlidesV46(
   }
 
   const jsonStr = extractJsonFromResponse(rawResponse);
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
   } catch (error) {
-    console.error('[v4.6] Failed to parse JSON from Vertex AI (Slides). Raw Response:', rawResponse);
+    console.error(
+      '[v4.6] Failed to parse JSON from Vertex AI (Slides). Raw Response:',
+      rawResponse,
+    );
     throw new Error('Failed to parse Slides JSON from Vertex AI response.');
   }
 
   const result = SlidesV46Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v4.6] Slides validation failed:', JSON.stringify(result.error.format(), null, 2));
+    console.error(
+      '[v4.6] Slides validation failed:',
+      JSON.stringify(result.error.format(), null, 2),
+    );
     console.error('[v4.6] Slides Raw Invalid JSON:', jsonStr);
     throw new Error(
       `Slides validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
@@ -241,7 +253,7 @@ async function generateQuizV46(
   }
 
   const jsonStr = extractJsonFromResponse(rawResponse);
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
   } catch (error) {
@@ -281,7 +293,7 @@ async function judgeQuizV46(
   }
 
   const jsonStr = extractJsonFromResponse(rawResponse);
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
   } catch (error) {
@@ -291,7 +303,10 @@ async function judgeQuizV46(
 
   const result = JudgeV46Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v4.6] Judge validation failed:', JSON.stringify(result.error.format(), null, 2));
+    console.error(
+      '[v4.6] Judge validation failed:',
+      JSON.stringify(result.error.format(), null, 2),
+    );
     console.error('[v4.6] Judge Raw Invalid JSON:', jsonStr);
     throw new Error(
       `Judge validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
@@ -330,7 +345,7 @@ async function regenFlaggedV46(
   }
 
   const jsonStr = extractJsonFromResponse(rawResponse);
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
   } catch (error) {
@@ -340,7 +355,10 @@ async function regenFlaggedV46(
 
   const result = RegenV46Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v4.6] Regen validation failed:', JSON.stringify(result.error.format(), null, 2));
+    console.error(
+      '[v4.6] Regen validation failed:',
+      JSON.stringify(result.error.format(), null, 2),
+    );
     console.error('[v4.6] Regen Raw Invalid JSON:', jsonStr);
     throw new Error(
       `Regen validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
