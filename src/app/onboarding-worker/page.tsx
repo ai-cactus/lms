@@ -42,7 +42,7 @@ export default function WorkerOnboardingPage() {
       } else {
         setError(result.error || 'Invalid code');
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -65,7 +65,7 @@ export default function WorkerOnboardingPage() {
       } else {
         setError(result.error || 'Failed to join organization');
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);

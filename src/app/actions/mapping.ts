@@ -30,7 +30,7 @@ export async function saveMapping(
     });
     revalidatePath(`/dashboard/courses`); // broadly revalidate for now
     return { success: true };
-  } catch (e) {
+  } catch {
     return { error: 'Failed to save mapping' };
   }
 }

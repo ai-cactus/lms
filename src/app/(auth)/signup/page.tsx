@@ -11,7 +11,7 @@ import styles from './page.module.css';
 
 export default function SignupPage() {
   const router = useRouter();
-  const [result, dispatch, isPending] = useActionState<SignupResult | undefined, FormData>(
+  const [result, _, isPending] = useActionState<SignupResult | undefined, FormData>(
     signup,
     undefined,
   );

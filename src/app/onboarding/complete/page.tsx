@@ -3,7 +3,6 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui';
-import styles from '../onboarding.module.css'; // Utilizing layout styles but adding custom overrides inline or via new module if needed
 
 export default function OnboardingComplete() {
   const router = useRouter();

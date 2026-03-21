@@ -3,7 +3,6 @@
 import { auth } from '@/auth';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
-import { redirect } from 'next/navigation';
 import { sendInviteEmail } from '@/lib/email';
 
 // Define types for the data we expect

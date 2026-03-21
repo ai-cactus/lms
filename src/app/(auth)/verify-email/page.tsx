@@ -61,7 +61,7 @@ function VerifyEmailContent() {
       } else {
         setResendError(data.error || 'Failed to resend email');
       }
-    } catch (err) {
+    } catch {
       setResendError('Failed to resend verification email');
     } finally {
       setIsResending(false);

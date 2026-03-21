@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import DOMPurify from 'isomorphic-dompurify';
 import styles from '../../../components/courses/CoursePlayer.module.css';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 
@@ -72,7 +71,6 @@ interface UserData {
   organizationName?: string;
   email: string;
   jobTitle: string;
-
 }
 
 export default function LearnPage() {
@@ -133,7 +131,7 @@ export default function LearnPage() {
   const [quizUnlocked, setQuizUnlocked] = useState(false);
 
   // Track if user just finished quiz in this session
-  const [justFinished, setJustFinished] = useState(false);
+  // (Removed unused justFinished state)
 
   const updateProgress = async (idx: number) => {
     if (!course || !enrollment) return;
@@ -182,9 +180,6 @@ export default function LearnPage() {
       const result = await res.json();
       setQuizResults(result);
       setQuizStep('review');
-      if (result.passed) {
-        setJustFinished(true);
-      }
     } catch (err) {
       console.error(err);
       alert('Failed to submit quiz');
@@ -458,7 +453,7 @@ export default function LearnPage() {
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [isQuizActive, quizStep, timeLeft]);
+  }, [isQuizActive, quizStep, timeLeft, handleSubmitQuiz]);
 
   if (loading)
     return (
@@ -887,7 +882,7 @@ export default function LearnPage() {
                             (lesson.content || '')
                               .replace(/&nbsp;/g, ' ')
                               .replace(/<br\s*\/?>/gi, ' ')
-                              .replace(/\s+/g, ' ')
+                              .replace(/\s+/g, ' '),
                           ),
                         }}
                       />

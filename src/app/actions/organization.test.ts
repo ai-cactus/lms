@@ -7,7 +7,7 @@ vi.mock('@/lib/prisma', () => {
   return {
     prisma: {
       organization: {
-        findUnique: vi.fn(),
+        findFirst: vi.fn(),
       },
     },
   };
@@ -19,20 +19,25 @@ describe('checkOrganizationNameAvailable', () => {
   });
 
   it('should return true when organization name does not exist', async () => {
-    // Mock findUnique to return null (no organization found)
-    vi.mocked(prisma.organization.findUnique).mockResolvedValue(null);
+    // Mock findFirst to return null (no organization found)
+    vi.mocked(prisma.organization.findFirst).mockResolvedValue(null);
 
     const result = await checkOrganizationNameAvailable('New Org Name');
 
-    expect(result).toBe(true);
-    expect(prisma.organization.findUnique).toHaveBeenCalledWith({
-      where: { name: 'New Org Name' },
+    expect(result.available).toBe(true);
+    expect(prisma.organization.findFirst).toHaveBeenCalledWith({
+      where: {
+        name: {
+          equals: 'New Org Name',
+          mode: 'insensitive',
+        },
+      },
     });
   });
 
   it('should return false when organization name already exists', async () => {
-    // Mock findUnique to return an existing organization
-    vi.mocked(prisma.organization.findUnique).mockResolvedValue({
+    // Mock findFirst to return an existing organization
+    vi.mocked(prisma.organization.findFirst).mockResolvedValue({
       id: 'existing-id',
       name: 'Existing Org Name',
       dba: null,
@@ -59,9 +64,14 @@ describe('checkOrganizationNameAvailable', () => {
 
     const result = await checkOrganizationNameAvailable('Existing Org Name');
 
-    expect(result).toBe(false);
-    expect(prisma.organization.findUnique).toHaveBeenCalledWith({
-      where: { name: 'Existing Org Name' },
+    expect(result.available).toBe(false);
+    expect(prisma.organization.findFirst).toHaveBeenCalledWith({
+      where: {
+        name: {
+          equals: 'Existing Org Name',
+          mode: 'insensitive',
+        },
+      },
     });
   });
 });
