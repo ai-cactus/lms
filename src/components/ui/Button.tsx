@@ -59,9 +59,14 @@ export default function Button({
     .join(' ');
 
   return (
-    <button className={classes} disabled={disabled || loading} {...props}>
-      {loading ? (
-        <span className={styles.loader}>
+    <button
+      className={classes}
+      disabled={disabled || loading}
+      aria-busy={loading}
+      {...props}
+    >
+      {loading && (
+        <span className={styles.loader} aria-hidden="true">
           <svg className={styles.spinner} viewBox="0 0 24 24" fill="none">
             <circle
               cx="12"
@@ -74,9 +79,8 @@ export default function Button({
             />
           </svg>
         </span>
-      ) : (
-        children
       )}
+      <span className={loading ? styles.loadingContent : ''}>{children}</span>
     </button>
   );
 }

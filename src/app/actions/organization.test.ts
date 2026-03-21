@@ -54,6 +54,7 @@ describe('checkOrganizationNameAvailable', () => {
       slug: 'existing-org-name',
       createdAt: new Date(),
       updatedAt: new Date(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
     const result = await checkOrganizationNameAvailable('Existing Org Name');

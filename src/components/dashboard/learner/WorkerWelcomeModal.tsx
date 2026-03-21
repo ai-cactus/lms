@@ -7,6 +7,8 @@ import styles from './WorkerWelcomeModal.module.css';
 import { Modal, Button } from '@/components/ui';
 import { useModalContext } from '@/components/ui/ModalContext';
 
+const SNOOZE_DURATION_MS = 12 * 60 * 60 * 1000;
+
 interface WorkerWelcomeModalProps {
   courseCount: number;
   firstCourseId?: string;
@@ -73,7 +75,7 @@ export default function WorkerWelcomeModal({
     // The user asked for it to be intelligent. Sticking to time-based is cleaner.
     // Let's say 24 hours snooze if they close it without acting? Or maybe shorter.
     // The previous code had "4" which implied refreshes. Let's do 12 hours.
-    dismissModal(modalId, 12 * 60 * 60 * 1000);
+    dismissModal(modalId, SNOOZE_DURATION_MS);
   };
 
   const handleStart = () => {

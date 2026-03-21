@@ -131,23 +131,42 @@ function parseDualOutput(rawResponse: string): { jsonStr: string; markdown: stri
 
 // ─── Stage A: Article + ArticleMeta Generation ──
 
-async function generateArticleV46(
+export async function generateArticleV46(
   sourceText: string,
   metadataJson?: string,
 ): Promise<{ articleMeta: ArticleMetaV46; articleMarkdown: string; rawArticleMetaJson: string }> {
   const prompt = buildPromptA_v46(sourceText, metadataJson);
 
-  const rawResponse = await callVertexAI(prompt, {
-    temperature: 0.4,
-    maxOutputTokens: 16384,
-  });
+  let rawResponse = '';
+  try {
+    rawResponse = await callVertexAI(prompt, {
+      temperature: 0.4,
+      maxOutputTokens: 16384,
+    });
+  } catch (error) {
+    console.error('[v4.6] Vertex AI Call Failed during Article Generation:', error);
+    throw new Error(`Vertex AI API Error (Article): ${(error as Error).message}`);
+  }
 
   const { jsonStr, markdown } = parseDualOutput(rawResponse);
-  const parsed = JSON.parse(jsonStr);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (error) {
+    console.error(
+      '[v4.6] Failed to parse JSON from Vertex AI (ArticleMeta). Raw Response:',
+      rawResponse,
+    );
+    throw new Error('Failed to parse ArticleMeta JSON from Vertex AI response.');
+  }
 
   const result = ArticleMetaV46Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v4.6] ArticleMeta validation failed:', result.error.format());
+    console.error(
+      '[v4.6] ArticleMeta validation failed:',
+      JSON.stringify(result.error.format(), null, 2),
+    );
+    console.error('[v4.6] ArticleMeta Raw Invalid JSON:', jsonStr);
     throw new Error(
       `ArticleMeta validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
@@ -169,17 +188,36 @@ async function generateSlidesV46(
 ): Promise<{ slidesJson: SlidesV46; raw: string }> {
   const prompt = buildPromptB_v46(articleMarkdown, articleMetaJson, desiredSlideCount);
 
-  const rawResponse = await callVertexAI(prompt, {
-    temperature: 0.4,
-    maxOutputTokens: 8192,
-  });
+  let rawResponse = '';
+  try {
+    rawResponse = await callVertexAI(prompt, {
+      temperature: 0.4,
+      maxOutputTokens: 8192,
+    });
+  } catch (error) {
+    console.error('[v4.6] Vertex AI Call Failed during Slides Generation:', error);
+    throw new Error(`Vertex AI API Error (Slides): ${(error as Error).message}`);
+  }
 
   const jsonStr = extractJsonFromResponse(rawResponse);
-  const parsed = JSON.parse(jsonStr);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (error) {
+    console.error(
+      '[v4.6] Failed to parse JSON from Vertex AI (Slides). Raw Response:',
+      rawResponse,
+    );
+    throw new Error('Failed to parse Slides JSON from Vertex AI response.');
+  }
 
   const result = SlidesV46Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v4.6] Slides validation failed:', result.error.format());
+    console.error(
+      '[v4.6] Slides validation failed:',
+      JSON.stringify(result.error.format(), null, 2),
+    );
+    console.error('[v4.6] Slides Raw Invalid JSON:', jsonStr);
     throw new Error(
       `Slides validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
@@ -203,17 +241,30 @@ async function generateQuizV46(
     quizDifficulty,
   );
 
-  const rawResponse = await callVertexAI(prompt, {
-    temperature: 0.5,
-    maxOutputTokens: 16384,
-  });
+  let rawResponse = '';
+  try {
+    rawResponse = await callVertexAI(prompt, {
+      temperature: 0.5,
+      maxOutputTokens: 16384,
+    });
+  } catch (error) {
+    console.error('[v4.6] Vertex AI Call Failed during Quiz Generation:', error);
+    throw new Error(`Vertex AI API Error (Quiz): ${(error as Error).message}`);
+  }
 
   const jsonStr = extractJsonFromResponse(rawResponse);
-  const parsed = JSON.parse(jsonStr);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (error) {
+    console.error('[v4.6] Failed to parse JSON from Vertex AI (Quiz). Raw Response:', rawResponse);
+    throw new Error('Failed to parse Quiz JSON from Vertex AI response.');
+  }
 
   const result = QuizV46Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v4.6] Quiz validation failed:', result.error.format());
+    console.error('[v4.6] Quiz validation failed:', JSON.stringify(result.error.format(), null, 2));
+    console.error('[v4.6] Quiz Raw Invalid JSON:', jsonStr);
     throw new Error(
       `Quiz validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
@@ -230,17 +281,33 @@ async function judgeQuizV46(
 ): Promise<{ judgeJson: JudgeV46; raw: string }> {
   const prompt = buildPromptD_v46(quizJson, articleMetaJson);
 
-  const rawResponse = await callVertexAI(prompt, {
-    temperature: 0.2,
-    maxOutputTokens: 8192,
-  });
+  let rawResponse = '';
+  try {
+    rawResponse = await callVertexAI(prompt, {
+      temperature: 0.2,
+      maxOutputTokens: 8192,
+    });
+  } catch (error) {
+    console.error('[v4.6] Vertex AI Call Failed during Judge Generation:', error);
+    throw new Error(`Vertex AI API Error (Judge): ${(error as Error).message}`);
+  }
 
   const jsonStr = extractJsonFromResponse(rawResponse);
-  const parsed = JSON.parse(jsonStr);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (error) {
+    console.error('[v4.6] Failed to parse JSON from Vertex AI (Judge). Raw Response:', rawResponse);
+    throw new Error('Failed to parse Judge JSON from Vertex AI response.');
+  }
 
   const result = JudgeV46Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v4.6] Judge validation failed:', result.error.format());
+    console.error(
+      '[v4.6] Judge validation failed:',
+      JSON.stringify(result.error.format(), null, 2),
+    );
+    console.error('[v4.6] Judge Raw Invalid JSON:', jsonStr);
     throw new Error(
       `Judge validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
@@ -266,17 +333,33 @@ async function regenFlaggedV46(
     quizDifficulty,
   );
 
-  const rawResponse = await callVertexAI(prompt, {
-    temperature: 0.5,
-    maxOutputTokens: 8192,
-  });
+  let rawResponse = '';
+  try {
+    rawResponse = await callVertexAI(prompt, {
+      temperature: 0.5,
+      maxOutputTokens: 8192,
+    });
+  } catch (error) {
+    console.error('[v4.6] Vertex AI Call Failed during Question Regen:', error);
+    throw new Error(`Vertex AI API Error (Regen): ${(error as Error).message}`);
+  }
 
   const jsonStr = extractJsonFromResponse(rawResponse);
-  const parsed = JSON.parse(jsonStr);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (error) {
+    console.error('[v4.6] Failed to parse JSON from Vertex AI (Regen). Raw Response:', rawResponse);
+    throw new Error('Failed to parse Regen JSON from Vertex AI response.');
+  }
 
   const result = RegenV46Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v4.6] Regen validation failed:', result.error.format());
+    console.error(
+      '[v4.6] Regen validation failed:',
+      JSON.stringify(result.error.format(), null, 2),
+    );
+    console.error('[v4.6] Regen Raw Invalid JSON:', jsonStr);
     throw new Error(
       `Regen validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );

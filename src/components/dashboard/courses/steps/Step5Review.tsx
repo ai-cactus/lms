@@ -12,7 +12,9 @@ import CourseRail from '@/components/courses/CourseRail';
 import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui';
+import { sanitizeHtml } from '@/lib/sanitize';
 
+import DOMPurify from 'isomorphic-dompurify';
 import {
   CourseWizardData,
   GeneratedCourse,
@@ -256,7 +258,7 @@ export default function Step5Review({
   const [error, setError] = useState<string | null>(null);
 
   // UI View State
-  const [viewMode, setViewMode] = useState<'slides' | 'article'>('slides');
+  const [viewMode, setViewMode] = useState<'slides' | 'article'>('article');
   const [activeModuleIndex, setActiveModuleIndex] = useState(0);
   const [editedModules, setEditedModules] = useState<RenderableModule[]>(
     initialContent?.modules || [],
@@ -327,7 +329,6 @@ export default function Step5Review({
               const content: GeneratedCourse = {
                 title: data.title,
                 description: data.description,
-                category: data.category,
                 difficulty: data.difficulty,
                 duration: data.duration,
                 objectives: data.objectives || [],
@@ -384,7 +385,7 @@ export default function Step5Review({
   };
 
   // Loading / Error States
-  if (error) {
+  if (error && !generatedContent) {
     return (
       <div
         className={styles.playerContainer}
@@ -454,7 +455,7 @@ export default function Step5Review({
   const displayContent =
     viewMode === 'slides'
       ? currentModule?.slideContent || currentModule?.content || ''
-      : currentModule?.content || '';
+      : (generatedContent?.rawArticleMarkdown ? articleMarkdownToHtml(generatedContent.rawArticleMarkdown) : currentModule?.content || '');
 
   return (
     <div className={styles.playerContainer}>
@@ -512,7 +513,7 @@ export default function Step5Review({
             <CourseArticle title={currentModule?.title || 'Untitled Module'}>
               <div
                 className={styles.articleBody}
-                dangerouslySetInnerHTML={{ __html: displayContent }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }}
               />
             </CourseArticle>
           )}

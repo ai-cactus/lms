@@ -25,6 +25,8 @@ export default function AssignUserCourseModal({
 }: AssignUserCourseModalProps) {
   const [courses, setCourses] = useState<{ id: string; title: string }[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
+  const [emails, setEmails] = useState<string[]>([]);
+  const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [result, setResult] = useState<{
@@ -38,8 +40,37 @@ export default function AssignUserCourseModal({
       fetchCourses();
       setResult(null);
       setSelectedCourseId('');
+      if (userEmail) {
+        setEmails([userEmail]);
+      } else {
+        setEmails([]);
+      }
+      setInputValue('');
     }
-  }, [isOpen]);
+  }, [isOpen, userEmail]);
+
+  const isValidEmail = (email: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (['Enter', ' ', ','].includes(e.key)) {
+      e.preventDefault();
+      const val = inputValue.trim();
+      if (val && isValidEmail(val)) {
+        if (!emails.includes(val)) {
+          setEmails([...emails, val]);
+        }
+        setInputValue('');
+      }
+    } else if (e.key === 'Backspace' && !inputValue && emails.length > 0) {
+      setEmails(emails.slice(0, -1));
+    }
+  };
+
+  const removeEmail = (emailToRemove: string) => {
+    setEmails(emails.filter((email) => email !== emailToRemove));
+  };
 
   const fetchCourses = async () => {
     setIsFetching(true);
@@ -58,11 +89,21 @@ export default function AssignUserCourseModal({
   const handleAssign = async () => {
     if (!selectedCourseId) return;
 
+    const finalEmails = [...emails];
+    const currentVal = inputValue.trim();
+    if (currentVal && isValidEmail(currentVal) && !finalEmails.includes(currentVal)) {
+      finalEmails.push(currentVal);
+      setEmails(finalEmails);
+      setInputValue('');
+    }
+
+    if (finalEmails.length === 0) return;
+
     setIsLoading(true);
     setResult(null);
 
     try {
-      const res = await enrollUsers(selectedCourseId, [userEmail]);
+      const res = await enrollUsers(selectedCourseId, finalEmails);
       setResult(res);
 
       // If completely successful or already enrolled, close after a delay
@@ -74,7 +115,7 @@ export default function AssignUserCourseModal({
       }
     } catch (error) {
       console.error('Failed to assign course:', error);
-      setResult({ success: [], alreadyEnrolled: [], failed: [userEmail] });
+      setResult({ success: [], alreadyEnrolled: [], failed: finalEmails });
     } finally {
       setIsLoading(false);
     }
@@ -85,10 +126,111 @@ export default function AssignUserCourseModal({
       isOpen={isOpen}
       onClose={onClose}
       size="md"
-      title={`Assign Course to ${userName}`}
-      description={`Select a course to assign to ${userEmail}.`}
+      title={userName ? `Assign Course to ${userName}` : "Assign Course"}
+      description={`Select a course to assign.`}
     >
       <div className={styles.inputGroup}>
+        <div style={{ marginBottom: '16px' }}>
+          <label
+            style={{
+              display: 'block',
+              marginBottom: '8px',
+              fontSize: '14px',
+              fontWeight: 500,
+              color: '#4A5568',
+            }}
+          >
+            Email Addresses
+          </label>
+          <div
+            style={{
+              border: '2px solid #E2E8F0',
+              borderRadius: '8px',
+              padding: '8px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px',
+              minHeight: '44px',
+              alignItems: 'center',
+              background: 'white',
+              cursor: 'text',
+              transition: 'border-color 0.2s',
+            }}
+            onClick={() => document.getElementById('assign-email-chip-input')?.focus()}
+            onFocus={(e) => (e.currentTarget.style.borderColor = '#4c6ef5')}
+            onBlur={(e) => (e.currentTarget.style.borderColor = '#E2E8F0')}
+          >
+            {emails.map((email) => (
+              <div
+                key={email}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: '#EBF8FF',
+                  color: '#2C5282',
+                  borderRadius: '16px',
+                  padding: '4px 12px',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                }}
+              >
+                {email}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeEmail(email);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    marginLeft: '6px',
+                    cursor: 'pointer',
+                    color: '#2C5282',
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            ))}
+            <input
+              id="assign-email-chip-input"
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={emails.length === 0 ? 'Enter emails...' : ''}
+              style={{
+                border: 'none',
+                outline: 'none',
+                flex: 1,
+                fontSize: '14px',
+                minWidth: '120px',
+                color: '#2D3748',
+                background: 'transparent',
+              }}
+            />
+          </div>
+          <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+            Press Space, Enter or Comma to add an email.
+          </p>
+        </div>
+
         <div className={styles.selectWrapper}>
           <select
             className={`${styles.select} ${selectedCourseId ? styles.hasSelection : ''}`}
@@ -127,7 +269,7 @@ export default function AssignUserCourseModal({
 
         <Button
           onClick={handleAssign}
-          disabled={!selectedCourseId || isLoading || isFetching}
+          disabled={!selectedCourseId || isLoading || isFetching || (emails.length === 0 && !inputValue.trim())}
           loading={isLoading}
           className={styles.assignButton}
         >

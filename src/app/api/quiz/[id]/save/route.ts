@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
+import { z } from 'zod';
+
+const saveQuizSchema = z.object({
+  enrollmentId: z.string().min(1, 'Enrollment ID is required'),
+  answers: z.array(
+    z.object({
+      questionId: z.string(),
+      selectedAnswer: z.string(),
+    })
+  ),
+});
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -11,11 +22,16 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const quizId = params.id;
     const body = await request.json();
-    const { enrollmentId, answers } = body;
 
-    if (!enrollmentId || !answers) {
-      return NextResponse.json({ error: 'Missing data' }, { status: 400 });
+    const parsedBody = saveQuizSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: 'Invalid input data', details: parsedBody.error.flatten().fieldErrors },
+        { status: 400 },
+      );
     }
+
+    const { enrollmentId, answers } = parsedBody.data;
 
     // Check active attempt
     const attempt = await prisma.quizAttempt.findUnique({

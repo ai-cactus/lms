@@ -77,6 +77,7 @@ export default async function QuizResultsPage({
         enrollmentId={enrollmentId}
         data={resultsData}
         hideActions={true} // Hide redundant buttons in history view
+        organizationName={enrollment.user.organization?.name}
       />
     );
   } catch (error) {

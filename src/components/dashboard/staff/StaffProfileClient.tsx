@@ -74,6 +74,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
       correctAnswer: string;
       explanation: string;
     }[];
+    organizationName?: string;
   } | null>(null);
   const [isLoadingResult, setIsLoadingResult] = useState(false);
 
@@ -472,15 +473,17 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                         Retake
                       </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      onClick={() => handleViewResult(enrollment.id)}
-                      disabled={isLoadingResult}
-                      loading={isLoadingResult}
-                    >
-                      View
-                    </Button>
+                    {(enrollment.status === 'completed' || enrollment.progress === 100 || (enrollment.quizAttempts && enrollment.quizAttempts.length > 0)) && (
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => handleViewResult(enrollment.id)}
+                        disabled={isLoadingResult}
+                        loading={isLoadingResult}
+                      >
+                        View
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -584,6 +587,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               data={viewingResult}
               hideActions={true}
               userRole="admin"
+              organizationName={viewingResult.organizationName}
             />
           </div>
         </div>

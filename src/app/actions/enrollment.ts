@@ -206,7 +206,7 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
     where: { id: enrollmentId },
     include: {
       user: {
-        include: { profile: true },
+        include: { profile: true, organization: true },
       },
       course: {
         include: {

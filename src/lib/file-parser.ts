@@ -14,15 +14,12 @@ export async function extractTextFromFile(file: File): Promise<string> {
         process.cwd(),
         'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
       );
-      console.log(`Setting PDF Worker to: ${workerPath}`);
       PDFParse.setWorker(workerPath);
 
       // pdf-parse v2+ is a class
       const parser = new PDFParse({ data: buffer });
       const data = await parser.getText();
       const text = data.text.trim();
-
-      console.log(`Extracted PDF text length: ${text.length} `);
 
       if (text.length === 0) {
         console.warn('PDF parsing returned empty string.');

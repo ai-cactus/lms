@@ -11,7 +11,7 @@ const submitQuizSchema = z.object({
     z.object({
       questionId: z.string(),
       selectedAnswer: z.string(),
-    })
+    }),
   ),
   timeTaken: z.number().nullable().optional(),
 });
@@ -60,21 +60,38 @@ Return ONLY a JSON object mapping question numbers to explanations, like:
 {"1": "Explanation for Q1...", "2": "Explanation for Q2...", ...}
 No markdown, no extra text.`;
 
-    const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
-    const location = process.env.GOOGLE_LOCATION || 'us-central1';
-    const modelId = 'gemini-2.5-flash-lite';
+    // Strictly validate variables to prevent SSRF
+    const envSchema = z.object({
+      projectId: z
+        .string()
+        .regex(/^[a-zA-Z0-9-]+$/)
+        .min(1),
+      location: z
+        .string()
+        .regex(/^[a-zA-Z0-9-]+$/)
+        .min(1),
+      modelId: z
+        .string()
+        .regex(/^[a-zA-Z0-9.-]+$/)
+        .min(1),
+    });
 
-    const response = await fetch(
-      `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-        }),
-      },
-    );
+    const validatedVars = envSchema.parse({
+      projectId: process.env.GOOGLE_PROJECT_ID || 'theraptly-lms',
+      location: process.env.GOOGLE_LOCATION || 'us-central1',
+      modelId: 'gemini-2.5-flash-lite',
+    });
+
+    const url = `https://${validatedVars.location}-aiplatform.googleapis.com/v1/projects/${validatedVars.projectId}/locations/${validatedVars.location}/publishers/google/models/${validatedVars.modelId}:generateContent?key=${apiKey}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+      }),
+    });
 
     if (!response.ok) return {};
 
@@ -114,11 +131,18 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     if (!parsedBody.success) {
       return NextResponse.json(
         { error: 'Invalid input data', details: parsedBody.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const { enrollmentId, answers, timeTaken } = parsedBody.data;
+
+    // Validate timeTaken
+    if (timeTaken !== undefined && timeTaken !== null) {
+      if (typeof timeTaken !== 'number' || isNaN(timeTaken) || timeTaken < 0) {
+        return NextResponse.json({ error: 'Invalid timeTaken value' }, { status: 400 });
+      }
+    }
 
     // Verify enrollment belongs to user
     const enrollment = await prisma.enrollment.findUnique({
@@ -328,9 +352,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         const userAnswer = answers.find(
           (a: { questionId: string; selectedAnswer: string }) => a.questionId === q.id,
         );
-        const optionsArray = Array.isArray(q.options) ? (q.options as any[]) : [];
-        const optionTexts = optionsArray.map((opt: any) =>
-          typeof opt === 'string' ? opt : opt.text || opt,
+        const optionsArray = Array.isArray(q.options) ? (q.options as unknown[]) : [];
+        const optionTexts = optionsArray.map((opt: unknown) =>
+          typeof opt === 'string' ? opt : (opt as { text?: string })?.text || String(opt),
         );
 
         const selectedText = userAnswer?.selectedAnswer || '';
@@ -344,9 +368,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         return {
           id: q.id,
           text: q.text,
-          options: optionsArray.map((opt: any, idx: number) => ({
+          options: optionsArray.map((opt: unknown, idx: number) => ({
             id: String.fromCharCode(65 + idx),
-            text: typeof opt === 'string' ? opt : opt.text || opt,
+            text: typeof opt === 'string' ? opt : (opt as { text?: string })?.text || String(opt),
           })),
           selectedAnswer: selectedLetter,
           correctAnswer: correctLetter,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import DOMPurify from 'isomorphic-dompurify';
 import styles from '../../../components/courses/CoursePlayer.module.css';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 
@@ -12,6 +13,7 @@ import CourseArticle from '@/components/courses/CourseArticle';
 import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
 import { Button } from '@/components/ui';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 interface Lesson {
   id: string;
@@ -67,6 +69,10 @@ interface EnrollmentData {
 interface UserData {
   name: string;
   role: string;
+  organizationName?: string;
+  email: string;
+  jobTitle: string;
+
 }
 
 export default function LearnPage() {
@@ -321,7 +327,22 @@ export default function LearnPage() {
       try {
         const res = await fetch(`/api/courses/${params.id}/learn`);
         if (!res.ok) throw new Error('Failed to load course');
-        const data = await res.json();
+        const data = (await res.json()) as {
+          course: CourseData;
+          enrollment: EnrollmentData;
+          user: UserData & { organizationName?: string };
+          quizResultsData?: {
+            passed: boolean;
+            score: number;
+            totalQuestions: number;
+            correctCount: number;
+            answered: number;
+            correct: number;
+            wrong: number;
+            time: number;
+            questions: unknown[];
+          };
+        };
 
         // Map lesson data to include moduleIndex
         if (data.course.lessons) {
@@ -342,7 +363,7 @@ export default function LearnPage() {
           (a: { timeTaken: number | null }) => a.timeTaken === null,
         );
 
-        const hasQuizAttempt = data.enrollment?.quizAttempts?.length > 0;
+        const hasQuizAttempt = (data.enrollment?.quizAttempts?.length ?? 0) > 0;
         const isCompleted =
           data.enrollment?.status === 'completed' || data.enrollment?.status === 'attested';
 
@@ -528,20 +549,6 @@ export default function LearnPage() {
           </div>
 
           <div className={styles.topbarRight}>
-            {enrollment && enrollment.id !== 'preview-mode' && (
-              <div className={styles.progressIndicator}>
-                <span className={styles.progressText}>
-                  {Math.min(enrollment.progress || 0, 100)}%
-                </span>
-                <div className={styles.progressBar}>
-                  <div
-                    className={styles.progressFill}
-                    style={{ width: `${Math.min(enrollment.progress || 0, 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
             {!isQuizIndex && (
               <div className={styles.toggle}>
                 <Button
@@ -580,12 +587,16 @@ export default function LearnPage() {
                   attemptsUsed: quizResults.attemptsUsed,
                   allowedAttempts: quizResults.allowedAttempts,
                   passingScore: course.quiz?.passingScore,
+                  userName: userData?.name,
+                  userEmail: userData?.email,
+                  jobTitle: userData?.jobTitle,
                 }}
                 hideActions={
                   enrollment?.status === 'completed' || enrollment?.status === 'attested'
                 }
                 showAttestation={userData?.role === 'worker' && quizResults.passed}
                 userRole={userData?.role}
+                organizationName={userData?.organizationName}
                 onAttestSuccess={() => {
                   setJustFinished(false);
                   setEnrollment((prev) => (prev ? { ...prev, status: 'attested' } : prev));
@@ -872,10 +883,12 @@ export default function LearnPage() {
                       </h3>
                       <div
                         dangerouslySetInnerHTML={{
-                          __html: (lesson.content || '')
-                            .replace(/&nbsp;/g, ' ')
-                            .replace(/<br\s*\/?>/gi, ' ')
-                            .replace(/\s+/g, ' '),
+                          __html: sanitizeHtml(
+                            (lesson.content || '')
+                              .replace(/&nbsp;/g, ' ')
+                              .replace(/<br\s*\/?>/gi, ' ')
+                              .replace(/\s+/g, ' ')
+                          ),
                         }}
                       />
                       {idx < course.lessons.length - 1 && (

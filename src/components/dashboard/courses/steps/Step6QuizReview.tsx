@@ -37,7 +37,6 @@ export default function Step6QuizReview({
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
-  const [expandedExplanation, setExpandedExplanation] = useState<number | null>(null);
 
   const [newQuestion, setNewQuestion] = useState<QuizQuestion>({
     question: '',
@@ -133,25 +132,6 @@ export default function Step6QuizReview({
                     <h4 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>
                       Edit Question {index + 1}
                     </h4>
-                    <div className={styles.formGroup}>
-                      <label>Question Type</label>
-                      <select
-                        className={styles.typeSelect}
-                        value={editingQuestion.type}
-                        onChange={(e) => {
-                          const type = e.target.value;
-                          setEditingQuestion({
-                            ...editingQuestion,
-                            type,
-                            options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
-                            answer: 0,
-                          });
-                        }}
-                      >
-                        <option value="multiple_choice">Multiple Choice</option>
-                        <option value="true_false">True / False</option>
-                      </select>
-                    </div>
 
                     <div className={styles.formGroup}>
                       <label>Question Text</label>
@@ -228,8 +208,6 @@ export default function Step6QuizReview({
                 );
               }
 
-              const archetypeColors = q.archetype ? ARCHETYPE_COLORS[q.archetype] : null;
-
               return (
                 <div key={index} className={styles.questionCard}>
                   <div className={styles.questionHeader}>
@@ -238,19 +216,6 @@ export default function Step6QuizReview({
                       {q.question}
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      {/* Explanation toggle (v3.1) */}
-                      {q.explanation && (
-                        <Button
-                          variant="outline"
-                          size="xs"
-                          onClick={() =>
-                            setExpandedExplanation(expandedExplanation === index ? null : index)
-                          }
-                          style={{ color: expandedExplanation === index ? '#4C6EF5' : '#718096' }}
-                        >
-                          {expandedExplanation === index ? 'Hide' : 'Why?'}
-                        </Button>
-                      )}
                       <Button
                         variant="outline"
                         size="xs"
@@ -286,8 +251,8 @@ export default function Step6QuizReview({
                     ))}
                   </div>
 
-                  {/* Embedded Explanation (v3.1) */}
-                  {expandedExplanation === index && q.explanation && (
+                  {/* Embedded Explanation (Always Visible) */}
+                  {q.explanation && (
                     <div
                       style={{
                         marginTop: '12px',
@@ -351,26 +316,6 @@ export default function Step6QuizReview({
         ) : (
           <div className={styles.addQuestionForm}>
             <h3 className={styles.formTitle}>Add New Question</h3>
-
-            <div className={styles.formGroup}>
-              <label>Question Type</label>
-              <select
-                className={styles.typeSelect}
-                value={newQuestion.type}
-                onChange={(e) => {
-                  const type = e.target.value;
-                  setNewQuestion({
-                    ...newQuestion,
-                    type,
-                    options: type === 'true_false' ? ['True', 'False'] : ['', '', '', ''],
-                    answer: 0,
-                  });
-                }}
-              >
-                <option value="multiple_choice">Multiple Choice</option>
-                <option value="true_false">True / False</option>
-              </select>
-            </div>
 
             <div className={styles.formGroup}>
               <label>Question Text</label>

@@ -51,9 +51,7 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
               />
             </div>
             <span style={{ color: '#E53E3E', fontSize: '13px', lineHeight: '1.4' }}>
-              Questions generated may be fewer than requested if the material does not support the
-              full count. <br />
-              Estimated supported questions: 4–6
+              Adding more slides may reduce question quality. We recommend keeping slides concise.
             </span>
           </div>
         </div>
@@ -68,20 +66,6 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
               { label: 'Easy', value: 'easy' },
               { label: 'Medium', value: 'medium' },
               { label: 'Hard', value: 'hard' },
-            ]}
-          />
-        </div>
-
-        {/* Question Type */}
-        <div className={styles.formRow}>
-          <label className={styles.formLabel}>Question Type:</label>
-          <Select
-            value={data.quizQuestionType}
-            onChange={(val) => onChange('quizQuestionType', val)}
-            options={[
-              { label: 'Multiple Choice', value: 'multiple_choice' },
-              { label: 'True / False', value: 'true_false' },
-              { label: 'Mixed', value: 'mixed' },
             ]}
           />
         </div>
@@ -152,41 +136,19 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
 
         {/* Attempts */}
         <div className={styles.formRow}>
-          <label
-            className={styles.formLabel}
-            style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
-          >
-            Attempts
-            <label className={styles.switch}>
-              <input
-                type="checkbox"
-                checked={data.quizAttempts === 'unlimited'}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    onChange('quizAttempts', 'unlimited');
-                  } else {
-                    onChange('quizAttempts', '1');
-                  }
-                }}
-              />
-              <span className={styles.slider}></span>
-            </label>
-            <span className={styles.toggleLabel}>Unlimited</span>
-          </label>
+          <label className={styles.formLabel}>Attempts:</label>
           <div>
-            {data.quizAttempts !== 'unlimited' && (
-              <div className={styles.attemptsInputContainer}>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  className={styles.attemptsInput}
-                  value={data.quizAttempts}
-                  onChange={(e) => onChange('quizAttempts', e.target.value)}
-                />
-                <span className={styles.attemptsLabel}>allowable attempts</span>
-              </div>
-            )}
+            <div className={styles.attemptsInputContainer}>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                className={styles.attemptsInput}
+                value={data.quizAttempts !== 'unlimited' ? data.quizAttempts : ''}
+                onChange={(e) => onChange('quizAttempts', e.target.value)}
+              />
+              <span className={styles.attemptsLabel}>allowable attempts</span>
+            </div>
           </div>
         </div>
       </div>

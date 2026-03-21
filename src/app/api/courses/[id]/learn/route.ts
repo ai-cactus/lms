@@ -19,6 +19,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     const course = await prisma.course.findUnique({
       where: { id: courseId },
       include: {
+        creator: {
+          select: { organizationId: true },
+        },
         lessons: {
           orderBy: { order: 'asc' },
           include: {
@@ -59,13 +62,27 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     // If no enrollment found for worker, and admin session exists, check admin
     if (!enrollment && adminSession?.user?.id) {
+      const adminUser = await prisma.user.findUnique({
+        where: { id: adminSession.user.id },
+        select: { id: true, role: true, organizationId: true },
+      });
+
       const adminEnroll = await prisma.enrollment.findFirst({
         where: { courseId: courseId, userId: adminSession.user.id },
         include: { quizAttempts: true },
       });
-      if (adminEnroll || adminSession.user.role === 'admin') {
+
+      const isSameOrg = Boolean(
+        adminUser?.organizationId &&
+        course.creator?.organizationId &&
+        adminUser.organizationId === course.creator.organizationId
+      );
+
+      if (adminEnroll || (adminUser?.role === 'admin' && isSameOrg)) {
         activeUserId = adminSession.user.id;
-        activeRole = adminSession.user.role;
+        // Cast the role to 'admin' | 'worker' | undefined based on session type if necessary
+        // Or cast as `any` or exactly `typeof session.user.role`
+        activeRole = (adminUser?.role as typeof activeRole) || adminSession.user.role;
         enrollment = adminEnroll;
       }
     }
@@ -109,12 +126,20 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
           passingScore: quizData.passingScore,
           allowedAttempts: quizData.allowedAttempts,
           timeLimit: quizData.timeLimit,
-          questions: quizData.questions.map((q) => ({
-            id: q.id,
-            text: q.text,
-            type: q.type,
-            options: Array.isArray(q.options) ? q.options : [],
-          })),
+          questions: quizData.questions.map((q) => {
+            const options = Array.isArray(q.options) ? [...q.options] : [];
+            // Fisher-Yates shuffle
+            for (let i = options.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [options[i], options[j]] = [options[j], options[i]];
+            }
+            return {
+              id: q.id,
+              text: q.text,
+              type: q.type,
+              options,
+            };
+          }),
         }
       : null;
 
@@ -122,7 +147,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     const user = activeUserId
       ? await prisma.user.findUnique({
           where: { id: activeUserId },
-          include: { profile: true },
+          include: { profile: true, organization: true },
         })
       : null;
 
@@ -240,6 +265,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       user: {
         name: user?.profile?.fullName || user?.email || '',
         role: user?.role || 'worker',
+        organizationName: user?.organization?.name || undefined,
+        email: user?.email || '',
+        jobTitle: user?.profile?.jobTitle || '',
+
       },
     });
   } catch (error) {

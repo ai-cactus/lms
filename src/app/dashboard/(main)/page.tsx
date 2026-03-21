@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import DashboardCharts from '@/components/dashboard/DashboardCharts';
 import MyCoursesTable from '@/components/dashboard/MyCoursesTable';
 import Link from 'next/link';
-import { getCourses, getDashboardStats } from '@/app/actions/course';
+import { getDashboardData } from '@/app/actions/course';
 import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
 
 export default async function DashboardPage() {
@@ -16,8 +16,8 @@ export default async function DashboardPage() {
   const role = session.user.role;
   if (role === 'worker') redirect('/worker');
 
-  // Fetch courses and stats in parallel
-  const [courses, stats] = await Promise.all([getCourses(), getDashboardStats()]);
+  // ⚡ Bolt: Fetch dashboard data in a single query to prevent redundant DB calls
+  const { courses, stats } = await getDashboardData();
 
   // Calculate real metrics from courses data
   const totalCourses = stats?.totalCourses || 0;
