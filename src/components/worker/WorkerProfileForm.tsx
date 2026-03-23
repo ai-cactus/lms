@@ -43,8 +43,16 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
 
   // DEBUG: Client-side mount check
   React.useEffect(() => {
-    setFormData({ first_name: user.first_name, last_name: user.last_name, jobTitle: user.jobTitle || '' });
-    setBaseData({ first_name: user.first_name, last_name: user.last_name, jobTitle: user.jobTitle || '' });
+    setFormData({
+      first_name: user.first_name,
+      last_name: user.last_name,
+      jobTitle: user.jobTitle || '',
+    });
+    setBaseData({
+      first_name: user.first_name,
+      last_name: user.last_name,
+      jobTitle: user.jobTitle || '',
+    });
     setAvatarUrl(user.avatarUrl || null);
     setBaseAvatarUrl(user.avatarUrl || null);
   }, [user]);

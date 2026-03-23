@@ -126,7 +126,7 @@ export default function AssignUserCourseModal({
       isOpen={isOpen}
       onClose={onClose}
       size="md"
-      title={userName ? `Assign Course to ${userName}` : "Assign Course"}
+      title={userName ? `Assign Course to ${userName}` : 'Assign Course'}
       description={`Select a course to assign.`}
     >
       <div className={styles.inputGroup}>
@@ -269,7 +269,12 @@ export default function AssignUserCourseModal({
 
         <Button
           onClick={handleAssign}
-          disabled={!selectedCourseId || isLoading || isFetching || (emails.length === 0 && !inputValue.trim())}
+          disabled={
+            !selectedCourseId ||
+            isLoading ||
+            isFetching ||
+            (emails.length === 0 && !inputValue.trim())
+          }
           loading={isLoading}
           className={styles.assignButton}
         >

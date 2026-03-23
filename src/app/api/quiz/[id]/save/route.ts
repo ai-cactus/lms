@@ -10,7 +10,7 @@ const saveQuizSchema = z.object({
     z.object({
       questionId: z.string(),
       selectedAnswer: z.string(),
-    })
+    }),
   ),
 });
 

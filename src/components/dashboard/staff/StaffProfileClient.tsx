@@ -473,7 +473,9 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                         Retake
                       </Button>
                     )}
-                    {(enrollment.status === 'completed' || enrollment.progress === 100 || (enrollment.quizAttempts && enrollment.quizAttempts.length > 0)) && (
+                    {(enrollment.status === 'completed' ||
+                      enrollment.progress === 100 ||
+                      (enrollment.quizAttempts && enrollment.quizAttempts.length > 0)) && (
                       <Button
                         variant="outline"
                         size="xs"
