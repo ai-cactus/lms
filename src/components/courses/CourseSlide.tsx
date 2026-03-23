@@ -99,7 +99,7 @@ export default function CourseSlide({
                 (lesson.content || '')
                   .replace(/&nbsp;/g, ' ')
                   .replace(/<br\s*\/?>/gi, ' ')
-                  .replace(/\s+/g, ' ')
+                  .replace(/\s+/g, ' '),
               ),
             }}
           />

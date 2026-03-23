@@ -35,7 +35,9 @@ describe('calculateHash', () => {
     // A buffer with arbitrary binary data
     const binaryData = Buffer.from([0x00, 0xff, 0x88, 0x44, 0x22, 0x11, 0x01, 0x80]);
     const hash1 = await calculateHash(binaryData);
-    const hash2 = await calculateHash(Buffer.from([0x00, 0xff, 0x88, 0x44, 0x22, 0x11, 0x01, 0x80]));
+    const hash2 = await calculateHash(
+      Buffer.from([0x00, 0xff, 0x88, 0x44, 0x22, 0x11, 0x01, 0x80]),
+    );
 
     expect(hash1).toHaveLength(64); // SHA-256 hex digest is 64 characters long
     expect(hash1).toMatch(/^[a-f0-9]+$/); // Should be a valid hex string

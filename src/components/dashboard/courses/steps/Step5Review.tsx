@@ -455,7 +455,9 @@ export default function Step5Review({
   const displayContent =
     viewMode === 'slides'
       ? currentModule?.slideContent || currentModule?.content || ''
-      : (generatedContent?.rawArticleMarkdown ? articleMarkdownToHtml(generatedContent.rawArticleMarkdown) : currentModule?.content || '');
+      : generatedContent?.rawArticleMarkdown
+        ? articleMarkdownToHtml(generatedContent.rawArticleMarkdown)
+        : currentModule?.content || '';
 
   return (
     <div className={styles.playerContainer}>

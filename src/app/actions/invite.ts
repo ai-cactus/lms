@@ -65,7 +65,7 @@ export async function createInvites(
       invitedBy?: string;
       status: string;
     }[] = [];
-    const newInvitesMap = new Map<string, typeof newInvitesData[0]>();
+    const newInvitesMap = new Map<string, (typeof newInvitesData)[0]>();
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
