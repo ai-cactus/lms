@@ -1,27 +1,71 @@
-name: Deploy → Production
+name: Deploy to Production
 
 on:
   push:
     branches:
       - main
 
+# Cancel any in-progress deployment for the same branch to avoid race conditions
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
 jobs:
   deploy:
-    name: SSH Deploy to Production
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          GH_PAT: ${{ secrets.GH_PAT_READ }}
+          GITHUB_REPO: ${{ github.repository }}
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: GH_PAT,GITHUB_REPO
           script_stop: true
-          # GH_PAT_READ is passed as an env var into the remote shell session.
-          # The deploy script uses it inline for git fetch and discards it.
-          envs: GH_PAT_READ
           script: |
-            export GH_PAT_READ="${{ secrets.GH_PAT_READ }}"
-            bash /home/deploy/apps/lms-production/deploy-production.sh
+            set -euo pipefail
+
+            APP_DIR="/home/deploy/apps/lms-production"
+            BRANCH="main"
+
+            echo "==> [1/7] Updating source code..."
+            cd "$APP_DIR"
+
+            # Inject PAT into remote URL for authenticated pull.
+            # Reset URL immediately after so the token is never persisted on disk.
+            git remote set-url origin "https://x-token:${GH_PAT}@github.com/${GITHUB_REPO}.git"
+            git fetch origin
+            git reset --hard "origin/${BRANCH}"
+            git remote set-url origin "https://github.com/${GITHUB_REPO}.git"
+
+            echo "==> [2/7] Installing dependencies..."
+            npm ci
+
+            echo "==> [3/7] Generating Prisma client..."
+            npx prisma generate
+
+            echo "==> [4/7] Baselining existing database (no-op if already done)..."
+            # On first deploy, the DB already has all tables (via db push) but no
+            # migration history. This marks the 0_init migration as applied without
+            # re-running the SQL, so migrate deploy sees a clean state.
+            # On subsequent deploys, this is a safe no-op (already tracked).
+            npx prisma migrate resolve --applied 0_init 2>/dev/null || true
+
+            echo "==> [5/7] Running database migrations..."
+            # Only applies migrations that are not yet applied — safe and idempotent.
+            npx prisma migrate deploy
+
+            echo "==> [6/7] Building application..."
+            npm run build
+
+            echo "==> [7/7] Reloading PM2 (zero-downtime rolling reload)..."
+            pm2 reload lms-production --update-env
+
+            echo ""
+            echo "✅ Production deployment complete."
