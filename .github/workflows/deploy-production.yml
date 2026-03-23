@@ -45,7 +45,9 @@ jobs:
             git remote set-url origin "https://github.com/${GITHUB_REPO}.git"
 
             echo "==> [2/7] Installing dependencies..."
-            npm ci
+            # --legacy-peer-deps is required due to transitive peer conflicts
+            # between nodemailer@8 and next-auth@5 beta (harmless at runtime).
+            npm ci --legacy-peer-deps
 
             echo "==> [3/7] Generating Prisma client..."
             npx prisma generate
