@@ -34,7 +34,7 @@ jobs:
             APP_DIR="/home/deploy/apps/lms-staging"
             BRANCH="staging"
 
-            echo "==> [1/7] Updating source code..."
+            echo "==> [1/6] Updating source code..."
             cd "$APP_DIR"
 
             # Inject PAT into remote URL for authenticated pull.
@@ -44,50 +44,27 @@ jobs:
             git reset --hard "origin/${BRANCH}"
             git remote set-url origin "https://github.com/${GITHUB_REPO}.git"
 
-            echo "==> [2/7] Installing dependencies..."
-            # --legacy-peer-deps is required due to transitive peer conflicts
-            # between nodemailer@8 and next-auth@5 beta (harmless at runtime).
+            echo "==> [2/6] Installing dependencies..."
+            # --legacy-peer-deps: resolves transitive conflict between nodemailer@8
+            # and next-auth@5 beta (peer expects ^7). Harmless at runtime.
             npm ci --legacy-peer-deps
 
-            echo "==> [3/7] Generating Prisma client..."
+            echo "==> [3/6] Generating Prisma client..."
             npx prisma generate
 
-            echo "==> [4/6] Checking migration baseline..."
-            # DATABASE_URL lives in .env — the shell doesn't auto-source it.
-            # Extract it explicitly before using it in psql.
-            DATABASE_URL=$(grep -E '^DATABASE_URL=' .env | head -1 | cut -d'=' -f2-)
-            # Strip surrounding quotes if present (e.g. DATABASE_URL="postgres://...")
-            DATABASE_URL=$(echo "$DATABASE_URL" | sed 's/^"|"$//g' | sed "s/^\'|\'$//g")
-
-            # For databases that previously used `prisma db push`, the tables
-            # exist but there is no migration history. We detect this by checking
-            # if the User table exists AND _prisma_migrations does not. If so,
-            # we mark 0_init as applied so migrate deploy doesn't try to re-run it.
-            # For brand-new empty databases, we skip this entirely so migrate deploy
-            # actually runs the 0_init SQL and creates all tables.
-            USER_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc \
-              "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='User')" \
-              2>/dev/null || echo "false")
-
-            MIGRATIONS_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc \
-              "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='_prisma_migrations')" \
-              2>/dev/null || echo "false")
-
-            if [ "$USER_TABLE_EXISTS" = "t" ] && [ "$MIGRATIONS_TABLE_EXISTS" = "f" ]; then
-              echo "  → Existing db-push database detected — baselining 0_init migration..."
-              npx prisma migrate resolve --applied 0_init
-            else
-              echo "  → Fresh database or already baselined — skipping resolve step."
-            fi
-
-            echo "==> [5/6] Running database migrations..."
-            # Only applies migrations not yet recorded — safe and idempotent.
+            echo "==> [4/6] Running database migrations..."
+            # prisma migrate deploy is safe and idempotent:
+            # - New DB: runs 0_init SQL and creates all tables.
+            # - Existing migrated DB: no-op, only applies pending migrations.
+            # NOTE: For an existing db-push database being migrated for the first time,
+            # run this ONCE manually on the VM before deploying:
+            #   cd /home/deploy/apps/lms-staging && npx prisma migrate resolve --applied 0_init
             npx prisma migrate deploy
 
-            echo "==> [6/6] Building application..."
+            echo "==> [5/6] Building application..."
             npm run build
 
-            echo "==> [7/7] Reloading PM2 (zero-downtime rolling reload)..."
+            echo "==> [6/6] Reloading PM2 (zero-downtime rolling reload)..."
             pm2 reload lms-staging --update-env
 
             echo ""
