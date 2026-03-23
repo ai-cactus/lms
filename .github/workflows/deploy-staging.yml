@@ -53,6 +53,12 @@ jobs:
             npx prisma generate
 
             echo "==> [4/6] Checking migration baseline..."
+            # DATABASE_URL lives in .env — the shell doesn't auto-source it.
+            # Extract it explicitly before using it in psql.
+            DATABASE_URL=$(grep -E '^DATABASE_URL=' .env | head -1 | cut -d'=' -f2-)
+            # Strip surrounding quotes if present (e.g. DATABASE_URL="postgres://...")
+            DATABASE_URL=$(echo "$DATABASE_URL" | sed 's/^"|"$//g' | sed "s/^\'|\'$//g")
+
             # For databases that previously used `prisma db push`, the tables
             # exist but there is no migration history. We detect this by checking
             # if the User table exists AND _prisma_migrations does not. If so,
