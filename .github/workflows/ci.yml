@@ -112,11 +112,22 @@ jobs:
     needs: [lint, format, typecheck, test]
     env:
       # Dummy values sufficient for Next.js compilation.
-      # These are NOT production secrets.
+      # These are NOT production secrets — only used to satisfy module-level
+      # env guards during the static page data collection phase of the build.
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
       NEXTAUTH_SECRET: ci-build-secret-not-used-in-production
       NEXTAUTH_URL: http://localhost:3000
       AUTH_SECRET: ci-build-secret-not-used-in-production
+      # Stripe key must start with sk_test_ or sk_live_ to pass SDK validation
+      STRIPE_SECRET_KEY: sk_test_ci_dummy_key_not_real_000000000000
+      STRIPE_WEBHOOK_SECRET: whsec_ci_dummy_not_real
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_dummy_not_real
+      # SMTP — email.ts uses || fallbacks so these just prevent undefined warnings
+      SMTP_USER: ci@example.com
+      SMTP_PASSWORD: ci_dummy_password
+      SMTP_HOST: smtp.example.com
+      SMTP_PORT: "465"
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
 
     steps:
       - uses: actions/checkout@v4
