@@ -52,18 +52,33 @@ jobs:
             echo "==> [3/7] Generating Prisma client..."
             npx prisma generate
 
-            echo "==> [4/7] Baselining existing database (no-op if already done)..."
-            # On first deploy, the DB already has all tables (via db push) but no
-            # migration history. This marks the 0_init migration as applied without
-            # re-running the SQL, so migrate deploy sees a clean state.
-            # On subsequent deploys, this is a safe no-op (already tracked).
-            npx prisma migrate resolve --applied 0_init 2>/dev/null || true
+            echo "==> [4/6] Checking migration baseline..."
+            # For databases that previously used `prisma db push`, the tables
+            # exist but there is no migration history. We detect this by checking
+            # if the User table exists AND _prisma_migrations does not. If so,
+            # we mark 0_init as applied so migrate deploy doesn't try to re-run it.
+            # For brand-new empty databases, we skip this entirely so migrate deploy
+            # actually runs the 0_init SQL and creates all tables.
+            USER_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc \
+              "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='User')" \
+              2>/dev/null || echo "false")
 
-            echo "==> [5/7] Running database migrations..."
-            # Only applies migrations that are not yet applied — safe and idempotent.
+            MIGRATIONS_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc \
+              "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='_prisma_migrations')" \
+              2>/dev/null || echo "false")
+
+            if [ "$USER_TABLE_EXISTS" = "t" ] && [ "$MIGRATIONS_TABLE_EXISTS" = "f" ]; then
+              echo "  → Existing db-push database detected — baselining 0_init migration..."
+              npx prisma migrate resolve --applied 0_init
+            else
+              echo "  → Fresh database or already baselined — skipping resolve step."
+            fi
+
+            echo "==> [5/6] Running database migrations..."
+            # Only applies migrations not yet recorded — safe and idempotent.
             npx prisma migrate deploy
 
-            echo "==> [6/7] Building application..."
+            echo "==> [6/6] Building application..."
             npm run build
 
             echo "==> [7/7] Reloading PM2 (zero-downtime rolling reload)..."
