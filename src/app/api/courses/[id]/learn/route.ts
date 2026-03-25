@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       const isSameOrg = Boolean(
         adminUser?.organizationId &&
         course.creator?.organizationId &&
-        adminUser.organizationId === course.creator.organizationId
+        adminUser.organizationId === course.creator.organizationId,
       );
 
       if (adminEnroll || (adminUser?.role === 'admin' && isSameOrg)) {
@@ -268,7 +268,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         organizationName: user?.organization?.name || undefined,
         email: user?.email || '',
         jobTitle: user?.profile?.jobTitle || '',
-
       },
     });
   } catch (error) {

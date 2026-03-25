@@ -1,27 +1,71 @@
-name: Deploy → Staging
+name: Deploy to Staging
 
 on:
   push:
     branches:
       - staging
 
+# Cancel any in-progress deployment for the same branch to avoid race conditions
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
 jobs:
   deploy:
-    name: SSH Deploy to Staging
+    name: Deploy to Staging
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          GH_PAT: ${{ secrets.GH_PAT_READ }}
+          GITHUB_REPO: ${{ github.repository }}
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: GH_PAT,GITHUB_REPO
           script_stop: true
-          # GH_PAT_READ is passed as an env var into the remote shell session.
-          # The deploy script uses it inline for git fetch and discards it.
-          envs: GH_PAT_READ
           script: |
-            export GH_PAT_READ="${{ secrets.GH_PAT_READ }}"
-            bash /home/deploy/apps/lms-staging/deploy-staging.sh
+            set -euo pipefail
+
+            APP_DIR="/home/deploy/apps/lms-staging"
+            BRANCH="staging"
+
+            echo "==> [1/6] Updating source code..."
+            cd "$APP_DIR"
+
+            # Inject PAT into remote URL for authenticated pull.
+            # Reset URL immediately after so the token is never persisted on disk.
+            git remote set-url origin "https://x-token:${GH_PAT}@github.com/${GITHUB_REPO}.git"
+            git fetch origin
+            git reset --hard "origin/${BRANCH}"
+            git remote set-url origin "https://github.com/${GITHUB_REPO}.git"
+
+            echo "==> [2/6] Installing dependencies..."
+            # --legacy-peer-deps: resolves transitive conflict between nodemailer@8
+            # and next-auth@5 beta (peer expects ^7). Harmless at runtime.
+            npm ci --legacy-peer-deps
+
+            echo "==> [3/6] Generating Prisma client..."
+            npx prisma generate
+
+            echo "==> [4/6] Running database migrations..."
+            # prisma migrate deploy is safe and idempotent:
+            # - New DB: runs 0_init SQL and creates all tables.
+            # - Existing migrated DB: no-op, only applies pending migrations.
+            # NOTE: For an existing db-push database being migrated for the first time,
+            # run this ONCE manually on the VM before deploying:
+            #   cd /home/deploy/apps/lms-staging && npx prisma migrate resolve --applied 0_init
+            npx prisma migrate deploy
+
+            echo "==> [5/6] Building application..."
+            npm run build
+
+            echo "==> [6/6] Reloading PM2 (zero-downtime rolling reload)..."
+            pm2 reload lms-staging --update-env
+
+            echo ""
+            echo "✅ Staging deployment complete."

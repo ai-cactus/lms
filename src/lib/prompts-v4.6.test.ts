@@ -48,7 +48,9 @@ describe('buildPromptA_v46', () => {
     //            -> Since JS replace only replaces the FIRST occurrence, it replaces the injected {{METADATA_JSON}}
     //               and leaves the original {{METADATA_JSON}} in the template untouched!
 
-    expect(result).toContain('DOCUMENT TEXT:\nSome text with {{DOCUMENT_TEXT}} and {"key": "{{DOCUMENT_TEXT}}"} inside.');
+    expect(result).toContain(
+      'DOCUMENT TEXT:\nSome text with {{DOCUMENT_TEXT}} and {"key": "{{DOCUMENT_TEXT}}"} inside.',
+    );
     expect(result).toContain('OPTIONAL METADATA JSON:\n{{METADATA_JSON}}');
   });
 
@@ -62,7 +64,8 @@ describe('buildPromptA_v46', () => {
   });
 
   it('should handle special characters like backticks, quotes, angle brackets correctly', () => {
-    const documentText = 'Here are some `backticks`, "quotes", \'single quotes\', <angle brackets>, \\n \\t newlines and tabs.';
+    const documentText =
+      'Here are some `backticks`, "quotes", \'single quotes\', <angle brackets>, \\n \\t newlines and tabs.';
     const metadataJson = '{"html": "<div>`test`</div>"}';
     const result = buildPromptA_v46(documentText, metadataJson);
 
