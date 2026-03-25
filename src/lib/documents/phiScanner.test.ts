@@ -33,34 +33,42 @@ describe('phiScanner', () => {
     expect(mockedCallVertexAI).toHaveBeenCalledTimes(1);
     expect(mockedCallVertexAI).toHaveBeenCalledWith(
       expect.stringContaining(text),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
   it('should return PHI findings if AI detects them', async () => {
     const text = 'Patient John Doe (DOB 01/01/1980) visited today.'.padEnd(50, ' ');
-    mockedCallVertexAI.mockResolvedValue(JSON.stringify({
-      hasPHI: true,
-      findings: [
-        { type: 'NAME', value: 'John Doe', confidence: 0.95 },
-        { type: 'DATE', value: '01/01/1980', confidence: 0.99 }
-      ]
-    }));
+    mockedCallVertexAI.mockResolvedValue(
+      JSON.stringify({
+        hasPHI: true,
+        findings: [
+          { type: 'NAME', value: 'John Doe', confidence: 0.95 },
+          { type: 'DATE', value: '01/01/1980', confidence: 0.99 },
+        ],
+      }),
+    );
 
     const result = await scanText(text);
 
     expect(result.hasPHI).toBe(true);
     expect(result.findings).toHaveLength(2);
     expect(result.findings[0]).toMatchObject({ type: 'NAME', value: 'John Doe', confidence: 0.95 });
-    expect(result.findings[1]).toMatchObject({ type: 'DATE', value: '01/01/1980', confidence: 0.99 });
+    expect(result.findings[1]).toMatchObject({
+      type: 'DATE',
+      value: '01/01/1980',
+      confidence: 0.99,
+    });
   });
 
   it('should return no PHI if AI returns no findings', async () => {
     const text = 'The weather is very nice today in New York City.'.padEnd(50, ' ');
-    mockedCallVertexAI.mockResolvedValue(JSON.stringify({
-      hasPHI: false,
-      findings: []
-    }));
+    mockedCallVertexAI.mockResolvedValue(
+      JSON.stringify({
+        hasPHI: false,
+        findings: [],
+      }),
+    );
 
     const result = await scanText(text);
 
@@ -69,7 +77,9 @@ describe('phiScanner', () => {
 
   it('should handle malformed JSON from AI gracefully', async () => {
     const text = 'Some longer text that should be scanned.'.padEnd(50, ' ');
-    mockedCallVertexAI.mockResolvedValue('I am an AI and I think this text has PHI, but I forgot to output JSON.');
+    mockedCallVertexAI.mockResolvedValue(
+      'I am an AI and I think this text has PHI, but I forgot to output JSON.',
+    );
 
     const result = await scanText(text);
 
@@ -103,12 +113,12 @@ describe('phiScanner', () => {
     expect(mockedCallVertexAI).toHaveBeenCalledTimes(1);
     expect(mockedCallVertexAI).toHaveBeenCalledWith(
       expect.stringContaining(expectedTruncatedText),
-      expect.any(Object)
+      expect.any(Object),
     );
     // Ensure the prompt does not contain the full text
     expect(mockedCallVertexAI).not.toHaveBeenCalledWith(
       expect.stringContaining(longText),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 });
