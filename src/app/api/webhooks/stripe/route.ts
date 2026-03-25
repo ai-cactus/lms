@@ -42,6 +42,8 @@ export async function POST(request: NextRequest) {
           where: { stripeSubscriptionId: sub.id },
           data: { status: 'canceled' },
         });
+        // Revoke auditor access when subscription is fully canceled
+        await handleAuditorAccessRevoke(sub);
         break;
       }
       case 'invoice.paid': {
@@ -89,30 +91,43 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const periodStart = priceItem?.current_period_start ?? sub.billing_cycle_anchor;
   const periodEnd = priceItem?.current_period_end ?? sub.billing_cycle_anchor;
 
-  await prisma.subscription.upsert({
-    where: { organizationId: organization.id },
-    create: {
-      organizationId: organization.id,
-      stripeSubscriptionId: sub.id,
-      stripePriceId,
-      plan: planKey,
-      billingCycle,
-      status: sub.status,
-      currentPeriodStart: new Date(periodStart * 1000),
-      currentPeriodEnd: new Date(periodEnd * 1000),
-      cancelAtPeriodEnd: sub.cancel_at_period_end,
-    },
-    update: {
-      stripeSubscriptionId: sub.id,
-      stripePriceId,
-      plan: planKey,
-      billingCycle,
-      status: sub.status,
-      currentPeriodStart: new Date(periodStart * 1000),
-      currentPeriodEnd: new Date(periodEnd * 1000),
-      cancelAtPeriodEnd: sub.cancel_at_period_end,
-    },
-  });
+  const hasAuditorAccess = sub.status === 'active' || sub.status === 'trialing';
+
+  // Upsert subscription record and grant/revoke auditor access atomically
+  await Promise.all([
+    prisma.subscription.upsert({
+      where: { organizationId: organization.id },
+      create: {
+        organizationId: organization.id,
+        stripeSubscriptionId: sub.id,
+        stripePriceId,
+        plan: planKey,
+        billingCycle,
+        status: sub.status,
+        currentPeriodStart: new Date(periodStart * 1000),
+        currentPeriodEnd: new Date(periodEnd * 1000),
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      },
+      update: {
+        stripeSubscriptionId: sub.id,
+        stripePriceId,
+        plan: planKey,
+        billingCycle,
+        status: sub.status,
+        currentPeriodStart: new Date(periodStart * 1000),
+        currentPeriodEnd: new Date(periodEnd * 1000),
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      },
+    }),
+    prisma.organization.update({
+      where: { id: organization.id },
+      data: { hasAuditorAccess },
+    }),
+  ]);
+
+  console.info(
+    `[Stripe Webhook] Organization ${organization.id} — subscription ${sub.id} status: ${sub.status}, hasAuditorAccess: ${hasAuditorAccess}`,
+  );
 }
 
 async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string) {
@@ -154,4 +169,26 @@ async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string)
       pdfUrl: inv.invoice_pdf ?? null,
     },
   });
+}
+
+async function handleAuditorAccessRevoke(sub: Stripe.Subscription) {
+  const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
+  const organization = await prisma.organization.findUnique({
+    where: { stripeCustomerId: customerId },
+    select: { id: true },
+  });
+
+  if (!organization) {
+    console.warn(`[Stripe Webhook] No organization found for customer: ${customerId}`);
+    return;
+  }
+
+  await prisma.organization.update({
+    where: { id: organization.id },
+    data: { hasAuditorAccess: false },
+  });
+
+  console.info(
+    `[Stripe Webhook] Organization ${organization.id} — auditor access revoked (subscription deleted)`,
+  );
 }
