@@ -50,7 +50,8 @@ export default function AttestationModal({
     }
   };
 
-  const isFormValid = signature.trim() !== '' && editedJobTitle.trim() !== '' && confirmed1 && confirmed2;
+  const isFormValid =
+    signature.trim() !== '' && editedJobTitle.trim() !== '' && confirmed1 && confirmed2;
   const effectiveDate = new Date().toLocaleDateString('en-US', {
     day: '2-digit',
     month: '2-digit',
@@ -78,7 +79,9 @@ export default function AttestationModal({
             value={signature}
             onChange={(e) => setSignature(e.target.value)}
           />
-          {userEmail && <div style={{ fontSize: 12, color: '#A0AEC0', marginTop: 4 }}>{userEmail}</div>}
+          {userEmail && (
+            <div style={{ fontSize: 12, color: '#A0AEC0', marginTop: 4 }}>{userEmail}</div>
+          )}
         </div>
 
         <div className={styles.fieldGroup}>

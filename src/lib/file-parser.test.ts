@@ -42,7 +42,7 @@ class MockFile {
   async arrayBuffer() {
     return this.buffer.buffer.slice(
       this.buffer.byteOffset,
-      this.buffer.byteOffset + this.buffer.byteLength
+      this.buffer.byteOffset + this.buffer.byteLength,
     );
   }
 }
@@ -92,7 +92,7 @@ describe('extractTextFromFile', () => {
     mockGetText.mockRejectedValueOnce(new Error(errorMessage));
 
     await expect(extractTextFromFile(mockFile as unknown as File)).rejects.toThrow(
-      `PDF Parsing Failed: ${errorMessage}`
+      `PDF Parsing Failed: ${errorMessage}`,
     );
   });
 
@@ -102,7 +102,7 @@ describe('extractTextFromFile', () => {
     });
 
     await expect(extractTextFromFile(mockFile as unknown as File)).rejects.toThrow(
-      'Unsupported file type. Please upload a PDF or DOCX file.'
+      'Unsupported file type. Please upload a PDF or DOCX file.',
     );
   });
 });

@@ -25,7 +25,7 @@ export default function ForgotPasswordPage() {
       } else {
         setError(result.error || 'Failed to send reset link');
       }
-    } catch (err) {
+    } catch {
       setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);

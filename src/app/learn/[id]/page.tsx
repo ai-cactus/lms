@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import DOMPurify from 'isomorphic-dompurify';
 import styles from '../../../components/courses/CoursePlayer.module.css';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 
@@ -66,13 +65,35 @@ interface EnrollmentData {
   }[];
 }
 
+interface QuizQuestionResult {
+  id: string;
+  text: string;
+  options: { id: string; text: string }[];
+  selectedAnswer: string;
+  correctAnswer: string;
+  explanation: string;
+}
+
+interface QuizResultsData {
+  passed: boolean;
+  score: number;
+  totalQuestions: number;
+  correctCount: number;
+  answered: number;
+  correct: number;
+  wrong: number;
+  time: number;
+  questions: QuizQuestionResult[];
+  attemptsUsed?: number;
+  allowedAttempts?: number | null;
+}
+
 interface UserData {
   name: string;
   role: string;
   organizationName?: string;
   email: string;
   jobTitle: string;
-
 }
 
 export default function LearnPage() {
@@ -100,26 +121,7 @@ export default function LearnPage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [timeLeft, setTimeLeft] = useState(0);
-  const [quizResults, setQuizResults] = useState<{
-    passed: boolean;
-    score: number;
-    totalQuestions: number;
-    correctCount: number;
-    answered: number;
-    correct: number;
-    wrong: number;
-    time: number;
-    questions: {
-      id: string;
-      text: string;
-      options: { id: string; text: string }[];
-      selectedAnswer: string;
-      correctAnswer: string;
-      explanation: string;
-    }[];
-    attemptsUsed?: number;
-    allowedAttempts?: number | null;
-  } | null>(null);
+  const [quizResults, setQuizResults] = useState<QuizResultsData | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Modal State
@@ -133,7 +135,7 @@ export default function LearnPage() {
   const [quizUnlocked, setQuizUnlocked] = useState(false);
 
   // Track if user just finished quiz in this session
-  const [justFinished, setJustFinished] = useState(false);
+  // (Removed unused justFinished state)
 
   const updateProgress = async (idx: number) => {
     if (!course || !enrollment) return;
@@ -182,9 +184,6 @@ export default function LearnPage() {
       const result = await res.json();
       setQuizResults(result);
       setQuizStep('review');
-      if (result.passed) {
-        setJustFinished(true);
-      }
     } catch (err) {
       console.error(err);
       alert('Failed to submit quiz');
@@ -331,17 +330,7 @@ export default function LearnPage() {
           course: CourseData;
           enrollment: EnrollmentData;
           user: UserData & { organizationName?: string };
-          quizResultsData?: {
-            passed: boolean;
-            score: number;
-            totalQuestions: number;
-            correctCount: number;
-            answered: number;
-            correct: number;
-            wrong: number;
-            time: number;
-            questions: unknown[];
-          };
+          quizResultsData?: QuizResultsData;
         };
 
         // Map lesson data to include moduleIndex
@@ -399,7 +388,7 @@ export default function LearnPage() {
             (hasQuizAttempt && !activeAttempt)) &&
           data.enrollment?.status !== 'in_progress'
         ) {
-          const resultsData = data.quizResultsData || {
+          const resultsData: QuizResultsData = data.quizResultsData || {
             passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
             score: data.enrollment.score || 0,
             totalQuestions: 0,
@@ -458,7 +447,7 @@ export default function LearnPage() {
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [isQuizActive, quizStep, timeLeft]);
+  }, [isQuizActive, quizStep, timeLeft, handleSubmitQuiz]);
 
   if (loading)
     return (
@@ -598,7 +587,6 @@ export default function LearnPage() {
                 userRole={userData?.role}
                 organizationName={userData?.organizationName}
                 onAttestSuccess={() => {
-                  setJustFinished(false);
                   setEnrollment((prev) => (prev ? { ...prev, status: 'attested' } : prev));
                 }}
                 onRetake={async () => {
@@ -887,7 +875,7 @@ export default function LearnPage() {
                             (lesson.content || '')
                               .replace(/&nbsp;/g, ' ')
                               .replace(/<br\s*\/?>/gi, ' ')
-                              .replace(/\s+/g, ' ')
+                              .replace(/\s+/g, ' '),
                           ),
                         }}
                       />

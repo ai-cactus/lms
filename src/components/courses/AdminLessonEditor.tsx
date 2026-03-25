@@ -163,7 +163,7 @@ export default function AdminLessonEditor({
               (content || '')
                 .replace(/&nbsp;/g, ' ')
                 .replace(/<br\s*\/?>/gi, ' ')
-                .replace(/\s+/g, ' ')
+                .replace(/\s+/g, ' '),
             ),
           }}
         />

@@ -5,7 +5,7 @@ import { getMappingSuggestions } from '@/app/actions/mapping';
 import MappingCard from './mapping-card';
 
 export default async function MappingPage({ params }: { params: { id: string } }) {
-  const session = await auth();
+  await auth();
   const { id } = await params;
 
   // We ideally need the text content.

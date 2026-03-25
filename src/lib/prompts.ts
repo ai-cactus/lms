@@ -37,8 +37,7 @@ function buildMetadataSection(documents: DocumentMeta[]): string {
   if (documents.length === 0) return 'METADATA:\nNo documents provided.';
   const entries = documents
     .map(
-      (d, i) =>
-        `  - docId: "${d.docId}", label: "${d.label}"${d.hint ? `, hint: "${d.hint}"` : ''}`,
+      (d) => `  - docId: "${d.docId}", label: "${d.label}"${d.hint ? `, hint: "${d.hint}"` : ''}`,
     )
     .join('\n');
   return `METADATA:\nSource Documents:\n${entries}`;

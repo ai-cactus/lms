@@ -3,7 +3,6 @@
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
-import { revalidatePath } from 'next/cache';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {

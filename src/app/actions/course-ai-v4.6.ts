@@ -152,7 +152,7 @@ export async function generateArticleV46(
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
-  } catch (error) {
+  } catch {
     console.error(
       '[v4.6] Failed to parse JSON from Vertex AI (ArticleMeta). Raw Response:',
       rawResponse,
@@ -203,7 +203,7 @@ async function generateSlidesV46(
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
-  } catch (error) {
+  } catch {
     console.error(
       '[v4.6] Failed to parse JSON from Vertex AI (Slides). Raw Response:',
       rawResponse,
@@ -256,7 +256,7 @@ async function generateQuizV46(
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
-  } catch (error) {
+  } catch {
     console.error('[v4.6] Failed to parse JSON from Vertex AI (Quiz). Raw Response:', rawResponse);
     throw new Error('Failed to parse Quiz JSON from Vertex AI response.');
   }
@@ -296,7 +296,7 @@ async function judgeQuizV46(
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
-  } catch (error) {
+  } catch {
     console.error('[v4.6] Failed to parse JSON from Vertex AI (Judge). Raw Response:', rawResponse);
     throw new Error('Failed to parse Judge JSON from Vertex AI response.');
   }
@@ -348,7 +348,7 @@ async function regenFlaggedV46(
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
-  } catch (error) {
+  } catch {
     console.error('[v4.6] Failed to parse JSON from Vertex AI (Regen). Raw Response:', rawResponse);
     throw new Error('Failed to parse Regen JSON from Vertex AI response.');
   }

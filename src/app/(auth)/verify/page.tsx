@@ -41,7 +41,7 @@ function VerifyContent() {
       } else {
         router.push(`/verify-email?error=${data.error}`);
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsVerifying(false);

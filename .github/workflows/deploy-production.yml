@@ -1,18 +1,18 @@
-name: Deploy to Staging
+name: Deploy to Production
 
 on:
   push:
     branches:
-      - staging
+      - main
 
 # Cancel any in-progress deployment for the same branch to avoid race conditions
 concurrency:
-  group: deploy-staging
+  group: deploy-production
   cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Deploy to Staging
+    name: Deploy to Production
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -31,8 +31,8 @@ jobs:
           script: |
             set -euo pipefail
 
-            APP_DIR="/home/deploy/apps/lms-staging"
-            BRANCH="staging"
+            APP_DIR="/home/deploy/apps/lms-production"
+            BRANCH="main"
 
             echo "==> [1/6] Updating source code..."
             cd "$APP_DIR"
@@ -58,14 +58,14 @@ jobs:
             # - Existing migrated DB: no-op, only applies pending migrations.
             # NOTE: For an existing db-push database being migrated for the first time,
             # run this ONCE manually on the VM before deploying:
-            #   cd /home/deploy/apps/lms-staging && npx prisma migrate resolve --applied 0_init
+            #   cd /home/deploy/apps/lms-production && npx prisma migrate resolve --applied 0_init
             npx prisma migrate deploy
 
             echo "==> [5/6] Building application..."
             npm run build
 
             echo "==> [6/6] Reloading PM2 (zero-downtime rolling reload)..."
-            pm2 reload lms-staging --update-env
+            pm2 reload lms-production --update-env
 
             echo ""
-            echo "✅ Staging deployment complete."
+            echo "✅ Production deployment complete."

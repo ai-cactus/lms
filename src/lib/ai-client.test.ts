@@ -11,7 +11,6 @@ describe('ai-client utilities', () => {
       expect(estimateTokens('abcdefgh')).toBe(2);
     });
 
-
     it('should return exactly 1 token for boundary conditions (1-4 characters)', () => {
       expect(estimateTokens('a')).toBe(1);
       expect(estimateTokens('ab')).toBe(1);
@@ -193,7 +192,6 @@ describe('ai-client utilities', () => {
         json: async () => mockResponse,
       } as any);
 
-
       const result = await callVertexAI('test prompt');
       expect(result).toBe('AI response');
       expect(global.fetch).toHaveBeenCalledWith(
@@ -224,7 +222,6 @@ describe('ai-client utilities', () => {
           json: async () => mockSuccessResponse,
         } as any);
 
-
       const callPromise = callVertexAI('test');
 
       // Advance timers to trigger retry
@@ -251,7 +248,6 @@ describe('ai-client utilities', () => {
           ok: true,
           json: async () => mockSuccessResponse,
         } as any);
-
 
       const callPromise = callVertexAI('test');
       await vi.runAllTimersAsync();
@@ -291,9 +287,8 @@ describe('ai-client utilities', () => {
 
       const callPromise = callVertexAI('test').catch((e) => e);
 
-
       // Run all retries while catching the error to prevent unhandled rejection
-      const errorPromise = callPromise.catch((e) => e);
+      callPromise.catch((e) => e);
 
       for (let i = 0; i < 5; i++) {
         await vi.runAllTimersAsync();
@@ -302,9 +297,7 @@ describe('ai-client utilities', () => {
       const error = await callPromise;
 
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe(
-        'Vertex AI 429 Too Many Requests: Rate limit exceeded',
-      );
+      expect((error as Error).message).toBe('Vertex AI 429 Too Many Requests: Rate limit exceeded');
       expect(global.fetch).toHaveBeenCalledTimes(5);
     });
 
@@ -338,7 +331,6 @@ describe('ai-client utilities', () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-
     it('should throw on non-retryable errors (e.g., 400)', async () => {
       vi.mocked(global.fetch).mockResolvedValue({
         status: 400,
@@ -347,7 +339,6 @@ describe('ai-client utilities', () => {
         ok: false,
       } as any);
 
-
       await expect(callVertexAI('test')).rejects.toThrow(
         'Vertex AI 400 Bad Request: Invalid prompt',
       );
@@ -355,9 +346,7 @@ describe('ai-client utilities', () => {
     });
 
     it('should throw immediately on non-fetch-failed exceptions', async () => {
-      vi.mocked(global.fetch).mockRejectedValueOnce(
-        new Error('SyntaxError: Unexpected token'),
-      );
+      vi.mocked(global.fetch).mockRejectedValueOnce(new Error('SyntaxError: Unexpected token'));
 
       await expect(callVertexAI('test')).rejects.toThrow('SyntaxError: Unexpected token');
       expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -433,6 +422,5 @@ describe('ai-client utilities', () => {
       expect(fetchBody.generationConfig.maxOutputTokens).toBe(1000);
       expect(fetchBody.generationConfig.temperature).toBe(0.2);
     });
-
   });
 });
