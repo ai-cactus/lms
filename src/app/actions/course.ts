@@ -297,8 +297,8 @@ export async function getDashboardData() {
     (e) => e.status === 'completed' || e.status === 'attested',
   ).length;
   const inProgressCount = enrollments.filter((e) => e.status === 'in_progress').length;
-  const enrolledCount = enrollments.filter((e) => e.status === 'enrolled').length;
   const totalEnrollments = enrollments.length;
+  const notStartedCount = totalEnrollments - completedCount - inProgressCount;
 
   return {
     courses,
@@ -312,7 +312,8 @@ export async function getDashboardData() {
         completed: totalEnrollments > 0 ? Math.round((completedCount / totalEnrollments) * 100) : 0,
         inProgress:
           totalEnrollments > 0 ? Math.round((inProgressCount / totalEnrollments) * 100) : 0,
-        notStarted: totalEnrollments > 0 ? Math.round((enrolledCount / totalEnrollments) * 100) : 0,
+        notStarted:
+          totalEnrollments > 0 ? Math.round((notStartedCount / totalEnrollments) * 100) : 0,
         totalStaff: totalStaffAssigned, // Add total staff for donut label
       },
     },
@@ -935,6 +936,13 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
 
   if (lockedEnrollment.status !== 'locked') {
     throw new Error('Enrollment is not locked');
+  }
+
+  const existingRetake = await prisma.enrollment.findFirst({
+    where: { retakeOf: enrollmentId, status: 'enrolled' },
+  });
+  if (existingRetake) {
+    throw new Error('An active retake already exists for this enrollment');
   }
 
   const retakeEnrollment = await prisma.enrollment.create({

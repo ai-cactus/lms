@@ -150,6 +150,7 @@ export async function updateProfile(data: {
   first_name: string;
   last_name: string;
   company_name?: string;
+  jobTitle?: string;
   avatarUrl?: string; // New field
 }) {
   console.log('[UpdateProfile Action] Called with data:', data);
@@ -179,6 +180,7 @@ export async function updateProfile(data: {
         lastName: data.last_name,
         fullName: fullName,
         companyName: data.company_name,
+        jobTitle: data.jobTitle,
         email: session.user.email,
         avatarUrl: data.avatarUrl,
       },
@@ -189,6 +191,7 @@ export async function updateProfile(data: {
         lastName: data.last_name,
         fullName: fullName,
         companyName: data.company_name,
+        jobTitle: data.jobTitle,
         avatarUrl: data.avatarUrl,
       },
     });

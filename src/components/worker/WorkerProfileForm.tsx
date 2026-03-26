@@ -65,6 +65,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   const isDirty =
     formData.first_name !== baseData.first_name ||
     formData.last_name !== baseData.last_name ||
+    formData.jobTitle !== baseData.jobTitle ||
     avatarUrl !== baseAvatarUrl;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,6 +115,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       const result = await updateProfile({
         first_name: formData.first_name,
         last_name: formData.last_name,
+        jobTitle: formData.jobTitle || undefined,
         avatarUrl: avatarUrl || undefined,
         // Worker cannot update company name, so we don't send it or send empty
       });
