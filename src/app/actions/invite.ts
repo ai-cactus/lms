@@ -1,6 +1,7 @@
 'use server';
 
 import { PrismaClient } from '@prisma/client';
+import { revalidatePath } from 'next/cache';
 import { sendInviteEmail } from '@/lib/email';
 
 const prisma = new PrismaClient();
@@ -157,6 +158,7 @@ export async function createInvites(
       }
     });
 
+    revalidatePath('/dashboard/staff');
     return { success: true, results };
   } catch (error) {
     console.error('Error creating invites:', error);

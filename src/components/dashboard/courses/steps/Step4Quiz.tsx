@@ -51,7 +51,8 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
               />
             </div>
             <span style={{ color: '#E53E3E', fontSize: '13px', lineHeight: '1.4' }}>
-              Adding more slides may reduce question quality. We recommend keeping slides concise.
+              Adding more questions may reduce question quality. We recommend keeping questions
+              concise.
             </span>
           </div>
         </div>
