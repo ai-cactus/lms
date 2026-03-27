@@ -253,3 +253,74 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
     return null;
   }
 }
+
+export async function removeStaff(userId: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const admin = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true, organizationId: true },
+  });
+
+  if (!admin || admin.role !== 'admin') {
+    throw new Error('Insufficient permissions');
+  }
+
+  const staffUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { organizationId: true, email: true },
+  });
+
+  if (!staffUser) {
+    throw new Error('User not found');
+  }
+
+  if (staffUser.organizationId !== admin.organizationId) {
+    throw new Error('User does not belong to your organization');
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { organizationId: null },
+  });
+
+  revalidatePath('/dashboard/staff');
+  return { success: true };
+}
+
+export async function revokeInvite(inviteId: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const admin = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true, organizationId: true },
+  });
+
+  if (!admin || admin.role !== 'admin') {
+    throw new Error('Insufficient permissions');
+  }
+
+  const invite = await prisma.invite.findUnique({
+    where: { id: inviteId },
+    select: { organizationId: true },
+  });
+
+  if (!invite) {
+    throw new Error('Invite not found');
+  }
+
+  if (invite.organizationId !== admin.organizationId) {
+    throw new Error('Invite does not belong to your organization');
+  }
+
+  await prisma.invite.delete({ where: { id: inviteId } });
+
+  revalidatePath('/dashboard/staff');
+  return { success: true };
+}

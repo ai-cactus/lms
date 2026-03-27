@@ -17,6 +17,30 @@ import { analyzeStoredDocument } from '@/app/actions/course-ai';
 import { getDocuments, uploadDocument } from '@/app/actions/documents';
 import { CourseWizardData, GeneratedCourse, CourseDocument } from '@/types/course';
 
+const INITIAL_FORM_DATA: CourseWizardData = {
+  title: 'HIPAA Privacy and Security Training',
+  description:
+    'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
+  difficulty: 'moderate',
+  duration: '',
+  notesCount: '10',
+  objectives: [
+    'To train staff on HIPAA compliance in behavioral health.',
+    'Learn how to handle PHI securely',
+    'Understand HIPAA privacy rules',
+  ],
+  quizTitle: 'HIPAA Privacy and Security Quiz',
+  quizQuestionCount: '15',
+  quizDifficulty: 'medium',
+  quizQuestionType: 'multiple_choice',
+  quizDuration: '',
+  quizPassMark: '80%',
+  quizAttempts: '2',
+  assignments: [],
+  dueDate: '',
+  dueTime: '',
+};
+
 export default function CourseWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -26,29 +50,7 @@ export default function CourseWizard() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const totalSteps = 6;
-  const [formData, setFormData] = useState<CourseWizardData>({
-    title: 'HIPAA Privacy and Security Training',
-    description:
-      'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
-    difficulty: 'moderate',
-    duration: '',
-    notesCount: '10',
-    objectives: [
-      'To train staff on HIPAA compliance in behavioral health.',
-      'Learn how to handle PHI securely',
-      'Understand HIPAA privacy rules',
-    ],
-    quizTitle: 'HIPAA Privacy and Security Quiz',
-    quizQuestionCount: '15',
-    quizDifficulty: 'medium',
-    quizQuestionType: 'multiple_choice',
-    quizDuration: '',
-    quizPassMark: '80%',
-    quizAttempts: '2',
-    assignments: [],
-    dueDate: '',
-    dueTime: '',
-  });
+  const [formData, setFormData] = useState<CourseWizardData>(INITIAL_FORM_DATA);
 
   // Documents State
   const [documents, setDocuments] = useState<CourseDocument[]>([]);
@@ -65,6 +67,9 @@ export default function CourseWizard() {
   const [isScanningPhi, setIsScanningPhi] = useState(false);
   const [showPhiError, setShowPhiError] = useState(false);
   const [phiReason, setPhiReason] = useState<string | undefined>(undefined);
+
+  // Exit confirmation state
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   useEffect(() => {
     const loadDocs = async () => {
@@ -220,6 +225,20 @@ export default function CourseWizard() {
         });
 
         if (result.success) {
+          // Reset all wizard state so the next course creation starts fresh
+          setCurrentStep(1);
+          setFormData(INITIAL_FORM_DATA);
+          setGeneratedContent(null);
+          setDocuments([]);
+          setPublishError(null);
+          setIsGenerating(false);
+          setIsAnalyzing(false);
+          setAnalysisProgress(0);
+          setUploadError(null);
+          setIsScanningPhi(false);
+          setShowPhiError(false);
+          setPhiReason(undefined);
+          hasAutoAnalyzed.current = false;
           router.push('/dashboard/training');
         } else {
           setPublishError('Failed to create course. Please try again.');
@@ -421,7 +440,17 @@ export default function CourseWizard() {
           <span className={styles.stepText}>
             Step {currentStep} of {totalSteps}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/courses')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (currentStep > 1) {
+                setShowExitConfirm(true);
+              } else {
+                router.push('/dashboard/courses');
+              }
+            }}
+          >
             Exit
           </Button>
         </div>
@@ -483,6 +512,67 @@ export default function CourseWizard() {
           onRetry={handleRetryUpload}
           reason={phiReason}
         />
+
+        {showExitConfirm && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+            }}
+          >
+            <div
+              style={{
+                background: 'white',
+                width: '90%',
+                maxWidth: '420px',
+                borderRadius: '16px',
+                padding: '24px',
+                boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: '18px',
+                  fontWeight: 600,
+                  color: '#1A202C',
+                  marginBottom: '12px',
+                }}
+              >
+                Exit course creation?
+              </h2>
+              <p
+                style={{
+                  fontSize: '14px',
+                  color: '#4A5568',
+                  marginBottom: '24px',
+                  lineHeight: 1.5,
+                }}
+              >
+                You have unsaved progress. If you exit now, your work will be lost.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <Button variant="outline" size="sm" onClick={() => setShowExitConfirm(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => router.push('/dashboard/courses')}
+                >
+                  Exit
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
