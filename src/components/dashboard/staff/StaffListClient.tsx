@@ -6,7 +6,7 @@ import { Button, Input, Select } from '@/components/ui';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-interface User {
+interface StaffEntry {
   id: string;
   name: string;
   email: string;
@@ -14,13 +14,15 @@ interface User {
   role: string;
   jobTitle: string;
   dateInvited: Date;
+  isPending: boolean;
 }
 
 import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
 import InviteStaffModal from './InviteStaffModal';
+import RevokeInviteModal from './RevokeInviteModal';
 
 interface StaffListClientProps {
-  users: User[];
+  users: StaffEntry[];
   hasOrganization: boolean;
   organizationId: string;
 }
@@ -32,6 +34,7 @@ export default function StaffListClient({
 }: StaffListClientProps) {
   const [showFeatureGate, setShowFeatureGate] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -162,8 +165,9 @@ export default function StaffListClient({
               currentUsers.map((user) => (
                 <tr
                   key={user.id}
-                  onClick={() => router.push(`/dashboard/staff/${user.id}`)}
-                  className={styles.clickableRow}
+                  onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
+                  className={user.isPending ? undefined : styles.clickableRow}
+                  style={user.isPending ? { cursor: 'default', opacity: 0.85 } : undefined}
                 >
                   <td style={{ paddingLeft: '24px' }}>
                     <div className={styles.userInfo}>
@@ -177,16 +181,68 @@ export default function StaffListClient({
                         ) : (
                           (user.name.charAt(0) || user.email.charAt(0)).toUpperCase()
                         )}
-                        <div className={styles.statusDot}></div>
+                        {!user.isPending && <div className={styles.statusDot}></div>}
                       </div>
                       <div className={styles.userDetails}>
-                        <div className={styles.userName}>{user.name}</div>
+                        <div
+                          className={styles.userName}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                        >
+                          {user.email}
+                          {user.isPending && (
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                background: '#EBF4FF',
+                                color: '#3182CE',
+                                letterSpacing: '0.3px',
+                              }}
+                            >
+                              Pending
+                            </span>
+                          )}
+                        </div>
                         <div className={styles.userRole}>{user.jobTitle}</div>
                       </div>
                     </div>
                   </td>
-                  <td style={{ textAlign: 'right', color: '#718096', paddingRight: '24px' }}>
-                    {getRelativeTime(user.dateInvited)}
+                  <td
+                    style={{
+                      textAlign: 'right',
+                      color: '#718096',
+                      paddingRight: '24px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {user.isPending ? (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+                        <span>{getRelativeTime(user.dateInvited)}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRevokeTarget({ id: user.id, email: user.email });
+                          }}
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#E53E3E',
+                            background: 'transparent',
+                            border: '1px solid #E53E3E',
+                            borderRadius: '6px',
+                            padding: '3px 10px',
+                            cursor: 'pointer',
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    ) : (
+                      getRelativeTime(user.dateInvited)
+                    )}
                   </td>
                 </tr>
               ))
@@ -326,6 +382,15 @@ export default function StaffListClient({
         onClose={() => setShowInviteModal(false)}
         organizationId={organizationId}
       />
+      {/* Revoke Invite Modal */}
+      {revokeTarget && (
+        <RevokeInviteModal
+          isOpen={!!revokeTarget}
+          onClose={() => setRevokeTarget(null)}
+          inviteId={revokeTarget.id}
+          inviteEmail={revokeTarget.email}
+        />
+      )}
     </div>
   );
 }

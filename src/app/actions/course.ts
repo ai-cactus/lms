@@ -293,12 +293,79 @@ export async function getDashboardData() {
     };
   });
 
-  const completedCount = enrollments.filter(
-    (e) => e.status === 'completed' || e.status === 'attested',
-  ).length;
-  const inProgressCount = enrollments.filter((e) => e.status === 'in_progress').length;
-  const enrolledCount = enrollments.filter((e) => e.status === 'enrolled').length;
-  const totalEnrollments = enrollments.length;
+  // --- Training Coverage ---
+  // Classify each unique staff member by their aggregate status across ALL their enrollments.
+  // Classification priority (highest wins): in_progress > not_started (enrolled) > completed.
+  // A user who has finished some courses but has others still "enrolled" is shown as in_progress
+  // because they have outstanding training — this gives the most actionable signal for admins.
+  const enrollmentsByUser = new Map<
+    string,
+    { hasCompleted: boolean; hasInProgress: boolean; hasNotStarted: boolean }
+  >();
+  for (const e of enrollments) {
+    const entry = enrollmentsByUser.get(e.userId) ?? {
+      hasCompleted: false,
+      hasInProgress: false,
+      hasNotStarted: false,
+    };
+    if (e.status === 'completed' || e.status === 'attested') {
+      entry.hasCompleted = true;
+    } else if (e.status === 'in_progress') {
+      entry.hasInProgress = true;
+    } else {
+      // 'enrolled' / 'assigned' — course has been assigned but not yet started
+      entry.hasNotStarted = true;
+    }
+    enrollmentsByUser.set(e.userId, entry);
+  }
+
+  let staffCompleted = 0;
+  let staffInProgress = 0;
+  let staffNotStarted = 0;
+  for (const record of enrollmentsByUser.values()) {
+    if (record.hasInProgress || record.hasNotStarted) {
+      // Any outstanding (in_progress or unstarted) enrollment means the user is not fully done.
+      // Distinguish the two for more granular UI display.
+      if (record.hasInProgress) {
+        staffInProgress++;
+      } else {
+        staffNotStarted++;
+      }
+    } else {
+      // All enrollments are completed/attested.
+      staffCompleted++;
+    }
+  }
+
+  const totalStaffWithEnrollments = enrollmentsByUser.size; // == totalStaffAssigned
+
+  // Use largest-remainder (Hamilton) rounding so the three percentages always sum to exactly 100.
+  let pctCompleted = 0;
+  let pctInProgress = 0;
+  let pctNotStarted = 0;
+  if (totalStaffWithEnrollments > 0) {
+    const rawCompleted = (staffCompleted / totalStaffWithEnrollments) * 100;
+    const rawInProgress = (staffInProgress / totalStaffWithEnrollments) * 100;
+    const rawNotStarted = (staffNotStarted / totalStaffWithEnrollments) * 100;
+
+    pctCompleted = Math.floor(rawCompleted);
+    pctInProgress = Math.floor(rawInProgress);
+    pctNotStarted = Math.floor(rawNotStarted);
+
+    // Distribute remaining integer points to whichever values have the largest fractional parts.
+    const remainder = 100 - pctCompleted - pctInProgress - pctNotStarted;
+    const fractions = [
+      { key: 'completed' as const, frac: rawCompleted - pctCompleted },
+      { key: 'inProgress' as const, frac: rawInProgress - pctInProgress },
+      { key: 'notStarted' as const, frac: rawNotStarted - pctNotStarted },
+    ].sort((a, b) => b.frac - a.frac);
+
+    for (let i = 0; i < remainder; i++) {
+      if (fractions[i].key === 'completed') pctCompleted++;
+      else if (fractions[i].key === 'inProgress') pctInProgress++;
+      else pctNotStarted++;
+    }
+  }
 
   return {
     courses,
@@ -307,13 +374,12 @@ export async function getDashboardData() {
       totalStaffAssigned,
       averageGrade: averageScore,
       monthlyPerformance,
-      coursePerformance, // New Field
+      coursePerformance,
       trainingCoverage: {
-        completed: totalEnrollments > 0 ? Math.round((completedCount / totalEnrollments) * 100) : 0,
-        inProgress:
-          totalEnrollments > 0 ? Math.round((inProgressCount / totalEnrollments) * 100) : 0,
-        notStarted: totalEnrollments > 0 ? Math.round((enrolledCount / totalEnrollments) * 100) : 0,
-        totalStaff: totalStaffAssigned, // Add total staff for donut label
+        completed: pctCompleted,
+        inProgress: pctInProgress,
+        notStarted: pctNotStarted,
+        totalStaff: totalStaffAssigned,
       },
     },
   };
@@ -935,6 +1001,13 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
 
   if (lockedEnrollment.status !== 'locked') {
     throw new Error('Enrollment is not locked');
+  }
+
+  const existingRetake = await prisma.enrollment.findFirst({
+    where: { retakeOf: enrollmentId, status: 'enrolled' },
+  });
+  if (existingRetake) {
+    throw new Error('An active retake already exists for this enrollment');
   }
 
   const retakeEnrollment = await prisma.enrollment.create({
