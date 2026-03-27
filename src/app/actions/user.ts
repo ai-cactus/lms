@@ -45,20 +45,29 @@ export async function getStaffUsers() {
   }
 
   try {
-    const users = await prisma.user.findMany({
-      where: {
-        organizationId: currentUser.organizationId,
-        role: { not: 'admin' },
-      },
-      include: {
-        profile: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const [users, invites] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          organizationId: currentUser.organizationId,
+          role: { not: 'admin' },
+        },
+        include: { profile: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.invite.findMany({
+        where: {
+          organizationId: currentUser.organizationId,
+          status: 'pending',
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
 
-    return users.map((user) => ({
+    // Build a set of emails that already have accounts to avoid duplication
+    const acceptedEmails = new Set(users.map((u) => u.email.toLowerCase()));
+
+    const acceptedEntries = users.map((user) => ({
       id: user.id,
       name: user.profile?.fullName || user.email.split('@')[0],
       email: user.email,
@@ -66,9 +75,26 @@ export async function getStaffUsers() {
       role: user.role || 'worker',
       jobTitle: user.profile?.jobTitle || 'Staff Member',
       dateInvited: user.createdAt,
+      isPending: false,
     }));
+
+    const pendingEntries = invites
+      .filter((invite) => !acceptedEmails.has(invite.email.toLowerCase()))
+      .map((invite) => ({
+        id: invite.id,
+        name: invite.email.split('@')[0],
+        email: invite.email,
+        avatarUrl: null,
+        role: invite.role || 'worker',
+        jobTitle: 'Pending Invite',
+        dateInvited: invite.createdAt,
+        isPending: true,
+      }));
+
+    // Accepted users first, then pending invites (both already ordered desc by createdAt)
+    return [...acceptedEntries, ...pendingEntries];
   } catch (error) {
-    console.error('Failed to fetch staff users:', error);
+    console.error('Failed to fetch staff users and invites:', error);
     return [];
   }
 }
@@ -150,6 +176,7 @@ export async function updateProfile(data: {
   first_name: string;
   last_name: string;
   company_name?: string;
+  jobTitle?: string;
   avatarUrl?: string; // New field
 }) {
   console.log('[UpdateProfile Action] Called with data:', data);
@@ -179,6 +206,7 @@ export async function updateProfile(data: {
         lastName: data.last_name,
         fullName: fullName,
         companyName: data.company_name,
+        jobTitle: data.jobTitle,
         email: session.user.email,
         avatarUrl: data.avatarUrl,
       },
@@ -189,6 +217,7 @@ export async function updateProfile(data: {
         lastName: data.last_name,
         fullName: fullName,
         companyName: data.company_name,
+        jobTitle: data.jobTitle,
         avatarUrl: data.avatarUrl,
       },
     });

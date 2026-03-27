@@ -10,6 +10,7 @@ import Image from 'next/image';
 import EditStaffModal from './EditStaffModal';
 import AssignUserCourseModal from './AssignUserCourseModal';
 import AssignRetakeModal from '../training/AssignRetakeModal';
+import RemoveStaffModal from './RemoveStaffModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentQuizResult } from '@/app/actions/staff';
 
@@ -76,10 +77,11 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
     }[];
     organizationName?: string;
   } | null>(null);
-  const [isLoadingResult, setIsLoadingResult] = useState(false);
+  const [loadingEnrollmentId, setLoadingEnrollmentId] = useState<string | null>(null);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
 
   const handleViewResult = async (enrollmentId: string) => {
-    setIsLoadingResult(true);
+    setLoadingEnrollmentId(enrollmentId);
     try {
       const result = await getEnrollmentQuizResult(enrollmentId);
       if (result) {
@@ -88,7 +90,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
     } catch (err) {
       console.error(err);
     } finally {
-      setIsLoadingResult(false);
+      setLoadingEnrollmentId(null);
     }
   };
 
@@ -199,6 +201,14 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
             Assign Course
+          </Button>
+          <Button
+            variant="outline"
+            size="md"
+            onClick={() => setShowRemoveModal(true)}
+            style={{ color: '#E53E3E', borderColor: '#E53E3E' }}
+          >
+            Remove
           </Button>
         </div>
       </div>
@@ -480,8 +490,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                         variant="outline"
                         size="xs"
                         onClick={() => handleViewResult(enrollment.id)}
-                        disabled={isLoadingResult}
-                        loading={isLoadingResult}
+                        disabled={loadingEnrollmentId === enrollment.id}
+                        loading={loadingEnrollmentId === enrollment.id}
                       >
                         View
                       </Button>
@@ -503,6 +513,13 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
       </div>
 
       {/* Modals */}
+      <RemoveStaffModal
+        isOpen={showRemoveModal}
+        onClose={() => setShowRemoveModal(false)}
+        userId={user.id}
+        userName={user.name}
+      />
+
       <EditStaffModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}

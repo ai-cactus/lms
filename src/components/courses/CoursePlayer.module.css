@@ -333,7 +333,7 @@
 
 .slideBody {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: visible;
   font-size: 16px;
   font-weight: 400;
   line-height: 1.6;
@@ -522,17 +522,25 @@
 }
 
 .articleContent {
-  font-size: 19px;
-  line-height: 1.8;
+  font-size: 17px;
+  line-height: 1.75;
   color: var(--text-secondary);
   font-weight: 400;
   font-family: 'Inter', sans-serif;
-  /* Explicitly set font */
+  max-width: 720px;
+  margin: 0 auto;
   overflow-wrap: break-word;
   word-break: normal !important;
   hyphens: none !important;
   text-wrap: pretty !important;
   white-space: normal !important;
+}
+
+@media (max-width: 768px) {
+  .articleContent {
+    font-size: 15px;
+    line-height: 1.65;
+  }
 }
 
 .articleContent * {
