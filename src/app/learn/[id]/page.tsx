@@ -489,7 +489,7 @@ export default function LearnPage() {
         quiz={course.quiz}
         onExitClick={() => {
           if (!isQuizLocked) {
-            router.push(userData?.role === 'admin' ? '/dashboard/courses' : '/dashboard/worker');
+            router.push(userData?.role === 'admin' ? '/dashboard/courses' : '/worker');
           }
         }}
         disableNav={isQuizLocked}

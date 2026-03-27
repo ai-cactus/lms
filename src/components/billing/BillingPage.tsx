@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import styles from './billing.module.css';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
@@ -13,7 +13,7 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 // Lazy-loaded tab components
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
 const OverviewTab = dynamic(() => import('./OverviewTab'), { ssr: false });
@@ -29,11 +29,15 @@ interface BillingPageProps {
 
 export default function BillingPage({ staffCount, initialTab = 'overview' }: BillingPageProps) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const tabParam = searchParams.get('tab') as Tab | null;
 
-  // Resolve the starting tab directly without needing an effect
-  const startingTab = tabParam && TABS.some((t) => t.key === tabParam) ? tabParam : initialTab;
-  const [activeTab, setActiveTab] = useState<Tab>(startingTab);
+  // Derive activeTab directly from URL — URL is the single source of truth
+  const activeTab = tabParam && TABS.some((t) => t.key === tabParam) ? tabParam : initialTab;
+
+  const handleTabChange = (tab: Tab) => {
+    router.replace(`?tab=${tab}`, { scroll: false });
+  };
 
   return (
     <div className={styles.billingPage}>
@@ -50,7 +54,7 @@ export default function BillingPage({ staffCount, initialTab = 'overview' }: Bil
             role="tab"
             aria-selected={activeTab === tab.key}
             className={`${styles.tab} ${activeTab === tab.key ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => handleTabChange(tab.key)}
           >
             {tab.label}
           </button>
@@ -58,12 +62,12 @@ export default function BillingPage({ staffCount, initialTab = 'overview' }: Bil
       </div>
 
       {/* Tab Panels */}
-      {activeTab === 'overview' && <OverviewTab onChangeTab={setActiveTab} />}
+      {activeTab === 'overview' && <OverviewTab onChangeTab={handleTabChange} />}
       {activeTab === 'billing-history' && <BillingHistoryTab />}
       {activeTab === 'subscription' && (
         <SubscriptionTab
           orgStaffCount={parseInt(staffCount ?? '0', 10)}
-          onChangeTab={setActiveTab}
+          onChangeTab={handleTabChange}
         />
       )}
       {activeTab === 'payment-method' && <PaymentMethodTab />}

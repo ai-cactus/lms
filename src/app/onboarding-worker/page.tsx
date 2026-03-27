@@ -185,7 +185,7 @@ export default function WorkerOnboardingPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => signOut({ callbackUrl: '/login' })}
+              onClick={() => signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/login` })}
               style={{
                 color: '#4C6EF5',
                 fontWeight: 500,
