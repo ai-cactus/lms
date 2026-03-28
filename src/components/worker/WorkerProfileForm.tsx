@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import styles from './WorkerProfile.module.css';
-import { Button, Input, Modal } from '@/components/ui';
+import { Button, Modal } from '@/components/ui';
 import { updateProfile, uploadAvatar } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -99,7 +99,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to upload avatar' });
       }
-    } catch (error) {
+    } catch (_error) {
       setMessage({ type: 'error', text: 'Upload failed' });
     } finally {
       setIsLoading(false);
@@ -128,7 +128,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to update profile' });
       }
-    } catch (error) {
+    } catch (_error) {
       setMessage({ type: 'error', text: 'An unexpected error occurred' });
     } finally {
       setIsLoading(false);
@@ -295,24 +295,20 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
             )}
 
             <div className={styles.actions}>
-              <button
+              <Button
                 type="button"
-                className={styles.discardBtn}
+                variant="outline"
                 onClick={() => {
                   setFormData({ ...baseData });
                   setAvatarUrl(baseAvatarUrl);
                 }}
-                disabled={!isDirty}
-              >
-                Discard
-              </button>
-              <button
-                type="submit"
-                className={`${styles.saveBtn} ${isDirty ? styles.active : ''}`}
                 disabled={!isDirty || isLoading}
               >
-                {isLoading ? 'Saving...' : 'Save Changes'}
-              </button>
+                Discard
+              </Button>
+              <Button type="submit" variant="primary" loading={isLoading} disabled={!isDirty}>
+                Save Changes
+              </Button>
             </div>
           </form>
         </div>
@@ -327,10 +323,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
             Are you sure you want to update your profile?
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
-            <Button variant="secondary" onClick={() => setShowConfirm(false)}>
+            <Button variant="secondary" onClick={() => setShowConfirm(false)} disabled={isLoading}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleConfirmSave}>
+            <Button variant="primary" onClick={handleConfirmSave} loading={isLoading}>
               Confirm
             </Button>
           </div>

@@ -337,3 +337,66 @@ export async function sendEnterpriseInquiryEmail({
     return { success: false, error };
   }
 }
+
+export async function sendStaffRemovedEmail(email: string, orgName: string) {
+  const appName = 'Theraptly';
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+      <h2 style="color: #4C6EF5;">Account Update</h2>
+      <p style="color: #333; font-size: 16px; line-height: 1.6;">
+        This is to inform you that your account has been disconnected from <strong>${orgName}</strong> on ${appName}.
+      </p>
+      <p style="color: #333; font-size: 16px; line-height: 1.6;">
+        You will no longer be able to access the courses or dashboard associated with this organization.
+      </p>
+      <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+        If you believe this was a mistake, please contact your administrator at ${orgName}.
+      </p>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to: email,
+      subject: `Account disconnected from ${orgName} - ${appName}`,
+      html,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Error sending staff removed email:', error);
+    return { success: false, error };
+  }
+}
+
+export async function sendStaffRemovalConfirmationEmail(
+  adminEmail: string,
+  staffName: string,
+  orgName: string,
+) {
+  const appName = 'Theraptly';
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+      <h2 style="color: #4C6EF5;">Staff Removal Confirmed</h2>
+      <p style="color: #333; font-size: 16px; line-height: 1.6;">
+        This email confirms that <strong>${staffName}</strong> has been successfully removed from your organization, <strong>${orgName}</strong>.
+      </p>
+      <p style="color: #718096; font-size: 12px; margin-top: 32px;">
+        This is an automated confirmation from ${appName}.
+      </p>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to: adminEmail,
+      subject: `Staff Removal Confirmed: ${staffName} - ${appName}`,
+      html,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Error sending staff removal confirmation email:', error);
+    return { success: false, error };
+  }
+}

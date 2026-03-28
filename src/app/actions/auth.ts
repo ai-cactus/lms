@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import { AuthError } from 'next-auth';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
+import { isRedirectError } from 'next/dist/client/components/redirect-error';
 
 // Define return type
 export type AuthState = {
@@ -45,7 +46,11 @@ export async function authenticate(
 
     console.log('[Auth Action] signIn completed (usually means redirection if successful)');
     return { success: true };
-  } catch (error) {
+  } catch (error: unknown) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
     console.error('[Auth Action Admin] Intercepted Error in authenticate action:', error);
     if (error instanceof AuthError) {
       console.error('[Auth Action Admin] AuthError Type:', error.type);

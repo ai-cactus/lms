@@ -58,10 +58,7 @@ export async function getStaffDetails(userId: string) {
         return isFinished && hasScore && (e.score || 0) < passingScore;
       }).length || 0;
 
-    // Active courses are those in progress but NOT failed yet (or failed but we want to count them as active? usually specific bucket)
-    // Let's say Active = Total - Completed - Failed
-    // Due Soon logic: Enrollment currently does not have a dueDate field.
-    // TODO: Add dueDate to Enrollment schema and include "Due Soon" (e.g. within 7 days) in this calculation.
+    // Active courses are those in progress but NOT failed yet
     const activeCourses = Math.max(0, totalCourses - completedCourses - failedCourses);
 
     return {
@@ -109,20 +106,16 @@ export async function updateStaffDetails(
   },
 ) {
   const session = await auth();
-  // Verify admin/manager permissions - for now just check if logged in
   if (!session?.user?.id) {
     return { success: false, error: 'Unauthorized' };
   }
 
   try {
-    // Update User role
     const user = await prisma.user.update({
       where: { id: userId },
       data: { role: data.role },
     });
 
-    // Update Profile details
-    // We use upsert to handle cases where users were created without a profile
     await prisma.profile.upsert({
       where: { id: userId },
       update: {
@@ -197,8 +190,6 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
 
     const questions = quiz.questions.map((q) => {
       const userAnswerObj = userAnswers.find((a) => a.questionId === q.id);
-
-      // Format options just like in the submit route: map text to A, B, C...
       const optionsArray = Array.isArray(q.options)
         ? (q.options as (string | { text: string })[])
         : [];
@@ -207,16 +198,14 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
       );
 
       const formattedOptions = optionTexts.map((text, idx) => ({
-        id: String.fromCharCode(65 + idx), // A, B, C...
+        id: String.fromCharCode(65 + idx),
         text: text,
       }));
 
-      // Map selected answer (text) to ID (letter)
       const selectedText = userAnswerObj?.selectedAnswer || '';
       const selectedIdx = optionTexts.findIndex((t: string) => t === selectedText);
       const selectedAnswerId = selectedIdx >= 0 ? String.fromCharCode(65 + selectedIdx) : '';
 
-      // Map correct answer (text) to ID (letter)
       const correctText = q.correctAnswer || '';
       const correctIdx = optionTexts.findIndex((t: string) => t === correctText);
       const correctAnswerId = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
@@ -255,40 +244,74 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
 }
 
 export async function removeStaff(userId: string) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+  try {
+    const session = await auth();
+    if (!session?.user?.email || !session?.user?.id) {
+      throw new Error('Unauthorized');
+    }
+
+    const admin = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        role: true,
+        organizationId: true,
+        email: true,
+        organization: { select: { name: true } },
+      },
+    });
+
+    if (!admin || admin.role !== 'admin' || !admin.organization) {
+      throw new Error('Insufficient permissions or organization not found');
+    }
+
+    const staffUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        organizationId: true,
+        email: true,
+        profile: { select: { fullName: true } },
+      },
+    });
+
+    if (!staffUser) {
+      throw new Error('User not found');
+    }
+
+    if (staffUser.organizationId !== admin.organizationId) {
+      throw new Error('User does not belong to your organization');
+    }
+
+    const staffName = staffUser.profile?.fullName || staffUser.email;
+
+    // Disconnect the user from the organization
+    await prisma.user.update({
+      where: { id: userId },
+      data: { organizationId: null },
+    });
+
+    // Revalidate cache
+    revalidatePath('/dashboard/staff');
+
+    // Send notification emails (non-blocking for better UX)
+    try {
+      const { sendStaffRemovedEmail, sendStaffRemovalConfirmationEmail } =
+        await import('@/lib/email');
+
+      // Notify the worker
+      await sendStaffRemovedEmail(staffUser.email, admin.organization.name);
+
+      // Confirm to the admin
+      await sendStaffRemovalConfirmationEmail(admin.email, staffName, admin.organization.name);
+    } catch (emailError) {
+      console.error('[Email Error] Failed to send staff removal notifications:', emailError);
+    }
+
+    return { success: true };
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to remove staff member';
+    console.error('Error removing staff:', error);
+    return { success: false, error: errorMessage };
   }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-
-  if (!admin || admin.role !== 'admin') {
-    throw new Error('Insufficient permissions');
-  }
-
-  const staffUser = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { organizationId: true, email: true },
-  });
-
-  if (!staffUser) {
-    throw new Error('User not found');
-  }
-
-  if (staffUser.organizationId !== admin.organizationId) {
-    throw new Error('User does not belong to your organization');
-  }
-
-  await prisma.user.update({
-    where: { id: userId },
-    data: { organizationId: null },
-  });
-
-  revalidatePath('/dashboard/staff');
-  return { success: true };
 }
 
 export async function revokeInvite(inviteId: string) {

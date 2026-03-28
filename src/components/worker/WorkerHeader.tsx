@@ -15,7 +15,7 @@ interface HeaderProps {
   onMenuClick?: () => void;
 }
 
-export default function WorkerHeader({ userEmail, fullName, onMenuClick }: HeaderProps) {
+export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps, 'userEmail'>) {
   const [isOpen, setIsOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 

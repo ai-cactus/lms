@@ -271,7 +271,7 @@
   background: transparent;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
 }
 
@@ -284,7 +284,7 @@
   padding: 32px 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* ... existing styles ... */
@@ -523,11 +523,11 @@
 
 .articleContent {
   font-size: 17px;
-  line-height: 1.75;
+  line-height: 1.8;
   color: var(--text-secondary);
   font-weight: 400;
   font-family: 'Inter', sans-serif;
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 auto;
   overflow-wrap: break-word;
   word-break: normal !important;
@@ -537,9 +537,15 @@
 }
 
 @media (max-width: 768px) {
+  .articleStage {
+    padding: 24px 16px;
+  }
   .articleContent {
-    font-size: 15px;
-    line-height: 1.65;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .articleTitle {
+    font-size: 32px;
   }
 }
 

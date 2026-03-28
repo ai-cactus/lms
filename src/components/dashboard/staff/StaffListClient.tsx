@@ -20,6 +20,7 @@ interface StaffEntry {
 import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
 import InviteStaffModal from './InviteStaffModal';
 import RevokeInviteModal from './RevokeInviteModal';
+import RemoveStaffModal from './RemoveStaffModal';
 
 interface StaffListClientProps {
   users: StaffEntry[];
@@ -35,6 +36,11 @@ export default function StaffListClient({
   const [showFeatureGate, setShowFeatureGate] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<{
+    id: string;
+    name: string;
+    email: string;
+  } | null>(null);
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -241,7 +247,28 @@ export default function StaffListClient({
                         </button>
                       </div>
                     ) : (
-                      getRelativeTime(user.dateInvited)
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+                        <span>{getRelativeTime(user.dateInvited)}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRemoveTarget({ id: user.id, name: user.name, email: user.email });
+                          }}
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#E53E3E',
+                            background: 'transparent',
+                            border: '1px solid #E53E3E',
+                            borderRadius: '6px',
+                            padding: '3px 10px',
+                            cursor: 'pointer',
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -389,6 +416,17 @@ export default function StaffListClient({
           onClose={() => setRevokeTarget(null)}
           inviteId={revokeTarget.id}
           inviteEmail={revokeTarget.email}
+        />
+      )}
+
+      {/* Remove Staff Modal */}
+      {removeTarget && (
+        <RemoveStaffModal
+          isOpen={!!removeTarget}
+          onClose={() => setRemoveTarget(null)}
+          staffId={removeTarget.id}
+          staffName={removeTarget.name}
+          staffEmail={removeTarget.email}
         />
       )}
     </div>

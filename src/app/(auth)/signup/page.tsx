@@ -32,7 +32,9 @@ export default function SignupPage() {
     setIsMicrosoftLoading(true);
     // Calling signIn will route through create-auth-instance.ts logic
     // which creates new users if they don't exist
-    signIn('microsoft-entra-id', { callbackUrl: '/signup/role-selection' });
+    signIn('microsoft-entra-id', {
+      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/signup/role-selection`,
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

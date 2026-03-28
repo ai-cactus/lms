@@ -226,6 +226,8 @@ export async function updateProfile(data: {
 
     revalidatePath('/dashboard/profile');
     revalidatePath('/worker/profile');
+    revalidatePath('/dashboard');
+    revalidatePath('/worker');
     console.log('[UpdateProfile Action] Paths revalidated');
     return { success: true };
   } catch (error: unknown) {
