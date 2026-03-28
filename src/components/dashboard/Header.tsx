@@ -84,7 +84,7 @@ export default function Header({ userEmail, fullName, onMenuClick }: HeaderProps
   }, []);
 
   const handleLogout = async () => {
-    await signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/login` });
+    await signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/signup` });
   };
 
   useEffect(() => {
