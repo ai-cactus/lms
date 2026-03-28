@@ -301,6 +301,7 @@ export default function LoginPage() {
           className={styles.heroImage}
           priority
           quality={100}
+          sizes="(max-width: 1024px) 0vw, 50vw"
         />
 
         {/* Overlay Content */}

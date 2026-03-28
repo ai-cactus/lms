@@ -5,6 +5,9 @@ const nextConfig = {
       bodySizeLimit: '10mb',
     },
   },
+  images: {
+    qualities: [75, 100],
+  },
 };
 
 module.exports = nextConfig;

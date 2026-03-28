@@ -35,9 +35,7 @@ export default async function WorkerLayout({ children }: { children: React.React
 
   return (
     <WorkerSessionProvider>
-      <WorkerDashboardLayout userEmail={session.user.email || ''} fullName={fullName}>
-        {children}
-      </WorkerDashboardLayout>
+      <WorkerDashboardLayout fullName={fullName}>{children}</WorkerDashboardLayout>
     </WorkerSessionProvider>
   );
 }

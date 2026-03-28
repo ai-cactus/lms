@@ -195,15 +195,33 @@ export async function getDashboardData() {
 
   // ⚡ Bolt: Single query replaces parallel getCourses() and getDashboardStats() calls,
   // fixing an N+1/redundant query pattern and cutting database hits for dashboard in half.
-  const coursesRaw = await prisma.course.findMany({
-    where: { createdBy: session.user.id },
-    include: {
-      enrollments: true,
-      lessons: {
-        include: { quiz: true },
+  const [coursesRaw, currentUser] = await Promise.all([
+    prisma.course.findMany({
+      where: { createdBy: session.user.id },
+      include: {
+        enrollments: true,
+        lessons: {
+          include: { quiz: true },
+        },
       },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { organizationId: true },
+    }),
+  ]);
+
+  if (!currentUser?.organizationId) {
+    throw new Error('User organization not found');
+  }
+
+  // Get total staff (workers) in organization to ensure accurate coverage base
+  const totalOrgStaff = await prisma.user.count({
+    where: {
+      organizationId: currentUser.organizationId,
+      role: 'worker',
     },
-    orderBy: { createdAt: 'desc' },
   });
 
   const courses: CourseWithStats[] = coursesRaw.map((course) => ({
@@ -337,16 +355,21 @@ export async function getDashboardData() {
     }
   }
 
-  const totalStaffWithEnrollments = enrollmentsByUser.size; // == totalStaffAssigned
+  // Users who were never enrolled at all are added to the 'not started' figure.
+  // This ensures the total base reflects the entire organization staff.
+  const staffWithNoEnrollments = Math.max(0, totalOrgStaff - enrollmentsByUser.size);
+  staffNotStarted += staffWithNoEnrollments;
+
+  const coverageBase = totalOrgStaff > 0 ? totalOrgStaff : enrollmentsByUser.size;
 
   // Use largest-remainder (Hamilton) rounding so the three percentages always sum to exactly 100.
   let pctCompleted = 0;
   let pctInProgress = 0;
   let pctNotStarted = 0;
-  if (totalStaffWithEnrollments > 0) {
-    const rawCompleted = (staffCompleted / totalStaffWithEnrollments) * 100;
-    const rawInProgress = (staffInProgress / totalStaffWithEnrollments) * 100;
-    const rawNotStarted = (staffNotStarted / totalStaffWithEnrollments) * 100;
+  if (coverageBase > 0) {
+    const rawCompleted = (staffCompleted / coverageBase) * 100;
+    const rawInProgress = (staffInProgress / coverageBase) * 100;
+    const rawNotStarted = (staffNotStarted / coverageBase) * 100;
 
     pctCompleted = Math.floor(rawCompleted);
     pctInProgress = Math.floor(rawInProgress);

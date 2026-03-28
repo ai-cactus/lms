@@ -29,6 +29,7 @@ export default async function WorkerProfilePage() {
     id: user.id,
     first_name: user.profile?.firstName || '',
     last_name: user.profile?.lastName || '',
+    jobTitle: user.profile?.jobTitle || '',
     email: user.email,
     role: user.role,
     avatarUrl: user.profile?.avatarUrl,

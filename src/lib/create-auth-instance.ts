@@ -172,7 +172,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             }
           }
 
-          if (dbUser.role !== allowedRole) {
+          if (!dbUser.role) {
+            console.log(
+              '[NextAuth] User has no role yet, allowing flow to continue for onboarding...',
+            );
+          } else if (dbUser.role !== allowedRole) {
             console.log(
               `[NextAuth] Role mismatch during SSO. Expected ${allowedRole}, got ${dbUser.role}. Automatically routing to correct instance...`,
             );
