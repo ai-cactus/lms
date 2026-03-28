@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import styles from './StaffList.module.css';
 import { Button } from '@/components/ui';
 import { removeStaff } from '@/app/actions/staff';
 import { useRouter } from 'next/navigation';
@@ -8,95 +9,92 @@ import { useRouter } from 'next/navigation';
 interface RemoveStaffModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userId: string;
-  userName: string;
+  staffId: string;
+  staffName: string;
+  staffEmail: string;
 }
 
 export default function RemoveStaffModal({
   isOpen,
   onClose,
-  userId,
-  userName,
+  staffId,
+  staffName,
+  staffEmail,
 }: RemoveStaffModalProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   if (!isOpen) return null;
 
-  const handleConfirm = async () => {
-    setIsSubmitting(true);
+  const handleRemove = async () => {
+    setIsRemoving(true);
     setError(null);
     try {
-      await removeStaff(userId);
-      router.push('/dashboard/staff');
+      const result = await removeStaff(staffId);
+      if (result.success) {
+        onClose();
+        router.refresh();
+      } else {
+        setError(result.error || 'Failed to remove staff member');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove staff member.');
-      setIsSubmitting(false);
+      setError('An unexpected error occurred');
+      console.error(err);
+    } finally {
+      setIsRemoving(false);
     }
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: 'white',
-          width: '90%',
-          maxWidth: '440px',
-          borderRadius: '16px',
-          padding: '24px',
-          boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1A202C', marginBottom: '12px' }}>
-          Remove Staff Member
-        </h2>
-        <p style={{ fontSize: '14px', color: '#4A5568', marginBottom: '20px', lineHeight: 1.5 }}>
-          Are you sure you want to remove <strong>{userName}</strong> from your organization? They
-          will lose access to all courses and dashboards immediately.
-        </p>
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}>
+          <h2 className={styles.modalTitle}>Remove Staff Member</h2>
+          <button className={styles.closeButton} onClick={onClose}>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
 
-        {error && (
-          <div
-            style={{
-              padding: '12px',
-              backgroundColor: '#FFF5F5',
-              color: '#C53030',
-              borderRadius: '8px',
-              fontSize: '14px',
-              marginBottom: '16px',
-            }}
+        <div className={styles.modalBody}>
+          <p className={styles.modalDescription}>
+            Are you sure you want to remove <strong>{staffName || staffEmail}</strong> from your
+            organization?
+          </p>
+          <p
+            className={styles.modalDescription}
+            style={{ marginTop: '12px', fontSize: '13px', color: '#E53E3E' }}
           >
-            {error}
-          </div>
-        )}
+            This action will disconnect the user from your organization. They will no longer be able
+            to access assigned courses or your organization&apos;s dashboard.
+          </p>
+          {error && <div className={styles.errorMessage}>{error}</div>}
+        </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+        <div className={styles.modalFooter}>
+          <Button variant="ghost" size="md" onClick={onClose} disabled={isRemoving}>
             Cancel
           </Button>
           <Button
             variant="primary"
-            onClick={handleConfirm}
-            loading={isSubmitting}
+            size="md"
+            onClick={handleRemove}
+            loading={isRemoving}
             style={{ backgroundColor: '#E53E3E', borderColor: '#E53E3E' }}
           >
-            Remove
+            Remove Staff
           </Button>
         </div>
       </div>

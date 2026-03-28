@@ -18,18 +18,13 @@ import { getDocuments, uploadDocument } from '@/app/actions/documents';
 import { CourseWizardData, GeneratedCourse, CourseDocument } from '@/types/course';
 
 const INITIAL_FORM_DATA: CourseWizardData = {
-  title: 'HIPAA Privacy and Security Training',
-  description:
-    'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
+  title: '',
+  description: '',
   difficulty: 'moderate',
   duration: '',
   notesCount: '10',
-  objectives: [
-    'To train staff on HIPAA compliance in behavioral health.',
-    'Learn how to handle PHI securely',
-    'Understand HIPAA privacy rules',
-  ],
-  quizTitle: 'HIPAA Privacy and Security Quiz',
+  objectives: ['', '', ''],
+  quizTitle: '',
   quizQuestionCount: '15',
   quizDifficulty: 'medium',
   quizQuestionType: 'multiple_choice',

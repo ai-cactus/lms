@@ -25,6 +25,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
         <div className={styles.formRow}>
           <label className={styles.formLabel}>Course Title</label>
           <Input
+            name="title"
             value={data.title}
             onChange={(e) => onChange('title', e.target.value)}
             placeholder="Enter course title"
@@ -35,6 +36,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
         <div className={`${styles.formRow} ${styles.formRowTop}`}>
           <label className={`${styles.formLabel} ${styles.formLabelTop}`}>Short Description</label>
           <textarea
+            name="description"
             className={styles.textarea}
             value={data.description}
             onChange={(e) => onChange('description', e.target.value)}
