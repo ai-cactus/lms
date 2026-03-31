@@ -29,7 +29,7 @@ export default async function AuditorPackPage() {
     select: {
       role: true,
       organizationId: true,
-      profile: { select: { firstName: true, fullName: true } },
+      profile: { select: { firstName: true, fullName: true, hasSeenAuditorWelcome: true } },
       organization: { select: { hasAuditorAccess: true } },
     },
   });
@@ -41,6 +41,17 @@ export default async function AuditorPackPage() {
 
   const firstName = user.profile?.firstName ?? 'there';
   const hasAccess = user.organization?.hasAuditorAccess ?? false;
+  const showBanner = hasAccess && !user.profile?.hasSeenAuditorWelcome;
+
+  if (showBanner) {
+    // Mark as seen for future visits
+    prisma.profile
+      .update({
+        where: { id: session.user.id },
+        data: { hasSeenAuditorWelcome: true },
+      })
+      .catch((e) => console.error('Failed to update welcome flag', e));
+  }
 
   // Pre-fetch data server-side so initial render is instant (only if has access)
   const [initialStats, initialCourses] = hasAccess
@@ -58,22 +69,25 @@ export default async function AuditorPackPage() {
       {hasAccess ? (
         <>
           {/* Welcome Banner */}
-          <div className={styles.welcomeBanner}>
-            {/* Decorative background shapes */}
-            <div className={styles.welcomeBannerDecoration} aria-hidden>
-              <svg width="200" height="200" viewBox="0 0 200 200" fill="none">
-                <circle cx="120" cy="80" r="70" stroke="white" strokeWidth="40" fill="none" />
-                <circle cx="160" cy="30" r="40" stroke="white" strokeWidth="25" fill="none" />
-              </svg>
+          {showBanner && (
+            <div className={styles.welcomeBanner}>
+              {/* Decorative background shapes */}
+              <div className={styles.welcomeBannerDecoration} aria-hidden>
+                <svg width="200" height="200" viewBox="0 0 200 200" fill="none">
+                  <circle cx="120" cy="80" r="70" stroke="white" strokeWidth="40" fill="none" />
+                  <circle cx="160" cy="30" r="40" stroke="white" strokeWidth="25" fill="none" />
+                </svg>
+              </div>
+              <p className={styles.welcomeGreeting}>
+                {getGreeting()}, {firstName}!
+              </p>
+              <h2 className={styles.welcomeHeading}>Welcome to Your Auditor Workspace!</h2>
+              <p className={styles.welcomeDesc}>
+                Generate scannable evidence documents for auditors based on your learning
+                management.
+              </p>
             </div>
-            <p className={styles.welcomeGreeting}>
-              {getGreeting()}, {firstName}!
-            </p>
-            <h2 className={styles.welcomeHeading}>Welcome to Your Auditor Workspace!</h2>
-            <p className={styles.welcomeDesc}>
-              Generate scannable evidence documents for auditors based on your learning management.
-            </p>
-          </div>
+          )}
 
           {/* Tab Content */}
           <AuditorPackClient initialStats={initialStats} initialCourses={initialCourses} />

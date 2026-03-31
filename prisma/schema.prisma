@@ -80,9 +80,10 @@ model Profile {
   fullName    String?
   jobTitle    String?
   companyName String?
-  avatarUrl   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  avatarUrl             String?
+  hasSeenAuditorWelcome Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
   user        User     @relation(fields: [id], references: [id], onDelete: Cascade)
 }
 
