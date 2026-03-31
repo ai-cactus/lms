@@ -118,7 +118,7 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
 
     // Create verification token with pending user data including role (5 minute expiry)
     const token = crypto.randomUUID();
-    const expires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
     await prisma.verificationToken.create({
       data: {
