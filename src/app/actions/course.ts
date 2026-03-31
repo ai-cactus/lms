@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { notifyOrganizationAdmins } from './notifications';
 import { CourseWithStats, CourseWithRelations } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
@@ -213,7 +214,9 @@ export async function getDashboardData() {
   ]);
 
   if (!currentUser?.organizationId) {
-    throw new Error('User organization not found');
+    // User authenticated but has no organization — they skipped or failed onboarding.
+    // Redirect them back to complete onboarding rather than crashing the page.
+    redirect('/onboarding');
   }
 
   // Get total staff (workers) in organization to ensure accurate coverage base

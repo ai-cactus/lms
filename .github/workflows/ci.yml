@@ -126,7 +126,7 @@ jobs:
       SMTP_USER: ci@example.com
       SMTP_PASSWORD: ci_dummy_password
       SMTP_HOST: smtp.example.com
-      SMTP_PORT: "465"
+      SMTP_PORT: '465'
       NEXT_PUBLIC_APP_URL: http://localhost:3000
 
     steps:
