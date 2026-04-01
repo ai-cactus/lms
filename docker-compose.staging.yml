@@ -79,6 +79,8 @@ services:
     restart: unless-stopped
     # requirepass enforces auth even on the internal network (defence in depth)
     command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging} --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       # AOF persistence — survives container restarts
       - /home/deploy/data/redis-staging:/data
