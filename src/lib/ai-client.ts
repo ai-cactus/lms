@@ -4,6 +4,8 @@
 // token estimation, and context truncation.
 // ──────────────────────────────────────────────
 
+import { GoogleAuth } from 'google-auth-library';
+
 const DEFAULT_MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1000;
 
@@ -47,17 +49,21 @@ export interface VertexAIConfig {
  * Call Vertex AI with automatic retry + exponential backoff for 429/5xx errors.
  * Returns the raw text output from the model.
  */
-export async function callVertexAI(prompt: string, config?: VertexAIConfig): Promise<string> {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('Missing Gemini API Key. Set NEXT_PUBLIC_GEMINI_API_KEY or GEMINI_API_KEY.');
-  }
+const auth = new GoogleAuth({
+  scopes: 'https://www.googleapis.com/auth/cloud-platform',
+});
 
+export async function callVertexAI(prompt: string, config?: VertexAIConfig): Promise<string> {
   const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
   const location = process.env.GOOGLE_LOCATION || 'us-central1';
   const model = config?.model || 'gemini-2.5-flash-lite';
 
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent?key=${apiKey}`;
+  const token = await auth.getAccessToken();
+  if (!token) {
+    throw new Error('Failed to get an OAuth2 access token for Google Cloud Vertex AI.');
+  }
+
+  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
 
   const body = JSON.stringify({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -77,7 +83,10 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
 
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body,
       });
 
