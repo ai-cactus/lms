@@ -51,7 +51,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=staging-latest
-            type=sha,prefix=staging-,format=short
+            type=sha,prefix=staging-,format=long
 
       - name: Build and push image
         uses: docker/build-push-action@v6
