@@ -30,6 +30,7 @@
     "docx": "^9.6.1",
     "dompurify": "^3.3.3",
     "framer-motion": "^12.33.0",
+    "google-auth-library": "^10.6.2",
     "ioredis": "^5.10.1",
     "isomorphic-dompurify": "^3.5.1",
     "mammoth": "^1.11.0",
