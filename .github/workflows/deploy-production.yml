@@ -105,6 +105,12 @@ jobs:
             docker pull "${IMAGE_REF}"
             docker tag "${IMAGE_REF}" "ghcr.io/${GITHUB_REPO}:production-latest"
 
+            if pm2 info lms-production > /dev/null 2>&1; then
+              echo "==> Shutting down legacy PM2 instance 'lms-production' to free port 3000..."
+              pm2 delete lms-production || true
+              pm2 save || true
+            fi
+
             echo "==> [3/4] Starting production services..."
             APP_IMAGE="${IMAGE_REF}" \
               docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d
