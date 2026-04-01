@@ -118,6 +118,13 @@ jobs:
             # ── [3/4] Start / update services ────────────────────────────────
             # db and redis only restart if their config changed (idempotent).
             # The app container is recreated with the new image.
+            
+            if pm2 info lms-staging > /dev/null 2>&1; then
+              echo "==> Shutting down legacy PM2 instance 'lms-staging' to free port 3001..."
+              pm2 delete lms-staging || true
+              pm2 save || true
+            fi
+
             echo "==> [3/4] Starting services..."
             APP_IMAGE="${IMAGE_REF}" \
               docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d
