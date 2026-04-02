@@ -3,6 +3,7 @@ import Credentials from 'next-auth/providers/credentials';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
+import { logger, maskEmail } from '@/lib/logger';
 type Role = 'admin' | 'worker';
 
 interface AuthInstanceConfig {
@@ -15,7 +16,21 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
   const { cookiePrefix, allowedRole, basePath } = instanceConfig;
   const useSecureCookies = process.env.NODE_ENV === 'production';
 
+  // Fail fast at startup — prevents silent session failures in production.
+  // In test or build environments, we allow a fallback to prevents crashes during CI/CD.
+  const isBuildOrTest =
+    process.env.NODE_ENV === 'test' ||
+    process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.CI === 'true';
+  const authSecret =
+    process.env.NEXTAUTH_SECRET || (isBuildOrTest ? 'build-time-dummy-secret' : undefined);
+
+  if (!authSecret) {
+    throw new Error('[Auth] NEXTAUTH_SECRET is not defined. Set it in your environment variables.');
+  }
+
   const config: NextAuthConfig = {
+    secret: authSecret,
     basePath,
     trustHost: true,
 
@@ -48,30 +63,39 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             password: string;
           };
 
-          console.log(
-            `[NextAuth Factory] Attempting login for ${email} on instance ${cookiePrefix}`,
-          );
+          logger.info({
+            msg: 'Auth login attempt',
+            email: maskEmail(email),
+            instance: cookiePrefix,
+          });
           const user = await prisma.user.findUnique({ where: { email } });
 
           if (!user || !user.password) {
-            console.log('[NextAuth Factory] User not found or no password map');
+            logger.warn({ msg: 'Auth login failed: user not found', instance: cookiePrefix });
             return null;
           }
 
           if (user.role !== allowedRole) {
-            console.log(
-              `[NextAuth Factory] Role blocked. Found: ${user.role}, Allowed: ${allowedRole}`,
-            );
+            logger.warn({
+              msg: 'Auth login failed: role mismatch',
+              role: user.role,
+              allowed: allowedRole,
+              instance: cookiePrefix,
+            });
             return null;
           }
 
           const valid = await bcrypt.compare(password, user.password);
           if (!valid) {
-            console.log('[NextAuth Factory] Password bcrypt validation failed');
+            logger.warn({ msg: 'Auth login failed: invalid password', instance: cookiePrefix });
             return null;
           }
 
-          console.log(`[NextAuth Factory] Validated securely. Creating session for ${user.email}`);
+          logger.info({
+            msg: 'Auth login success',
+            email: maskEmail(user.email),
+            instance: cookiePrefix,
+          });
 
           return {
             id: user.id,
@@ -89,7 +113,9 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
               clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
               issuer: `https://login.microsoftonline.com/${process.env.AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}/v2.0`,
-              allowDangerousEmailAccountLinking: true,
+              // allowDangerousEmailAccountLinking removed — prevents silent account takeover
+              // via Microsoft OAuth for users with existing credentials accounts.
+              // New users signing up via Microsoft OAuth are still created normally.
             }),
           ]
         : []),
@@ -111,9 +137,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           if (!dbUser) {
             // New user Signup Flow
-            console.log(
-              `[NextAuth] Creating new ${allowedRole} user via Microsoft OAuth: ${user.email}`,
-            );
+            logger.info({
+              msg: 'OAuth: creating new user',
+              email: maskEmail(user.email!),
+              role: allowedRole,
+            });
 
             let matchedOrgId = null;
             let matchedRole = allowedRole;
@@ -123,9 +151,12 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               const inviteRole = pendingInvite.role;
               matchedRole =
                 inviteRole === 'admin' || inviteRole === 'worker' ? inviteRole : 'worker';
-              console.log(
-                `[NextAuth] Found pending invite for ${user.email}, joining org ${matchedOrgId} as ${matchedRole}`,
-              );
+              logger.info({
+                msg: 'OAuth: pending invite found',
+                email: maskEmail(user.email!),
+                orgId: matchedOrgId,
+                role: matchedRole,
+              });
             }
 
             dbUser = await prisma.user.create({
@@ -150,9 +181,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             // Existing user login
             if (pendingInvite && !dbUser.organizationId) {
               // User exists but has no org yet, and has a new invite
-              console.log(
-                `[NextAuth] Existing user ${user.email} accepting invite to org ${pendingInvite.organizationId}`,
-              );
+              logger.info({
+                msg: 'OAuth: existing user accepting invite',
+                email: maskEmail(user.email!),
+                orgId: pendingInvite.organizationId,
+              });
               dbUser = await prisma.user.update({
                 where: { id: dbUser.id },
                 data: {
@@ -173,13 +206,13 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           }
 
           if (!dbUser.role) {
-            console.log(
-              '[NextAuth] User has no role yet, allowing flow to continue for onboarding...',
-            );
+            logger.info({ msg: 'OAuth: user has no role, continuing for onboarding' });
           } else if (dbUser.role !== allowedRole) {
-            console.log(
-              `[NextAuth] Role mismatch during SSO. Expected ${allowedRole}, got ${dbUser.role}. Automatically routing to correct instance...`,
-            );
+            logger.warn({
+              msg: 'OAuth: role mismatch, routing to correct instance',
+              expected: allowedRole,
+              got: dbUser.role,
+            });
             if (dbUser.role === 'worker')
               return '/api/auth-worker/signin/microsoft-entra-id?callbackUrl=/worker';
             if (dbUser.role === 'admin')
@@ -216,7 +249,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               });
               user.name = oauthName || user.email!;
             } catch (profileErr) {
-              console.error('[Auth] Failed to create profile for OAuth user:', profileErr);
+              logger.error({ msg: 'OAuth: failed to create profile', error: String(profileErr) });
               user.name = user.email!;
             }
           }

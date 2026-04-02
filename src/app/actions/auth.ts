@@ -8,6 +8,14 @@ import { AuthError } from 'next-auth';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
 import { isRedirectError } from 'next/dist/client/components/redirect-error';
+import { headers } from 'next/headers';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { logger } from '@/lib/logger';
+
+// Pre-computed dummy hash for constant-time response when a user email doesn't exist.
+// bcrypt runs its full ~100ms computation and returns false, preventing timing-based
+// username enumeration attacks.
+const DUMMY_BCRYPT_HASH = '$2b$10$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
 // Define return type
 export type AuthState = {
@@ -20,17 +28,40 @@ export async function authenticate(
   prevState: AuthState | undefined,
   formData: FormData,
 ): Promise<AuthState> {
+  // Rate limiting — 10 attempts per IP per 15 minutes
+  const headersList = await headers();
+  const ip =
+    headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    headersList.get('x-real-ip') ??
+    'unknown';
+
+  const { allowed } = await checkRateLimit(`login:${ip}`, 10, 900);
+  if (!allowed) {
+    logger.warn({ msg: 'Auth rate limit exceeded', ip });
+    return { error: 'Too many login attempts. Please try again in 15 minutes.' };
+  }
+
   try {
     const email = formData.get('email') as string;
-    let role = 'admin';
-    if (email) {
-      const user = await prisma.user.findUnique({ where: { email }, select: { role: true } });
-      if (user && user.role === 'worker') {
-        role = 'worker';
-      }
+    let role: 'admin' | 'worker' = 'admin';
+
+    // Role lookup with timing equalization — prevents username enumeration via response time.
+    // If no user is found, bcrypt still runs on a dummy hash so timing is indistinguishable
+    // from a valid login attempt with a wrong password.
+    const lookupUser = email
+      ? await prisma.user.findUnique({ where: { email }, select: { role: true } })
+      : null;
+
+    if (!lookupUser) {
+      await bcrypt.compare('dummy', DUMMY_BCRYPT_HASH);
+      return { error: 'Invalid credentials.' };
     }
 
-    console.log('[Auth Action] authenticate server action called for role:', role);
+    if (lookupUser.role === 'worker') {
+      role = 'worker';
+    }
+
+    logger.info({ msg: 'Auth action: routing login', role });
 
     if (role === 'worker') {
       await signInWorker('credentials', {
@@ -44,16 +75,14 @@ export async function authenticate(
       });
     }
 
-    console.log('[Auth Action] signIn completed (usually means redirection if successful)');
     return { success: true };
   } catch (error: unknown) {
     if (isRedirectError(error)) {
       throw error;
     }
 
-    console.error('[Auth Action Admin] Intercepted Error in authenticate action:', error);
+    logger.error({ msg: 'Auth action error', error: String(error) });
     if (error instanceof AuthError) {
-      console.error('[Auth Action Admin] AuthError Type:', error.type);
       switch (error.type) {
         case 'CredentialsSignin':
           return { error: 'Invalid credentials.' };
