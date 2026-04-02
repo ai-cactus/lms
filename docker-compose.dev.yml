@@ -1,0 +1,78 @@
+# docker-compose.dev.yml
+#
+# Manages the backing services for local development:
+#   - db    → PostgreSQL 16 (port 5432 exposed to host)
+#   - redis → Redis 7 (port 6379 exposed to host)
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# This allows you to run the Next.js app locally via `npm run dev` 
+# while docker manages the database and redis.
+
+name: lms-dev
+
+services:
+  # ── PostgreSQL Database ───────────────────────────────────────────────────────
+  db:
+    container_name: lms-dev-db
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - '5433:5432'
+    environment:
+      # These default to the values used in your local DATABASE_URL in .env
+      POSTGRES_DB: ${POSTGRES_DB:-lms}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-0951}
+    volumes:
+      # Data persists locally in a named volume
+      - dev-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-lms}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - dev-net
+
+  # ── Redis (for BullMQ job queues) ────────────────────────────────────────────
+  redis:
+    container_name: lms-dev-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    volumes:
+      # AOF persistence
+      - dev-redis-data:/data
+    # In development, you usually don't need a password for Redis on localhost,
+    # but we support REDIS_PASSWORD if it's set in your .env.
+    command: >
+      sh -c '
+      if [ -n "$$REDIS_PASSWORD" ]; then
+        redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes
+      else
+        redis-server --appendonly yes
+      fi
+      '
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    healthcheck:
+      test: ['CMD-SHELL', 'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - dev-net
+
+volumes:
+  dev-postgres-data:
+  dev-redis-data:
+
+networks:
+  dev-net:
+    driver: bridge
+    name: lms-dev-net

@@ -1,0 +1,99 @@
+.heroSection {
+  flex: 1;
+  display: none;
+  background: #f7fafc;
+  position: relative;
+  overflow: hidden;
+  margin: 16px;
+  margin-left: 0;
+  border-radius: 24px;
+}
+
+.motionContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.heroImage {
+  object-fit: cover;
+  border-radius: 24px;
+}
+
+/* Hero Overlay */
+.heroOverlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  /* Ensure it covers the area for the gradient positioning */
+  padding: 60px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  /* Push content to bottom */
+  gap: 40px;
+  background: linear-gradient(180deg, rgba(16, 16, 16, 0) 53.5%, rgba(16, 16, 16, 1) 100%);
+  pointer-events: none; /* Let pointer events go through the overlay to motion container for swiping */
+}
+
+.heroTextContent {
+  max-width: 540px;
+  color: #ffffff;
+  pointer-events: auto; /* Re-enable pointer events for text if needed */
+}
+
+.heroTitle {
+  font-family: 'Inter Tight', 'Inter', sans-serif;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-bottom: 16px;
+}
+
+.heroSubtitle {
+  font-size: 18px;
+  line-height: 1.5;
+  opacity: 0.9;
+  font-weight: 400;
+}
+
+/* Progress Bar */
+.progressBarContainer {
+  display: flex;
+  gap: 8px;
+  pointer-events: auto; /* Enable clicking on the progress bar */
+}
+
+.progressSegment {
+  width: 48px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.3s ease;
+}
+
+.progressSegment:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.progressSegment.active {
+  background: #ffffff;
+}
+
+/* Responsive */
+@media (min-width: 1024px) {
+  .heroSection {
+    display: block;
+  }
+}
