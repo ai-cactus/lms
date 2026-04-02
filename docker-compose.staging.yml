@@ -69,8 +69,6 @@ services:
       start_period: 10s
     networks:
       - staging-net
-    # No ports block — Postgres is NOT exposed to the host. Only app can reach it
-    # via the staging-net Docker network.
 
   # ── Redis (for BullMQ job queues) ────────────────────────────────────────────
   redis:
@@ -93,7 +91,6 @@ services:
       start_period: 5s
     networks:
       - staging-net
-    # No ports block — Redis is NOT exposed to the host.
 
 networks:
   staging-net:
