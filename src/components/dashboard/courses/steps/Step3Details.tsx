@@ -77,7 +77,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                 </svg>
                 ~{data.duration} mins
                 <span style={{ fontSize: '12px', color: '#718096', marginLeft: '4px' }}>
-                  (AI estimate)
+                  (Estimate)
                 </span>
               </>
             ) : (

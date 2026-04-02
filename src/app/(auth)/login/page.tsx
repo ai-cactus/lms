@@ -8,6 +8,7 @@ import { Logo, Input, Button } from '@/components/ui';
 import { authenticate } from '@/app/actions/auth';
 import styles from './page.module.css';
 import { signIn } from 'next-auth/react';
+import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 
 function LoginForm() {
   const router = useRouter();
@@ -292,36 +293,8 @@ export default function LoginPage() {
         </Suspense>
       </div>
 
-      {/* Right Side - Hero Image */}
-      <div className={styles.heroSection}>
-        <Image
-          src="/images/login-bg.png"
-          alt="Theraptly Training"
-          fill
-          className={styles.heroImage}
-          priority
-          quality={100}
-          sizes="(max-width: 1024px) 0vw, 50vw"
-        />
-
-        {/* Overlay Content */}
-        <div className={styles.heroOverlay}>
-          <div className={styles.heroTextContent}>
-            <h2 className={styles.heroTitle}>Audit-ready training, built from your policies</h2>
-            <p className={styles.heroSubtitle}>
-              Turn compliance policies into structured training, track completion automatically, and
-              keep clear records that stand up during audits.
-            </p>
-          </div>
-
-          <div className={styles.progressBarContainer}>
-            <div className={`${styles.progressSegment} ${styles.active}`}></div>
-            <div className={styles.progressSegment}></div>
-            <div className={styles.progressSegment}></div>
-            <div className={styles.progressSegment}></div>
-          </div>
-        </div>
-      </div>
+      {/* Right Side - Hero Slider */}
+      <AuthHeroSlider />
     </div>
   );
 }
