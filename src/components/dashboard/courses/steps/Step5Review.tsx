@@ -264,8 +264,10 @@ export default function Step5Review({
     initialContent?.modules || [],
   );
 
-  // Generation Ref
+  // Generation Refs
   const hasStartedRef = useRef(false);
+  // Stores the active jobId so the "Back to Dashboard" button can persist it to localStorage
+  const activeJobIdRef = useRef<string | null>(null);
   const hasInitialContent = !!initialContent;
 
   // Generate Request — v4.6 five-stage pipeline
@@ -300,7 +302,9 @@ export default function Step5Review({
           return;
         }
 
-        // Poll for completion
+        // Store so the "Back to Dashboard" button can persist it
+        activeJobIdRef.current = jobId;
+
         const pollInterval = setInterval(async () => {
           try {
             const statusRes = await checkCourseGenerationJobV46(jobId);
@@ -367,6 +371,19 @@ export default function Step5Review({
     generate();
   }, [data, documents, onComplete, hasInitialContent]);
 
+  // Called from the loading UI — saves job state so courses list can show a banner
+  const handleBackToDashboard = (jobIdToSave: string) => {
+    try {
+      localStorage.setItem(
+        'lms_pending_generation',
+        JSON.stringify({ jobId: jobIdToSave, formData: data, timestamp: Date.now() }),
+      );
+    } catch {
+      // localStorage may be unavailable (private browsing); silently continue
+    }
+    window.location.href = '/dashboard/courses';
+  };
+
   // Handlers
   const handleModuleChange = (index: number) => {
     if (index < 0 || index >= editedModules.length) return;
@@ -402,6 +419,8 @@ export default function Step5Review({
     );
   }
 
+  // Capture jobId from the generate() closure via ref so the Back button can read it
+  // (ref is declared near the top of the component, above all early returns)
   if (isGenerating) {
     return (
       <div
@@ -419,7 +438,7 @@ export default function Step5Review({
               animation: 'spin 1s linear infinite',
               margin: '0 auto 24px',
             }}
-          ></div>
+          />
           <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1A202C', marginBottom: 8 }}>
             Creating your course and quiz…
@@ -431,19 +450,26 @@ export default function Step5Review({
           <p style={{ color: '#A0AEC0', fontSize: 13 }}>
             You&apos;ll be able to review and edit everything before publishing.
           </p>
-          <a
-            href="/dashboard"
+          <p style={{ color: '#A0AEC0', fontSize: 12, marginTop: 8 }}>
+            You can go back to the dashboard — generation will continue and you can resume from
+            there.
+          </p>
+          <button
+            onClick={() => handleBackToDashboard(activeJobIdRef.current ?? '')}
             style={{
               display: 'inline-block',
               marginTop: 32,
               fontSize: 14,
               fontWeight: 600,
               color: '#4C6EF5',
-              textDecoration: 'none',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              textDecoration: 'underline',
             }}
           >
             ← Back to Dashboard
-          </a>
+          </button>
         </div>
       </div>
     );

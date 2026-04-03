@@ -1,35 +1,63 @@
+/**
+ * Reset Documents Script
+ *
+ * Deletes all documents from the database and removes their stored objects
+ * from cloud storage (GCS or MinIO, depending on env config).
+ *
+ * Legacy local paths (/uploads/...) are skipped — delete them manually if needed.
+ *
+ * Usage:
+ *   npx ts-node --project tsconfig.json src/scripts/reset-documents.ts
+ *
+ * WARNING: This is destructive and irreversible. Use only in dev/staging.
+ */
+
 import { PrismaClient } from '@prisma/client';
-import fs from 'fs/promises';
-import path from 'path';
+import { deleteFile, isLegacyPath } from '../lib/storage';
 
 const prisma = new PrismaClient();
-const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
 
 async function main() {
-  try {
-    console.log('Deleting all documents from database...');
-    // Delete documents (cascade should handle versions/reports)
-    await prisma.document.deleteMany({});
-    console.log('Database cleared.');
+  console.log('Fetching all document versions...');
 
-    console.log('Deleting physical files...');
-    try {
-      const files = await fs.readdir(UPLOAD_DIR);
-      for (const file of files) {
-        if (file !== '.gitkeep') {
-          // Keep gitkeep if exists
-          await fs.unlink(path.join(UPLOAD_DIR, file));
-        }
-      }
-      console.log('Physical files deleted.');
-    } catch (e) {
-      console.log('Upload directory might be empty or not exist:', e);
+  const versions = await prisma.documentVersion.findMany({
+    select: { id: true, storagePath: true },
+  });
+
+  console.log(`Found ${versions.length} document version(s) to clean up.`);
+
+  let deleted = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const version of versions) {
+    if (isLegacyPath(version.storagePath)) {
+      console.warn(`  [SKIP] Legacy local path — skipping storage delete: ${version.storagePath}`);
+      skipped++;
+      continue;
     }
-  } catch (e) {
-    console.error('Error resetting documents:', e);
-  } finally {
-    await prisma.$disconnect();
+
+    try {
+      await deleteFile(version.storagePath);
+      console.log(`  [OK]   Deleted: ${version.storagePath}`);
+      deleted++;
+    } catch (err: unknown) {
+      const e = err as Error;
+      console.error(`  [FAIL] Could not delete ${version.storagePath}: ${e.message}`);
+      failed++;
+    }
   }
+
+  console.log(`\nStorage cleanup: ${deleted} deleted, ${skipped} skipped, ${failed} failed.`);
+
+  console.log('\nDeleting all documents from database...');
+  const result = await prisma.document.deleteMany({});
+  console.log(`Database cleared — removed ${result.count} document(s).`);
 }
 
-main();
+main()
+  .catch((e) => {
+    console.error('Fatal error:', e);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());

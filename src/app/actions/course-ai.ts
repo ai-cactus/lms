@@ -14,7 +14,7 @@ const CourseMetadataSchema = z.object({
   title: z.string(),
   description: z.string(),
   objectives: z.array(z.string()).min(3),
-  duration: z.string().describe("Estimated duration in minutes, e.g. '60'"),
+  duration: z.coerce.string().describe("Estimated duration in minutes, e.g. '60'"),
   quizTitle: z.string().describe('A catching title for the quiz'),
 });
 

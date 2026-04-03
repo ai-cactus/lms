@@ -1,26 +1,33 @@
-import fs from 'fs/promises';
-import path from 'path';
+/**
+ * Document upload handler.
+ *
+ * Saves a file to cloud storage (GCS → MinIO fallback) and returns the
+ * opaque storageUri to be persisted in DocumentVersion.storagePath.
+ *
+ * Key format: documents/<userId>/<timestamp>-<sanitizedFilename>
+ * This ensures:
+ *   - No collisions across users or time
+ *   - No dangerous characters reaching the storage bucket
+ *   - Easy manual inspection / auditing by userId prefix
+ */
 
-const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
+import { uploadFile } from '@/lib/storage';
 
-export async function saveFile(file: File): Promise<string> {
+/**
+ * Upload a file to cloud storage and return the opaque storageUri.
+ *
+ * @param file    The File object from FormData.
+ * @param userId  The authenticated user's ID (used to namespace the object key).
+ * @returns       Opaque storageUri, e.g. "gcs://bucket/documents/u1/ts-report.pdf"
+ */
+export async function saveFile(file: File, userId: string): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Create unique filename to prevent overwrites
+  // Sanitise filename: lowercase, only alphanumeric + dots/hyphens
   const timestamp = Date.now();
   const safeName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
-  const filename = `${timestamp}-${safeName}`;
-  const filepath = path.join(UPLOAD_DIR, filename);
+  const key = `documents/${userId}/${timestamp}-${safeName}`;
 
-  // Ensure directory exists (redundant if mkdir -p run, but safe)
-  try {
-    await fs.access(UPLOAD_DIR);
-  } catch {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
-  }
-
-  await fs.writeFile(filepath, buffer);
-
-  // Return path relative to public for serving (or just storage reference)
-  return `/uploads/${filename}`;
+  const { storageUri } = await uploadFile(key, buffer, file.type || 'application/octet-stream');
+  return storageUri;
 }
