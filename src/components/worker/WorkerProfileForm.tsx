@@ -16,6 +16,7 @@ interface WorkerProfileProps {
     role: string;
     jobTitle?: string | null;
     avatarUrl?: string | null;
+    avatarDisplayUrl?: string | null;
   };
   organization?: {
     name: string;
@@ -54,12 +55,16 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       jobTitle: user.jobTitle || '',
     });
     setAvatarUrl(user.avatarUrl || null);
+    setAvatarDisplayUrl(user.avatarDisplayUrl || null);
     setBaseAvatarUrl(user.avatarUrl || null);
   }, [user]);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatarUrl || null);
+  const [avatarDisplayUrl, setAvatarDisplayUrl] = useState<string | null>(
+    user.avatarDisplayUrl || null,
+  );
   const [baseAvatarUrl, setBaseAvatarUrl] = useState<string | null>(user.avatarUrl || null);
 
   const isDirty =
@@ -85,6 +90,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Instant local preview
+    const localPreviewUrl = URL.createObjectURL(file);
+    setAvatarDisplayUrl(localPreviewUrl);
 
     setIsLoading(true);
     const data = new FormData();
@@ -164,8 +173,13 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
         <div className={styles.profileWrapper}>
           <div className={styles.avatarSection}>
             <div className={styles.avatarLarge}>
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="Profile" />
+              {avatarDisplayUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarDisplayUrl}
+                  alt="Profile"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                />
               ) : (
                 <span>{formData.first_name?.[0] || user.email[0].toUpperCase()}</span>
               )}
@@ -301,6 +315,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                 onClick={() => {
                   setFormData({ ...baseData });
                   setAvatarUrl(baseAvatarUrl);
+                  setAvatarDisplayUrl(user.avatarDisplayUrl || null);
                 }}
                 disabled={!isDirty || isLoading}
               >

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import styles from './CoursesList.module.css';
 import { Button, Input, Select } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
@@ -8,6 +8,140 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
+import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
+
+const PENDING_KEY = 'lms_pending_generation';
+const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
+interface PendingGeneration {
+  jobId: string;
+  formData: Record<string, unknown>;
+  timestamp: number;
+}
+
+type BannerState = 'generating' | 'done' | 'failed' | 'hidden';
+
+function PendingGenerationBanner() {
+  const [banner, setBanner] = useState<BannerState>('hidden');
+  const [pending, setPending] = useState<PendingGeneration | null>(null);
+
+  const dismiss = useCallback(() => {
+    localStorage.removeItem(PENDING_KEY);
+    setBanner('hidden');
+  }, []);
+
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(PENDING_KEY);
+    } catch {
+      return; // localStorage unavailable
+    }
+    if (!raw) return;
+
+    let parsed: PendingGeneration;
+    try {
+      parsed = JSON.parse(raw) as PendingGeneration;
+    } catch {
+      localStorage.removeItem(PENDING_KEY);
+      return;
+    }
+
+    // Discard entries older than 1 hour
+    if (Date.now() - parsed.timestamp > STALE_THRESHOLD_MS) {
+      localStorage.removeItem(PENDING_KEY);
+      return;
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: initialising banner state from localStorage inside effect
+    setPending(parsed);
+
+    setBanner('generating');
+
+    // Poll until done
+    const interval = setInterval(async () => {
+      try {
+        const res = await checkCourseGenerationJobV46(parsed.jobId);
+        if (res.status === 'completed') {
+          clearInterval(interval);
+          setBanner('done');
+        } else if (res.status === 'failed' || res.error) {
+          clearInterval(interval);
+          setBanner('failed');
+        }
+      } catch {
+        // network blip — keep polling
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  if (banner === 'hidden' || !pending) return null;
+
+  const bannerStyles: Record<string, React.CSSProperties> = {
+    generating: { background: '#EBF4FF', borderColor: '#4C6EF5', color: '#1e3a8a' },
+    done: { background: '#F0FFF4', borderColor: '#38A169', color: '#1a4731' },
+    failed: { background: '#FFF5F5', borderColor: '#E53E3E', color: '#742a2a' },
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '12px 16px',
+        border: '1px solid',
+        borderRadius: 10,
+        marginBottom: 16,
+        fontSize: 14,
+        ...(bannerStyles[banner] ?? {}),
+      }}
+    >
+      {banner === 'generating' && (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          style={{ flexShrink: 0, animation: 'spin 1s linear infinite' }}
+        >
+          <circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10" />
+          <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
+        </svg>
+      )}
+      <span style={{ flex: 1 }}>
+        {banner === 'generating' && 'Your course is still being generated in the background…'}
+        {banner === 'done' &&
+          '✅ Course generation complete! Resume the wizard to review and publish.'}
+        {banner === 'failed' && '⚠️ Course generation failed. Please start a new course.'}
+      </span>
+      {banner === 'done' && (
+        <Link
+          href="/dashboard/courses/create"
+          style={{
+            fontWeight: 600,
+            color: '#38A169',
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Resume Setup →
+        </Link>
+      )}
+      <button
+        onClick={dismiss}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, padding: 4 }}
+        title="Dismiss"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 interface CoursesListClientProps {
   courses: CourseWithStats[];
@@ -71,6 +205,7 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
       </div>
 
       {/* Content Card */}
+      <PendingGenerationBanner />
       <div className={styles.card}>
         {/* Search */}
         <div className={styles.searchContainer}>
