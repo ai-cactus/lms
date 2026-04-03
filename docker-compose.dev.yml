@@ -68,9 +68,33 @@ services:
     networks:
       - dev-net
 
+  # ── MinIO (GCS fallback / local object storage) ───────────────────────────────
+  minio:
+    container_name: lms-dev-minio
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - '9005:9000'   # S3-compatible API  → MINIO_ENDPOINT=localhost, MINIO_PORT=9000
+      - '9006:9001'   # Browser console    → http://localhost:9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-lms_minio_dev}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-lms_minio_secret_dev}
+    volumes:
+      - dev-minio-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'mc ready local 2>/dev/null || curl -sf http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dev-net
+
 volumes:
   dev-postgres-data:
   dev-redis-data:
+  dev-minio-data:
 
 networks:
   dev-net:

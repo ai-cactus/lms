@@ -3,6 +3,7 @@ import ProfileForm from '@/components/dashboard/ProfileForm';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
+import { getSignedUrl } from '@/lib/storage';
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -28,6 +29,15 @@ export default async function ProfilePage() {
   console.log('ProfilePage Profile:', profile);
   console.log('ProfilePage User:', user);
 
+  let avatarDisplayUrl: string | null = null;
+  if (profile?.avatarUrl) {
+    try {
+      avatarDisplayUrl = await getSignedUrl(profile.avatarUrl);
+    } catch (error) {
+      console.error('Failed to get signed URL for avatar:', error);
+    }
+  }
+
   // Construct initial profile data
   const initialData = {
     id: session.user.id!,
@@ -36,6 +46,9 @@ export default async function ProfilePage() {
     email: user?.email || session.user.email || '',
     role: role as 'admin' | 'worker',
     company_name: profile?.companyName || '',
+    jobTitle: profile?.jobTitle || '',
+    avatarUrl: profile?.avatarUrl || null,
+    avatarDisplayUrl,
   };
 
   // Construct organization data

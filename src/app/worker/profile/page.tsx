@@ -2,6 +2,7 @@ import React from 'react';
 import { auth } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
+import { getSignedUrl } from '@/lib/storage';
 import WorkerProfileForm from '@/components/worker/WorkerProfileForm';
 
 export default async function WorkerProfilePage() {
@@ -25,6 +26,15 @@ export default async function WorkerProfilePage() {
     redirect('/login');
   }
 
+  let avatarDisplayUrl: string | null = null;
+  if (user.profile?.avatarUrl) {
+    try {
+      avatarDisplayUrl = await getSignedUrl(user.profile.avatarUrl);
+    } catch (error) {
+      console.error('Failed to get signed URL for avatar:', error);
+    }
+  }
+
   const userData = {
     id: user.id,
     first_name: user.profile?.firstName || '',
@@ -33,6 +43,7 @@ export default async function WorkerProfilePage() {
     email: user.email,
     role: user.role,
     avatarUrl: user.profile?.avatarUrl,
+    avatarDisplayUrl,
   };
 
   const organizationData = user.organization

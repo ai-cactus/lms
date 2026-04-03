@@ -165,9 +165,11 @@ NON-NEGOTIABLE SLIDES (conditional):
 - Add 1 slide titled "Non-negotiables — <section title>" ONLY IF that section has at least one norm with modality in: must/prohibited/conditional.
 - If a section has none, DO NOT create a Non-negotiables slide for it.
 
-SLIDE RULES:
-- Each section should contribute at least 1 slide if possible.
-- If desiredSlideCount is too low to include at least one slide per section, prioritize sections with must/prohibited/conditional norms and log the tradeoff in meta.reviewerNotes.
+SLIDE COUNT RULE (strict):
+- You MUST generate EXACTLY desiredSlideCount slides.
+- Distribute slides across sections proportionally. Each section must contribute at least 1 slide.
+- If a section has fewer points than slides allocated, add a "Key Takeaways" slide summarising that section.
+- Do NOT produce fewer slides than desiredSlideCount unless the document has fewer sections than 3 (in which case note the shortfall in meta.reviewerNotes).
 
 OUTPUT SCHEMA:
 \`\`\`json
@@ -247,11 +249,11 @@ Difficulty mapping:
 - medium: mostly T2/T3/T4
 - hard: mostly T3/T4 + T1 with subtle modality nuance (still excerpt-grounded)
 
-QUESTION COUNT RULE:
-- requestedQuestionCount is the target, but DO NOT force a minimum.
-- Generate only as many high-quality questions as the material supports.
-- If you output fewer than requestedQuestionCount, explain the shortfall in meta.gaps and meta.coverageNote.
-- Never create filler.
+QUESTION COUNT RULE (strict):
+- You MUST generate EXACTLY requestedQuestionCount questions — no more, no fewer.
+- Distribute questions proportionally across sections (each section with norms must contribute at least 1 question).
+- If a section cannot produce a high-quality grounded question, borrow a snippet from an adjacent section and note it in meta.reviewerNotes.
+- Never leave the total below requestedQuestionCount. Fill remaining slots with additional T2 (apply-rule) questions from the most norm-rich section.
 
 DISTRACTOR MECHANICS (must be logged per wrong option):
 For each wrong option, it must be wrong in exactly ONE way and you must label it:

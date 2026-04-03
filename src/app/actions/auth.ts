@@ -162,14 +162,29 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
       },
     });
 
-    // Send verification email
+    // Send verification email — explicitly check the result so a send failure
+    // is surfaced back to the UI rather than silently treated as success.
     const { sendEmailVerification } = await import('@/lib/email');
-    await sendEmailVerification(email, token);
+    const emailResult = await sendEmailVerification(email, token);
+
+    if (!emailResult.success) {
+      // Clean up the token we created — user will need to retry and a fresh token
+      // will be generated, preventing stale-token confusion.
+      await prisma.verificationToken.deleteMany({
+        where: { identifier: email, type: 'email_verification' },
+      });
+      logger.error({ msg: 'Verification email failed to send', identifier: email });
+      return {
+        success: false,
+        error:
+          'We could not send a verification email. Please check your email address and try again.',
+      };
+    }
 
     return { success: true };
   } catch (error: unknown) {
-    console.error('Signup error:', error);
-    return { success: false, error: 'Failed to create account.' };
+    logger.error({ msg: 'Signup error', err: String(error) });
+    return { success: false, error: 'Failed to create account. Please try again.' };
   }
 }
 

@@ -14,7 +14,7 @@ import Button from '@/components/ui/Button';
 import PhiErrorModal from './PhiErrorModal';
 import { createFullCourse } from '@/app/actions/course';
 import { analyzeStoredDocument } from '@/app/actions/course-ai';
-import { getDocuments, uploadDocument } from '@/app/actions/documents';
+import { getDocuments, uploadDocument, deleteDocument } from '@/app/actions/documents';
 import { CourseWizardData, GeneratedCourse, CourseDocument } from '@/types/course';
 
 const INITIAL_FORM_DATA: CourseWizardData = {
@@ -126,6 +126,27 @@ export default function CourseWizard() {
         doc.id === id ? { ...doc, selected: !doc.selected } : { ...doc, selected: false },
       ),
     );
+  };
+
+  const handleDeleteWizardDoc = async (id: string) => {
+    // Optimistic removal so the UI responds instantly
+    setDocuments((docs) => docs.filter((d) => d.id !== id));
+    try {
+      await deleteDocument(id);
+    } catch (err) {
+      // Re-fetch list so the doc reappears if the server call failed
+      console.error('Failed to delete document from wizard:', err);
+      const refreshed = await getDocuments();
+      setDocuments(
+        refreshed.map((d) => ({
+          id: d.id,
+          name: d.filename,
+          type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
+          status: 'analyzed' as const,
+          selected: false,
+        })),
+      );
+    }
   };
 
   const handleGenerationComplete = (content: GeneratedCourse) => {
@@ -289,7 +310,7 @@ export default function CourseWizard() {
       }
 
       const updatedDocs = await getDocuments();
-      setDocuments((prevDocs) =>
+      setDocuments(
         updatedDocs.map((d) => ({
           id: d.id,
           name: d.filename,
@@ -338,6 +359,7 @@ export default function CourseWizard() {
           <Step2Documents
             documents={documents}
             onToggleSelect={handleToggleSelect}
+            onDelete={handleDeleteWizardDoc}
             onUpload={handleUpload}
             isAnalyzing={isAnalyzing}
             progress={analysisProgress}

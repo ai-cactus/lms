@@ -3,8 +3,9 @@ import nodemailer from 'nodemailer';
 const user = process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
 const pass = process.env.SMTP_PASSWORD || process.env.ZOHO_MAIL_PASSWORD;
 const host = process.env.SMTP_HOST || 'smtp.zoho.com';
-const port = parseInt(process.env.SMTP_PORT || '465');
-const secure = port === 465; // Typically true for 465, false for 587 (requires STARTTLS)
+const port = parseInt(process.env.SMTP_PORT || '465', 10);
+// Port 465 = implicit TLS (secure: true). Port 587 = STARTTLS (secure: false + requireTLS: true).
+const secure = port === 465;
 
 if (!user || !pass) {
   console.warn('SMTP credentials not found in environment variables');
@@ -14,6 +15,10 @@ const transporter = nodemailer.createTransport({
   host,
   port,
   secure,
+  requireTLS: !secure, // Force STARTTLS on port 587 — prevents plaintext fallback
+  connectionTimeout: 10_000, // 10 s — fail fast instead of hanging
+  greetingTimeout: 8_000, // 8 s — max time to wait for server greeting
+  socketTimeout: 10_000, // 10 s — idle socket timeout per send
   auth: {
     user,
     pass,
