@@ -35,10 +35,16 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lms_staging}
       # Override REDIS_URL to point to the Docker redis service.
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # MinIO is on the internal Docker network — override the endpoint
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: '9000'
+      MINIO_USE_SSL: 'false'
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     networks:
       - staging-net
@@ -89,6 +95,26 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+    networks:
+      - staging-net
+
+  # ── MinIO (GCS fallback / local object storage) ───────────────────────────────
+  minio:
+    container_name: lms-staging-minio
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY must be set in .env.staging}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY must be set in .env.staging}
+    volumes:
+      - /home/deploy/data/minio-staging:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - staging-net
 

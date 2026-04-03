@@ -259,9 +259,17 @@ export async function uploadAvatar(formData: FormData) {
   }
 
   try {
-    const { saveFile } = await import('@/lib/documents/uploadHandler');
-    const publicUrl = await saveFile(file);
-    return { success: true, url: publicUrl };
+    // Upload avatar to cloud storage — namespaced under avatars/ to separate from documents
+    const { uploadFile } = await import('@/lib/storage');
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+    const key = `avatars/${session.user.id}/${timestamp}-${safeName}`;
+    const { storageUri } = await uploadFile(key, buffer, file.type || 'image/jpeg');
+
+    // Return the storageUri as the avatar URL — the client stores this in profile.avatarUrl
+    // and the signed URL is resolved when needed.
+    return { success: true, url: storageUri };
   } catch (error) {
     console.error('Failed to upload avatar:', error);
     return { error: 'Failed to upload avatar' };
