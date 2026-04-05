@@ -294,11 +294,12 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                 </td>
                 <td>
                   <span className={styles.score}>
-                    {enrollment.status === 'completed' ? `${enrollment.score || 0}%` : '-'}
+                    {enrollment.score !== null ? `${enrollment.score}%` : '-'}
                   </span>
                 </td>
                 <td>
-                  {enrollment.status === 'completed' && (enrollment.score ?? 0) >= 70 ? (
+                  {(enrollment.status === 'completed' || enrollment.status === 'attested') &&
+                  (enrollment.score ?? 0) >= 70 ? (
                     <span className={`${styles.statusBadge} ${styles.passed}`}>
                       <svg
                         width="12"
@@ -314,7 +315,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                       </svg>
                       Passed
                     </span>
-                  ) : enrollment.status === 'completed' ? (
+                  ) : enrollment.status === 'completed' || enrollment.status === 'attested' ? (
                     <span className={`${styles.statusBadge} ${styles.failed}`}>
                       <svg
                         width="12"
@@ -331,7 +332,24 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                       </svg>
                       Failed
                     </span>
-                  ) : enrollment.status === 'in_progress' ? (
+                  ) : enrollment.status === 'lessons_complete' ? (
+                    <span className={`${styles.statusBadge} ${styles.inProgress}`}>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                      </svg>
+                      Awaiting Quiz
+                    </span>
+                  ) : enrollment.status === 'in_progress' || enrollment.progress > 0 ? (
                     <span className={`${styles.statusBadge} ${styles.inProgress}`}>
                       <svg
                         width="12"
@@ -375,7 +393,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                       alignItems: 'center',
                     }}
                   >
-                    {enrollment.status === 'completed' ? (
+                    {enrollment.score !== null ? (
                       <Link
                         href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
                       >
