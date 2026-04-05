@@ -287,7 +287,7 @@ export default function CoursePreview({
                     borderRadius: 12,
                   }}
                 >
-                  Signed digitally
+                  Signed
                   <svg
                     width="12"
                     height="12"

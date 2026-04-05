@@ -547,6 +547,26 @@ export default function Step5Review({
           )}
         </div>
 
+        {/* Warning banner for content shortfall */}
+        {(generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
+          ?.coverageNote && (
+          <div
+            style={{
+              padding: '12px 16px',
+              background: '#EFF6FF',
+              borderTop: '1px solid #60A5FA',
+              color: '#1E3A8A',
+              fontSize: 13,
+            }}
+          >
+            ℹ <strong>Less content generated:</strong>{' '}
+            {
+              (generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
+                ?.coverageNote
+            }
+          </div>
+        )}
+
         {/* Warning banner for partial failures */}
         {generatedContent?.warning && (
           <div
