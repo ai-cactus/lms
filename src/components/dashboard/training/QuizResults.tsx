@@ -93,7 +93,7 @@ export default function QuizResults({
     }
   };
 
-  const dashboardPath = userRole === 'admin' ? '/dashboard' : '/dashboard/worker';
+  const dashboardPath = userRole === 'admin' ? '/dashboard' : '/worker';
 
   return (
     <div className={styles.container}>
@@ -117,8 +117,8 @@ export default function QuizResults({
         <div className={styles.headerTop}>
           <div className={styles.headerTitle}>
             {isPassed ? 'Nice work!' : 'Keep trying!'} You completed the{' '}
-            <span className={styles.highlight}>[{stats.courseName}]</span> quiz in [
-            {Math.ceil((stats.time || 0) / 60)}] minutes.
+            <span className={styles.highlight}>{stats.courseName}</span> quiz in{' '}
+            {Math.ceil((stats.time || 0) / 60)} minutes.
             {!isPassed && allowedAttempts && (
               <div style={{ fontSize: 13, marginTop: 4, fontWeight: 400, color: '#E53E3E' }}>
                 Attempt {attemptsUsed} of {allowedAttempts}
@@ -249,10 +249,18 @@ export default function QuizResults({
               </div>
               <div className={styles.optionList}>
                 {q.options.map((opt, i) => {
+                  // Only highlight the option the worker selected AND got wrong.
+                  // We intentionally do NOT reveal which option is correct (Option B behaviour).
+                  const isSelectedWrong =
+                    opt.id === q.selectedAnswer && q.selectedAnswer !== q.correctAnswer;
+                  const isSelectedCorrect =
+                    opt.id === q.selectedAnswer && q.selectedAnswer === q.correctAnswer;
+
                   let optionClass = styles.option;
                   let icon = null;
-                  // Correct Answer Logic
-                  if (opt.id === q.correctAnswer) {
+
+                  if (isSelectedCorrect) {
+                    // Worker got it right — subtle positive indicator on their selection only
                     optionClass = `${styles.option} ${styles.optionCorrect}`;
                     icon = (
                       <svg
@@ -267,9 +275,8 @@ export default function QuizResults({
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
                     );
-                  }
-                  // Selected Wrong Logic
-                  if (opt.id === q.selectedAnswer && q.selectedAnswer !== q.correctAnswer) {
+                  } else if (isSelectedWrong) {
+                    // Worker got it wrong — show their selection in red; correct answer stays neutral
                     optionClass = `${styles.option} ${styles.optionWrong}`;
                     icon = (
                       <svg
@@ -296,56 +303,31 @@ export default function QuizResults({
                   );
                 })}
               </div>
-              <div className={styles.explanation}>
-                <div className={styles.explanationTitle}>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                  Correct Answer: {q.correctAnswer}.{' '}
-                  {q.options.find((o) => o.id === q.correctAnswer)?.text || ''}
-                </div>
-                {q.explanation ? (
-                  <>
-                    <div
-                      className={styles.explanationTitle}
-                      style={{ color: '#2F855A', fontSize: 14, marginTop: 8 }}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                      </svg>
-                      &nbsp;Explanation
-                    </div>
-                    <div className={styles.explanationText}>{q.explanation}</div>
-                  </>
-                ) : (
+              {q.explanation && (
+                <div className={styles.explanation}>
                   <div
-                    className={styles.explanationText}
-                    style={{ color: '#A0AEC0', fontStyle: 'italic' }}
+                    className={styles.explanationTitle}
+                    style={{ color: '#2F855A', fontSize: 14 }}
                   >
-                    AI explanation not available.
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="16" x2="12" y2="12"></line>
+                      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                    </svg>
+                    &nbsp;Explanation
                   </div>
-                )}
-              </div>
+                  <div className={styles.explanationText}>{q.explanation}</div>
+                </div>
+              )}
             </div>
           ))
         )}

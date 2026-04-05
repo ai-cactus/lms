@@ -172,16 +172,19 @@ export async function enrollUsers(courseId: string, emails: string[]) {
       metadata: { courseId },
     });
 
-    // Send enrollment notification email to existing user
-    try {
-      await sendCourseEnrollmentEmail(
-        normalizedEmail,
-        user.profile?.fullName || 'there',
-        course.title,
-        currentUser?.organization?.name || 'Your Organization',
-      );
-    } catch (emailErr) {
-      console.error(`Failed to send enrollment email to ${email}:`, emailErr);
+    // Send enrollment notification only to existing users — new users already received
+    // the invite email (with credentials) from sendCourseInviteEmail above.
+    if (!results.newInvited.includes(email)) {
+      try {
+        await sendCourseEnrollmentEmail(
+          normalizedEmail,
+          user.profile?.fullName || 'there',
+          course.title,
+          currentUser?.organization?.name || 'Your Organization',
+        );
+      } catch (emailErr) {
+        console.error(`Failed to send enrollment email to ${email}:`, emailErr);
+      }
     }
 
     if (!results.newInvited.includes(email)) {
