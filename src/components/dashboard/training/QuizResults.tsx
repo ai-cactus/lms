@@ -338,9 +338,7 @@ export default function QuizResults({
         onClose={() => setIsAttestationOpen(false)}
         enrollmentId={enrollmentId}
         courseName={stats.courseName}
-        userName={data?.userName || 'User'}
         userEmail={data?.userEmail || ''}
-        jobTitle={data?.jobTitle || ''}
         onSuccess={handleAttestSuccess}
       />
 
