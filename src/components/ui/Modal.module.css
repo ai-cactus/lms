@@ -42,6 +42,13 @@
   /* Prevent overflow */
 }
 
+@media (max-width: 600px) {
+  .modal {
+    margin: 16px;
+    max-height: 95vh;
+  }
+}
+
 /* Sizes */
 .modal[data-size='sm'] {
   max-width: 400px;
