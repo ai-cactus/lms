@@ -554,4 +554,12 @@
     width: 100%;
     justify-content: space-between;
   }
+
+  .orgForm {
+    padding: 16px 0;
+  }
+
+  .section {
+    padding: 16px;
+  }
 }
