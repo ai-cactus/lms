@@ -58,10 +58,10 @@ export const BILLING_PLANS: BillingPlan[] = [
   {
     key: 'enterprise',
     name: 'Enterprise',
-    staffMin: 100,
+    staffMin: 51,
     staffMax: null,
     monthlyPrice: 0,
-    description: '100+ staff',
+    description: '51+ staff',
     featuresLabel: 'INCLUDES',
     features: [
       'Multi-location organizations',
