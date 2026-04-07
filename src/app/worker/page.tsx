@@ -81,7 +81,12 @@ export default async function LearnerDashboard() {
 
       <WorkerCourseList courses={courses} />
 
-      <WorkerAchievements badgeCount={badgeCount} />
+      <WorkerAchievements
+        badgeCount={badgeCount}
+        completedCourses={allEnrollments
+          .filter((e) => e.status === 'attested' || e.status === 'completed')
+          .map((e) => ({ id: e.courseId, title: e.course.title }))}
+      />
 
       {showWelcomeModal && <WorkerEmptyState />}
 

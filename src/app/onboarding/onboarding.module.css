@@ -158,3 +158,52 @@
   justify-content: space-between;
   margin-top: 24px;
 }
+
+@media (max-width: 768px) {
+  .header {
+    padding: 0 20px;
+  }
+
+  .main {
+    padding: 24px 16px;
+  }
+
+  .stepper {
+    margin-bottom: 32px;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .stepLabel {
+    display: none;
+  }
+
+  .stepTitle {
+    font-size: 22px;
+  }
+
+  .stepDescription {
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+
+  .form {
+    padding: 24px 16px;
+    gap: 16px;
+  }
+
+  .row {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .actions {
+    flex-direction: column-reverse;
+    gap: 12px;
+  }
+
+  .actions button {
+    width: 100%;
+  }
+}

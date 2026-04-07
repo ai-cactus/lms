@@ -11,9 +11,7 @@ interface AttestationModalProps {
   onClose: () => void;
   enrollmentId: string;
   courseName: string;
-  userName: string;
   userEmail: string;
-  jobTitle: string;
   onSuccess: () => void;
 }
 
@@ -22,13 +20,10 @@ export default function AttestationModal({
   onClose,
   enrollmentId,
   courseName,
-  userName,
   userEmail,
-  jobTitle,
   onSuccess,
 }: AttestationModalProps) {
-  const [signature, setSignature] = useState(userName);
-  const [editedJobTitle, setEditedJobTitle] = useState(jobTitle);
+  const [signature, setSignature] = useState('');
   const [confirmed1, setConfirmed1] = useState(false);
   const [confirmed2, setConfirmed2] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,7 +35,7 @@ export default function AttestationModal({
     setIsSubmitting(true);
 
     try {
-      await attestCourse(enrollmentId, signature, editedJobTitle);
+      await attestCourse(enrollmentId, signature, '');
       onSuccess();
     } catch (err: unknown) {
       const error = err as Error;
@@ -50,8 +45,7 @@ export default function AttestationModal({
     }
   };
 
-  const isFormValid =
-    signature.trim() !== '' && editedJobTitle.trim() !== '' && confirmed1 && confirmed2;
+  const isFormValid = signature.trim() !== '' && confirmed1 && confirmed2;
   const effectiveDate = new Date().toLocaleDateString('en-US', {
     day: '2-digit',
     month: '2-digit',
@@ -82,16 +76,6 @@ export default function AttestationModal({
           {userEmail && (
             <div style={{ fontSize: 12, color: '#A0AEC0', marginTop: 4 }}>{userEmail}</div>
           )}
-        </div>
-
-        <div className={styles.fieldGroup}>
-          <label className={styles.label}>Job Title</label>
-          <input
-            className={styles.input}
-            value={editedJobTitle}
-            onChange={(e) => setEditedJobTitle(e.target.value)}
-            placeholder="e.g. Direct Support Professional"
-          />
         </div>
 
         <div className={styles.legalBox}>
