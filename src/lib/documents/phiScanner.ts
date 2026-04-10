@@ -1,4 +1,7 @@
 import { callVertexAI } from '@/lib/ai-client';
+import { logger } from '@/lib/logger';
+
+const PHI_FAIL_CLOSED = process.env.PHI_FAIL_CLOSED === 'true';
 
 export type PHIFinding = {
   type: 'DATE' | 'EMAIL' | 'PHONE' | 'SSN' | 'ZIP' | 'NAME' | 'ADDRESS' | 'OTHER';
@@ -70,10 +73,26 @@ export async function scanText(text: string): Promise<ScanResult> {
 
     return { hasPHI: false, findings: [] };
   } catch (error) {
-    console.error('PHI Scan Error:', error);
-    // Fallback: If AI fails, maybe fail open or closed?
-    // For safety, let's return false but log it. Or maybe true to trigger manual review?
-    // Let's return false to avoid blocking, but in production we'd want a "Scan Failed" status.
+    logger.error({ msg: 'PHI scan failed', error: String(error) });
+
+    if (PHI_FAIL_CLOSED) {
+      // Fail closed: treat scan failure as potential PHI presence
+      logger.warn({ msg: 'PHI scanner fail-closed: blocking document' });
+      return {
+        hasPHI: true,
+        findings: [
+          {
+            type: 'OTHER',
+            value: 'PHI scan failed — document blocked as precaution',
+            index: 0,
+            confidence: 1.0,
+          },
+        ],
+      };
+    }
+
+    // Fail open (legacy behavior) — log warning for monitoring
+    logger.warn({ msg: 'PHI scanner fail-open: allowing document through' });
     return { hasPHI: false, findings: [] };
   }
 }

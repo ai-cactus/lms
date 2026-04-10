@@ -60,6 +60,7 @@ model User {
   email          String         @unique
   password       String
   organizationId String?
+  authProvider   String         @default("credentials")
   role           String         @default("worker")
   emailVerified  Boolean        @default(false)
   createdAt      DateTime       @default(now())
