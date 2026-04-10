@@ -2,6 +2,7 @@ import NextAuth, { NextAuthConfig, User } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { logger, maskEmail } from '@/lib/logger';
 type Role = 'admin' | 'worker';
@@ -159,10 +160,16 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               });
             }
 
+            const randomPassword = await bcrypt.hash(
+              crypto.randomUUID() + Date.now().toString(),
+              12,
+            );
+
             dbUser = await prisma.user.create({
               data: {
                 email: user.email!,
-                password: '', // OAuth users don't need a password initially
+                password: randomPassword,
+                authProvider: 'microsoft-entra-id',
                 role: matchedRole,
                 organizationId: matchedOrgId,
                 emailVerified: true, // Trust OAuth provider email verification
@@ -308,5 +315,6 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
     session: { strategy: 'jwt' },
   };
 
-  return NextAuth(config);
+  const instance = NextAuth(config);
+  return { ...instance, options: config };
 }

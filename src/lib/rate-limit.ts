@@ -8,6 +8,9 @@
  */
 
 import { Redis } from 'ioredis';
+import { logger } from '@/lib/logger';
+
+const fallbackCache = new Map<string, number[]>();
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -63,10 +66,26 @@ export async function checkRateLimit(
       remaining: Math.max(0, limit - count),
       resetInSeconds: windowSec,
     };
-  } catch {
-    // If Redis is unavailable, fail open to avoid blocking legitimate logins.
-    // This is a deliberate availability-over-security tradeoff for the rate limiter only.
-    // The auth layer itself still performs bcrypt and DB validation.
-    return { allowed: true, remaining: limit, resetInSeconds: windowSec };
+  } catch (error) {
+    logger.error({
+      msg: 'Redis rate limiter failed, falling back to in-memory',
+      error: String(error),
+      key,
+    });
+
+    // In-memory sliding window fallback
+    const windowStartFallback = now - windowSec * 1000;
+    const timestamps = fallbackCache.get(key) || [];
+    const validTimestamps = timestamps.filter((t) => t > windowStartFallback);
+    validTimestamps.push(now);
+    fallbackCache.set(key, validTimestamps);
+
+    const count = validTimestamps.length;
+
+    return {
+      allowed: count <= limit,
+      remaining: Math.max(0, limit - count),
+      resetInSeconds: windowSec,
+    };
   }
 }
