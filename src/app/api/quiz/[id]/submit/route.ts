@@ -4,7 +4,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-
+import { callVertexAI } from '@/lib/ai-client';
 const submitQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
   answers: z.array(
@@ -40,9 +40,6 @@ async function generateExplanations(
   }
 
   // Legacy fallback: generate explanations via AI
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) return {};
-
   try {
     const questionsForAI = questions.map((q, i) => ({
       num: i + 1,
@@ -60,43 +57,11 @@ Return ONLY a JSON object mapping question numbers to explanations, like:
 {"1": "Explanation for Q1...", "2": "Explanation for Q2...", ...}
 No markdown, no extra text.`;
 
-    // Strictly validate variables to prevent SSRF
-    const envSchema = z.object({
-      projectId: z
-        .string()
-        .regex(/^[a-zA-Z0-9-]+$/)
-        .min(1),
-      location: z
-        .string()
-        .regex(/^[a-zA-Z0-9-]+$/)
-        .min(1),
-      modelId: z
-        .string()
-        .regex(/^[a-zA-Z0-9.-]+$/)
-        .min(1),
+    const textPart = await callVertexAI(prompt, {
+      temperature: 0.3,
+      maxOutputTokens: 4096,
     });
 
-    const validatedVars = envSchema.parse({
-      projectId: process.env.GOOGLE_PROJECT_ID || 'theraptly-lms',
-      location: process.env.GOOGLE_LOCATION || 'us-central1',
-      modelId: 'gemini-2.5-flash-lite',
-    });
-
-    const url = `https://${validatedVars.location}-aiplatform.googleapis.com/v1/projects/${validatedVars.projectId}/locations/${validatedVars.location}/publishers/google/models/${validatedVars.modelId}:generateContent?key=${apiKey}`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-      }),
-    });
-
-    if (!response.ok) return {};
-
-    const json = await response.json();
-    const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!textPart) return {};
 
     let cleanText = textPart.trim();
