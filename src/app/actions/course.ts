@@ -455,7 +455,7 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   const enrollmentData = usersToAssign.map((u) => ({
     userId: u.id,
     courseId: courseId,
-    status: 'enrolled',
+    status: 'enrolled' as const,
     progress: 0,
     startedAt: new Date(),
   }));
@@ -715,7 +715,7 @@ export async function createFullCourse(data: {
           data: allUserIds.map((userId) => ({
             userId,
             courseId: course.id,
-            status: 'enrolled',
+            status: 'enrolled' as const,
             startedAt: new Date(),
           })),
           skipDuplicates: true,

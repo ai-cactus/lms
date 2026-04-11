@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Button, Input, Select, Modal } from '@/components/ui';
 import { updateStaffDetails } from '@/app/actions/staff';
 import { useRouter } from 'next/navigation';
+import type { UserRole } from '@prisma/client';
 
 interface EditStaffModalProps {
   isOpen: boolean;
@@ -12,7 +13,7 @@ interface EditStaffModalProps {
     id: string;
     name: string;
     email: string;
-    role: string;
+    role: UserRole;
     jobTitle: string;
   };
 }
@@ -20,7 +21,7 @@ interface EditStaffModalProps {
 export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModalProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [role, setRole] = useState('worker');
+  const [role, setRole] = useState<UserRole>('worker');
   const [jobTitle, setJobTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
