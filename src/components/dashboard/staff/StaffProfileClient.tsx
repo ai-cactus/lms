@@ -8,6 +8,7 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import Link from 'next/link';
 import Image from 'next/image';
 import EditStaffModal from './EditStaffModal';
+import type { UserRole } from '@prisma/client';
 import AssignUserCourseModal from './AssignUserCourseModal';
 import AssignRetakeModal from '../training/AssignRetakeModal';
 import RemoveStaffModal from './RemoveStaffModal';
@@ -494,7 +495,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           id: user.id,
           name: user.name,
           email: user.email,
-          role: user.role,
+          role: user.role as UserRole,
           jobTitle: user.jobTitle,
         }}
       />
