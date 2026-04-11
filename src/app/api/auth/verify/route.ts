@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import type { UserRole } from '@prisma/client';
 
 const getBaseUrl = () => {
   return (
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Default to 'worker' if role not set
-    const userRole = verificationToken.role || 'worker';
+    const userRole = (verificationToken.role || 'worker') as UserRole;
 
     await prisma.$transaction(async (tx) => {
       // Create the user

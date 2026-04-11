@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { sendInviteEmail } from '@/lib/email';
+import type { UserRole } from '@prisma/client';
 
 // Define types for the data we expect
 // Note: We are using 'any' for simplicity here to match the flexible structure,
@@ -122,10 +123,10 @@ export async function completeOnboarding(data: OnboardingData) {
       });
 
       // 3. Prepare Invites to be sent
-      const invitesToSend: { email: string; role: string; token: string; orgName: string }[] = [];
+      const invitesToSend: { email: string; role: UserRole; token: string; orgName: string }[] = [];
 
       // Helper to queue invite
-      const queueInvite = async (email: string, role: string) => {
+      const queueInvite = async (email: string, role: UserRole) => {
         // Check if user exists
         const existingUser = await tx.user.findUnique({ where: { email } });
         if (existingUser) return; // Skip if user exists

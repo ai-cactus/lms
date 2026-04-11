@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
+import type { UserRole } from '@prisma/client';
 
 export async function getStaffDetails(userId: string) {
   const session = await auth();
@@ -101,7 +102,7 @@ export async function updateStaffDetails(
   data: {
     firstName: string;
     lastName: string;
-    role: string;
+    role: UserRole;
     jobTitle: string;
   },
 ) {

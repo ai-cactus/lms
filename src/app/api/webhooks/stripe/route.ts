@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import stripe from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
 import Stripe from 'stripe';
+import type {
+  SubscriptionPlan,
+  SubscriptionBillingCycle,
+  SubscriptionStatus,
+} from '@prisma/client';
 
 // Stripe webhook secret — required to verify event authenticity
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -82,8 +87,9 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
     return;
   }
 
-  const planKey = (sub.metadata?.planKey as string) ?? 'starter';
-  const billingCycle = (sub.metadata?.billingCycle as string) ?? 'monthly';
+  const planKey = ((sub.metadata?.planKey as string) ?? 'starter') as SubscriptionPlan;
+  const billingCycle = ((sub.metadata?.billingCycle as string) ??
+    'monthly') as SubscriptionBillingCycle;
   const priceItem = sub.items.data[0];
   const stripePriceId = priceItem?.price.id ?? '';
 
@@ -103,7 +109,7 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         stripePriceId,
         plan: planKey,
         billingCycle,
-        status: sub.status,
+        status: sub.status as SubscriptionStatus,
         currentPeriodStart: new Date(periodStart * 1000),
         currentPeriodEnd: new Date(periodEnd * 1000),
         cancelAtPeriodEnd: sub.cancel_at_period_end,
@@ -113,7 +119,7 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         stripePriceId,
         plan: planKey,
         billingCycle,
-        status: sub.status,
+        status: sub.status as SubscriptionStatus,
         currentPeriodStart: new Date(periodStart * 1000),
         currentPeriodEnd: new Date(periodEnd * 1000),
         cancelAtPeriodEnd: sub.cancel_at_period_end,
