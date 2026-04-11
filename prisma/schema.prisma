@@ -7,6 +7,64 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Enums ────────────────────────────────────────────────────────────────────
+// Values use lowercase to match existing database data.
+// A future migration can normalize to uppercase if desired.
+
+enum UserRole {
+  admin
+  worker
+}
+
+enum JobStatus {
+  queued
+  processing
+  completed
+  failed
+}
+
+enum CourseStatus {
+  draft
+  published
+}
+
+enum EnrollmentStatus {
+  enrolled
+  assigned
+  in_progress
+  lessons_complete
+  completed
+  attested
+  locked
+  failed
+  retry_requested
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  expired
+}
+
+enum SubscriptionPlan {
+  starter
+  professional
+  enterprise
+}
+
+enum SubscriptionBillingCycle {
+  monthly
+  quarterly
+  yearly
+}
+
+enum SubscriptionStatus {
+  active
+  past_due
+  canceled
+  trialing
+}
+
 model Organization {
   id                      String    @id @default(uuid())
   name                    String
@@ -44,8 +102,8 @@ model Invite {
   email          String
   token          String       @unique
   organizationId String
-  role           String       @default("worker")
-  status         String       @default("pending")
+  role           UserRole     @default(worker)
+  status         InviteStatus @default(pending)
   expiresAt      DateTime
   createdAt      DateTime     @default(now())
   invitedBy      String?
@@ -61,7 +119,7 @@ model User {
   password       String
   organizationId String?
   authProvider   String         @default("credentials")
-  role           String         @default("worker")
+  role           UserRole       @default(worker)
   emailVerified  Boolean        @default(false)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -70,7 +128,9 @@ model User {
   enrollments    Enrollment[]
   notifications  Notification[]
   profile        Profile?
-  organization   Organization?  @relation(fields: [organizationId], references: [id])
+  organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
 }
 
 model Profile {
@@ -97,8 +157,10 @@ model Document {
   size         Int
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
-  user         User              @relation(fields: [userId], references: [id])
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions     DocumentVersion[]
+
+  @@index([userId])
 }
 
 model DocumentVersion {
@@ -129,7 +191,7 @@ model Course {
   title              String
   description        String?
   thumbnail          String?
-  status             String          @default("draft")
+  status             CourseStatus    @default(draft)
   category           String?
   duration           Int?
   createdBy          String
@@ -143,12 +205,30 @@ model Course {
   rawArticleMeta     Json?
   rawJudgeJson       Json?
   rawSlidesJson      Json?
-  creator            User            @relation(fields: [createdBy], references: [id])
+  creator            User            @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   versions           CourseVersion[]
   enrollments        Enrollment[]
   lessons            Lesson[]
+  artifacts          CourseArtifact[]
 
   @@index([createdBy])
+  @@index([status])
+}
+
+model CourseArtifact {
+  id         String   @id @default(uuid())
+  courseId   String
+  type       String   // article_meta, article_markdown, slides, quiz, judge, course_json
+  storageUri String   // gcs:// or minio:// URI
+  mimeType   String   @default("application/json")
+  sizeBytes  Int?
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, type, version])
+  @@index([courseId])
 }
 
 model CourseVersion {
@@ -170,7 +250,7 @@ model MappingEvidence {
   status            String          @default("pending")
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
-  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
 }
 
 model AuditorPack {
@@ -185,11 +265,14 @@ model Job {
   id        String   @id @default(uuid())
   userId    String?
   type      String
-  status    String   @default("queued")
+  status    JobStatus @default(queued)
   payload   Json?
   result    Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }
 
 model Lesson {
@@ -237,7 +320,7 @@ model Enrollment {
   id                   String        @id @default(uuid())
   userId               String
   courseId             String
-  status               String        @default("enrolled")
+  status               EnrollmentStatus @default(enrolled)
   progress             Int           @default(0)
   score                Int?
   startedAt            DateTime      @default(now())
@@ -250,11 +333,16 @@ model Enrollment {
   retakeOf             String?
   retakeReason         String?
   course               Course        @relation(fields: [courseId], references: [id])
-  user                 User          @relation(fields: [userId], references: [id])
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   quizAttempts         QuizAttempt[]
 
+  // NOTE: @@index (not @@unique) on [userId, courseId] because the retake flow
+  // (assignRetake) intentionally creates a second enrollment for the same
+  // user-course pair when the original is locked. Application-level checks
+  // (findFirst + skipDuplicates) prevent accidental duplicates.
   @@index([userId, courseId])
   @@index([courseId])
+  @@index([completedAt])
 }
 
 model QuizAttempt {
@@ -307,9 +395,9 @@ model Subscription {
   organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stripeSubscriptionId String       @unique
   stripePriceId        String
-  plan                 String       // 'starter' | 'professional' | 'enterprise'
-  billingCycle         String       // 'monthly' | 'quarterly' | 'yearly'
-  status               String       // 'active' | 'past_due' | 'canceled' | 'trialing'
+  plan                 SubscriptionPlan       // starter | professional | enterprise
+  billingCycle         SubscriptionBillingCycle // monthly | quarterly | yearly
+  status               SubscriptionStatus     // active | past_due | canceled | trialing
   currentPeriodStart   DateTime
   currentPeriodEnd     DateTime
   cancelAtPeriodEnd    Boolean      @default(false)

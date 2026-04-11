@@ -1,6 +1,6 @@
 'use server';
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type InviteStatus, type UserRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { sendInviteEmail } from '@/lib/email';
 
@@ -61,10 +61,10 @@ export async function createInvites(
       email: string;
       token: string;
       organizationId: string;
-      role: string;
+      role: UserRole;
       expiresAt: Date;
       invitedBy?: string;
-      status: string;
+      status: InviteStatus;
     }[] = [];
     const newInvitesMap = new Map<string, (typeof newInvitesData)[0]>();
 
@@ -100,10 +100,10 @@ export async function createInvites(
         email,
         token,
         organizationId,
-        role,
+        role: role as UserRole,
         expiresAt,
         invitedBy: inviterId,
-        status: 'pending',
+        status: 'pending' as InviteStatus,
       };
 
       emailsToCreate.push(email);
