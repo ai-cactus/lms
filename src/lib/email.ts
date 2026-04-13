@@ -293,36 +293,115 @@ export async function sendQuizLockedEmail(
 
 export async function sendEnterpriseInquiryEmail({
   to,
-  contactName,
+  firstName,
+  lastName,
+  workEmail,
+  jobTitle,
+  organizationName,
+  facilityType,
+  numberOfFacilities,
+  numberOfStaff,
+  currentAccreditation,
+  currentTrainingMethod,
+  primaryPainPoint,
+  authUserEmail,
   orgName,
-  contactEmail,
-  staffCount,
-  message,
 }: {
   to: string;
-  contactName: string;
+  firstName: string;
+  lastName: string;
+  workEmail: string;
+  jobTitle: string;
+  organizationName: string;
+  facilityType: string;
+  numberOfFacilities: string;
+  numberOfStaff: string;
+  currentAccreditation: string;
+  currentTrainingMethod: string;
+  primaryPainPoint: string;
+  /** Authenticated session email — used as reply-to fallback */
+  authUserEmail: string;
+  /** Organization name from the DB (may differ from form input) */
   orgName: string;
-  contactEmail: string;
-  staffCount: string;
-  message: string;
 }) {
   const appName = 'Theraptly';
+  const contactName = [firstName, lastName].filter(Boolean).join(' ') || 'Not provided';
+  const replyToEmail = workEmail || authUserEmail;
+
+  /** Renders a table row only when the value is non-empty */
+  const row = (label: string, value: string) =>
+    value
+      ? `<tr>
+           <td style="padding: 8px 12px; font-weight: 600; color: #4a5568; white-space: nowrap; vertical-align: top; width: 40%;">${label}</td>
+           <td style="padding: 8px 12px; color: #2d3748; vertical-align: top;">${value}</td>
+         </tr>`
+      : '';
+
   const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-      <h2 style="color: #4C6EF5;">New Enterprise Plan Inquiry</h2>
-      <p style="color: #333; font-size: 16px;">An organization has expressed interest in the Enterprise plan.</p>
-      <div style="background: #f7fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
-        <p style="margin: 4px 0;"><strong>Organization:</strong> ${orgName}</p>
-        <p style="margin: 4px 0;"><strong>Contact Name:</strong> ${contactName}</p>
-        <p style="margin: 4px 0;"><strong>Email:</strong> <a href="mailto:${contactEmail}">${contactEmail}</a></p>
-        <p style="margin: 4px 0;"><strong>Staff Count:</strong> ${staffCount}</p>
+    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 40px 20px; background: #f8f9fc;">
+      <!-- Header -->
+      <div style="background: #4C6EF5; border-radius: 12px 12px 0 0; padding: 28px 32px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 22px;">New Enterprise Plan Inquiry</h1>
+        <p style="margin: 6px 0 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">
+          Submitted via the ${appName} billing page
+        </p>
       </div>
-      <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
-        <p style="margin: 0; font-weight: 600;">Message:</p>
-        <p style="margin: 8px 0 0 0; color: #4a5568;">${message}</p>
+
+      <!-- Body card -->
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; padding: 32px;">
+
+        <!-- Contact details -->
+        <h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Contact Details</h2>
+        <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
+          <tbody>
+            ${row('Full Name', contactName)}
+            ${row('Work Email', `<a href="mailto:${workEmail}" style="color: #4C6EF5;">${workEmail}</a>`)}
+            ${row('Job Title', jobTitle)}
+          </tbody>
+        </table>
+
+        <!-- Organization details -->
+        <h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Organization Details</h2>
+        <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
+          <tbody>
+            ${row('Organization', organizationName)}
+            ${row('DB Org (session)', orgName !== organizationName ? orgName : '')}
+            ${row('Facility Type', facilityType)}
+            ${row('No. of Facilities', numberOfFacilities)}
+            ${row('No. of Staff', numberOfStaff)}
+          </tbody>
+        </table>
+
+        <!-- Training context -->
+        <h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Training Context</h2>
+        <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
+          <tbody>
+            ${row('Current Accreditation', currentAccreditation)}
+            ${row('Current Training Method', currentTrainingMethod)}
+          </tbody>
+        </table>
+
+        <!-- Pain point -->
+        ${
+          primaryPainPoint
+            ? `<h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Primary Pain Point</h2>
+               <div style="background: #f8fafc; border-left: 4px solid #4C6EF5; border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 24px;">
+                 <p style="margin: 0; color: #2d3748; line-height: 1.6;">${primaryPainPoint}</p>
+               </div>`
+            : ''
+        }
+
+        <!-- CTA -->
+        <div style="text-align: center; margin-top: 8px;">
+          <a href="mailto:${replyToEmail}"
+             style="display: inline-block; background: #4C6EF5; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">
+            Reply to ${contactName}
+          </a>
+        </div>
       </div>
-      <p style="color: #718096; font-size: 12px; margin-top: 32px;">
-        This inquiry was submitted via the ${appName} billing page.
+
+      <p style="color: #94a3b8; font-size: 12px; margin-top: 16px; text-align: center;">
+        This is an automated notification from ${appName}.
       </p>
     </div>
   `;
@@ -331,8 +410,8 @@ export async function sendEnterpriseInquiryEmail({
     const info = await transporter.sendMail({
       from: `"${appName}" <${user}>`,
       to,
-      replyTo: contactEmail,
-      subject: `Enterprise Plan Inquiry — ${orgName}`,
+      replyTo: replyToEmail,
+      subject: `Enterprise Plan Inquiry — ${organizationName}`,
       html,
     });
     console.info('[Email] Enterprise inquiry sent: %s', info.messageId);
