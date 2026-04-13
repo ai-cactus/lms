@@ -55,28 +55,55 @@ export async function POST(request: NextRequest) {
     }
 
     const {
-      firstName = '',
-      lastName = '',
+      firstName,
+      lastName,
       workEmail,
-      jobTitle = '',
+      jobTitle,
       organizationName,
-      facilityType = '',
-      numberOfFacilities = '',
-      numberOfStaff = '',
-      currentAccreditation = '',
-      currentTrainingMethod = '',
-      primaryPainPoint = '',
+      facilityType,
+      numberOfFacilities,
+      numberOfStaff,
+      currentAccreditation,
+      currentTrainingMethod,
+      primaryPainPoint,
     } = body;
 
     // Required field validation
+    if (!firstName?.trim()) {
+      return NextResponse.json({ error: 'First name is required.' }, { status: 400 });
+    }
+    if (!lastName?.trim()) {
+      return NextResponse.json({ error: 'Last name is required.' }, { status: 400 });
+    }
     if (!workEmail?.trim()) {
       return NextResponse.json({ error: 'Work email is required.' }, { status: 400 });
     }
     if (!isValidEmail(workEmail.trim())) {
       return NextResponse.json({ error: 'Please provide a valid email address.' }, { status: 400 });
     }
+    if (!jobTitle?.trim()) {
+      return NextResponse.json({ error: 'Job title is required.' }, { status: 400 });
+    }
     if (!organizationName?.trim()) {
       return NextResponse.json({ error: 'Organization name is required.' }, { status: 400 });
+    }
+    if (!facilityType?.trim()) {
+      return NextResponse.json({ error: 'Facility type is required.' }, { status: 400 });
+    }
+    if (!numberOfFacilities?.trim()) {
+      return NextResponse.json({ error: 'Number of facilities is required.' }, { status: 400 });
+    }
+    if (!numberOfStaff?.trim()) {
+      return NextResponse.json({ error: 'Number of staff is required.' }, { status: 400 });
+    }
+    if (!currentAccreditation?.trim()) {
+      return NextResponse.json({ error: 'Accreditation is required.' }, { status: 400 });
+    }
+    if (!currentTrainingMethod?.trim()) {
+      return NextResponse.json({ error: 'Training method is required.' }, { status: 400 });
+    }
+    if (!primaryPainPoint?.trim()) {
+      return NextResponse.json({ error: 'Primary pain point is required.' }, { status: 400 });
     }
 
     // Fetch organization for additional context
