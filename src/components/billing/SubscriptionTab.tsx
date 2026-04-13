@@ -98,18 +98,52 @@ function validateForm(
 ): Partial<Record<keyof EnterpriseFormFields, string>> {
   const errors: Partial<Record<keyof EnterpriseFormFields, string>> = {};
 
+  if (!fields.firstName.trim()) {
+    errors.firstName = 'First name is required.';
+  }
+
+  if (!fields.lastName.trim()) {
+    errors.lastName = 'Last name is required.';
+  }
+
   if (!fields.workEmail.trim()) {
     errors.workEmail = 'Work email is required.';
   } else if (!validateEmail(fields.workEmail)) {
     errors.workEmail = 'Please enter a valid email address.';
   }
 
+  if (!fields.jobTitle.trim()) {
+    errors.jobTitle = 'Job title is required.';
+  }
+
   if (!fields.organizationName.trim()) {
     errors.organizationName = 'Organization name is required.';
   }
 
-  if (fields.facilityType === 'Other (Custom)' && !fields.facilityTypeOther.trim()) {
+  if (!fields.facilityType) {
+    errors.facilityType = 'Facility type is required.';
+  } else if (fields.facilityType === 'Other (Custom)' && !fields.facilityTypeOther.trim()) {
     errors.facilityTypeOther = 'Please specify your facility type.';
+  }
+
+  if (!fields.numberOfFacilities) {
+    errors.numberOfFacilities = 'Number of facilities is required.';
+  }
+
+  if (!fields.numberOfStaff.trim()) {
+    errors.numberOfStaff = 'Number of staff is required.';
+  }
+
+  if (!fields.currentAccreditation) {
+    errors.currentAccreditation = 'Accreditation is required.';
+  }
+
+  if (!fields.currentTrainingMethod) {
+    errors.currentTrainingMethod = 'Training method is required.';
+  }
+
+  if (!fields.primaryPainPoint.trim()) {
+    errors.primaryPainPoint = 'Please describe your primary pain point.';
   }
 
   return errors;
@@ -450,26 +484,52 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
                 {/* Row: First Name + Last Name */}
                 <div className={styles.formRow}>
                   <div className={styles.formGroup}>
-                    <label htmlFor="ent-first-name">First Name</label>
+                    <label htmlFor="ent-first-name">
+                      First Name <span className={styles.requiredMark}>*</span>
+                    </label>
                     <input
                       id="ent-first-name"
                       type="text"
                       autoComplete="given-name"
                       placeholder="Jane"
+                      required
+                      aria-invalid={!!enterpriseModal.fieldErrors.firstName}
+                      aria-describedby={
+                        enterpriseModal.fieldErrors.firstName ? 'ent-first-err' : undefined
+                      }
                       value={enterpriseModal.firstName}
                       onChange={(e) => setField('firstName', e.target.value)}
+                      className={enterpriseModal.fieldErrors.firstName ? styles.inputError : ''}
                     />
+                    {enterpriseModal.fieldErrors.firstName && (
+                      <span id="ent-first-err" className={styles.fieldError} role="alert">
+                        {enterpriseModal.fieldErrors.firstName}
+                      </span>
+                    )}
                   </div>
                   <div className={styles.formGroup}>
-                    <label htmlFor="ent-last-name">Last Name</label>
+                    <label htmlFor="ent-last-name">
+                      Last Name <span className={styles.requiredMark}>*</span>
+                    </label>
                     <input
                       id="ent-last-name"
                       type="text"
                       autoComplete="family-name"
                       placeholder="Doe"
+                      required
+                      aria-invalid={!!enterpriseModal.fieldErrors.lastName}
+                      aria-describedby={
+                        enterpriseModal.fieldErrors.lastName ? 'ent-last-err' : undefined
+                      }
                       value={enterpriseModal.lastName}
                       onChange={(e) => setField('lastName', e.target.value)}
+                      className={enterpriseModal.fieldErrors.lastName ? styles.inputError : ''}
                     />
+                    {enterpriseModal.fieldErrors.lastName && (
+                      <span id="ent-last-err" className={styles.fieldError} role="alert">
+                        {enterpriseModal.fieldErrors.lastName}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -502,15 +562,28 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
                 {/* Row: Job Title + Organization Name */}
                 <div className={styles.formRow}>
                   <div className={styles.formGroup}>
-                    <label htmlFor="ent-job-title">Job Title</label>
+                    <label htmlFor="ent-job-title">
+                      Job Title <span className={styles.requiredMark}>*</span>
+                    </label>
                     <input
                       id="ent-job-title"
                       type="text"
                       autoComplete="organization-title"
                       placeholder="Clinical Director"
+                      required
+                      aria-invalid={!!enterpriseModal.fieldErrors.jobTitle}
+                      aria-describedby={
+                        enterpriseModal.fieldErrors.jobTitle ? 'ent-job-err' : undefined
+                      }
                       value={enterpriseModal.jobTitle}
                       onChange={(e) => setField('jobTitle', e.target.value)}
+                      className={enterpriseModal.fieldErrors.jobTitle ? styles.inputError : ''}
                     />
+                    {enterpriseModal.fieldErrors.jobTitle && (
+                      <span id="ent-job-err" className={styles.fieldError} role="alert">
+                        {enterpriseModal.fieldErrors.jobTitle}
+                      </span>
+                    )}
                   </div>
                   <div className={styles.formGroup}>
                     <label htmlFor="ent-org-name">
@@ -542,12 +615,21 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
 
                 {/* Facility Type */}
                 <div className={styles.formGroup}>
-                  <label htmlFor="ent-facility-type">Facility Type</label>
+                  <label htmlFor="ent-facility-type">
+                    Facility Type <span className={styles.requiredMark}>*</span>
+                  </label>
                   <select
                     id="ent-facility-type"
+                    required
+                    aria-invalid={!!enterpriseModal.fieldErrors.facilityType}
+                    aria-describedby={
+                      enterpriseModal.fieldErrors.facilityType ? 'ent-fac-type-err' : undefined
+                    }
                     value={enterpriseModal.facilityType}
                     onChange={(e) => setField('facilityType', e.target.value)}
-                    className={styles.selectField}
+                    className={`${styles.selectField} ${
+                      enterpriseModal.fieldErrors.facilityType ? styles.inputError : ''
+                    }`}
                   >
                     <option value="">Select facility type…</option>
                     {FACILITY_TYPES.map((opt) => (
@@ -556,6 +638,11 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
                       </option>
                     ))}
                   </select>
+                  {enterpriseModal.fieldErrors.facilityType && (
+                    <span id="ent-fac-type-err" className={styles.fieldError} role="alert">
+                      {enterpriseModal.fieldErrors.facilityType}
+                    </span>
+                  )}
                 </div>
 
                 {/* "Other" facility type — shown conditionally */}
@@ -592,12 +679,21 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
                 {/* Row: Number of Facilities + Number of Staff */}
                 <div className={styles.formRow}>
                   <div className={styles.formGroup}>
-                    <label htmlFor="ent-num-facilities">Number of Facilities/Locations</label>
+                    <label htmlFor="ent-num-facilities">
+                      Number of Facilities/Locations <span className={styles.requiredMark}>*</span>
+                    </label>
                     <select
                       id="ent-num-facilities"
+                      required
+                      aria-invalid={!!enterpriseModal.fieldErrors.numberOfFacilities}
+                      aria-describedby={
+                        enterpriseModal.fieldErrors.numberOfFacilities ? 'ent-fac-err' : undefined
+                      }
                       value={enterpriseModal.numberOfFacilities}
                       onChange={(e) => setField('numberOfFacilities', e.target.value)}
-                      className={styles.selectField}
+                      className={`${styles.selectField} ${
+                        enterpriseModal.fieldErrors.numberOfFacilities ? styles.inputError : ''
+                      }`}
                     >
                       <option value="">Select range…</option>
                       {FACILITY_COUNTS.map((opt) => (
@@ -606,28 +702,55 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
                         </option>
                       ))}
                     </select>
+                    {enterpriseModal.fieldErrors.numberOfFacilities && (
+                      <span id="ent-fac-err" className={styles.fieldError} role="alert">
+                        {enterpriseModal.fieldErrors.numberOfFacilities}
+                      </span>
+                    )}
                   </div>
                   <div className={styles.formGroup}>
-                    <label htmlFor="ent-num-staff">Number of Staff</label>
+                    <label htmlFor="ent-num-staff">
+                      Number of Staff <span className={styles.requiredMark}>*</span>
+                    </label>
                     <input
                       id="ent-num-staff"
                       type="number"
                       min="1"
                       placeholder="e.g. 150"
+                      required
+                      aria-invalid={!!enterpriseModal.fieldErrors.numberOfStaff}
+                      aria-describedby={
+                        enterpriseModal.fieldErrors.numberOfStaff ? 'ent-staff-err' : undefined
+                      }
                       value={enterpriseModal.numberOfStaff}
                       onChange={(e) => setField('numberOfStaff', e.target.value)}
+                      className={enterpriseModal.fieldErrors.numberOfStaff ? styles.inputError : ''}
                     />
+                    {enterpriseModal.fieldErrors.numberOfStaff && (
+                      <span id="ent-staff-err" className={styles.fieldError} role="alert">
+                        {enterpriseModal.fieldErrors.numberOfStaff}
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 {/* Current Accreditation */}
                 <div className={styles.formGroup}>
-                  <label htmlFor="ent-accreditation">Current Accreditation</label>
+                  <label htmlFor="ent-accreditation">
+                    Current Accreditation <span className={styles.requiredMark}>*</span>
+                  </label>
                   <select
                     id="ent-accreditation"
+                    required
+                    aria-invalid={!!enterpriseModal.fieldErrors.currentAccreditation}
+                    aria-describedby={
+                      enterpriseModal.fieldErrors.currentAccreditation ? 'ent-acc-err' : undefined
+                    }
                     value={enterpriseModal.currentAccreditation}
                     onChange={(e) => setField('currentAccreditation', e.target.value)}
-                    className={styles.selectField}
+                    className={`${styles.selectField} ${
+                      enterpriseModal.fieldErrors.currentAccreditation ? styles.inputError : ''
+                    }`}
                   >
                     <option value="">Select accreditation…</option>
                     {ACCREDITATION_OPTIONS.map((opt) => (
@@ -636,16 +759,32 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
                       </option>
                     ))}
                   </select>
+                  {enterpriseModal.fieldErrors.currentAccreditation && (
+                    <span id="ent-acc-err" className={styles.fieldError} role="alert">
+                      {enterpriseModal.fieldErrors.currentAccreditation}
+                    </span>
+                  )}
                 </div>
 
                 {/* Current Training Method */}
                 <div className={styles.formGroup}>
-                  <label htmlFor="ent-training-method">Current Training Method</label>
+                  <label htmlFor="ent-training-method">
+                    Current Training Method <span className={styles.requiredMark}>*</span>
+                  </label>
                   <select
                     id="ent-training-method"
+                    required
+                    aria-invalid={!!enterpriseModal.fieldErrors.currentTrainingMethod}
+                    aria-describedby={
+                      enterpriseModal.fieldErrors.currentTrainingMethod
+                        ? 'ent-method-err'
+                        : undefined
+                    }
                     value={enterpriseModal.currentTrainingMethod}
                     onChange={(e) => setField('currentTrainingMethod', e.target.value)}
-                    className={styles.selectField}
+                    className={`${styles.selectField} ${
+                      enterpriseModal.fieldErrors.currentTrainingMethod ? styles.inputError : ''
+                    }`}
                   >
                     <option value="">Select training method…</option>
                     {TRAINING_METHODS.map((opt) => (
@@ -654,18 +793,38 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
                       </option>
                     ))}
                   </select>
+                  {enterpriseModal.fieldErrors.currentTrainingMethod && (
+                    <span id="ent-method-err" className={styles.fieldError} role="alert">
+                      {enterpriseModal.fieldErrors.currentTrainingMethod}
+                    </span>
+                  )}
                 </div>
 
                 {/* Primary Pain Point */}
                 <div className={styles.formGroup}>
-                  <label htmlFor="ent-pain-point">Primary Pain Point</label>
+                  <label htmlFor="ent-pain-point">
+                    Primary Pain Point <span className={styles.requiredMark}>*</span>
+                  </label>
                   <textarea
                     id="ent-pain-point"
+                    required
+                    aria-invalid={!!enterpriseModal.fieldErrors.primaryPainPoint}
+                    aria-describedby={
+                      enterpriseModal.fieldErrors.primaryPainPoint ? 'ent-pain-err' : undefined
+                    }
                     rows={3}
                     placeholder="e.g. Our trainings are out of date and hard to track…"
                     value={enterpriseModal.primaryPainPoint}
                     onChange={(e) => setField('primaryPainPoint', e.target.value)}
+                    className={
+                      enterpriseModal.fieldErrors.primaryPainPoint ? styles.inputError : ''
+                    }
                   />
+                  {enterpriseModal.fieldErrors.primaryPainPoint && (
+                    <span id="ent-pain-err" className={styles.fieldError} role="alert">
+                      {enterpriseModal.fieldErrors.primaryPainPoint}
+                    </span>
+                  )}
                 </div>
 
                 {/* Terms and Conditions Disclaimer */}
