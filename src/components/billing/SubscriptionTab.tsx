@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import styles from './billing.module.css';
 import {
   BILLING_PLANS,
@@ -18,13 +19,51 @@ interface Props {
   onChangeTab: (tab: Tab) => void;
 }
 
-interface EnterpriseModalState {
+// ── Dropdown option sets ─────────────────────────────────────────────────────
+
+const FACILITY_TYPES = [
+  'Behavioural Health Center',
+  'Substance Use Disorder (SUD) Treatment',
+  'Post-Acute Care',
+  'Intellectual/Developmental Disabilities (IDD)',
+  'Other (Custom)',
+] as const;
+
+const FACILITY_COUNTS = ['1-5', '6-20', '21+'] as const;
+
+const ACCREDITATION_OPTIONS = [
+  'The Joint Commission (TJC)',
+  'CARF International',
+  'COA (Council on Accreditation)',
+  'State-Level Licensing only',
+] as const;
+
+const TRAINING_METHODS = ['Self-directed', 'Consultant-led', 'Legacy Software'] as const;
+
+// ── State types ──────────────────────────────────────────────────────────────
+
+interface EnterpriseFormFields {
+  firstName: string;
+  lastName: string;
+  workEmail: string;
+  jobTitle: string;
+  organizationName: string;
+  facilityType: string;
+  facilityTypeOther: string; // shown when facilityType === "Other (Custom)"
+  numberOfFacilities: string;
+  numberOfStaff: string;
+  currentAccreditation: string;
+  currentTrainingMethod: string;
+  primaryPainPoint: string;
+}
+
+interface EnterpriseModalState extends EnterpriseFormFields {
   open: boolean;
-  contactName: string;
-  message: string;
   loading: boolean;
   success: boolean;
   error: string | null;
+  /** Field-level validation errors */
+  fieldErrors: Partial<Record<keyof EnterpriseFormFields, string>>;
 }
 
 interface CancelModalState {
@@ -33,18 +72,64 @@ interface CancelModalState {
   error: string | null;
 }
 
+const EMPTY_FORM: EnterpriseFormFields = {
+  firstName: '',
+  lastName: '',
+  workEmail: '',
+  jobTitle: '',
+  organizationName: '',
+  facilityType: '',
+  facilityTypeOther: '',
+  numberOfFacilities: '',
+  numberOfStaff: '',
+  currentAccreditation: '',
+  currentTrainingMethod: '',
+  primaryPainPoint: '',
+};
+
+// ── Validation ───────────────────────────────────────────────────────────────
+
+function validateEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function validateForm(
+  fields: EnterpriseFormFields,
+): Partial<Record<keyof EnterpriseFormFields, string>> {
+  const errors: Partial<Record<keyof EnterpriseFormFields, string>> = {};
+
+  if (!fields.workEmail.trim()) {
+    errors.workEmail = 'Work email is required.';
+  } else if (!validateEmail(fields.workEmail)) {
+    errors.workEmail = 'Please enter a valid email address.';
+  }
+
+  if (!fields.organizationName.trim()) {
+    errors.organizationName = 'Organization name is required.';
+  }
+
+  if (fields.facilityType === 'Other (Custom)' && !fields.facilityTypeOther.trim()) {
+    errors.facilityTypeOther = 'Please specify your facility type.';
+  }
+
+  return errors;
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
 export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
+  const router = useRouter();
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const [enterpriseModal, setEnterpriseModal] = useState<EnterpriseModalState>({
+    ...EMPTY_FORM,
     open: false,
-    contactName: '',
-    message: '',
     loading: false,
     success: false,
     error: null,
+    fieldErrors: {},
   });
 
   const [cancelModal, setCancelModal] = useState<CancelModalState>({
@@ -52,6 +137,8 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
     loading: false,
     error: null,
   });
+
+  // ── Checkout ───────────────────────────────────────────────────────────────
 
   const handleSelectPlan = useCallback(
     async (planKey: string) => {
@@ -71,7 +158,6 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
           throw new Error(data.error ?? 'Failed to start checkout');
         }
 
-        // Redirect to Stripe Checkout
         if (data.url) {
           window.location.href = data.url;
         }
@@ -84,18 +170,56 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
     [checkoutLoading, cycle],
   );
 
+  // ── Enterprise form field helper ───────────────────────────────────────────
+
+  const setField = useCallback(
+    <K extends keyof EnterpriseFormFields>(key: K, value: EnterpriseFormFields[K]) => {
+      setEnterpriseModal((s) => ({
+        ...s,
+        [key]: value,
+        // Clear field error on change
+        fieldErrors: { ...s.fieldErrors, [key]: undefined },
+      }));
+    },
+    [],
+  );
+
+  // ── Enterprise submit ──────────────────────────────────────────────────────
+
   const handleEnterpriseSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      setEnterpriseModal((s) => ({ ...s, loading: true, error: null }));
+
+      // Client-side validation
+      const errors = validateForm(enterpriseModal);
+      if (Object.keys(errors).length > 0) {
+        setEnterpriseModal((s) => ({ ...s, fieldErrors: errors }));
+        return;
+      }
+
+      setEnterpriseModal((s) => ({ ...s, loading: true, error: null, fieldErrors: {} }));
 
       try {
+        const resolvedFacilityType =
+          enterpriseModal.facilityType === 'Other (Custom)'
+            ? enterpriseModal.facilityTypeOther.trim()
+            : enterpriseModal.facilityType;
+
         const res = await fetch('/api/billing/contact-enterprise', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contactName: enterpriseModal.contactName,
-            message: enterpriseModal.message,
+            firstName: enterpriseModal.firstName.trim(),
+            lastName: enterpriseModal.lastName.trim(),
+            workEmail: enterpriseModal.workEmail.trim(),
+            jobTitle: enterpriseModal.jobTitle.trim(),
+            organizationName: enterpriseModal.organizationName.trim(),
+            facilityType: resolvedFacilityType,
+            numberOfFacilities: enterpriseModal.numberOfFacilities,
+            numberOfStaff: enterpriseModal.numberOfStaff.trim(),
+            currentAccreditation: enterpriseModal.currentAccreditation,
+            currentTrainingMethod: enterpriseModal.currentTrainingMethod,
+            primaryPainPoint: enterpriseModal.primaryPainPoint.trim(),
           }),
         });
         const data = await res.json();
@@ -105,6 +229,11 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
         }
 
         setEnterpriseModal((s) => ({ ...s, loading: false, success: true }));
+
+        // Redirect to dashboard after 2 s so user can read the confirmation
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 2000);
       } catch (err) {
         setEnterpriseModal((s) => ({
           ...s,
@@ -113,8 +242,10 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
         }));
       }
     },
-    [enterpriseModal.contactName, enterpriseModal.message],
+    [enterpriseModal, router],
   );
+
+  // ── Cancel subscription ────────────────────────────────────────────────────
 
   const handleCancelSubscription = useCallback(async () => {
     setCancelModal((s) => ({ ...s, loading: true, error: null }));
@@ -133,12 +264,16 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
     }
   }, [onChangeTab]);
 
+  // ── Billing cycle labels ───────────────────────────────────────────────────
+
   const cycles: BillingCycle[] = ['monthly', 'quarterly', 'yearly'];
   const cycleLabels: Record<BillingCycle, string> = {
     monthly: 'Monthly',
     quarterly: 'Quarterly (-10%)',
     yearly: 'Yearly (-25%)',
   };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div>
@@ -178,7 +313,6 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
               ].join(' ')}
               aria-disabled={!allowed && !plan.isEnterprise}
             >
-              {/* "Current Plan" badge — placeholder; real check would come from subscription data */}
               {plan.key === 'professional' && (
                 <div className={styles.currentPlanBadge}>CURRENT PLAN</div>
               )}
@@ -206,11 +340,11 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
                   onClick={() =>
                     setEnterpriseModal((s) => ({
                       ...s,
+                      ...EMPTY_FORM,
                       open: true,
                       success: false,
                       error: null,
-                      contactName: '',
-                      message: '',
+                      fieldErrors: {},
                     }))
                   }
                 >
@@ -268,12 +402,13 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
           }}
         >
           <div
-            className={styles.modal}
+            className={`${styles.modal} ${styles.modalWide}`}
             role="dialog"
             aria-modal="true"
             aria-label="Enterprise plan inquiry"
           >
             {enterpriseModal.success ? (
+              /* ── Success state ── */
               <>
                 <div className={`${styles.modalIcon} ${styles.modalIconSuccess}`}>
                   <svg
@@ -288,58 +423,272 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
                   </svg>
                 </div>
                 <h2>Inquiry sent!</h2>
-                <p>The Theraptly team will reach out to your organization to discuss your needs.</p>
-                <div className={styles.modalActions}>
-                  <button
-                    className={styles.btnPrimary}
-                    onClick={() => setEnterpriseModal((s) => ({ ...s, open: false }))}
-                  >
-                    Return to Billing
-                  </button>
-                </div>
+                <p>
+                  The Theraptly team will reach out to your organization to discuss your needs.
+                  Redirecting you to the dashboard…
+                </p>
               </>
             ) : (
-              <form onSubmit={(e) => void handleEnterpriseSubmit(e)}>
-                <h2 style={{ marginBottom: 8 }}>Contact Sales</h2>
-                <p>Tell us about your organization and we will be in touch.</p>
+              /* ── Form state ── */
+              <form
+                id="enterprise-contact-form"
+                onSubmit={(e) => void handleEnterpriseSubmit(e)}
+                noValidate
+              >
+                {/* Header */}
+                <div className={styles.enterpriseModalHeader}>
+                  <h2>Contact Sales</h2>
+                  <p>Fill out the form to request your free demo.</p>
+                </div>
 
                 {enterpriseModal.error && (
-                  <div className={styles.errorBanner}>{enterpriseModal.error}</div>
+                  <div className={styles.errorBanner} role="alert">
+                    {enterpriseModal.error}
+                  </div>
                 )}
 
+                {/* Row: First Name + Last Name */}
+                <div className={styles.formRow}>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="ent-first-name">First Name</label>
+                    <input
+                      id="ent-first-name"
+                      type="text"
+                      autoComplete="given-name"
+                      placeholder="Jane"
+                      value={enterpriseModal.firstName}
+                      onChange={(e) => setField('firstName', e.target.value)}
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="ent-last-name">Last Name</label>
+                    <input
+                      id="ent-last-name"
+                      type="text"
+                      autoComplete="family-name"
+                      placeholder="Doe"
+                      value={enterpriseModal.lastName}
+                      onChange={(e) => setField('lastName', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Work Email */}
                 <div className={styles.formGroup}>
-                  <label htmlFor="enterprise-name">Your name</label>
+                  <label htmlFor="ent-email">
+                    Work Email <span className={styles.requiredMark}>*</span>
+                  </label>
                   <input
-                    id="enterprise-name"
-                    type="text"
+                    id="ent-email"
+                    type="email"
+                    autoComplete="work email"
+                    placeholder="jane@organisation.com"
                     required
-                    value={enterpriseModal.contactName}
-                    onChange={(e) =>
-                      setEnterpriseModal((s) => ({ ...s, contactName: e.target.value }))
+                    aria-invalid={!!enterpriseModal.fieldErrors.workEmail}
+                    aria-describedby={
+                      enterpriseModal.fieldErrors.workEmail ? 'ent-email-err' : undefined
                     }
-                    placeholder="Jane Doe"
+                    value={enterpriseModal.workEmail}
+                    onChange={(e) => setField('workEmail', e.target.value)}
+                    className={enterpriseModal.fieldErrors.workEmail ? styles.inputError : ''}
                   />
+                  {enterpriseModal.fieldErrors.workEmail && (
+                    <span id="ent-email-err" className={styles.fieldError} role="alert">
+                      {enterpriseModal.fieldErrors.workEmail}
+                    </span>
+                  )}
                 </div>
 
+                {/* Row: Job Title + Organization Name */}
+                <div className={styles.formRow}>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="ent-job-title">Job Title</label>
+                    <input
+                      id="ent-job-title"
+                      type="text"
+                      autoComplete="organization-title"
+                      placeholder="Clinical Director"
+                      value={enterpriseModal.jobTitle}
+                      onChange={(e) => setField('jobTitle', e.target.value)}
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="ent-org-name">
+                      Organization Name <span className={styles.requiredMark}>*</span>
+                    </label>
+                    <input
+                      id="ent-org-name"
+                      type="text"
+                      autoComplete="organization"
+                      placeholder="Sunrise Recovery Center"
+                      required
+                      aria-invalid={!!enterpriseModal.fieldErrors.organizationName}
+                      aria-describedby={
+                        enterpriseModal.fieldErrors.organizationName ? 'ent-org-err' : undefined
+                      }
+                      value={enterpriseModal.organizationName}
+                      onChange={(e) => setField('organizationName', e.target.value)}
+                      className={
+                        enterpriseModal.fieldErrors.organizationName ? styles.inputError : ''
+                      }
+                    />
+                    {enterpriseModal.fieldErrors.organizationName && (
+                      <span id="ent-org-err" className={styles.fieldError} role="alert">
+                        {enterpriseModal.fieldErrors.organizationName}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Facility Type */}
                 <div className={styles.formGroup}>
-                  <label htmlFor="enterprise-message">Tell us about your needs</label>
+                  <label htmlFor="ent-facility-type">Facility Type</label>
+                  <select
+                    id="ent-facility-type"
+                    value={enterpriseModal.facilityType}
+                    onChange={(e) => setField('facilityType', e.target.value)}
+                    className={styles.selectField}
+                  >
+                    <option value="">Select facility type…</option>
+                    {FACILITY_TYPES.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* "Other" facility type — shown conditionally */}
+                {enterpriseModal.facilityType === 'Other (Custom)' && (
+                  <div className={styles.formGroup}>
+                    <label htmlFor="ent-facility-other">
+                      Please specify <span className={styles.requiredMark}>*</span>
+                    </label>
+                    <input
+                      id="ent-facility-other"
+                      type="text"
+                      placeholder="Describe your facility type"
+                      required
+                      aria-invalid={!!enterpriseModal.fieldErrors.facilityTypeOther}
+                      aria-describedby={
+                        enterpriseModal.fieldErrors.facilityTypeOther
+                          ? 'ent-facility-other-err'
+                          : undefined
+                      }
+                      value={enterpriseModal.facilityTypeOther}
+                      onChange={(e) => setField('facilityTypeOther', e.target.value)}
+                      className={
+                        enterpriseModal.fieldErrors.facilityTypeOther ? styles.inputError : ''
+                      }
+                    />
+                    {enterpriseModal.fieldErrors.facilityTypeOther && (
+                      <span id="ent-facility-other-err" className={styles.fieldError} role="alert">
+                        {enterpriseModal.fieldErrors.facilityTypeOther}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Row: Number of Facilities + Number of Staff */}
+                <div className={styles.formRow}>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="ent-num-facilities">Number of Facilities/Locations</label>
+                    <select
+                      id="ent-num-facilities"
+                      value={enterpriseModal.numberOfFacilities}
+                      onChange={(e) => setField('numberOfFacilities', e.target.value)}
+                      className={styles.selectField}
+                    >
+                      <option value="">Select range…</option>
+                      {FACILITY_COUNTS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="ent-num-staff">Number of Staff</label>
+                    <input
+                      id="ent-num-staff"
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 150"
+                      value={enterpriseModal.numberOfStaff}
+                      onChange={(e) => setField('numberOfStaff', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Current Accreditation */}
+                <div className={styles.formGroup}>
+                  <label htmlFor="ent-accreditation">Current Accreditation</label>
+                  <select
+                    id="ent-accreditation"
+                    value={enterpriseModal.currentAccreditation}
+                    onChange={(e) => setField('currentAccreditation', e.target.value)}
+                    className={styles.selectField}
+                  >
+                    <option value="">Select accreditation…</option>
+                    {ACCREDITATION_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Current Training Method */}
+                <div className={styles.formGroup}>
+                  <label htmlFor="ent-training-method">Current Training Method</label>
+                  <select
+                    id="ent-training-method"
+                    value={enterpriseModal.currentTrainingMethod}
+                    onChange={(e) => setField('currentTrainingMethod', e.target.value)}
+                    className={styles.selectField}
+                  >
+                    <option value="">Select training method…</option>
+                    {TRAINING_METHODS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Primary Pain Point */}
+                <div className={styles.formGroup}>
+                  <label htmlFor="ent-pain-point">Primary Pain Point</label>
                   <textarea
-                    id="enterprise-message"
-                    required
-                    rows={4}
-                    value={enterpriseModal.message}
-                    onChange={(e) => setEnterpriseModal((s) => ({ ...s, message: e.target.value }))}
-                    placeholder="We have 150+ staff across 3 locations..."
+                    id="ent-pain-point"
+                    rows={3}
+                    placeholder="e.g. Our trainings are out of date and hard to track…"
+                    value={enterpriseModal.primaryPainPoint}
+                    onChange={(e) => setField('primaryPainPoint', e.target.value)}
                   />
                 </div>
 
+                {/* Terms and Conditions Disclaimer */}
+                <p className={styles.termsText}>
+                  By clicking &quot;Request a demo&quot;, you agree to Theraptly&apos;s{' '}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer">
+                    Terms & Conditions
+                  </a>{' '}
+                  and{' '}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer">
+                    Privacy Policy
+                  </a>
+                  .
+                </p>
+
+                {/* Actions */}
                 <div className={styles.modalActions}>
                   <button
                     type="submit"
                     className={styles.btnPrimary}
                     disabled={enterpriseModal.loading}
                   >
-                    {enterpriseModal.loading ? 'Sending...' : 'Send inquiry'}
+                    {enterpriseModal.loading ? 'Sending…' : 'Request a demo'}
                   </button>
                   <button
                     type="button"
@@ -389,7 +738,11 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
               your account will lose access to premium features.
             </p>
 
-            {cancelModal.error && <div className={styles.errorBanner}>{cancelModal.error}</div>}
+            {cancelModal.error && (
+              <div className={styles.errorBanner} role="alert">
+                {cancelModal.error}
+              </div>
+            )}
 
             <div className={styles.modalActions}>
               <button

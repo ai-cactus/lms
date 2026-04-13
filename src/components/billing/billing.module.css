@@ -772,6 +772,17 @@
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
 }
 
+/* Wider variant for the enterprise form — matches Figma 574 px card */
+.modalWide {
+  max-width: 620px;
+  text-align: left;
+  max-height: 90vh;
+  overflow-y: auto;
+  /* Custom scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #e2e8f0 transparent;
+}
+
 .modalIcon {
   margin: 0 auto 16px auto;
   width: 56px;
@@ -874,6 +885,24 @@
   background: #f8fafc;
 }
 
+/* ---------- Enterprise Modal Header ---------- */
+.enterpriseModalHeader {
+  margin-bottom: 24px;
+}
+
+.enterpriseModalHeader h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+}
+
+.enterpriseModalHeader p {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
 /* ---------- Enterprise Modal Form ---------- */
 .formGroup {
   text-align: left;
@@ -907,6 +936,94 @@
   outline: none;
   border-color: #335cff;
   box-shadow: 0 0 0 3px rgba(51, 92, 255, 0.1);
+}
+
+/* Two-column row for paired fields */
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* Dropdown / select */
+.selectField {
+  width: 100%;
+  padding: 10px 36px 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #0f172a;
+  font-family: inherit;
+  background-color: #ffffff;
+  /* Custom chevron */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.selectField:focus {
+  outline: none;
+  border-color: #335cff;
+  box-shadow: 0 0 0 3px rgba(51, 92, 255, 0.1);
+}
+
+.selectField:invalid,
+.selectField option[value=''] {
+  color: #94a3b8;
+}
+
+/* Error state for inputs */
+.inputError {
+  border-color: #ef4444 !important;
+}
+
+.inputError:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Standard field-level error text */
+.fieldError {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #ef4444;
+}
+
+/* Footer terms text mentioned in mobile design */
+.termsText {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+  margin-top: 12px;
+  margin-bottom: 24px;
+}
+
+/* Required field asterisk */
+.requiredMark {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+/* Responsive: stack form row on narrow viewports */
+@media (max-width: 520px) {
+  .enterpriseModalHeader h2 {
+    font-size: 18px;
+  }
+
+  .formRow {
+    grid-template-columns: 1fr;
+    gap: 0; /* Let formGroups handle spacing */
+  }
+
+  .modalWide {
+    padding: 24px;
+    border-radius: 12px;
+  }
 }
 
 /* ---------- Loading / Empty States ---------- */
