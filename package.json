@@ -26,6 +26,7 @@
     "@google-cloud/storage": "^7.19.0",
     "@google-cloud/vertexai": "^1.10.0",
     "@google/generative-ai": "^0.24.1",
+    "@hookform/resolvers": "^5.2.2",
     "@types/pdf-parse": "^1.1.5",
     "bullmq": "^5.71.1",
     "docx": "^9.6.1",
