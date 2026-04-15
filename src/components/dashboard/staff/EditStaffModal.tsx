@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Button, Input, Select, Modal } from '@/components/ui';
+import { Button, Input, Modal } from '@/components/ui';
 import { updateStaffDetails } from '@/app/actions/staff';
 import { useRouter } from 'next/navigation';
 import type { UserRole } from '@prisma/client';
@@ -61,7 +61,7 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to update' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An unexpected error occurred' });
     } finally {
       setIsLoading(false);

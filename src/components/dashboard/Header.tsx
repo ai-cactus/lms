@@ -21,12 +21,11 @@ interface Notification {
 }
 
 interface HeaderProps {
-  userEmail: string;
   fullName: string;
   onMenuClick?: () => void;
 }
 
-export default function Header({ userEmail: _userEmail, fullName, onMenuClick }: HeaderProps) {
+export default function Header({ fullName, onMenuClick }: HeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 

@@ -35,6 +35,20 @@ export default function AssignUserCourseModal({
     failed: string[];
   } | null>(null);
 
+  const fetchCourses = React.useCallback(async () => {
+    setIsFetching(true);
+    try {
+      const data = await getCourses();
+      // Filter out courses the user is already enrolled in
+      const availableCourses = data.filter((course) => !enrolledCourseIds.includes(course.id));
+      setCourses(availableCourses);
+    } catch (error) {
+      console.error('Failed to fetch courses:', error);
+    } finally {
+      setIsFetching(false);
+    }
+  }, [enrolledCourseIds]);
+
   useEffect(() => {
     if (isOpen) {
       fetchCourses();
@@ -47,7 +61,7 @@ export default function AssignUserCourseModal({
       }
       setInputValue('');
     }
-  }, [isOpen, userEmail]);
+  }, [isOpen, userEmail, fetchCourses]);
 
   const isValidEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -70,20 +84,6 @@ export default function AssignUserCourseModal({
 
   const removeEmail = (emailToRemove: string) => {
     setEmails(emails.filter((email) => email !== emailToRemove));
-  };
-
-  const fetchCourses = async () => {
-    setIsFetching(true);
-    try {
-      const data = await getCourses();
-      // Filter out courses the user is already enrolled in
-      const availableCourses = data.filter((course) => !enrolledCourseIds.includes(course.id));
-      setCourses(availableCourses);
-    } catch (error) {
-      console.error('Failed to fetch courses:', error);
-    } finally {
-      setIsFetching(false);
-    }
   };
 
   const handleAssign = async () => {

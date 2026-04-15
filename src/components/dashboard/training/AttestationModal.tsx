@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import styles from './AttestationModal.module.css';
 import { attestCourse } from '@/app/actions/course';
-import { useRouter } from 'next/navigation';
+
 import { Modal, Button } from '@/components/ui';
 
 interface AttestationModalProps {
@@ -28,7 +28,6 @@ export default function AttestationModal({
   const [confirmed2, setConfirmed2] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
 
   const handleSubmit = async () => {
     setError('');

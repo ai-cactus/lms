@@ -22,11 +22,6 @@ interface DashboardChartsProps {
   };
 }
 
-const truncateLabel = (value: string) => {
-  if (value.length > 15) return value.substring(0, 15) + '...';
-  return value;
-};
-
 export default function DashboardCharts({ stats }: DashboardChartsProps) {
   const [mounted, setMounted] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);

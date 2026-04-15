@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import styles from './StaffList.module.css';
 import { Button, Input, Select } from '@/components/ui';
-import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 
 interface StaffEntry {
@@ -179,13 +179,17 @@ export default function StaffListClient({
                     <div className={styles.userInfo}>
                       <div className={styles.avatar}>
                         {user.avatarUrl ? (
-                          <img
+                          <Image
                             src={user.avatarUrl}
                             alt={user.name}
+                            width={32}
+                            height={32}
                             className={styles.avatarImage}
                           />
                         ) : (
-                          (user.name.charAt(0) || user.email.charAt(0)).toUpperCase()
+                          <div className={styles.avatarFallback}>
+                            {(user.name.charAt(0) || user.email.charAt(0)).toUpperCase()}
+                          </div>
                         )}
                         {!user.isPending && <div className={styles.statusDot}></div>}
                       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import styles from './WorkerWelcomeModal.module.css';
@@ -32,8 +32,6 @@ export default function WorkerWelcomeModal({
 
   const [hasMounted, setHasMounted] = useState(false);
   const router = useRouter();
-
-  const effectRan = useRef(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Hydration guard

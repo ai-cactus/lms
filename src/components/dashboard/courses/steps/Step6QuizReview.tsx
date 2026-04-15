@@ -17,14 +17,6 @@ interface Step6QuizReviewProps {
   onQuizUpdate: (quiz: QuizQuestion[]) => void;
 }
 
-const ARCHETYPE_COLORS: Record<string, { bg: string; color: string }> = {
-  'best-next-action': { bg: '#EBF8FF', color: '#2B6CB0' },
-  'identify-noncompliance': { bg: '#FED7D7', color: '#C53030' },
-  sequence: { bg: '#FEFCBF', color: '#975A16' },
-  escalation: { bg: '#FED7E2', color: '#97266D' },
-  'modality-check': { bg: '#E9D8FD', color: '#6B46C1' },
-};
-
 export default function Step6QuizReview({
   data,
   quiz,
