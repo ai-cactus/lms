@@ -495,10 +495,13 @@ export async function sendDemoRequestEmail(data: {
   demoTime: string;
 }) {
   const appName = 'Theraptly';
-  const to = process.env.SALES_EMAIL || process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
+  const to =
+    process.env.ENTERPRISE_CONTACT_EMAIL || process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
 
   if (!to) {
-    logger.error({ msg: 'No SALES_EMAIL or SMTP_USER configured to receive demo requests.' });
+    logger.error({
+      msg: 'No ENTERPRISE_CONTACT_EMAIL or SMTP_USER configured to receive demo requests.',
+    });
     return { success: false, error: 'Misconfigured email environment variables.' };
   }
 

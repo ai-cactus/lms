@@ -17,6 +17,74 @@
 .logo {
   display: flex;
   align-items: center;
+  flex: 1;
+}
+
+.nav {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  align-items: center;
+}
+
+.navLink {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color var(--transition-fast);
+  text-decoration: none;
+}
+
+.navLink:hover {
+  color: var(--primary);
+}
+
+.headerActions {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+}
+
+.btnSignIn {
+  padding: 10px 20px;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--btn-radius);
+  background: white;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btnSignIn:hover {
+  border-color: var(--text-muted);
+  background: var(--background-secondary);
+}
+
+.btnDemo {
+  padding: 10px 20px;
+  color: white;
+  background-color: var(--primary);
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: var(--btn-radius);
+  border: none;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+}
+
+.btnDemo:hover {
+  background-color: var(--primary-hover);
 }
 
 .mainContainer {
@@ -161,18 +229,6 @@ In the screenshot asterisks are blue. Assuming default Input rendering is suffic
   height: 50px;
   font-size: 16px;
   font-weight: 600;
-  border-radius: 8px;
-  background-color: #f1f3f5; /* Per the screenshot it looks very light grey when disabled or by default? */
-  color: #495057;
-  transition: all 0.2s ease;
-}
-
-/* If you want it to look active/clickable: */
-.submitBtn:not(:disabled) {
-  background-color: #f4f6f8; /* Muted per screenshot, or use standard CTA primary */
-}
-.submitBtn:not(:disabled):hover {
-  background-color: #e9ecef;
 }
 
 /* Success State */

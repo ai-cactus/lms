@@ -11,6 +11,9 @@ import styles from './page.module.css';
 import { Input, Button, Checkbox } from '@/components/ui';
 import DatePicker from '@/components/ui/DatePicker';
 import { submitDemoRequest } from '@/app/actions/demo';
+import FeatureSection from '@/app/_components/FeatureSection';
+import InspectorsSection from '@/app/_components/InspectorsSection';
+import Footer from '@/app/_components/Footer';
 
 const formSchema = z.object({
   fullName: z.string().min(1, 'Full Name is required'),
@@ -81,11 +84,41 @@ export default function RequestDemoPage() {
 
   return (
     <div className={styles.pageWrapper}>
-      {/* Basic header replicated to match landing page flow, you can replace with your global component */}
       <header className={styles.header}>
         <div className={styles.logo}>
           <Link href="/">
             <Image src="/images/logo.svg" alt="Theraptly Logo" width={140} height={32} priority />
+          </Link>
+        </div>
+
+        <nav className={styles.nav}>
+          <Link href="/#features" className={styles.navLink}>
+            Features
+          </Link>
+          <Link href="/#blog" className={styles.navLink}>
+            Blog
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ marginLeft: 2, opacity: 0.6 }}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </Link>
+        </nav>
+
+        <div className={styles.headerActions}>
+          <Link href="/login" className={styles.btnSignIn}>
+            Sign in
+          </Link>
+          <Link href="/request-demo" className={styles.btnDemo}>
+            Request a Demo
           </Link>
         </div>
       </header>
@@ -243,6 +276,10 @@ export default function RequestDemoPage() {
           </div>
         </div>
       </main>
+
+      <FeatureSection />
+      <InspectorsSection />
+      <Footer />
     </div>
   );
 }
