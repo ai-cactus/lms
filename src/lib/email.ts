@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { logger } from './logger';
 
 const user = process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
 const pass = process.env.SMTP_PASSWORD || process.env.ZOHO_MAIL_PASSWORD;
@@ -481,6 +482,61 @@ export async function sendStaffRemovalConfirmationEmail(
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error('Error sending staff removal confirmation email:', error);
+    return { success: false, error };
+  }
+}
+
+export async function sendDemoRequestEmail(data: {
+  fullName: string;
+  email: string;
+  organizationName: string;
+  role: string;
+  helpUs: string;
+  demoTime: string;
+}) {
+  const appName = 'Theraptly';
+  const to = process.env.SALES_EMAIL || process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
+
+  if (!to) {
+    logger.error({ msg: 'No SALES_EMAIL or SMTP_USER configured to receive demo requests.' });
+    return { success: false, error: 'Misconfigured email environment variables.' };
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+      <div style="background: #4C6EF5; padding: 24px;">
+        <h2 style="color: #ffffff; margin: 0;">New Demo Request</h2>
+      </div>
+      <div style="padding: 32px 24px;">
+        <p style="color: #333; font-size: 16px; margin-top: 0;">
+          A new demo request has been submitted for <strong>${appName}</strong>:
+        </p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 24px;">
+          <tbody>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568; width: 35%;">Name</td><td style="padding: 8px 0; color: #2d3748;">${data.fullName}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Email</td><td style="padding: 8px 0;"><a href="mailto:${data.email}" style="color: #4C6EF5;">${data.email}</a></td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Organization</td><td style="padding: 8px 0; color: #2d3748;">${data.organizationName}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Role</td><td style="padding: 8px 0; color: #2d3748;">${data.role}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568; vertical-align: top;">Challenges</td><td style="padding: 8px 0; color: #2d3748;">${data.helpUs}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Preferred Time</td><td style="padding: 8px 0; color: #2d3748;">${data.demoTime}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      replyTo: data.email,
+      subject: `New Demo Request: ${data.organizationName} - ${appName}`,
+      html,
+    });
+    logger.info({ msg: 'Demo request email sent', messageId: info.messageId });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({ msg: 'Error sending demo request email', error });
     return { success: false, error };
   }
 }
