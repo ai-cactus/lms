@@ -14,7 +14,6 @@ import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui';
 import { sanitizeHtml } from '@/lib/sanitize';
 
-import DOMPurify from 'isomorphic-dompurify';
 import {
   CourseWizardData,
   GeneratedCourse,
@@ -27,7 +26,6 @@ interface Step5ReviewProps {
   documents: CourseDocument[];
   initialContent?: GeneratedCourse | null;
   onComplete: (content: GeneratedCourse) => void;
-  onBack?: () => void;
 }
 
 /**
@@ -248,7 +246,6 @@ export default function Step5Review({
   documents,
   initialContent,
   onComplete,
-  onBack,
 }: Step5ReviewProps) {
   // Core State
   const [isGenerating, setIsGenerating] = useState(!initialContent);
@@ -392,13 +389,6 @@ export default function Step5Review({
 
   const handleSwitchView = (mode: 'slides' | 'article') => {
     setViewMode(mode);
-  };
-
-  const updateParent = (modules: RenderableModule[]) => {
-    if (!generatedContent) return;
-    const newContent = { ...generatedContent, modules };
-    setGeneratedContent(newContent);
-    onComplete(newContent);
   };
 
   // Loading / Error States

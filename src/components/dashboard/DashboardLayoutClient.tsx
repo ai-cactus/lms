@@ -254,11 +254,7 @@ export default function DashboardLayoutClient({
       {/* Main Content Area */}
       <main className={styles.main}>
         {/* Top Header */}
-        <Header
-          userEmail={userEmail}
-          fullName={fullName}
-          onMenuClick={() => setSidebarOpen(true)}
-        />
+        <Header fullName={fullName} onMenuClick={() => setSidebarOpen(true)} />
 
         <div className={styles.content}>{children}</div>
       </main>

@@ -6,7 +6,7 @@ import { Button, Input } from '@/components/ui';
 import Link from 'next/link';
 import ShareCourseModal from './ShareCourseModal';
 
-import { CourseWithRelations, EnrollmentWithRelations } from '@/types/course';
+import { CourseWithRelations } from '@/types/course';
 
 interface TrainingDetailsProps {
   course: CourseWithRelations;

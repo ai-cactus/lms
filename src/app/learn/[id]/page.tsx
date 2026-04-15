@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import styles from '../../../components/courses/CoursePlayer.module.css';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -157,7 +157,7 @@ export default function LearnPage() {
     }
   };
 
-  const handleSubmitQuiz = async () => {
+  const handleSubmitQuiz = React.useCallback(async () => {
     if (!course?.quiz || !enrollment) return;
     setSubmitting(true);
     const answers = Object.entries(quizAnswers).map(([qId, val]) => ({
@@ -190,7 +190,7 @@ export default function LearnPage() {
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [course, enrollment, quizAnswers, timeLeft]);
 
   const handleNextQuestion = () => {
     if (!course?.quiz) return;

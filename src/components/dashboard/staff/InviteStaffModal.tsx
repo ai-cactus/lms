@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button, Input, Select, Modal } from '@/components/ui';
+import { Button, Modal } from '@/components/ui';
 import { createInvites } from '@/app/actions/invite';
 import { useRouter } from 'next/navigation';
 
@@ -104,7 +104,7 @@ export default function InviteStaffModal({
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to send invites' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An unexpected error occurred' });
     } finally {
       setIsLoading(false);
