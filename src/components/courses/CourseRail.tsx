@@ -1,6 +1,5 @@
 import React from 'react';
 import styles from './CoursePlayer.module.css';
-import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui';
 
 export interface CourseRailProps {

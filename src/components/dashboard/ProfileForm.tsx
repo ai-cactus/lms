@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import styles from './ProfileForm.module.css';
-import { Button, Input, Modal, Select } from '@/components/ui';
+import { Button, Input, Modal } from '@/components/ui';
 import { updateProfile, uploadAvatar } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -111,7 +111,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to upload avatar' });
       }
-    } catch (_error) {
+    } catch {
       setMessage({ type: 'error', text: 'Upload failed' });
     } finally {
       setIsLoading(false);
@@ -151,19 +151,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
     }
   };
 
-  const validateEmail = (email: string) => {
-    return String(email)
-      .toLowerCase()
-      .match(
-        /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
-      );
-  };
-
-  const isValid =
-    formData.first_name?.trim() !== '' &&
-    formData.last_name?.trim() !== '' &&
-    formData.first_name?.trim() !== '' &&
-    formData.last_name?.trim() !== '';
+  const isValid = formData.first_name?.trim() !== '' && formData.last_name?.trim() !== '';
   // Email is read-only, so we won't block saving if it's missing/invalid from the DB side,
   // though it ideally should be there.
 

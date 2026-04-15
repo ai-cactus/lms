@@ -136,20 +136,19 @@ function OrgCodeGenerator() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadCode();
-  }, [loadCode]);
-
-  async function loadCode() {
-    try {
-      const result = await getOrganizationCode();
-      if (result.success && result.code) {
-        setCode(result.code);
-        setExpiresAt(result.expiresAt ? new Date(result.expiresAt) : null);
+    async function loadCode() {
+      try {
+        const result = await getOrganizationCode();
+        if (result.success && result.code) {
+          setCode(result.code);
+          setExpiresAt(result.expiresAt ? new Date(result.expiresAt) : null);
+        }
+      } catch (err) {
+        console.error(err);
       }
-    } catch (err) {
-      console.error(err);
     }
-  }
+    loadCode();
+  }, []);
 
   async function handleGenerate() {
     setLoading(true);
@@ -162,7 +161,7 @@ function OrgCodeGenerator() {
       } else {
         setError(result.error || 'Failed to generate code');
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred');
     } finally {
       setLoading(false);
@@ -435,7 +434,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to update' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An error occurred' });
     } finally {
       setIsLoading(false);
@@ -764,7 +763,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                 key={service.id}
                 label={service.label}
                 checked={(formData.programServices || []).includes(service.id)}
-                onChange={(e) => {
+                onChange={() => {
                   if (isAdmin) {
                     handleProgramServiceToggle(service.id);
                   }

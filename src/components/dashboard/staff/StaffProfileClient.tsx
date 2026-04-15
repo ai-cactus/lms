@@ -129,7 +129,13 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         <div className={styles.profileInfo}>
           <div className={styles.avatarLarge}>
             {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.name} className={styles.avatarImage} />
+              <Image
+                src={user.avatarUrl}
+                alt={user.name}
+                width={80}
+                height={80}
+                className={styles.avatarImage}
+              />
             ) : (
               <div
                 style={{

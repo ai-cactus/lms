@@ -12,7 +12,7 @@ import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 
 export default function SignupPage() {
   const router = useRouter();
-  const [result, _, isPending] = useActionState<SignupResult | undefined, FormData>(
+  const [result, , isPending] = useActionState<SignupResult | undefined, FormData>(
     signup,
     undefined,
   );

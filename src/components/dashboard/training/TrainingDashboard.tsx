@@ -286,8 +286,6 @@ export default function TrainingDashboard({
   const router = useRouter();
   // Use real data from props
   const coverage = stats.trainingCoverage;
-  const coursePerformance = stats.coursePerformance || [];
-
   const [mounted, setMounted] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
@@ -298,8 +296,8 @@ export default function TrainingDashboard({
 
   // Process data for the chart
   const chartData = React.useMemo(() => {
-    return [...coursePerformance];
-  }, [coursePerformance]);
+    return [...(stats.coursePerformance || [])];
+  }, [stats.coursePerformance]);
 
   // Calculate max value for Y-axis scaling
   const maxVal = Math.max(...chartData.map((d) => Math.max(d.passCount, d.failCount)), 5); // Minimum 5 for scale

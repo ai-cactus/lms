@@ -1,0 +1,36 @@
+.highlightWrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.cursorLine {
+  display: inline-block;
+  width: 4px;
+  height: 60px;
+  background-color: var(--primary);
+  margin: 0 4px;
+  vertical-align: middle;
+  animation: blink 1.5s infinite ease-in-out;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (max-width: 1024px) {
+  .cursorLine {
+    height: 48px;
+  }
+}
+
+@media (max-width: 768px) {
+  .cursorLine {
+    height: 40px;
+  }
+}

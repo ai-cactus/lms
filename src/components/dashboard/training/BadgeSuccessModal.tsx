@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './BadgeSuccessModal.module.css';
 import { Modal, Button } from '@/components/ui';

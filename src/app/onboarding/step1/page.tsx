@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { useForm, Controller } from 'react-hook-form';
-import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button, Input, Select, PhoneInput } from '@/components/ui';
 import styles from '@/app/onboarding/onboarding.module.css';
@@ -32,8 +31,6 @@ export default function OnboardingStep1() {
     setError,
     formState: { errors },
   } = useForm<Step1FormData>();
-
-  const { data: session } = useSession();
 
   const onSubmit = async (data: Step1FormData) => {
     console.log('Step 1 Data Saved Locally:', data);

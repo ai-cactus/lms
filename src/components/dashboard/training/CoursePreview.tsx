@@ -331,7 +331,7 @@ export default function CoursePreview({
             <h3 className={styles.sidebarTitle}>Table of Content</h3>
             <div className={styles.lessonsList}>
               {course.lessons && course.lessons.length > 0 ? (
-                course.lessons.map((lesson, i: number) => (
+                course.lessons.map((lesson) => (
                   <div key={lesson.id} className={styles.lessonItem}>
                     <span className={styles.lessonTitle}>{lesson.title}</span>
                   </div>

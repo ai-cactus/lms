@@ -63,16 +63,19 @@ export default function AuthHeroSlider() {
   // calculate what direction to animate in.
   const imageIndex = wrap(0, slides.length, page);
 
-  const paginate = (newDirection: number) => {
-    setPage([page + newDirection, newDirection]);
-  };
+  const paginate = React.useCallback(
+    (newDirection: number) => {
+      setPage([page + newDirection, newDirection]);
+    },
+    [page],
+  );
 
   useEffect(() => {
     const timer = setInterval(() => {
       paginate(1);
     }, 5000);
     return () => clearInterval(timer);
-  }, [page]);
+  }, [page, paginate]);
 
   return (
     <div className={styles.heroSection}>

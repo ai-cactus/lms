@@ -2,17 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import * as XLSX from 'xlsx';
-import {
-  Document,
-  Packer,
-  Paragraph,
-  TextRun,
-  HeadingLevel,
-  Table,
-  TableRow,
-  TableCell,
-  WidthType,
-} from 'docx';
+import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
   try {
@@ -48,7 +38,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
     const timestamp = new Date().toISOString().split('T')[0];
 
     if (format === 'csv') {
-      // Flatten the compiled data into a 2D array for XLSX
       const rows: Record<string, unknown>[] = [];
       compiledData.forEach((row) => {
         const baseInfo = {
@@ -92,7 +81,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
         },
       });
     } else if (format === 'docx') {
-      const children: (Paragraph | Table)[] = [];
+      const children: Paragraph[] = [];
       children.push(
         new Paragraph({
           text: `Auditor Compliance Pack: ${orgName}`,
@@ -101,7 +90,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
         }),
       );
 
-      // Build text paragraphs for docx
       compiledData.forEach((row) => {
         children.push(
           new Paragraph({
