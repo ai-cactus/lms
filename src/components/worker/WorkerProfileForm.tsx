@@ -108,7 +108,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to upload avatar' });
       }
-    } catch (_error) {
+    } catch {
       setMessage({ type: 'error', text: 'Upload failed' });
     } finally {
       setIsLoading(false);
@@ -137,7 +137,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to update profile' });
       }
-    } catch (_error) {
+    } catch {
       setMessage({ type: 'error', text: 'An unexpected error occurred' });
     } finally {
       setIsLoading(false);

@@ -34,14 +34,12 @@ export default function OrganizationActivationModal({
     isModalOpen,
     dismissModal,
     shouldShowModal,
-    closeModal,
   } = useModalContext();
   const modalId = 'organizationActivation';
 
   const isWelcomeMode = mode === 'welcome';
 
   // Internal state for controlled mode if needed, but mostly relying on context for welcome mode
-  const [internalOpen, setInternalOpen] = useState(false);
 
   useEffect(() => {
     if (isWelcomeMode) {

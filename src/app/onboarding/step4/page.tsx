@@ -14,7 +14,7 @@ export default function OnboardingStep4() {
   const [emails, setEmails] = useState<string[]>([]);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [attemptedSkip, setAttemptedSkip] = useState(false);
+
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [csvEmails, setCsvEmails] = useState<string[]>([]);
@@ -118,7 +118,6 @@ export default function OnboardingStep4() {
       setCsvEmails(uniqueEmails);
       setIsModalOpen(false);
       setEmails([]); // Clear manual input if CSV is used
-      setAttemptedSkip(false);
     } catch (err) {
       console.error('Error parsing file:', err);
       setError('Failed to parse file. Please check the format.');
@@ -150,7 +149,6 @@ export default function OnboardingStep4() {
                 onChange={(newEmails) => {
                   setEmails(newEmails);
                   if (newEmails.length > 0) {
-                    setAttemptedSkip(false);
                     setError('');
                   }
                 }}

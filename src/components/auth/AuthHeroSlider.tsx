@@ -72,7 +72,7 @@ export default function AuthHeroSlider() {
       paginate(1);
     }, 5000);
     return () => clearInterval(timer);
-  }, [page]);
+  }, [page, paginate]);
 
   return (
     <div className={styles.heroSection}>

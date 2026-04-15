@@ -33,8 +33,6 @@ export default function OnboardingStep1() {
     formState: { errors },
   } = useForm<Step1FormData>();
 
-  const { data: session } = useSession();
-
   const onSubmit = async (data: Step1FormData) => {
     console.log('Step 1 Data Saved Locally:', data);
     try {

@@ -22,39 +22,6 @@ interface DashboardChartsProps {
   };
 }
 
-const COLORS = {
-  complete: '#F59E0B', // Yellow/Orange from ref
-  inProgress: '#10B981', // Teal/Green from ref
-  notStarted: '#EF4444', // Red from ref
-  // The reference image has:
-  // Red section (large), Yellow (medium), Teal (medium)
-  // Legend says:
-  // Tea/Green: Completed (30%)
-  // Blue: Enrolled (34%) -> Wait, image shows Yellow/Red/Teal?
-  // Let's look at the image again.
-  // Image:
-  // Left Chart (Bar): Red bars and Yellow bars. Red < Green? No.
-  // The user said: "green is pass above pass mark and red is below pass mark".
-  // So for Bar chart: Score >= Passing ? Green : Red.
-
-  // Right Chart (Donut):
-  // Colors in donut: Red, Yellow, Teal.
-  // Legend in image:
-  // Teal dot: Staff who have completed required courses
-  // Blue dot: Staff currently enrolled (BUT donut has Yellow segment?)
-  // Purple dot: Staff yet to begin (BUT donut has Red segment?)
-
-  // User Instructions: "make it what is in that ref image"
-  // "barchart must be green and red"
-  // "donut chart"
-
-  // I will stick to the Legend text but map to the colors seen in the Donut ring if possible, or standard semantic colors.
-  // Let's use:
-  // Completed: Teal (#10B981) - matches "Teal" in image ring?
-  // Enrolled: Yellow (#F59E0B) - matches "Yellow" in image ring?
-  // Not Started: Red (#EF4444) - matches "Red" in image ring?
-};
-
 const truncateLabel = (value: string) => {
   if (value.length > 15) return value.substring(0, 15) + '...';
   return value;
