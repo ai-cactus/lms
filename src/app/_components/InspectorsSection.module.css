@@ -1,0 +1,166 @@
+.inspectorsSection {
+  padding: 80px 24px;
+  background-color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.inspectorsHeader {
+  text-align: center;
+  margin-bottom: 64px;
+}
+
+.inspectorsTitle {
+  font-size: 40px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #0b1a38;
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+
+.inspectorsSubtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.inspectorsGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 24px;
+  max-width: 1200px;
+  width: 100%;
+}
+
+.cardSpan2 {
+  grid-column: span 2;
+}
+
+.cardSpan3 {
+  grid-column: span 3;
+}
+
+.inspectorCard {
+  background-color: #fafafa;
+  border-radius: 20px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+  border: 1px solid var(--border-light);
+  height: 100%;
+}
+
+.inspectorCard:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-sm);
+}
+
+.inspectorCardTitle {
+  font-size: 24px;
+  font-weight: 600;
+  color: #0b1a38;
+  margin-bottom: 16px;
+  line-height: 1.3;
+}
+
+.inspectorCardDescription {
+  font-size: 15px;
+  color: #6b7280;
+  line-height: 1.6;
+  margin-bottom: 40px;
+}
+
+.inspectorCardImageWrapper {
+  flex: 1;
+  display: flex;
+  align-items: flex-end; /* Images align to bottom of card */
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  margin-top: auto;
+}
+
+.inspectorImage {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* Call to action below grid */
+.inspectorsActions {
+  margin-top: 64px;
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  align-items: center;
+}
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 32px;
+  background-color: #1a1a1a;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  border-radius: 100px;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.1);
+  text-decoration: none;
+}
+
+.btnPrimary:hover {
+  background-color: black;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.btnSecondary {
+  padding: 16px 32px;
+  background-color: var(--border-light);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 16px;
+  border-radius: 100px;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  text-decoration: none;
+}
+
+.btnSecondary:hover {
+  background-color: #e5e7eb;
+}
+
+@media (max-width: 1024px) {
+  .cardSpan2 {
+    grid-column: span 3;
+  }
+  .cardSpan3 {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 768px) {
+  .inspectorsSection {
+    padding: 64px 24px;
+  }
+  .cardSpan2,
+  .cardSpan3 {
+    grid-column: span 6;
+  }
+  .inspectorsTitle {
+    font-size: 32px;
+  }
+  .inspectorCard {
+    padding: 24px;
+  }
+}
