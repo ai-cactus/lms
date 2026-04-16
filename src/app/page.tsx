@@ -82,7 +82,7 @@ export default function Home() {
 
         {/* Hero Images Showcase */}
         <section className={styles.showcaseContainer}>
-          {/* Abstract 3D Fluid Curly Background */}
+          {/* Abstract 3D Fluid Background */}
           <div className={styles.showcaseBackground}>
             <Image
               src="/images/3d_background.png"
