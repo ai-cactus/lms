@@ -93,6 +93,8 @@ interface PhoneInputProps {
   placeholder?: string;
   error?: string;
   defaultCountry?: string;
+  /** Restrict the country selector to only these country codes (e.g. ['US']). */
+  allowedCountries?: string[];
 }
 
 export default function PhoneInput({
@@ -101,18 +103,27 @@ export default function PhoneInput({
   placeholder = 'Enter the phone number of the main contact',
   error,
   defaultCountry = 'US',
+  allowedCountries,
 }: PhoneInputProps) {
+  // Base list – optionally filtered to a subset
+  const visibleCountries = allowedCountries
+    ? countries.filter((c) => allowedCountries.includes(c.code))
+    : countries;
+
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedCountry, setSelectedCountry] = useState(
-    countries.find((c) => c.code === defaultCountry) || countries[0],
+    visibleCountries.find((c) => c.code === defaultCountry) || visibleCountries[0],
   );
   const [phoneNumber, setPhoneNumber] = useState(value);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // When only one country is allowed, keep the dropdown closed
+  const isSingleCountry = visibleCountries.length <= 1;
+
   // Filter countries based on search
-  const filteredCountries = countries.filter(
+  const filteredCountries = visibleCountries.filter(
     (country) =>
       country.name.toLowerCase().includes(search.toLowerCase()) ||
       country.dialCode.includes(search) ||
@@ -167,7 +178,12 @@ export default function PhoneInput({
     <div className={styles.container} ref={dropdownRef}>
       <div className={`${styles.inputWrapper} ${error ? styles.hasError : ''}`}>
         {/* Country Selector */}
-        <button type="button" className={styles.countrySelector} onClick={() => setIsOpen(!isOpen)}>
+        <button
+          type="button"
+          className={styles.countrySelector}
+          onClick={() => !isSingleCountry && setIsOpen(!isOpen)}
+          disabled={isSingleCountry}
+        >
           <span className={styles.flag}>{selectedCountry.flag}</span>
           <svg
             className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`}

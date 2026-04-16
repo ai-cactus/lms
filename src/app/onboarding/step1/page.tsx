@@ -174,11 +174,7 @@ export default function OnboardingStep1() {
                 <Select
                   value={field.value}
                   onChange={field.onChange}
-                  options={[
-                    { label: 'United States', value: 'US' },
-                    { label: 'Canada', value: 'CA' },
-                    { label: 'United Kingdom', value: 'UK' },
-                  ]}
+                  options={[{ label: 'United States', value: 'US' }]}
                   placeholder="Select an option"
                   error={getError('country')}
                 />
@@ -206,6 +202,7 @@ export default function OnboardingStep1() {
                   onChange={field.onChange}
                   placeholder="Enter the phone number of the main contact"
                   error={getError('phone')}
+                  allowedCountries={['US']}
                 />
               )}
             />
