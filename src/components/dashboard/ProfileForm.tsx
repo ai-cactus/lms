@@ -302,8 +302,50 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                 />
               </div>
 
-              {/* State & Zip Code */}
+              {/* Country & Phone */}
               <div className={styles.formGrid}>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>Country</label>
+                  <Input
+                    value={organizationData?.country || ''}
+                    disabled
+                    className={styles.readOnlyInput}
+                    placeholder="Your country"
+                  />
+                </div>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>Phone</label>
+                  <Input
+                    value={organizationData?.phone || ''}
+                    disabled
+                    className={styles.readOnlyInput}
+                    placeholder="Your phone number"
+                  />
+                </div>
+              </div>
+
+              {/* Business Address */}
+              <div className={styles.fieldGroup}>
+                <label className={styles.label}>Business Address</label>
+                <Input
+                  value={organizationData?.address || ''}
+                  disabled
+                  className={styles.readOnlyInput}
+                  placeholder="Your business address"
+                />
+              </div>
+
+              {/* City, State & Zip Code */}
+              <div className={styles.formGrid}>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>City</label>
+                  <Input
+                    value={organizationData?.city || ''}
+                    disabled
+                    className={styles.readOnlyInput}
+                    placeholder="Your city"
+                  />
+                </div>
                 <div className={styles.fieldGroup}>
                   <label className={styles.label}>State</label>
                   <Input
@@ -322,17 +364,6 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                     placeholder="Your zip code"
                   />
                 </div>
-              </div>
-
-              {/* Business Address */}
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Business Address</label>
-                <Input
-                  value={organizationData?.address || ''}
-                  disabled
-                  className={styles.readOnlyInput}
-                  placeholder="Your business address"
-                />
               </div>
 
               {message && (
