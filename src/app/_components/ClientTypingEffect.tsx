@@ -33,21 +33,21 @@ export default function ClientTypingEffect() {
         setCurrentText((prev) => fullText.substring(0, prev.length + 1));
       }
 
-      let typeSpeed = isDeleting ? 60 : 120;
+      let typeSpeed = isDeleting ? 90 : 180;
 
       if (!isDeleting && currentText === fullText) {
-        typeSpeed = 2000; // Pause at the end of the word
+        typeSpeed = 2500; // Pause at the end of the word
         setIsDeleting(true);
       } else if (isDeleting && currentText === '') {
         setIsDeleting(false);
         setCurrentWordIndex((prev) => (prev + 1) % words.length);
-        typeSpeed = 500; // Pause before starting the next word
+        typeSpeed = 700; // Pause before starting the next word
       }
 
       timer = setTimeout(type, typeSpeed);
     };
 
-    timer = setTimeout(type, isDeleting ? 60 : 120);
+    timer = setTimeout(type, isDeleting ? 90 : 180);
 
     return () => clearTimeout(timer);
   }, [currentText, isDeleting, currentWordIndex, isPaused]);

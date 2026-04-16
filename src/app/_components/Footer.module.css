@@ -78,3 +78,21 @@
     gap: 16px;
   }
 }
+
+@media (max-width: 480px) {
+  .footer {
+    padding: 32px 16px;
+  }
+
+  .container {
+    gap: 20px;
+  }
+
+  .copyright {
+    font-size: 14px;
+  }
+
+  .link {
+    font-size: 14px;
+  }
+}
