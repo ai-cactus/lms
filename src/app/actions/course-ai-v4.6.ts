@@ -1,5 +1,6 @@
 'use server';
 
+import { after } from 'next/server';
 import { callVertexAI, truncateToContext } from '@/lib/ai-client';
 import { JobStatus } from '@/types/job';
 import {
@@ -456,13 +457,35 @@ export async function generateCourseAndQuizV46(
     },
   });
 
-  // Start background processing, DO NOT AWAIT
-  processBackgroundV46(job.id, sourceText, docFilename, rawData).catch((err: unknown) => {
-    const error = err as Error;
-    console.error('[v4.6] Background job failed fatally:', error.message);
+  // Use after() to ensure background processing survives the server action's
+  // request lifecycle. A bare fire-and-forget promise can be terminated when
+  // Next.js cleans up the request context after the action returns.
+  const jobId = job.id;
+  after(async () => {
+    try {
+      await processBackgroundV46(jobId, sourceText, docFilename, rawData);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error(`[v4.6] Background job ${jobId} failed in after():`, error.message);
+      // Attempt to mark the job as failed so the UI doesn't poll forever
+      try {
+        await prisma.job.update({
+          where: { id: jobId },
+          data: {
+            status: 'failed',
+            payload: {
+              error: error.message || 'Unknown error in after()',
+            } as unknown as Prisma.InputJsonValue,
+          },
+        });
+      } catch (updateErr) {
+        console.error(`[v4.6] CRITICAL: Failed to mark job ${jobId} as failed:`, updateErr);
+      }
+    }
   });
 
-  return { jobId: job.id };
+  console.log(`[v4.6] Returning jobId ${jobId} to client. Background work scheduled via after().`);
+  return { jobId };
 }
 
 async function processBackgroundV46(
@@ -471,8 +494,12 @@ async function processBackgroundV46(
   docFilename: string,
   rawData: string,
 ) {
+  console.log(
+    `[v4.6 Background] processBackgroundV46 ENTERED for job ${jobId}. sourceText length: ${sourceText.length}, docFilename: ${docFilename}`,
+  );
   try {
     const data: CourseDataV46 = JSON.parse(rawData);
+    console.log(`[v4.6 Background] Parsed course data for job ${jobId}. Title: ${data.title}`);
     const maxAttempts = 3;
 
     // ── Stage A: Generate Article + ArticleMeta ──
@@ -640,23 +667,34 @@ async function processBackgroundV46(
       error: warnings.length > 0 ? warnings.join('; ') : undefined,
     };
 
+    console.log(`[v4.6 Background] About to mark job ${jobId} as COMPLETED.`);
     await prisma.job.update({
       where: { id: jobId },
       data: { status: 'completed', result: resultPayload as unknown as Prisma.InputJsonValue }, // Cast to unknown before InputJsonValue for Prisma Json
     });
+    console.log(`[v4.6 Background] Job ${jobId} marked as COMPLETED successfully.`);
   } catch (err: unknown) {
     const error = err as Error;
     console.error(`[v4.6 Background] Uncaught fatal error in job ${jobId}:`, error);
-    await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        status: 'failed',
-        payload: {
-          error: error.message || 'Unknown server error during background processing',
-        } as unknown as Prisma.InputJsonValue,
-      },
-    });
+    try {
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'failed',
+          payload: {
+            error: error.message || 'Unknown server error during background processing',
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+      console.error(`[v4.6 Background] Job ${jobId} marked as FAILED.`);
+    } catch (updateErr) {
+      console.error(
+        `[v4.6 Background] CRITICAL: Failed to update job ${jobId} status to failed:`,
+        updateErr,
+      );
+    }
   }
+  console.log(`[v4.6 Background] processBackgroundV46 EXITED for job ${jobId}.`);
 }
 
 export async function checkCourseGenerationJobV46(
@@ -664,7 +702,12 @@ export async function checkCourseGenerationJobV46(
 ): Promise<JobResponse<GeneratedCourseV46>> {
   try {
     const job = await prisma.job.findUnique({ where: { id: jobId } });
-    if (!job) return { error: 'Job not found' };
+    if (!job) {
+      console.log(`[v4.6 checkJob] Job ${jobId} NOT FOUND in database.`);
+      return { error: 'Job not found' };
+    }
+
+    console.log(`[v4.6 checkJob] Job ${jobId} status: ${job.status}`);
 
     if (job.status === 'completed') {
       return { status: 'completed', result: job.result as unknown as GeneratedCourseV46 };
@@ -676,6 +719,7 @@ export async function checkCourseGenerationJobV46(
     return { status: job.status as JobStatus };
   } catch (err: unknown) {
     const error = err as Error;
+    console.error(`[v4.6 checkJob] Error checking job ${jobId}:`, error.message);
     return { error: `Failed to check job: ${error.message}` };
   }
 }

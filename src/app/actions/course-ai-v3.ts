@@ -1,5 +1,6 @@
 'use server';
 
+import { after } from 'next/server';
 import { extractTextFromFile } from '@/lib/file-parser';
 import { callVertexAI, truncateToContext } from '@/lib/ai-client';
 import { buildPromptA, buildPromptB } from '@/lib/prompts';
@@ -207,13 +208,32 @@ export async function generateCourseAndQuizV3(
     },
   });
 
-  // Start background processing immediately, DO NOT AWAIT IT
-  processBackgroundV3(job.id, sourceText, docFilename, rawData).catch((err) => {
-    console.error('[v3.1] Background job failed fatally:', err);
+  // Use after() so the background work survives the server-action request lifecycle.
+  const jobId = job.id;
+  after(async () => {
+    try {
+      await processBackgroundV3(jobId, sourceText, docFilename, rawData);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error(`[v3.1] Background job ${jobId} failed in after():`, error.message);
+      try {
+        await prisma.job.update({
+          where: { id: jobId },
+          data: {
+            status: 'failed',
+            payload: {
+              error: error.message || 'Unknown error in after()',
+            } as unknown as Prisma.InputJsonValue,
+          },
+        });
+      } catch (updateErr) {
+        console.error(`[v3.1] CRITICAL: Failed to mark job ${jobId} as failed:`, updateErr);
+      }
+    }
   });
 
   // Return job ID immediately to the client to avoid 524 Gateway Timeout
-  return { jobId: job.id };
+  return { jobId };
 }
 
 async function processBackgroundV3(
