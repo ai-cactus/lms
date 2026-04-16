@@ -1,0 +1,14 @@
+name: Trigger Alert
+
+on:
+  push:
+  pull_request:
+  issues:
+  issue_comment:
+  create:
+  delete:
+
+jobs:
+  call-workflow:
+    uses: ai-cactus/org-automation/.github/workflows/activity-alert.yml@main
+    secrets: inherit
