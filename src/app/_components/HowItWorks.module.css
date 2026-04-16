@@ -164,7 +164,7 @@
 @media (max-width: 900px) {
   .container {
     grid-template-columns: 1fr;
-    gap: 48px;
+    gap: 40px;
   }
 
   .slide {
@@ -173,17 +173,53 @@
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .section {
     padding: 64px 16px;
   }
-
   .title {
     font-size: 32px;
   }
-
+  .subtitle {
+    font-size: 15px;
+    margin-bottom: 32px;
+  }
+  .stepText {
+    padding: 16px;
+    gap: 14px;
+  }
+  .stepTextTitle {
+    font-size: 15px;
+  }
   .slide {
-    min-height: 320px;
+    min-height: 340px;
     padding: 24px 24px 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .section {
+    padding: 48px 16px;
+  }
+  .title {
+    font-size: 28px;
+  }
+  .stepText {
+    padding: 12px;
+  }
+  .stepTextDesc {
+    display: none; /* Keep left col compact on very small screens */
+  }
+  .slide {
+    min-height: 280px;
+    padding: 20px 20px 0;
+  }
+  .dots {
+    justify-content: center;
+  }
+  .stepNum {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
   }
 }
