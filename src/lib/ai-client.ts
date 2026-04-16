@@ -8,6 +8,7 @@ import { GoogleAuth } from 'google-auth-library';
 
 const DEFAULT_MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1000;
+const VERTEX_AI_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per request
 
 // ── Token utilities ──────────────────────────
 
@@ -76,6 +77,11 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < DEFAULT_MAX_RETRIES; attempt++) {
+    // Each attempt gets its own AbortController so a timeout on one
+    // attempt doesn't interfere with retries.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), VERTEX_AI_TIMEOUT_MS);
+
     try {
       if (attempt > 0) {
         console.log(`[ai-client] Retry ${attempt}/${DEFAULT_MAX_RETRIES - 1}...`);
@@ -88,6 +94,7 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
           Authorization: `Bearer ${token}`,
         },
         body,
+        signal: controller.signal,
       });
 
       // Retryable status codes: 429 (rate limit) and 5xx (server errors)
@@ -118,6 +125,16 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
       return textPart;
     } catch (err: unknown) {
       const error = err as Error;
+      // Timeout / abort → treat as retryable
+      if (error.name === 'AbortError') {
+        lastError = new Error(
+          `Vertex AI request timed out after ${VERTEX_AI_TIMEOUT_MS / 1000}s (attempt ${attempt + 1})`,
+        );
+        console.warn(`[ai-client] ${lastError.message}`);
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
       // If it was already a retryable error we handled above, it was stored in lastError
       // If it's a network error, we should retry too
       if (error.message?.includes('fetch failed')) {
@@ -128,6 +145,8 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
       }
       // Non-retryable errors: throw immediately
       throw err;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
