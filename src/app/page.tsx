@@ -1,3 +1,4 @@
+import HowItWorks from './_components/HowItWorks';
 import InspectorsSection from './_components/InspectorsSection';
 import FeatureSection from './_components/FeatureSection';
 import Image from 'next/image';
@@ -163,81 +164,7 @@ export default function Home() {
         <InspectorsSection />
 
         {/* How It Works Section */}
-        <section className={styles.howItWorksSection}>
-          <div className={styles.howItWorksContainer}>
-            {/* Header Column */}
-            <div className={styles.howItWorksHeader}>
-              <h2 className={styles.howItWorksTitle}>How it works</h2>
-              <p className={styles.howItWorksSubtitle}>Just follow these easy steps</p>
-            </div>
-
-            {/* Step 1 */}
-            <div className={styles.stepCard}>
-              <div className={styles.stepImageWrapper}>
-                <Image
-                  src="/images/carousel-a.png"
-                  alt="Upload Training Documents Screen"
-                  width={300}
-                  height={400}
-                  className={styles.stepImage}
-                />
-              </div>
-              <div className={styles.stepIndicator}>
-                <span className={styles.stepNumber}>1</span>
-                <div className={styles.stepLine}></div>
-              </div>
-              <h3 className={styles.stepTitle}>Upload Your Policy</h3>
-              <p className={styles.stepDescription}>
-                Upload your policy or procedure, and Theraptly converts it into a ready-to-use
-                training module with lessons and quizzes
-              </p>
-            </div>
-
-            {/* Step 2 */}
-            <div className={styles.stepCard}>
-              <div className={styles.stepImageWrapper}>
-                <Image
-                  src="/images/carousel-b.png"
-                  alt="Training Principle Overview Screen"
-                  width={300}
-                  height={400}
-                  className={styles.stepImage}
-                />
-              </div>
-              <div className={styles.stepIndicator}>
-                <span className={styles.stepNumber}>2</span>
-                <div className={styles.stepLine}></div>
-              </div>
-              <h3 className={styles.stepTitle}>Assign & Train Your Team</h3>
-              <p className={styles.stepDescription}>
-                Assign courses to staff based on roles, track progress, and ensure everyone
-                completes required training on time.
-              </p>
-            </div>
-
-            {/* Step 3 */}
-            <div className={styles.stepCard}>
-              <div className={styles.stepImageWrapper}>
-                <Image
-                  src="/images/carousel-c.png"
-                  alt="Assigned Courses Dashboard Screen"
-                  width={300}
-                  height={400}
-                  className={styles.stepImage}
-                />
-              </div>
-              <div className={styles.stepIndicator}>
-                <span className={styles.stepNumber}>3</span>
-                <div className={styles.stepLine}></div>
-              </div>
-              <h3 className={styles.stepTitle}>Track Performance & Be Audit-ready</h3>
-              <p className={styles.stepDescription}>
-                Get real-time insights on completion rates, quiz results, and CARF alignment—all in
-                one dashboard.
-              </p>
-            </div>
-          </div>
-        </section>
+        <HowItWorks />
 
         {/* Advantage Section */}
         <section className={styles.advantageSection}>

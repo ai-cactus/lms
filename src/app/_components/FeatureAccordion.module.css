@@ -170,17 +170,35 @@
 
 @media (max-width: 480px) {
   .section {
-    padding: 60px 24px;
+    padding: 60px 16px;
+  }
+  .title {
+    font-size: 14px;
+    margin-bottom: 12px;
   }
   .subtitle {
-    font-size: 24px;
+    font-size: 20px;
+  }
+  .accordionHeader {
+    padding: 20px 0;
+  }
+  .headerTitle {
+    font-size: 16px;
+  }
+  .accordionContentInner {
+    padding-left: 0;
+    padding-top: 8px;
+    font-size: 14px;
   }
   .actions {
     flex-direction: column;
     width: 100%;
+    gap: 12px;
   }
   .btnPrimary,
   .btnSecondary {
     width: 100%;
+    padding: 12px 24px;
+    font-size: 15px;
   }
 }
