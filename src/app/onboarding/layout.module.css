@@ -60,7 +60,7 @@
 
 /* Title - Figma: 34px, weight 700, line-height 42px */
 .heroTitle {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 34px;
   font-weight: 700;
   color: #ffffff;
@@ -70,7 +70,7 @@
 
 /* Subtitle - Figma: 18px, weight 500, line-height 31px */
 .heroSubtitle {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 18px;
   font-weight: 500;
   color: #ffffff;
@@ -108,7 +108,7 @@
 
 /* Feature Title - Figma: 19px, weight 600 */
 .featureTitle {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 19px;
   font-weight: 600;
   color: #f7fafc;
@@ -117,7 +117,7 @@
 
 /* Feature Description - Figma: 14px, weight 500, line-height 19px */
 .featureDesc {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;
   color: #cfd9e0;

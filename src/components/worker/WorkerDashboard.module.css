@@ -474,8 +474,7 @@
   font-size: 39px;
   /* Figma: 39.5px */
   font-weight: 700;
-  font-family: var(--font-dm-sans), sans-serif;
-  /* Figma: DM Sans */
+  font-family: var(--font-sans);
   color: #007d45;
   /* Reference: rgb(0, 125, 69) */
   margin-bottom: 14px;
@@ -487,8 +486,7 @@
 .welcomeText {
   font-size: 17px;
   /* Figma: 16.9px */
-  font-family: var(--font-geist-sans), sans-serif;
-  /* Figma: Inter Medium */
+  font-family: var(--font-sans);
   font-weight: 500;
   color: rgba(0, 0, 0, 0.7);
   /* Reference: 70% opacity black */
@@ -586,8 +584,7 @@
   font-size: 30px;
   /* Figma: 29.6px */
   font-weight: 700;
-  font-family: var(--font-geist-sans), sans-serif;
-  /* Figma: Inter Bold */
+  font-family: var(--font-sans);
   color: #000000;
   margin-bottom: 40px;
   letter-spacing: -0.6px;

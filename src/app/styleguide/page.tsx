@@ -132,7 +132,7 @@ export default function StyleGuidePage() {
             <h3 className={styles.colorCategoryTitle}>Font Families</h3>
             <div className={styles.fontFamilyGrid}>
               <div className={styles.fontFamilyItem}>
-                <div className={styles.fontFamilyName}>Primary (Inter Tight)</div>
+                <div className={styles.fontFamilyName}>Primary (Inter)</div>
                 <div className={styles.fontFamilyStack}>{fontFamilies.primary}</div>
                 <div
                   className={styles.fontFamilySample}
@@ -142,20 +142,10 @@ export default function StyleGuidePage() {
                 </div>
               </div>
               <div className={styles.fontFamilyItem}>
-                <div className={styles.fontFamilyName}>Secondary (Manrope)</div>
-                <div className={styles.fontFamilyStack}>{fontFamilies.secondary}</div>
-                <div
-                  className={styles.fontFamilySample}
-                  style={{ fontFamily: fontFamilies.secondary }}
-                >
-                  The quick brown fox jumps over the lazy dog
-                </div>
-              </div>
-              <div className={styles.fontFamilyItem}>
-                <div className={styles.fontFamilyName}>Monospace</div>
+                <div className={styles.fontFamilyName}>Monospace (JetBrains Mono)</div>
                 <div className={styles.fontFamilyStack}>{fontFamilies.mono}</div>
                 <div className={styles.fontFamilySample} style={{ fontFamily: fontFamilies.mono }}>
-                  const code = &quot;Hello World&quot;;
+                  {'const code = "Hello World";'}
                 </div>
               </div>
             </div>

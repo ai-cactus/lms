@@ -9,7 +9,7 @@
   padding: 32px 40px;
   min-height: 100%;
   background: #f8f9fc;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .pageHeader {
