@@ -25,6 +25,7 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
   const [jobTitle, setJobTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -36,11 +37,30 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
       setRole(staff.role || 'worker');
       setJobTitle(staff.jobTitle || '');
       setMessage(null);
+      setErrors({});
     }
   }, [isOpen, staff]);
 
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!firstName.trim()) {
+      newErrors.firstName = 'First name is required';
+    }
+
+    if (!lastName.trim()) {
+      newErrors.lastName = 'Last name is required';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) return;
+
     setIsLoading(true);
     setMessage(null);
 
@@ -89,9 +109,13 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
             </label>
             <Input
               value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
+              onChange={(e) => {
+                setFirstName(e.target.value);
+                if (errors.firstName) setErrors((prev) => ({ ...prev, firstName: '' }));
+              }}
               placeholder="First Name"
               required
+              error={errors.firstName}
             />
           </div>
           <div style={{ flex: 1 }}>
@@ -108,9 +132,13 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
             </label>
             <Input
               value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
+              onChange={(e) => {
+                setLastName(e.target.value);
+                if (errors.lastName) setErrors((prev) => ({ ...prev, lastName: '' }));
+              }}
               placeholder="Last Name"
               required
+              error={errors.lastName}
             />
           </div>
         </div>

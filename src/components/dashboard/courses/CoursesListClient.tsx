@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
+import CoursesBillingGate from './CoursesBillingGate';
 
 const PENDING_KEY = 'lms_pending_generation';
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -145,13 +146,16 @@ function PendingGenerationBanner() {
 
 interface CoursesListClientProps {
   courses: CourseWithStats[];
+  /** Whether the organization has an active or trialing billing subscription. */
+  hasBilling: boolean;
 }
 
-export default function CoursesListClient({ courses }: CoursesListClientProps) {
+export default function CoursesListClient({ courses, hasBilling }: CoursesListClientProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [showBillingGate, setShowBillingGate] = useState(false);
 
   // Filter Logic
   // ⚡ Bolt: Memoize filtered courses to prevent re-calculating on every render,
@@ -184,8 +188,16 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
           <h1 className={styles.title}>Courses</h1>
         </div>
         <Button
+          id="create-course-btn"
           className={styles.createButton}
-          onClick={() => router.push('/dashboard/courses/create')}
+          onClick={() => {
+            if (!hasBilling) {
+              // Gate course creation behind an active subscription
+              setShowBillingGate(true);
+              return;
+            }
+            router.push('/dashboard/courses/create');
+          }}
         >
           <svg
             width="20"
@@ -196,6 +208,7 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
+            aria-hidden="true"
           >
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -205,6 +218,8 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
       </div>
 
       {/* Content Card */}
+      {/* Billing gate — rendered when admin lacks an active subscription */}
+      {showBillingGate && <CoursesBillingGate onClose={() => setShowBillingGate(false)} />}
       <PendingGenerationBanner />
       <div className={styles.card}>
         {/* Search */}

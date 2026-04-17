@@ -29,7 +29,11 @@ export default function OnboardingStep4() {
 
     // Combine manual emails and CSV emails
     const allEmails = [...emails, ...csvEmails];
-    // If empty, but attempted skip or explicit skip logic matches original, handle usage:
+
+    if (allEmails.length === 0) {
+      setError('Please add at least one worker email or upload a CSV file, or skip this step.');
+      return;
+    }
 
     setIsLoading(true);
 

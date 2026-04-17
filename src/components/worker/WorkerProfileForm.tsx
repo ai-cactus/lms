@@ -41,6 +41,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   });
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // DEBUG: Client-side mount check
   React.useEffect(() => {
@@ -76,10 +77,30 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    // Clear field error when user types
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.first_name.trim()) {
+      newErrors.first_name = 'First name is required';
+    }
+
+    if (!formData.last_name.trim()) {
+      newErrors.last_name = 'Last name is required';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) return;
     setShowConfirm(true);
   };
 
@@ -226,6 +247,18 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                   onChange={handleChange}
                   placeholder="First Name"
                 />
+                {errors.first_name && (
+                  <span
+                    style={{
+                      color: '#E53E3E',
+                      fontSize: '13px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
+                    {errors.first_name}
+                  </span>
+                )}
               </div>
               <div className={styles.fieldGroup}>
                 <label className={styles.label}>Last Name</label>
@@ -236,6 +269,18 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                   onChange={handleChange}
                   placeholder="Last Name"
                 />
+                {errors.last_name && (
+                  <span
+                    style={{
+                      color: '#E53E3E',
+                      fontSize: '13px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
+                    {errors.last_name}
+                  </span>
+                )}
               </div>
             </div>
 

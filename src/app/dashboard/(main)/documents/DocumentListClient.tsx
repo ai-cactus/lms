@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { deleteDocument } from '@/app/actions/documents';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import styles from './page.module.css';
 
 interface DocumentListClientProps {
@@ -180,134 +181,143 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
           </tr>
         </thead>
         <tbody>
-          {docs.map((doc) => {
-            const latest = doc.versions[0];
-            const courseLinks = latest?.courseVersions || [];
-            const hasCourse = courseLinks.length > 0;
-            const isDeleting = deletingId === doc.id;
+          {docs.length > 0 ? (
+            docs.map((doc) => {
+              const latest = doc.versions[0];
+              const courseLinks = latest?.courseVersions || [];
+              const hasCourse = courseLinks.length > 0;
+              const isDeleting = deletingId === doc.id;
 
-            return (
-              <tr
-                key={doc.id}
-                onClick={() => handleRowClick(doc.id)}
-                className={styles.clickableRow}
-              >
-                <td>
-                  <div className={styles.docName}>
-                    <div className={styles.icon}>{getFileIcon(doc.mimeType, doc.filename)}</div>
-                    <div>
-                      <div className={styles.filename}>{doc.filename}</div>
-                      <div className={styles.meta}>
-                        {(doc.size / 1024 / 1024).toFixed(2)} MB • v{latest.version}
+              return (
+                <tr
+                  key={doc.id}
+                  onClick={() => handleRowClick(doc.id)}
+                  className={styles.clickableRow}
+                >
+                  <td>
+                    <div className={styles.docName}>
+                      <div className={styles.icon}>{getFileIcon(doc.mimeType, doc.filename)}</div>
+                      <div>
+                        <div className={styles.filename}>{doc.filename}</div>
+                        <div className={styles.meta}>
+                          {(doc.size / 1024 / 1024).toFixed(2)} MB • v{latest.version}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </td>
-                <td>{new Date(doc.updatedAt).toLocaleDateString()}</td>
-                <td>
-                  {hasCourse ? (
-                    <span className={styles.badgeSuccess}>Completed</span>
-                  ) : (
-                    <span
-                      style={{
-                        backgroundColor: '#F3F4F6',
-                        color: '#374151',
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                      }}
-                    >
-                      Not Started
-                    </span>
-                  )}
-                </td>
-                <td>
-                  <div className={styles.actions}>
+                  </td>
+                  <td>{new Date(doc.updatedAt).toLocaleDateString()}</td>
+                  <td>
                     {hasCourse ? (
-                      <button
-                        onClick={(e) => handleViewCourse(e, courseLinks[0].courseId)}
-                        className={styles.actionBtn}
-                      >
-                        View Course
-                      </button>
+                      <span className={styles.badgeSuccess}>Completed</span>
                     ) : (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/dashboard/courses/create?documentId=${doc.id}`);
+                      <span
+                        style={{
+                          backgroundColor: '#F3F4F6',
+                          color: '#374151',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          fontSize: '12px',
                         }}
-                        className={styles.actionBtn}
                       >
-                        Create Course
-                      </button>
+                        Not Started
+                      </span>
                     )}
-
-                    {/* Delete — disabled if document has an associated course */}
-                    <button
-                      onClick={(e) => handleDelete(e, doc.id, doc.filename)}
-                      disabled={isDeleting || hasCourse}
-                      title={
-                        hasCourse
-                          ? 'Cannot delete — this document has a linked course'
-                          : 'Delete document'
-                      }
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: isDeleting || hasCourse ? 'not-allowed' : 'pointer',
-                        opacity: hasCourse ? 0.35 : isDeleting ? 0.6 : 1,
-                        padding: '4px',
-                        color: '#EF4444',
-                        display: 'flex',
-                        alignItems: 'center',
-                        marginLeft: '4px',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {isDeleting ? (
-                        /* Spinner */
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          style={{ animation: 'spin 1s linear infinite' }}
+                  </td>
+                  <td>
+                    <div className={styles.actions}>
+                      {hasCourse ? (
+                        <button
+                          onClick={(e) => handleViewCourse(e, courseLinks[0].courseId)}
+                          className={styles.actionBtn}
                         >
-                          <circle
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            strokeDasharray="40"
-                            strokeDashoffset="10"
-                          />
-                        </svg>
+                          View Course
+                        </button>
                       ) : (
-                        /* Trash icon */
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/dashboard/courses/create?documentId=${doc.id}`);
+                          }}
+                          className={styles.actionBtn}
                         >
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                          <path d="M10 11v6" />
-                          <path d="M14 11v6" />
-                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                        </svg>
+                          Create Course
+                        </button>
                       )}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+
+                      {/* Delete — disabled if document has an associated course */}
+                      <button
+                        onClick={(e) => handleDelete(e, doc.id, doc.filename)}
+                        disabled={isDeleting || hasCourse}
+                        title={
+                          hasCourse
+                            ? 'Cannot delete — this document has a linked course'
+                            : 'Delete document'
+                        }
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: isDeleting || hasCourse ? 'not-allowed' : 'pointer',
+                          opacity: hasCourse ? 0.35 : isDeleting ? 0.6 : 1,
+                          padding: '4px',
+                          color: '#EF4444',
+                          display: 'flex',
+                          alignItems: 'center',
+                          marginLeft: '4px',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {isDeleting ? (
+                          /* Spinner */
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            style={{ animation: 'spin 1s linear infinite' }}
+                          >
+                            <circle
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              strokeDasharray="40"
+                              strokeDashoffset="10"
+                            />
+                          </svg>
+                        ) : (
+                          /* Trash icon */
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                            <path d="M10 11v6" />
+                            <path d="M14 11v6" />
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
+          ) : (
+            <EmptyTableState
+              message="No documents found."
+              subMessage="Upload a document to get started."
+              colSpan={4}
+              asTableRow
+            />
+          )}
         </tbody>
       </table>
     </>
