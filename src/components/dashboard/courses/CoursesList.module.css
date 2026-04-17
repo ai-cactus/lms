@@ -202,3 +202,167 @@
 .entriesSelect {
   margin: 0 8px;
 }
+
+/* ── Billing Gate Modal ───────────────────────────────────────────────────── */
+
+/* Full-screen semi-transparent backdrop */
+.billingGateOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  animation: fadeInOverlay 0.18s ease;
+}
+
+@keyframes fadeInOverlay {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Centered dialog card */
+.billingGateDialog {
+  position: relative;
+  background: #fff;
+  border-radius: 16px;
+  padding: 48px 40px 40px;
+  max-width: 420px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow:
+    0 20px 60px -10px rgba(15, 23, 42, 0.18),
+    0 4px 16px -4px rgba(15, 23, 42, 0.08);
+  animation: slideUpDialog 0.22s ease;
+}
+
+@keyframes slideUpDialog {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Circular illustration wrapper */
+.billingGateIllustration {
+  width: 96px;
+  height: 96px;
+  background: #eef2ff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  flex-shrink: 0;
+}
+
+/* Absolute close button (top-right) */
+.billingGateClose {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.billingGateClose:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.billingGateTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 10px;
+  line-height: 1.3;
+}
+
+.billingGateDesc {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0 0 32px;
+  line-height: 1.6;
+  max-width: 320px;
+}
+
+.billingGateActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Primary CTA — "Enable Billing" */
+.billingGateCta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #4731f7;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 13px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 0.2s,
+    transform 0.15s;
+}
+
+.billingGateCta:hover {
+  background: #3720d6;
+  transform: translateY(-1px);
+}
+
+/* Secondary action — "Cancel" */
+.billingGateCancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.billingGateCancel:hover {
+  background: #f8fafc;
+  border-color: #cbd5e0;
+}
