@@ -354,18 +354,6 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
             )}
 
             <div className={styles.actions}>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setFormData({ ...baseData });
-                  setAvatarUrl(baseAvatarUrl);
-                  setAvatarDisplayUrl(user.avatarDisplayUrl || null);
-                }}
-                disabled={!isDirty || isLoading}
-              >
-                Discard
-              </Button>
               <Button type="submit" variant="primary" loading={isLoading} disabled={!isDirty}>
                 Save Changes
               </Button>
