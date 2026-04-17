@@ -17,17 +17,40 @@ function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!newPassword) {
+      newErrors.newPassword = 'Password is required';
+    } else if (newPassword.length < 8) {
+      newErrors.newPassword = 'Password must be at least 8 characters';
+    } else if (!/[A-Z]/.test(newPassword)) {
+      newErrors.newPassword = 'Password must contain at least one uppercase letter';
+    } else if (!/[0-9]/.test(newPassword)) {
+      newErrors.newPassword = 'Password must contain at least one number';
+    } else if (!/[^A-Za-z0-9]/.test(newPassword)) {
+      newErrors.newPassword = 'Password must contain at least one special character';
+    }
+
+    if (!confirmPassword) {
+      newErrors.confirmPassword = 'Please confirm your password';
+    } else if (newPassword !== confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) return;
+
     setLoading(true);
     setError('');
-
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
-      setLoading(false);
-      return;
-    }
 
     if (!token) {
       setError('Invalid or missing token.');
@@ -108,9 +131,11 @@ function ResetPasswordForm() {
                   name="newPassword"
                   placeholder="Enter new password"
                   value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  minLength={6}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    if (errors.newPassword) setErrors((prev) => ({ ...prev, newPassword: '' }));
+                  }}
+                  error={errors.newPassword}
                 />
                 <Input
                   label="Confirm Password"
@@ -118,10 +143,12 @@ function ResetPasswordForm() {
                   name="confirmPassword"
                   placeholder="Confirm new password"
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  error={error}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    if (errors.confirmPassword)
+                      setErrors((prev) => ({ ...prev, confirmPassword: '' }));
+                  }}
+                  error={errors.confirmPassword || error}
                 />
 
                 <Button type="submit" size="lg" fullWidth loading={loading}>
