@@ -1,5 +1,8 @@
-/* Import Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&family=Roboto:wght@700;800&display=swap');
+/* ============================================
+   FONT SYSTEM — Inter + JetBrains Mono
+   Loaded via next/font/google in root layout.
+   Do NOT add @import or @font-face for fonts.
+   ============================================ */
 
 :root {
   /* Primary Colors */
@@ -33,10 +36,57 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
-  /* Typography */
-  --font-heading: 'Switzer', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-body: 'Geist', 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-logo: 'Roboto', system-ui, sans-serif;
+  /* --- Font Families --- */
+  --font-sans:
+    var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
+
+  /* Backward-compatible aliases */
+  --font-heading: var(--font-sans);
+  --font-body: var(--font-sans);
+  --font-logo: var(--font-sans);
+
+  /* --- Type Scale (mobile-first) --- */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.875rem; /* 14px */
+  --text-base: 1rem; /* 16px — minimum body size for mobile */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.25rem; /* 20px */
+  --text-2xl: 1.5rem; /* 24px */
+  --text-3xl: 1.875rem; /* 30px */
+  --text-4xl: 2.25rem; /* 36px */
+  --text-5xl: 3rem; /* 48px */
+  --text-6xl: 3.75rem; /* 60px */
+
+  /* --- Font Weights (Inter supports 100–900) --- */
+  --font-thin: 100;
+  --font-extralight: 200;
+  --font-light: 300;
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  --font-extrabold: 800;
+  --font-black: 900;
+
+  /* --- Line Heights --- */
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.6;
+  --leading-loose: 1.75;
+
+  /* --- Letter Spacing --- */
+  --tracking-tighter: -0.05em;
+  --tracking-tight: -0.025em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.025em;
+  --tracking-wider: 0.05em;
+  --tracking-widest: 0.1em;
 
   /* Layout Spacing */
   --radius-sm: 8px;
@@ -75,13 +125,26 @@ textarea {
   font-variation-settings: inherit;
 }
 
+/* --- Body Defaults (Desktop) --- */
 body {
   color: var(--text-primary);
   background: var(--background);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-normal);
+  line-height: var(--leading-relaxed);
+  letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+/* --- Mobile Adjustments --- */
+@media (max-width: 640px) {
+  body {
+    line-height: 1.65;
+    letter-spacing: -0.006em;
+  }
 }
 
 a {
@@ -89,15 +152,25 @@ a {
   text-decoration: none;
 }
 
+/* --- Monospace Elements --- */
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+}
+
+/* --- Heading Defaults --- */
 h1,
 h2,
 h3,
 h4,
 h5,
 h6 {
-  font-family: var(--font-heading);
-  font-weight: 600;
-  line-height: 1.2;
+  font-family: var(--font-sans);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.025em;
 }
 
 h1,

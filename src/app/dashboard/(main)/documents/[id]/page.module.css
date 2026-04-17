@@ -118,7 +118,7 @@
 
 .textContent pre {
   white-space: pre-wrap;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   color: #334155;
   line-height: 1.6;
   font-size: 0.95rem;

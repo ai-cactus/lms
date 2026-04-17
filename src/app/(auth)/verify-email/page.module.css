@@ -65,7 +65,7 @@
 }
 
 .heroTitle {
-  font-family: 'Inter Tight', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 32px;
   font-weight: 600;
   line-height: 1.3;
