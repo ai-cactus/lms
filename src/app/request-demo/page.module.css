@@ -296,12 +296,12 @@ In the screenshot asterisks are blue. Assuming default Input rendering is suffic
   }
 
   .btnSignIn {
-    display: none;
+    padding: 8px 16px;
+    font-size: 13px;
   }
 
   .btnDemo {
-    padding: 8px 16px;
-    font-size: 13px;
+    display: none; /* Hide Request Demo on mobile; show Sign In instead */
   }
 
   .mainContainer {

@@ -65,7 +65,7 @@ export default function BadgeSuccessModal({
             <div className={styles.ribbon} />
           </div>
 
-          <h2 className={styles.title}>Well done! You’ve earned a badge!</h2>
+          <h2 className={styles.title}>{`Well done! You've earned a certificate!`}</h2>
 
           <p className={styles.description}>
             The attestation is now securely stored and accessible on your dashboard anytime.
@@ -92,7 +92,7 @@ export default function BadgeSuccessModal({
             <div className={styles.badgeDetails}>
               <div>{organizationName}</div>
               <div>Issued on: {issuedDate}</div>
-              <div>Badge ID: {badgeId}</div>
+              <div>Certificate ID: {badgeId}</div>
             </div>
           </div>
 

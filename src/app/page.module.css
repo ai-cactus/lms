@@ -290,11 +290,11 @@
     gap: 8px;
   }
   .btnSignIn {
-    display: none; /* Collapse sign-in on mobile; only show Request Demo */
-  }
-  .btnDemo {
     padding: 10px 16px;
     font-size: 13px;
+  }
+  .btnDemo {
+    display: none; /* Hide Request Demo on mobile; show Sign In instead */
   }
   .hero {
     margin: 32px auto 16px;
