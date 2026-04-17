@@ -6,7 +6,7 @@ import layoutStyles from '@/app/dashboard/(main)/layout.module.css';
 import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button } from '@/components/ui';
+import { Button, Modal } from '@/components/ui';
 import { getNotifications, markAsRead, markAllAsRead } from '@/app/actions/notifications';
 
 interface HeaderProps {
@@ -18,6 +18,7 @@ interface HeaderProps {
 export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps, 'userEmail'>) {
   const [isOpen, setIsOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
   // Notification state
   const [notifications, setNotifications] = useState<
@@ -83,7 +84,11 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
     fetchNotifications();
   }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setIsLogoutModalOpen(true);
+  };
+
+  const handleConfirmLogout = async () => {
     await signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/signup` });
   };
 
@@ -104,114 +109,34 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
   }, []);
 
   return (
-    <header className={styles.header}>
-      {/* Hamburger — visible on mobile only */}
-      <button className={layoutStyles.hamburger} onClick={onMenuClick} aria-label="Open menu">
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
-      </button>
-
-      <div className={styles.headerEnd}>
-        <div className={styles.notificationWrapper} ref={notifRef}>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className={styles.iconButton}
-            onClick={toggleNotif}
+    <>
+      <header className={styles.header}>
+        {/* Hamburger — visible on mobile only */}
+        <button className={layoutStyles.hamburger} onClick={onMenuClick} aria-label="Open menu">
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+
+        <div className={styles.headerEnd}>
+          <div className={styles.notificationWrapper} ref={notifRef}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={styles.iconButton}
+              onClick={toggleNotif}
             >
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-            </svg>
-            {unreadCount > 0 && <span className={styles.badge}>{unreadCount}</span>}
-          </Button>
-
-          {isNotifOpen && (
-            <div className={styles.notificationsDropdown}>
-              <div className={styles.notificationsHeader}>
-                <h3>Notifications</h3>
-                {unreadCount > 0 && (
-                  <button className={styles.markAllReadBtn} onClick={handleMarkAllAsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div className={styles.notificationsBody}>
-                {isLoadingNotifs ? (
-                  <div className={styles.emptyState}>
-                    <p className={styles.emptyStateSubtext}>Loading...</p>
-                  </div>
-                ) : notifications.length === 0 ? (
-                  <div className={styles.emptyState}>
-                    <div className={styles.emptyStateIcon}>
-                      <svg
-                        width="32"
-                        height="32"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                      </svg>
-                    </div>
-                    <h4 className={styles.emptyStateText}>No new notifications</h4>
-                    <p className={styles.emptyStateSubtext}>
-                      When courses are assigned or new events happen, they will appear here.
-                    </p>
-                  </div>
-                ) : (
-                  <div className={styles.notificationList}>
-                    {notifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        className={`${styles.notificationItem} ${!notif.isRead ? styles.unread : ''}`}
-                        onClick={() => handleMarkAsRead(notif.id, notif.linkUrl)}
-                      >
-                        <div className={styles.notifContent}>
-                          <h4 className={styles.notifTitle}>{notif.title}</h4>
-                          <p className={styles.notifMessage}>{notif.message}</p>
-                          <span className={styles.notifTime}>
-                            {new Date(notif.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                        {!notif.isRead && <div className={styles.unreadDot} />}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className={styles.profileWrapper} ref={dropdownRef}>
-          <div className={styles.profile} onClick={toggleDropdown}>
-            <div className={styles.avatar}>
               <svg
                 width="20"
                 height="20"
@@ -222,78 +147,196 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+              {unreadCount > 0 && <span className={styles.badge}>{unreadCount}</span>}
+            </Button>
+
+            {isNotifOpen && (
+              <div className={styles.notificationsDropdown}>
+                <div className={styles.notificationsHeader}>
+                  <h3>Notifications</h3>
+                  {unreadCount > 0 && (
+                    <button className={styles.markAllReadBtn} onClick={handleMarkAllAsRead}>
+                      Mark all as read
+                    </button>
+                  )}
+                </div>
+                <div className={styles.notificationsBody}>
+                  {isLoadingNotifs ? (
+                    <div className={styles.emptyState}>
+                      <p className={styles.emptyStateSubtext}>Loading...</p>
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <div className={styles.emptyState}>
+                      <div className={styles.emptyStateIcon}>
+                        <svg
+                          width="32"
+                          height="32"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                        </svg>
+                      </div>
+                      <h4 className={styles.emptyStateText}>No new notifications</h4>
+                      <p className={styles.emptyStateSubtext}>
+                        When courses are assigned or new events happen, they will appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={styles.notificationList}>
+                      {notifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          className={`${styles.notificationItem} ${!notif.isRead ? styles.unread : ''}`}
+                          onClick={() => handleMarkAsRead(notif.id, notif.linkUrl)}
+                        >
+                          <div className={styles.notifContent}>
+                            <h4 className={styles.notifTitle}>{notif.title}</h4>
+                            <p className={styles.notifMessage}>{notif.message}</p>
+                            <span className={styles.notifTime}>
+                              {new Date(notif.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          {!notif.isRead && <div className={styles.unreadDot} />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className={styles.profileWrapper} ref={dropdownRef}>
+            <div className={styles.profile} onClick={toggleDropdown}>
+              <div className={styles.avatar}>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+              </div>
+              <span className={styles.profileName}>{fullName}</span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{
+                  transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s',
+                }}
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
               </svg>
             </div>
-            <span className={styles.profileName}>{fullName}</span>
+
+            {isOpen && (
+              <div className={styles.dropdown}>
+                <Link
+                  href="/worker/profile"
+                  className={styles.dropdownItem}
+                  onClick={() => setIsOpen(false)}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                    <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                    <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                  </svg>
+                  Edit Profile
+                </Link>
+                <Button
+                  variant="ghost"
+                  className={`${styles.dropdownItem} ${styles.logout}`}
+                  onClick={handleLogout}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                  </svg>
+                  Logout
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <Modal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)}>
+        <div style={{ padding: '24px', textAlign: 'center' }}>
+          <div style={{ marginBottom: '16px' }}>
             <svg
-              width="16"
-              height="16"
+              width="48"
+              height="48"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="currentColor"
+              stroke="#E53E3E"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              style={{
-                transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: 'transform 0.2s',
-              }}
+              style={{ margin: '0 auto' }}
             >
-              <polyline points="6 9 12 15 18 9"></polyline>
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
             </svg>
           </div>
-
-          {isOpen && (
-            <div className={styles.dropdown}>
-              <Link
-                href="/worker/profile"
-                className={styles.dropdownItem}
-                onClick={() => setIsOpen(false)}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                  <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                  <line x1="15" y1="9" x2="15.01" y2="9"></line>
-                </svg>
-                Edit Profile
-              </Link>
-              <Button
-                variant="ghost"
-                className={`${styles.dropdownItem} ${styles.logout}`}
-                onClick={handleLogout}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                  <polyline points="16 17 21 12 16 7"></polyline>
-                  <line x1="21" y1="12" x2="9" y2="12"></line>
-                </svg>
-                Logout
-              </Button>
-            </div>
-          )}
+          <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>
+            Confirm Logout
+          </h3>
+          <p style={{ color: '#718096', marginBottom: '24px' }}>
+            Are you sure you want to log out? You will need to sign in again to access your account.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+            <Button variant="outline" onClick={() => setIsLogoutModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleConfirmLogout}>
+              Logout
+            </Button>
+          </div>
         </div>
-      </div>
-    </header>
+      </Modal>
+    </>
   );
 }
