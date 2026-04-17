@@ -70,6 +70,12 @@ export default function SignupPage() {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 8) {
       newErrors.password = 'Password must be at least 8 characters';
+    } else if (!/[A-Z]/.test(formData.password)) {
+      newErrors.password = 'Password must contain at least one uppercase letter';
+    } else if (!/[0-9]/.test(formData.password)) {
+      newErrors.password = 'Password must contain at least one number';
+    } else if (!/[^A-Za-z0-9]/.test(formData.password)) {
+      newErrors.password = 'Password must contain at least one special character';
     }
 
     if (!formData.confirmPassword) {
