@@ -22,22 +22,6 @@ export default function Home() {
             <Link href="#features" className={styles.navLink}>
               Features
             </Link>
-            <Link href="#blog" className={styles.navLink}>
-              Blog
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ marginLeft: 2, opacity: 0.6 }}
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </Link>
           </nav>
 
           <div className={styles.headerActions}>
