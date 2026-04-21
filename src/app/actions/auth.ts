@@ -4,6 +4,7 @@ import { signIn } from '@/auth';
 import { signIn as signInWorker } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { validatePassword } from '@/lib/password-policy';
 import { AuthError } from 'next-auth';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
@@ -49,7 +50,10 @@ export async function authenticate(
     // If no user is found, bcrypt still runs on a dummy hash so timing is indistinguishable
     // from a valid login attempt with a wrong password.
     const lookupUser = email
-      ? await prisma.user.findUnique({ where: { email }, select: { role: true } })
+      ? await prisma.user.findUnique({
+          where: { email },
+          select: { role: true, mfaEnabled: true, id: true },
+        })
       : null;
 
     if (!lookupUser) {
@@ -61,17 +65,22 @@ export async function authenticate(
       role = 'worker';
     }
 
-    logger.info({ msg: 'Auth action: routing login', role });
+    logger.info({ msg: 'Auth action: routing login', role, mfaEnabled: lookupUser.mfaEnabled });
+
+    // Determine redirect target — if MFA is enabled, go to MFA verify page first
+    const mfaRedirect = lookupUser.mfaEnabled
+      ? `/mfa/verify?userId=${lookupUser.id}&role=${role}`
+      : null;
 
     if (role === 'worker') {
       await signInWorker('credentials', {
         ...Object.fromEntries(formData),
-        redirectTo: '/worker',
+        redirectTo: mfaRedirect || '/worker',
       });
     } else {
       await signIn('credentials', {
         ...Object.fromEntries(formData),
-        redirectTo: '/dashboard',
+        redirectTo: mfaRedirect || '/dashboard',
       });
     }
 
@@ -83,7 +92,7 @@ export async function authenticate(
 
     logger.error({ msg: 'Auth action error', error: String(error) });
     if (error instanceof AuthError) {
-      switch (error.type) {
+      switch ((error as AuthError).type) {
         case 'CredentialsSignin':
           return { error: 'Invalid credentials.' };
         default:
@@ -129,6 +138,15 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
   // Basic validation
   if (!email || !password || !firstName || !lastName || !role) {
     return { success: false, error: 'All fields are required' };
+  }
+
+  // Server-side password policy enforcement
+  const pwCheck = validatePassword(password);
+  if (!pwCheck.valid) {
+    return {
+      success: false,
+      error: `Password does not meet requirements: ${pwCheck.errors.join(', ')}`,
+    };
   }
 
   try {
@@ -223,6 +241,12 @@ export async function resetPasswordWithToken(
   token: string,
   newPassword: string,
 ): Promise<AuthState> {
+  // Server-side password policy enforcement
+  const pwCheck = validatePassword(newPassword);
+  if (!pwCheck.valid) {
+    return { error: `Password does not meet requirements: ${pwCheck.errors.join(', ')}` };
+  }
+
   const verificationToken = await prisma.verificationToken.findFirst({
     where: {
       token, // Token is unique enough, but we should verify against user email if we had it in context,
@@ -250,6 +274,36 @@ export async function resetPasswordWithToken(
         token: verificationToken.token,
       },
     },
+  });
+
+  return { success: true };
+}
+
+export async function forceResetPassword(
+  email: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<AuthState> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || !user.password) {
+    return { error: 'Invalid credentials.' };
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.password);
+  if (!valid) {
+    return { error: 'Invalid current password.' };
+  }
+
+  const pwCheck = validatePassword(newPassword);
+  if (!pwCheck.valid) {
+    return { error: `Password does not meet requirements: ${pwCheck.errors.join(', ')}` };
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await prisma.user.update({
+    where: { email },
+    data: { password: hashedPassword, passwordResetRequired: false },
   });
 
   return { success: true };

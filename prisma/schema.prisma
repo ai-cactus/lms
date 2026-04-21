@@ -89,6 +89,8 @@ model Organization {
   joinCode                String?   @unique
   joinCodeExpiresAt       DateTime?
   stripeCustomerId        String?  @unique // Stripe customer ID
+  inactivityTimeoutMinutes Int     @default(15) // Minutes of inactivity before auto-logout (5–120)
+  requireMfa              Boolean  @default(false) // Org-wide MFA enforcement
   users                   User[]
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
@@ -117,10 +119,12 @@ model User {
   id             String         @id @default(uuid())
   email          String         @unique
   password       String
+  passwordResetRequired Boolean @default(false)
   organizationId String?
   authProvider   String         @default("credentials")
   role           UserRole       @default(worker)
   emailVerified  Boolean        @default(false)
+  mfaEnabled     Boolean        @default(false)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   courses        Course[]
@@ -129,6 +133,8 @@ model User {
   notifications  Notification[]
   profile        Profile?
   organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  mfaFactors     MfaFactor[]
+  mfaRecoveryCodes MfaRecoveryCode[]
 
   @@index([organizationId])
 }
@@ -421,4 +427,33 @@ model Invoice {
   createdAt       DateTime     @default(now())
 
   @@index([organizationId])
+}
+
+// ── MFA Models ────────────────────────────────────────────────────────────────
+
+model MfaFactor {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   @default("totp") // totp | backup
+  secret    String?  // TOTP secret (encrypted at rest)
+  name      String?  // e.g. "Google Authenticator"
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String    // bcrypt hash of recovery code
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
