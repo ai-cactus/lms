@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Logo, Input, Button } from '@/components/ui';
 import { signup, SignupResult } from '@/app/actions/auth';
+import { validatePassword } from '@/lib/password-policy';
+import PasswordStrengthIndicator from '@/components/ui/PasswordStrengthIndicator';
 import styles from './page.module.css';
 import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 
@@ -68,14 +70,11 @@ export default function SignupPage() {
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    } else if (!/[A-Z]/.test(formData.password)) {
-      newErrors.password = 'Password must contain at least one uppercase letter';
-    } else if (!/[0-9]/.test(formData.password)) {
-      newErrors.password = 'Password must contain at least one number';
-    } else if (!/[^A-Za-z0-9]/.test(formData.password)) {
-      newErrors.password = 'Password must contain at least one special character';
+    } else {
+      const pwCheck = validatePassword(formData.password);
+      if (!pwCheck.valid) {
+        newErrors.password = pwCheck.errors[0]; // Show first error
+      }
     }
 
     if (!formData.confirmPassword) {
@@ -199,12 +198,13 @@ export default function SignupPage() {
               label="Password"
               type="password"
               name="password"
-              placeholder="Create a password"
+              placeholder="Create a password (min. 12 characters)"
               value={formData.password}
               onChange={handleChange}
               error={errors.password}
               autoComplete="new-password"
             />
+            <PasswordStrengthIndicator password={formData.password} />
 
             <Input
               label="Confirm Password"

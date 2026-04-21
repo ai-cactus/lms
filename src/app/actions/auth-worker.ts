@@ -30,7 +30,7 @@ export async function authenticateWorker(
     return { success: true };
   } catch (error) {
     if (error instanceof AuthError) {
-      switch (error.type) {
+      switch ((error as AuthError).type) {
         case 'CredentialsSignin':
           return { error: 'Invalid worker credentials.' };
         default:

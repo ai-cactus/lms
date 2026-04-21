@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { validatePassword, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '@/lib/password-policy';
 
 const prisma = new PrismaClient();
 
@@ -11,8 +12,8 @@ const acceptInviteSchema = z.object({
   lastName: z.string().min(1, 'Last name is required').max(100, 'Last name is too long'),
   password: z
     .string()
-    .min(8, 'Password must be at least 8 characters long')
-    .max(100, 'Password is too long'),
+    .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters long`)
+    .max(PASSWORD_MAX_LENGTH, 'Password is too long'),
 });
 
 export async function POST(req: Request) {
@@ -28,6 +29,15 @@ export async function POST(req: Request) {
     }
 
     const { token, firstName, lastName, password } = result.data;
+
+    // Server-side password policy enforcement (beyond basic zod length checks)
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) {
+      return NextResponse.json(
+        { error: `Password does not meet requirements: ${pwCheck.errors.join(', ')}` },
+        { status: 400 },
+      );
+    }
 
     // 2. Find pending invite
     const invite = await prisma.invite.findUnique({

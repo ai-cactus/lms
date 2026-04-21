@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+// @ts-expect-error - NextAuth does not reliably export decode type in this scope
 import { decode, JWT } from 'next-auth/jwt';
 
 // ✅ All route rules live in one config object — easy to audit and extend
@@ -64,6 +65,7 @@ export async function proxy(req: NextRequest) {
   try {
     const salt = cookieName;
     token = await decode({ token: rawToken, secret, salt });
+    // @ts-expect-error - JWT email is injected natively but omitted from standard JWT definition
     console.log(`[Proxy] Decoded token successfully for ${context}:`, token?.email);
   } catch (err) {
     console.error(`[Proxy] Token decode failed for ${context}:`, err);
@@ -83,6 +85,18 @@ export async function proxy(req: NextRequest) {
     const res = NextResponse.redirect(new URL(cfg.loginPath, req.url));
     res.cookies.delete(cookieName);
     return res;
+  }
+
+  // ✅ Password Reset required check
+  if (
+    (token as unknown as Record<string, unknown>).passwordResetRequired &&
+    pathname !== '/reset-password'
+  ) {
+    const url = new URL('/reset-password', req.url);
+    url.searchParams.set('force', 'true');
+    // @ts-expect-error - JWT email is injected natively but omitted from standard JWT definition
+    url.searchParams.set('email', token.email as string);
+    return NextResponse.redirect(url);
   }
 
   // Worker-specific: force onboarding if no org

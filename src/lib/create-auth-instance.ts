@@ -69,7 +69,18 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             email: maskEmail(email),
             instance: cookiePrefix,
           });
-          const user = await prisma.user.findUnique({ where: { email } });
+          const user = await prisma.user.findUnique({
+            where: { email },
+            select: {
+              id: true,
+              email: true,
+              password: true,
+              role: true,
+              organizationId: true,
+              mfaEnabled: true,
+              passwordResetRequired: true,
+            },
+          });
 
           if (!user || !user.password) {
             logger.warn({ msg: 'Auth login failed: user not found', instance: cookiePrefix });
@@ -96,6 +107,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             msg: 'Auth login success',
             email: maskEmail(user.email),
             instance: cookiePrefix,
+            mfaEnabled: user.mfaEnabled,
           });
 
           return {
@@ -103,7 +115,9 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             email: user.email,
             role: user.role as Role,
             organizationId: user.organizationId,
-          } as User;
+            passwordResetRequired: user.passwordResetRequired,
+            mfaVerified: !user.mfaEnabled, // If MFA disabled, auto-verified; if enabled, must verify
+          } as User & { mfaVerified: boolean; passwordResetRequired: boolean };
         },
       }),
 
@@ -123,7 +137,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
     ],
 
     callbacks: {
-      async signIn({ user, account }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async signIn({ user, account }: any) {
         if (account?.provider === 'microsoft-entra-id') {
           let dbUser = await prisma.user.findUnique({
             where: { email: user.email! },
@@ -230,6 +245,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           user.id = dbUser.id;
           user.organizationId = dbUser.organizationId;
           user.role = dbUser.role as Role;
+          // OAuth users bypass MFA — Microsoft Entra ID has its own MFA policies
+          (user as User & { mfaVerified?: boolean }).mfaVerified = true;
 
           const profile = await prisma.profile.findUnique({
             where: { id: dbUser.id },
@@ -264,14 +281,20 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
         return true;
       },
 
-      async jwt({ token, user }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async jwt({ token, user }: any) {
         if (user) {
           token.id = user.id;
           token.role = user.role;
           token.organizationId = user.organizationId;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          token.passwordResetRequired = (user as any).passwordResetRequired ?? false;
+          token.mfaVerified = (user as User & { mfaVerified?: boolean }).mfaVerified ?? false;
           if (user.name) {
             token.name = user.name;
           }
+          // Set initial activity timestamp on sign-in
+          token.lastActivity = Date.now();
         }
 
         // ✅ Re-validate against DB on every decode
@@ -282,6 +305,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               id: true,
               role: true,
               organizationId: true,
+              mfaEnabled: true,
+              passwordResetRequired: true,
               profile: { select: { fullName: true } },
             },
           });
@@ -289,19 +314,48 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           if (!freshUser) return null; // Invalidates session if user deleted
           if (freshUser.role !== allowedRole) return null; // Invalidates if role changed
 
+          // ── Inactivity timeout check ──────────────────────────────────────
+          const lastActivity = token.lastActivity as number | undefined;
+          if (lastActivity) {
+            const timeoutMinutes = Math.max(
+              5,
+              Math.min(120, parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '15', 10)),
+            );
+            const elapsed = Date.now() - lastActivity;
+            if (elapsed > timeoutMinutes * 60 * 1000) {
+              logger.info({
+                msg: 'Session expired due to inactivity',
+                userId: token.id,
+                elapsedMs: elapsed,
+                timeoutMinutes,
+                instance: cookiePrefix,
+              });
+              return null; // Invalidate session
+            }
+          }
+          // Refresh activity timestamp
+          token.lastActivity = Date.now();
+
           token.role = freshUser.role as Role;
           token.organizationId = freshUser.organizationId;
           token.name = freshUser.profile?.fullName || token.email || 'User';
+          token.mfaEnabled = freshUser.mfaEnabled;
+          token.passwordResetRequired = freshUser.passwordResetRequired;
         }
 
         return token;
       },
 
-      async session({ session, token }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async session({ session, token }: any) {
         if (token) {
           session.user.id = token.id as string;
           session.user.role = token.role as Role;
           session.user.organizationId = token.organizationId as string | null;
+          (session.user as User & { mfaVerified?: boolean }).mfaVerified =
+            (token.mfaVerified as boolean) ?? false;
+          (session.user as User & { mfaEnabled?: boolean }).mfaEnabled =
+            (token.mfaEnabled as boolean) ?? false;
         }
         return session;
       },
