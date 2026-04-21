@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Input, Checkbox, Logo } from '@/components/ui';
+import { validatePassword, PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
+import PasswordStrengthIndicator from '@/components/ui/PasswordStrengthIndicator';
 import styles from './JoinPage.module.css';
 
 interface JoinPageClientProps {
@@ -42,23 +44,9 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
       return;
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
-
-    if (!/[A-Z]/.test(password)) {
-      setError('Password must contain at least one uppercase letter');
-      return;
-    }
-
-    if (!/[0-9]/.test(password)) {
-      setError('Password must contain at least one number');
-      return;
-    }
-
-    if (!/[^A-Za-z0-9]/.test(password)) {
-      setError('Password must contain at least one special character');
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) {
+      setError(pwCheck.errors[0]);
       return;
     }
 
@@ -204,17 +192,18 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
           <Input
             label="Password"
             type="password"
-            placeholder="Password (at least 8 characters long)"
+            placeholder={`Password (at least ${PASSWORD_MIN_LENGTH} characters)`}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+          <PasswordStrengthIndicator password={password} />
 
           {/* Confirm Password */}
           <Input
             label="Confirm Password"
             type="password"
-            placeholder="Password (at least 8 characters long)"
+            placeholder={`Password (at least ${PASSWORD_MIN_LENGTH} characters)`}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required

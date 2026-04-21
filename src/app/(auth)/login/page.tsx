@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Logo, Input, Button } from '@/components/ui';
 import { authenticate } from '@/app/actions/auth';
+import { PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
 import styles from './page.module.css';
 import { signIn } from 'next-auth/react';
 import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
@@ -15,6 +16,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const joined = searchParams.get('joined');
   const oauthError = searchParams.get('error');
+  const inactiveReason = searchParams.get('reason');
 
   const [state, dispatch, isPending] = useActionState(authenticate, undefined);
 
@@ -50,8 +52,8 @@ function LoginForm() {
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if ((formData.password || '').length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if ((formData.password || '').length < PASSWORD_MIN_LENGTH) {
+      newErrors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
     }
 
     setErrors(newErrors);
@@ -217,6 +219,58 @@ function LoginForm() {
             </div>
             <div style={{ fontSize: '13px', color: '#B91C1C' }}>
               You do not have authorization to log in with this role.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {inactiveReason === 'inactive' && (
+        <div
+          style={{
+            backgroundColor: '#FEF3C7',
+            color: '#92400E',
+            padding: '16px 20px',
+            borderRadius: '12px',
+            marginBottom: '24px',
+            border: '1px solid #FCD34D',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            width: '100%',
+          }}
+        >
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              backgroundColor: '#F59E0B',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '2px' }}>
+              Session Expired
+            </div>
+            <div style={{ fontSize: '13px', color: '#A16207' }}>
+              You were logged out due to inactivity. Please log in again.
             </div>
           </div>
         </div>
