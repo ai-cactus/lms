@@ -25,13 +25,25 @@ export default async function BillingPageRoute() {
     redirect('/dashboard');
   }
 
-  // Fetch org staff count for plan restriction logic
+  // Fetch org staff count + active subscription plan for the UI
   const organization = user.organizationId
     ? await prisma.organization.findUnique({
         where: { id: user.organizationId },
-        select: { staffCount: true },
+        select: {
+          staffCount: true,
+          subscription: {
+            select: { plan: true, status: true },
+          },
+        },
       })
     : null;
 
-  return <BillingPage staffCount={organization?.staffCount ?? null} />;
+  // Expose the plan key only when the subscription is in a billable state
+  const activePlan =
+    organization?.subscription?.status === 'active' ||
+    organization?.subscription?.status === 'trialing'
+      ? organization.subscription.plan // 'starter' | 'professional' | 'enterprise'
+      : null;
+
+  return <BillingPage staffCount={organization?.staffCount ?? null} currentPlan={activePlan} />;
 }

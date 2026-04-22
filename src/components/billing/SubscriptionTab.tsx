@@ -14,8 +14,8 @@ import {
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 
 interface Props {
-  /** Current org staff count as integer */
   orgStaffCount: number;
+  currentPlan: string | null;
   onChangeTab: (tab: Tab) => void;
 }
 
@@ -151,7 +151,7 @@ function validateForm(
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
+export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTab }: Props) {
   const router = useRouter();
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
@@ -347,7 +347,7 @@ export default function SubscriptionTab({ orgStaffCount, onChangeTab }: Props) {
               ].join(' ')}
               aria-disabled={!allowed && !plan.isEnterprise}
             >
-              {plan.key === 'professional' && (
+              {currentPlan && plan.key === currentPlan && (
                 <div className={styles.currentPlanBadge}>CURRENT PLAN</div>
               )}
 
