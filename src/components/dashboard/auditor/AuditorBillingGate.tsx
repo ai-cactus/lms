@@ -29,7 +29,7 @@ export default function AuditorBillingGate() {
           />
         </svg>
       </div>
-      <h2 className={styles.billingTitle}>Billing required for reports</h2>
+      <h2 className={styles.billingTitle}>Plan is required for reports</h2>
       <p className={styles.billingDesc}>Subscribe to a plan to generate auditor packs.</p>
       <Link href="/dashboard/billing" className={styles.billingCta}>
         Select a plan

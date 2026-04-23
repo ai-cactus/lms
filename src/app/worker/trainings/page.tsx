@@ -7,12 +7,16 @@ export default async function WorkerTrainingsPage() {
   const session = await auth();
   const allEnrollments = await prisma.enrollment.findMany({
     where: { userId: session?.user?.id },
-    include: { course: true },
+    include: {
+      course: true,
+      quizAttempts: {
+        orderBy: { completedAt: 'desc' },
+        take: 1,
+      },
+    },
   });
 
-  const activeCoursesData = allEnrollments.filter((e) => e.status !== 'attested');
-
-  const activeCourses = activeCoursesData.map((e) => ({
+  const courses = allEnrollments.map((e) => ({
     id: e.courseId,
     enrollmentId: e.id,
     title: e.course.title,
@@ -22,7 +26,7 @@ export default async function WorkerTrainingsPage() {
     duration: e.course.duration || undefined,
     category: e.course.category,
     retakeOf: e.retakeOf,
-    quizAttempts: [], // Not heavily featured in this simple list, but good for type safety
+    quizAttempts: e.quizAttempts,
   }));
 
   return (
@@ -33,7 +37,7 @@ export default async function WorkerTrainingsPage() {
         </div>
       </header>
 
-      <WorkerTrainingList courses={activeCourses} />
+      <WorkerTrainingList courses={courses} />
     </div>
   );
 }

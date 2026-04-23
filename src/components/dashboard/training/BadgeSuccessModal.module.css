@@ -1,3 +1,4 @@
+/* Override Modal's inner .content padding */
 .modalParams {
   padding: 0 !important;
   overflow: hidden;
@@ -6,7 +7,7 @@
 .container {
   display: flex;
   flex-direction: row;
-  height: 500px;
+  min-height: 480px;
   width: 100%;
   background: white;
   max-width: 90vw;
@@ -16,6 +17,8 @@
     0 20px 25px -5px rgba(0, 0, 0, 0.1),
     0 10px 10px -5px rgba(0, 0, 0, 0.04);
   overflow: hidden;
+  /* Counteract the Modal's .content padding (24px) */
+  margin: -24px;
 }
 
 .leftPanel {
@@ -29,7 +32,7 @@
 
 .rightPanel {
   width: 300px;
-  background: linear-gradient(135deg, #e9d8fd 0%, #d6bcfa 100%);
+  background: linear-gradient(135deg, #dfbff9 0%, #b78cf2 100%);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -42,24 +45,37 @@
   position: relative;
 }
 
+.ribbon {
+  position: absolute;
+  bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 20px;
+  background: #d69e2e;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%);
+}
+
 .title {
   font-size: 24px;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--text-primary);
   margin-bottom: 12px;
+  line-height: var(--leading-tight);
 }
 
 .description {
-  font-size: 14px;
-  color: #718096;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
   margin-bottom: 32px;
   max-width: 80%;
+  line-height: var(--leading-relaxed);
 }
 
 .badgeCard {
   background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 16px;
   width: 100%;
   text-align: left;
@@ -74,42 +90,59 @@
 }
 
 .badgeTitle {
-  font-size: 16px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #2d3748;
+  color: var(--text-secondary);
 }
 
 .verifiedIcon {
-  color: #4299e1;
+  color: #1da1f2;
+  flex-shrink: 0;
 }
 
 .badgeDetails {
-  font-size: 12px;
-  color: #718096;
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: var(--leading-relaxed);
 }
 
 .dashboardBtn {
   width: 100%;
   padding: 12px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  background: var(--text-primary) !important;
+  border: none !important;
+  border-radius: var(--btn-radius) !important;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--text-white) !important;
   cursor: pointer;
   margin-bottom: 16px;
   transition: all 0.2s;
 }
 
 .dashboardBtn:hover {
-  background: #f7fafc;
-  border-color: #cbd5e0;
+  opacity: 0.9;
 }
 
 .startNewLink {
-  font-size: 14px;
-  color: #718096;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.startNewSpan {
+  color: var(--primary);
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.startNewSpan:hover {
+  opacity: 0.8;
+}
+
+.startNewSpan:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Right Panel Shapes */
@@ -118,34 +151,35 @@
 .shape3 {
   position: absolute;
   border-radius: 50%;
-  opacity: 0.1;
+  opacity: 0.15;
   background: white;
 }
 
 .shape1 {
-  width: 100px;
-  height: 100px;
-  top: -20px;
-  right: -20px;
+  width: 120px;
+  height: 120px;
+  top: -30px;
+  right: -30px;
 }
 
 .shape2 {
-  width: 150px;
-  height: 150px;
-  bottom: -50px;
-  left: -50px;
+  width: 160px;
+  height: 160px;
+  bottom: -60px;
+  left: -60px;
 }
 
 .shape3 {
-  width: 60px;
-  height: 60px;
+  width: 80px;
+  height: 80px;
   top: 40%;
   left: 10%;
 }
 
 .floatingBadge {
-  filter: drop-shadow(0 10px 15px rgba(0, 0, 0, 0.1));
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.15));
   animation: float 3s ease-in-out infinite;
+  z-index: 1;
 }
 
 @keyframes float {
@@ -162,14 +196,54 @@
   }
 }
 
+/* ─── Mobile Responsive ────────────────────────────────── */
 @media (max-width: 768px) {
-  .modalContent {
+  .container {
     flex-direction: column;
-    height: auto;
+    min-height: auto;
+    margin: -16px;
+  }
+
+  .leftPanel {
+    padding: 24px 20px;
+    order: 2;
   }
 
   .rightPanel {
     width: 100%;
-    height: 150px;
+    min-height: 180px;
+    order: 1;
+  }
+
+  .title {
+    font-size: var(--text-xl);
+  }
+
+  .description {
+    max-width: 100%;
+    margin-bottom: 24px;
+  }
+
+  .badgeCard {
+    margin-bottom: 24px;
+  }
+
+  .floatingBadge svg {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+@media (max-width: 480px) {
+  .leftPanel {
+    padding: 20px 16px;
+  }
+
+  .rightPanel {
+    min-height: 140px;
+  }
+
+  .title {
+    font-size: var(--text-lg);
   }
 }

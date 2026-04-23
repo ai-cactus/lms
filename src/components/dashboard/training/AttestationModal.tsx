@@ -86,25 +86,32 @@ export default function AttestationModal({
               onChange={(e) => setConfirmed1(e.target.checked)}
             />
             <div className={styles.checkboxLabel}>
-              I confirm that I personally completed the training titled {courseName} and that I
-              passed the required knowledge check.
+              I hereby certify that I have successfully completed the training module referenced
+              above, including all associated learning materials and the required knowledge
+              assessment.
               <br />
-              By signing below, I attest that:
+              By submitting this electronic signature, I solemnly attest to the following:
               <ol style={{ paddingLeft: 20, marginTop: 8 }}>
                 <li>
-                  I have read, understood, and can follow the requirements taught in this training.
+                  1. Competency: I have read and fully comprehended the training content. I
+                  acknowledge my responsibility to perform my duties in strict accordance with these
+                  requirements.
                 </li>
                 <li>
-                  I will apply this training to my work and follow our organization&apos;s policies
-                  and procedures related to this topic.
+                  2. Application & Policy: I will integrate these principles into my daily practice
+                  and consistently adhere to all related organizational policies, procedures, and
+                  applicable state/federal regulatory standards.
                 </li>
                 <li>
-                  I understand that if I am unsure about any part of this training, I am responsible
-                  for asking my supervisor or the compliance team for clarification before acting.
+                  3. Proactive Clarification: If I encounter a situation where I am uncertain of the
+                  correct protocol, I agree to seek immediate guidance from my supervisor or the
+                  Compliance Department before proceeding.
                 </li>
                 <li>
-                  I understand that failure to follow these requirements may lead to corrective
-                  action, up to and including termination, in line with organizational policy.
+                  4. Professional Accountability: I understand that maintaining this competency is a
+                  condition of my employment/engagement. I acknowledge that failure to comply with
+                  these standards may result in disciplinary action, up to and including termination
+                  of my contract or employment.
                 </li>
               </ol>
             </div>
@@ -118,7 +125,8 @@ export default function AttestationModal({
               onChange={(e) => setConfirmed2(e.target.checked)}
             />
             <div className={styles.checkboxLabel}>
-              I confirm that this attestation is true and accurate.
+              I confirm that I have read the above statements and that this attestation is true,
+              accurate, and provided of my own free will.
             </div>
           </div>
         </div>

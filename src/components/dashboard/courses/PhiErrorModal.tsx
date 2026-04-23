@@ -98,7 +98,7 @@ export default function PhiErrorModal({ isOpen, onClose, onRetry, reason }: PhiE
             marginBottom: '32px',
           }}
         >
-          Protected Health Information (PHI) has been detected in this document. Please upload a
+          Personal Health Information (PHI) has been detected in this document. Please upload a
           valid document for analysis.
           {reason && (
             <span
