@@ -787,6 +787,58 @@
   padding: 0;
 }
 
+/* Tab Bar */
+.tabBar {
+  display: flex;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.tabButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tabButton:hover {
+  color: #1e293b;
+  background: #f1f5f9;
+}
+
+.tabButtonActive {
+  color: #4730f7;
+  border-bottom-color: #4730f7;
+  background: white;
+}
+
+.tabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.tabButtonActive .tabCount {
+  background: #eef2ff;
+  color: #4730f7;
+}
+
 .trainingList {
   display: flex;
   flex-direction: column;

@@ -96,15 +96,23 @@ export default function BadgeSuccessModal({
             </div>
           </div>
 
-          <Button variant="primary" className={styles.dashboardBtn} onClick={handleDashboard}>
+          <Button
+            variant="primary"
+            fullWidth
+            className={styles.dashboardBtn}
+            onClick={handleDashboard}
+          >
             View Course Status
           </Button>
 
           <div className={styles.startNewLink}>
             or{' '}
             <span
+              className={styles.startNewSpan}
               onClick={() => router.push('/worker')}
-              style={{ textDecoration: 'underline', cursor: 'pointer' }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && router.push('/worker')}
             >
               start a new course here
             </span>

@@ -105,7 +105,7 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
         <div className={styles.agreement}>
           <input type="checkbox" id="phi-agree" required />
           <label htmlFor="phi-agree">
-            I verify this document contains no Protected Health Information (PHI).
+            I verify this document contains no Personal Health Information (PHI).
           </label>
         </div>
 

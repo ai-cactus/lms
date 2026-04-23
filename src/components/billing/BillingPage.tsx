@@ -22,12 +22,16 @@ const SubscriptionTab = dynamic(() => import('./SubscriptionTab'), { ssr: false 
 const PaymentMethodTab = dynamic(() => import('./PaymentMethodTab'), { ssr: false });
 
 interface BillingPageProps {
-  /** Staff count string from the organization (e.g. "23") */
   staffCount: string | null;
+  currentPlan: string | null;
   initialTab?: Tab;
 }
 
-export default function BillingPage({ staffCount, initialTab = 'overview' }: BillingPageProps) {
+export default function BillingPage({
+  staffCount,
+  currentPlan,
+  initialTab = 'overview',
+}: BillingPageProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tabParam = searchParams.get('tab') as Tab | null;
@@ -67,6 +71,7 @@ export default function BillingPage({ staffCount, initialTab = 'overview' }: Bil
       {activeTab === 'subscription' && (
         <SubscriptionTab
           orgStaffCount={parseInt(staffCount ?? '0', 10)}
+          currentPlan={currentPlan}
           onChangeTab={handleTabChange}
         />
       )}

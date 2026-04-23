@@ -245,7 +245,7 @@ export default function LearnPage() {
 
       if (quizUnlocked || userData?.role === 'admin') {
         setIsQuizActive(true);
-        setQuizStep('intro');
+        setQuizStep(quizResults ? 'review' : 'intro');
         setActiveIndex(course.lessons.length);
       } else {
         setShowQuizGateModal(true);
@@ -382,12 +382,30 @@ export default function LearnPage() {
 
           const remaining = Math.max(0, limit - elapsedSeconds);
           setTimeLeft(remaining);
+        } else if (isCompleted) {
+          // Completed/attested: show course content by default, quiz results accessible via rail
+          const resultsData: QuizResultsData = data.quizResultsData || {
+            passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
+            score: data.enrollment.score || 0,
+            totalQuestions: 0,
+            correctCount: 0,
+            answered: 0,
+            correct: 0,
+            wrong: 0,
+            time: 0,
+            questions: [],
+          };
+          setQuizResults(resultsData);
+          // Default to first lesson so workers can review course content
+          setActiveIndex(0);
+          setIsQuizActive(false);
+          setQuizUnlocked(true);
+          setHighestUnlockedIndex(lessonCount - 1);
         } else if (
-          (isCompleted ||
-            data.enrollment?.status === 'locked' ||
-            (hasQuizAttempt && !activeAttempt)) &&
+          (data.enrollment?.status === 'locked' || (hasQuizAttempt && !activeAttempt)) &&
           data.enrollment?.status !== 'in_progress'
         ) {
+          // Locked or has submitted quiz (not completed): show quiz review
           const resultsData: QuizResultsData = data.quizResultsData || {
             passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
             score: data.enrollment.score || 0,
@@ -823,7 +841,7 @@ export default function LearnPage() {
                 updateProgress(endIdx);
                 setQuizUnlocked(true);
                 setIsQuizActive(true);
-                setQuizStep('intro');
+                setQuizStep(quizResults ? 'review' : 'intro');
                 setActiveIndex(course.lessons.length);
               }}
               hasQuiz={!!course.quiz}
