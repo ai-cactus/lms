@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import styles from './WorkerDashboard.module.css';
 import { useRouter } from 'next/navigation';
 
@@ -21,14 +21,23 @@ interface Course {
   duration?: number;
   retakeOf?: string | null;
   enrollmentId?: string;
+  quizAttempts?: { id: string; attemptCount: number; timeTaken: number | null }[];
 }
 
 interface WorkerTrainingListProps {
   courses: Course[];
 }
 
+type TabKey = 'active' | 'completed';
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'active', label: 'Active' },
+  { key: 'completed', label: 'Completed' },
+];
+
 export default function WorkerTrainingList({ courses }: WorkerTrainingListProps) {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<TabKey>('active');
 
   const handleStartClick = (courseId: string) => {
     router.push(`/learn/${courseId}`);
@@ -38,11 +47,36 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
     router.push(`/worker/courses/${courseId}`);
   };
 
+  // Split courses into active and completed buckets
+  const activeCourses = courses.filter((c) => c.status !== 'completed' && c.status !== 'attested');
+  const completedCourses = courses.filter(
+    (c) => c.status === 'completed' || c.status === 'attested',
+  );
+
+  const displayedCourses = activeTab === 'active' ? activeCourses : completedCourses;
+
   return (
     <section className={styles.trainingListSection}>
+      {/* Tab Bar */}
+      <div className={styles.tabBar}>
+        {TABS.map((tab) => {
+          const count = tab.key === 'active' ? activeCourses.length : completedCourses.length;
+          return (
+            <button
+              key={tab.key}
+              className={`${styles.tabButton} ${activeTab === tab.key ? styles.tabButtonActive : ''}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+              <span className={styles.tabCount}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className={styles.trainingList}>
-        {courses.length > 0 ? (
-          courses.map((course) => {
+        {displayedCourses.length > 0 ? (
+          displayedCourses.map((course) => {
             const isCompleted = course.status === 'completed' || course.status === 'attested';
             const isStarted = course.progress > 0;
             const isFailed = course.status === 'failed';
@@ -135,7 +169,11 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
           })
         ) : (
           <div className={styles.emptyTable}>
-            <p>No trainings assigned.</p>
+            <p>
+              {activeTab === 'active'
+                ? 'No active courses. All your courses are completed!'
+                : 'No completed courses yet.'}
+            </p>
           </div>
         )}
       </div>

@@ -22,11 +22,16 @@ interface Props {
 // ── Dropdown option sets ─────────────────────────────────────────────────────
 
 const FACILITY_TYPES = [
-  'Behavioural Health Center',
-  'Substance Use Disorder (SUD) Treatment',
-  'Post-Acute Care',
+  'Behavioral Health (Outpatient/Community)',
+  'Residential Treatment Center (RTC)',
+  'Substance Use Disorder (SUD) - Residential',
+  'Substance Use Disorder (SUD) - Outpatient/MAT',
   'Intellectual/Developmental Disabilities (IDD)',
-  'Other (Custom)',
+  'Eating Disorder Treatment Center',
+  'Federally Qualified Health Center (FQHC)',
+  'Post-Acute / Skilled Nursing (SNF)',
+  'Sober Living / Recovery Housing',
+  'Other Specialized Healthcare (Custom)',
 ] as const;
 
 const FACILITY_COUNTS = ['1-5', '6-20', '21+'] as const;

@@ -30,7 +30,9 @@ export default function OnboardingStep1() {
     control,
     setError,
     formState: { errors },
-  } = useForm<Step1FormData>();
+  } = useForm<Step1FormData>({
+    defaultValues: { country: 'US' },
+  });
 
   const onSubmit = async (data: Step1FormData) => {
     console.log('Step 1 Data Saved Locally:', data);
@@ -163,23 +165,9 @@ export default function OnboardingStep1() {
 
         <div className={styles.row}>
           <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Country <span className={styles.required}>*</span>
-            </label>
-            <Controller
-              name="country"
-              control={control}
-              rules={{ required: 'Country is required' }}
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onChange={field.onChange}
-                  options={[{ label: 'United States', value: 'US' }]}
-                  placeholder="Select an option"
-                  error={getError('country')}
-                />
-              )}
-            />
+            <label className={styles.label}>Country</label>
+            <input type="hidden" {...register('country')} />
+            <Input value="United States" readOnly tabIndex={-1} />
           </div>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
@@ -212,32 +200,45 @@ export default function OnboardingStep1() {
         <div className={styles.row}>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
-              Street Address <span className={styles.helperText}>(optional)</span>
+              Street Address <span className={styles.required}>*</span>
             </label>
-            <Input {...register('streetAddress')} placeholder="Enter business street address" />
+            <Input
+              {...register('streetAddress', { required: 'Street Address is required' })}
+              placeholder="Enter business street address"
+              error={getError('streetAddress')}
+            />
           </div>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
-              Zip Code <span className={styles.helperText}>(optional)</span>
+              Zip Code <span className={styles.required}>*</span>
             </label>
-            <Input {...register('zipCode')} placeholder="e.g. 27601" />
+            <Input
+              {...register('zipCode', { required: 'Zip Code is required' })}
+              placeholder="e.g. 27601"
+              error={getError('zipCode')}
+            />
           </div>
         </div>
 
         <div className={styles.row}>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
-              City <span className={styles.helperText}>(optional)</span>
+              City <span className={styles.required}>*</span>
             </label>
-            <Input {...register('city')} placeholder="Enter city" />
+            <Input
+              {...register('city', { required: 'City is required' })}
+              placeholder="Enter city"
+              error={getError('city')}
+            />
           </div>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
-              State/Province <span className={styles.helperText}>(optional)</span>
+              State <span className={styles.required}>*</span>
             </label>
             <Controller
               name="state"
               control={control}
+              rules={{ required: 'State is required' }}
               render={({ field }) => (
                 <Select
                   value={field.value}
@@ -294,21 +295,9 @@ export default function OnboardingStep1() {
                     { label: 'Wisconsin', value: 'WI' },
                     { label: 'Wyoming', value: 'WY' },
                     { label: 'District of Columbia', value: 'DC' },
-                    { label: 'Alberta', value: 'AB' },
-                    { label: 'British Columbia', value: 'BC' },
-                    { label: 'Manitoba', value: 'MB' },
-                    { label: 'New Brunswick', value: 'NB' },
-                    { label: 'Newfoundland and Labrador', value: 'NL' },
-                    { label: 'Nova Scotia', value: 'NS' },
-                    { label: 'Ontario', value: 'ON' },
-                    { label: 'Prince Edward Island', value: 'PE' },
-                    { label: 'Quebec', value: 'QC' },
-                    { label: 'Saskatchewan', value: 'SK' },
-                    { label: 'Northwest Territories', value: 'NT' },
-                    { label: 'Nunavut', value: 'NU' },
-                    { label: 'Yukon', value: 'YT' },
                   ]}
                   placeholder="Select an option"
+                  error={getError('state')}
                 />
               )}
             />
