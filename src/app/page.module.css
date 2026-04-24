@@ -144,14 +144,14 @@
   line-height: 1.6;
   color: var(--text-secondary);
   max-width: 720px;
-  margin: 0 auto 40px;
+  margin: 0 0 40px 0;
 }
 
 /* Action Buttons below Hero */
 .heroActions {
   display: flex;
   gap: 16px;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
 }
 
@@ -301,8 +301,8 @@
   }
   .badgeContainer {
     flex-wrap: wrap;
-    justify-content: center;
-    text-align: center;
+    justify-content: flex-start;
+    text-align: left;
   }
   .heroHeadline {
     font-size: 36px;
@@ -351,8 +351,10 @@
 }
 
 .featuresHeader {
-  text-align: center;
+  text-align: left;
   margin-bottom: 64px;
+  width: 100%;
+  max-width: 1200px;
 }
 
 .featuresTitle {
@@ -584,8 +586,10 @@
 }
 
 .inspectorsHeader {
-  text-align: center;
+  text-align: left;
   margin-bottom: 64px;
+  width: 100%;
+  max-width: 1200px;
 }
 
 .inspectorsTitle {
@@ -748,8 +752,6 @@
   color: #d1d5db;
   margin-bottom: 40px;
   max-width: 800px;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 .advantageLogo {
@@ -913,7 +915,7 @@
   }
 
   .howItWorksHeader {
-    text-align: center;
+    text-align: left;
     margin-bottom: 48px;
     padding-top: 0;
   }
@@ -1000,7 +1002,7 @@
 
 .ctaLogomark {
   position: absolute;
-  right: -22%;
+  right: -47%;
   top: 40%;
   transform: translateY(-100%);
   width: 300px;
@@ -1011,7 +1013,15 @@
 
 @media (max-width: 1024px) {
   .ctaLogomark {
-    right: -20%;
+    right: -5%;
+    width: 600px;
+    opacity: 0.5;
+  }
+}
+
+@media (max-width: 1750px) {
+  .ctaLogomark {
+    right: -25%;
     width: 600px;
     opacity: 0.5;
   }
