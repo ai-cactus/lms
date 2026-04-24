@@ -8,7 +8,7 @@ const suisseIntl = localFont({
   src: [
     {
       path: '../../public/fonts/SuisseIntl-Regular/web/font/SuisseIntl-Regular.woff2',
-      weight: '100 900',
+      weight: '400',
       style: 'normal',
     },
   ],
@@ -42,8 +42,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${suisseIntl.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={`${suisseIntl.variable} ${jetbrainsMono.variable}`}>
+      <body>
         <Providers>{children}</Providers>
       </body>
     </html>
