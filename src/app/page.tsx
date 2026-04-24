@@ -189,7 +189,7 @@ export default function Home() {
               <p className={styles.ctaSubtitle}>
                 Start automating tasks today and give your team more time to focus on what matters.
               </p>
-              <Link href="#demo" className={styles.btnCta}>
+              <Link href="/request-demo" className={styles.btnCta}>
                 Request a demo
               </Link>
             </div>
