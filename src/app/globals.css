@@ -1,8 +1,9 @@
-/* ============================================
-   FONT SYSTEM — Inter + JetBrains Mono
-   Loaded via next/font/google in root layout.
-   Do NOT add @import or @font-face for fonts.
-   ============================================ */
+/* =====================================================
+   FONT SYSTEM — Suisse Int'l + JetBrains Mono
+   Suisse Int'l is self-hosted via next/font/local.
+   JetBrains Mono is loaded via next/font/google.
+   Do NOT add @import or @font-face here for these fonts.
+   ===================================================== */
 
 :root {
   /* Primary Colors */
@@ -38,8 +39,8 @@
 
   /* --- Font Families --- */
   --font-sans:
-    var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    Roboto, 'Helvetica Neue', Arial, sans-serif;
+    var(--font-suisse), "Suisse Int'l", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono:
     var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
     'Liberation Mono', monospace;
@@ -61,7 +62,10 @@
   --text-5xl: 3rem; /* 48px */
   --text-6xl: 3.75rem; /* 60px */
 
-  /* --- Font Weights (Inter supports 100–900) --- */
+  /* --- Font Weights ---
+     Only SuisseIntl-Regular (400) is currently bundled.
+     Weights 100–900 are mapped to the same file; the browser
+     synthesises heavier variants until additional weights are added. */
   --font-thin: 100;
   --font-extralight: 200;
   --font-light: 300;

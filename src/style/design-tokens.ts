@@ -145,8 +145,8 @@ export const semanticColors = {
 
 /**
  * Font families used in the design system.
- * Inter and JetBrains Mono are loaded via next/font/google in the root layout.
- * CSS custom properties: --font-sans, --font-mono
+ * Suisse Int'l (self-hosted) is the primary typeface; JetBrains Mono is used for code.
+ * Both are injected as CSS custom properties: --font-sans, --font-mono
  */
 export const fontFamilies = {
   primary: 'var(--font-sans)',
