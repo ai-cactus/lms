@@ -176,9 +176,9 @@
   }
   .btnPrimary,
   .btnSecondary {
-    width: 100%;
-    justify-content: center;
-    text-align: center;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    text-align: left;
   }
 }
 
