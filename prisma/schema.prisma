@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 // ── Enums ────────────────────────────────────────────────────────────────────
@@ -97,6 +99,7 @@ model Organization {
   invites                 Invite[]
   subscription            Subscription?
   invoices                Invoice[]
+  customCategories        CourseCategory[] // Org-specific course categories
 }
 
 model Invite {
@@ -135,6 +138,8 @@ model User {
   organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   mfaFactors     MfaFactor[]
   mfaRecoveryCodes MfaRecoveryCode[]
+  certificates   Certificate[]  // Earned certificates
+  approvedCourses Course[]     @relation("CourseApprover") // Courses this admin approved
 
   @@index([organizationId])
 }
@@ -198,7 +203,10 @@ model Course {
   description        String?
   thumbnail          String?
   status             CourseStatus    @default(draft)
+  // category is kept as a raw string for display; categoryId links to the
+  // structured CourseCategory for RAG retrieval.
   category           String?
+  categoryId         String?         // FK to CourseCategory
   duration           Int?
   createdBy          String
   objectives         String[]        @default([])
@@ -211,14 +219,21 @@ model Course {
   rawArticleMeta     Json?
   rawJudgeJson       Json?
   rawSlidesJson      Json?
+  // Audit / review fields (Figma "Confirm Course Review" modal)
+  approvedByUserId   String?         // userId of the admin who reviewed the course
+  approvedAt         DateTime?       // Timestamp of approval
+  courseCategory     CourseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  approvedBy         User?           @relation("CourseApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
   creator            User            @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   versions           CourseVersion[]
   enrollments        Enrollment[]
   lessons            Lesson[]
   artifacts          CourseArtifact[]
+  certificates       Certificate[]
 
   @@index([createdBy])
   @@index([status])
+  @@index([categoryId])
 }
 
 model CourseArtifact {
@@ -282,16 +297,17 @@ model Job {
 }
 
 model Lesson {
-  id        String   @id @default(uuid())
-  courseId  String
-  title     String
-  content   String
-  order     Int
-  duration  Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  quiz      Quiz?
+  id           String   @id @default(uuid())
+  courseId     String
+  title        String
+  content      String   // Article HTML — full prose per module
+  slideContent String?  // Slide HTML — bullet-point version per module (stored separately)
+  order        Int
+  duration     Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quiz         Quiz?
 }
 
 model Quiz {
@@ -341,6 +357,7 @@ model Enrollment {
   course               Course        @relation(fields: [courseId], references: [id])
   user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   quizAttempts         QuizAttempt[]
+  certificate          Certificate?  // One certificate per enrollment (issued on completion)
 
   // NOTE: @@index (not @@unique) on [userId, courseId] because the retake flow
   // (assignRetake) intentionally creates a second enrollment for the same
@@ -456,4 +473,94 @@ model MfaRecoveryCode {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ── RAG / Standard Manual Models ────────────────────────────────────────────
+
+/// System-wide course categories.
+/// isSystem = true  → seeded by Prisma/migration, visible to all orgs.
+/// isSystem = false → created by an org admin, scoped to their organization.
+model CourseCategory {
+  id             String    @id @default(uuid())
+  name           String
+  slug           String    @unique
+  description    String?
+  isSystem       Boolean   @default(true)
+  organizationId String?   // null = system-wide; set = org-specific custom
+  createdAt      DateTime  @default(now())
+  organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  courses        Course[]
+  manualMappings ManualChunkCategory[]
+
+  @@index([organizationId])
+  @@index([isSystem])
+}
+
+/// Tracks the currently active standard manual PDF.
+/// Only one record should have isActive = true at any time.
+/// When a new manual is uploaded, the old one is deactivated.
+model StandardManual {
+  id          String    @id @default(uuid())
+  filename    String
+  storagePath String    // minio:// or gcs:// URI to the raw PDF
+  version     String    // Human-readable version tag, e.g. "v2025-04"
+  uploadedBy  String    // userId of the system super-admin who uploaded it
+  isActive    Boolean   @default(true)
+  processedAt DateTime? // Set when all chunks have been embedded
+  chunkCount  Int       @default(0)
+  createdAt   DateTime  @default(now())
+  chunks      ManualChunk[]
+
+  @@index([isActive])
+}
+
+/// Individual text chunks extracted from the StandardManual PDF.
+/// The `embedding` column is a 768-dimensional pgvector column managed via raw SQL.
+/// All vector reads/writes use prisma.$queryRaw / prisma.$executeRaw.
+model ManualChunk {
+  id         String    @id @default(uuid())
+  manualId   String
+  chunkIndex Int       // 0-based position within the manual
+  pageNumber Int?      // Source PDF page (if extractable)
+  content    String    // Plain-text chunk content
+  // embedding vector(768) — managed outside Prisma type system via raw SQL.
+  // Added by: scripts/add-vector-column.sql  (run once after db push)
+  createdAt  DateTime  @default(now())
+  manual     StandardManual       @relation(fields: [manualId], references: [id], onDelete: Cascade)
+  categories ManualChunkCategory[]
+
+  @@index([manualId])
+  @@index([manualId, chunkIndex])
+}
+
+/// Join table: links ManualChunks to the CourseCategories they are relevant to.
+/// Populated during the indexing pipeline using keyword classification.
+model ManualChunkCategory {
+  chunkId    String
+  categoryId String
+  chunk      ManualChunk    @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  category   CourseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([chunkId, categoryId])
+}
+
+// ── Certificate Models ────────────────────────────────────────────────────────
+
+/// Issued to a worker upon successfully completing a course (passing quiz + attestation).
+/// One certificate per enrollment. PDF is generated server-side and stored in object storage.
+model Certificate {
+  id             String    @id @default(uuid())
+  enrollmentId   String    @unique // One certificate per enrollment
+  userId         String
+  courseId       String
+  issuedAt       DateTime  @default(now())
+  score          Int       // Final quiz score at time of issuance
+  pdfStoragePath String?   // minio:// or gcs:// URI of the generated PDF
+  pdfGeneratedAt DateTime?
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enrollment     Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  course         Course     @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([courseId])
 }

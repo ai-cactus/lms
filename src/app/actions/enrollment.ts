@@ -419,3 +419,41 @@ export async function requestCourseRetry(enrollmentId: string) {
   revalidatePath(`/worker/trainings`);
   return { success: true };
 }
+
+/**
+ * Remove a worker's assignment (enrollment) from a course.
+ */
+export async function removeWorkerAssignment(enrollmentId: string) {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  // Find the enrollment
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+    include: {
+      course: true,
+      user: { include: { profile: true } },
+    },
+  });
+
+  if (!enrollment) {
+    throw new Error('Enrollment not found');
+  }
+
+  // Ensure the user trying to remove the assignment is the course creator
+  if (enrollment.course.createdBy !== session.user.id) {
+    throw new Error('Access denied. Only the course creator can remove assignments.');
+  }
+
+  // Prevent removing if completed (optional, depending on business logic, but usually we allow removal or maybe block it)
+  // Let's just delete the enrollment
+  await prisma.enrollment.delete({
+    where: { id: enrollmentId },
+  });
+
+  revalidatePath(`/dashboard/training/courses/${enrollment.courseId}`);
+
+  return { success: true };
+}

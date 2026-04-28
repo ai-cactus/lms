@@ -14,9 +14,7 @@ LMS is an AI-powered Learning Management System built with Next.js 16 (App Route
 - **Development**: `npm run dev`
 - **Build & Start**: `npm run build` then `npm run start`
 - **Database Setup**:
-  - `npx prisma generate`: Generate Prisma Client.
-  - `npx prisma db push`: Sync schema during development.
-  - `node scripts/seed-courses.js`: Seed database with sample courses.
+  - Always create and follow proper migration procedures.
 - **Linting & Formatting**:
   - `npm run lint`: ESLint check.
   - `npm run lint:fix`: Automatically fix ESLint errors.

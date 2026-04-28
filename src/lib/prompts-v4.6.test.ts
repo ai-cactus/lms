@@ -4,53 +4,62 @@ import { buildPromptA_v46 } from './prompts-v4.6';
 describe('buildPromptA_v46', () => {
   it('should replace {{DOCUMENT_TEXT}} and {{METADATA_JSON}} when both are provided', () => {
     const documentText = 'This is the document text.';
+    const ragContext = 'Some RAG context.';
     const metadataJson = '{"key":"value"}';
-    const result = buildPromptA_v46(documentText, metadataJson);
+    const result = buildPromptA_v46(documentText, ragContext, metadataJson);
 
     expect(result).toContain(documentText);
+    expect(result).toContain(ragContext);
     expect(result).toContain(metadataJson);
     expect(result).not.toContain('{{DOCUMENT_TEXT}}');
+    expect(result).not.toContain('{{RAG_CONTEXT}}');
     expect(result).not.toContain('{{METADATA_JSON}}');
   });
 
-  it('should default {{METADATA_JSON}} to "None" when metadataJson is undefined', () => {
+  it('should default {{METADATA_JSON}} and {{RAG_CONTEXT}} to defaults when undefined', () => {
     const documentText = 'This is the document text.';
     const result = buildPromptA_v46(documentText);
 
     expect(result).toContain(documentText);
+    expect(result).toContain('STANDARD MANUAL CONTEXT (RAG):\nNone provided.');
     expect(result).toContain('OPTIONAL METADATA JSON:\nNone');
     expect(result).not.toContain('{{DOCUMENT_TEXT}}');
+    expect(result).not.toContain('{{RAG_CONTEXT}}');
     expect(result).not.toContain('{{METADATA_JSON}}');
   });
 
   it('should handle empty strings correctly', () => {
     const documentText = '';
+    const ragContext = '';
     const metadataJson = '';
-    const result = buildPromptA_v46(documentText, metadataJson);
+    const result = buildPromptA_v46(documentText, ragContext, metadataJson);
 
     expect(result).toContain('DOCUMENT TEXT:\n\n');
-    expect(result).toContain('OPTIONAL METADATA JSON:\nNone'); // Note: buildPromptA_v46 uses || 'None', so '' becomes 'None'
+    expect(result).toContain('STANDARD MANUAL CONTEXT (RAG):\nNone provided.');
+    expect(result).toContain('OPTIONAL METADATA JSON:\nNone');
     expect(result).not.toContain('{{DOCUMENT_TEXT}}');
+    expect(result).not.toContain('{{RAG_CONTEXT}}');
     expect(result).not.toContain('{{METADATA_JSON}}');
   });
 
   it('should handle input containing literal template strings {{DOCUMENT_TEXT}} and {{METADATA_JSON}}', () => {
     const documentText = 'Some text with {{DOCUMENT_TEXT}} and {{METADATA_JSON}} inside.';
-    const metadataJson = '{"key": "{{DOCUMENT_TEXT}}"}';
-    const result = buildPromptA_v46(documentText, metadataJson);
+    const ragContext = '{"key": "{{DOCUMENT_TEXT}}"}';
+    const metadataJson = '{{METADATA_JSON}}';
+    const result = buildPromptA_v46(documentText, ragContext, metadataJson);
 
-    // Using .replace() in JS replacing {{DOCUMENT_TEXT}} first might inject {{METADATA_JSON}},
-    // which then gets caught by the next .replace('{{METADATA_JSON}}').
-    // Let's assert the exact expected behaviour of the current implementation.
-    // Replace 1: template.replace('{{DOCUMENT_TEXT}}', docText)
-    //            -> '...DOCUMENT TEXT:\nSome text with {{DOCUMENT_TEXT}} and {{METADATA_JSON}} inside.\n\nOPTIONAL METADATA JSON:\n{{METADATA_JSON}}'
-    // Replace 2: result1.replace('{{METADATA_JSON}}', metadataJson)
-    //            -> Since JS replace only replaces the FIRST occurrence, it replaces the injected {{METADATA_JSON}}
-    //               and leaves the original {{METADATA_JSON}} in the template untouched!
+    // Prompt A has 3 replacements: DOCUMENT_TEXT, RAG_CONTEXT, then METADATA_JSON.
+    // Replace 1: DOCUMENT_TEXT -> result1
+    //   '...DOCUMENT TEXT:\nSome text with {{DOCUMENT_TEXT}} and {{METADATA_JSON}} inside.\n\nSTANDARD MANUAL CONTEXT (RAG):\n{{RAG_CONTEXT}}...'
+    // Replace 2: RAG_CONTEXT -> result2 (replaces only the first {{RAG_CONTEXT}} from template)
+    //   '...RAG_CONTEXT):\n{"key": "{{DOCUMENT_TEXT}}"}\n\nOPTIONAL METADATA JSON:\n{{METADATA_JSON}}'
+    // Replace 3: METADATA_JSON -> result3 (replaces the first {{METADATA_JSON}} it finds)
+    //   Wait, if docText had {{METADATA_JSON}}, and result2 has it too, JS .replace() will hit the FIRST one.
 
     expect(result).toContain(
-      'DOCUMENT TEXT:\nSome text with {{DOCUMENT_TEXT}} and {"key": "{{DOCUMENT_TEXT}}"} inside.',
+      'DOCUMENT TEXT:\nSome text with {{DOCUMENT_TEXT}} and {{METADATA_JSON}} inside.',
     );
+    expect(result).toContain('STANDARD MANUAL CONTEXT (RAG):\n{"key": "{{DOCUMENT_TEXT}}"}');
     expect(result).toContain('OPTIONAL METADATA JSON:\n{{METADATA_JSON}}');
   });
 

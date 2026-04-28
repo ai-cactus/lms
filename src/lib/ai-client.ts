@@ -152,3 +152,52 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
 
   throw lastError || new Error('Vertex AI call failed after all retries.');
 }
+
+/**
+ * Generate a 768-dimensional vector embedding for the given text using text-embedding-004.
+ */
+export async function generateEmbedding(text: string): Promise<number[]> {
+  const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
+  const location = process.env.GOOGLE_LOCATION || 'us-central1';
+  const model = 'text-embedding-004';
+
+  const token = await auth.getAccessToken();
+  if (!token) {
+    throw new Error('Failed to get an OAuth2 access token for Google Cloud Vertex AI.');
+  }
+
+  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predict`;
+
+  const body = JSON.stringify({
+    instances: [
+      {
+        task_type: 'RETRIEVAL_DOCUMENT',
+        title: '',
+        content: text,
+      },
+    ],
+  });
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Vertex AI Embedding ${response.status} ${response.statusText}: ${errorText}`);
+  }
+
+  const json = await response.json();
+  const values = json.predictions?.[0]?.embeddings?.values;
+
+  if (!Array.isArray(values)) {
+    throw new Error('Vertex AI Embedding returned no values.');
+  }
+
+  return values as number[];
+}

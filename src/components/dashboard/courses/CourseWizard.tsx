@@ -3,12 +3,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './CourseWizard.module.css';
+import Step1Category from './steps/Step1Category';
 import Step2Documents from './steps/Step2Documents';
 import Step3Details from './steps/Step3Details';
 import Step4Quiz from './steps/Step4Quiz';
 import Step5Review from './steps/Step5Review';
 import Step6QuizReview from './steps/Step6QuizReview';
 import Step7Publish from './steps/Step7Publish';
+import CourseSuccessModal from './CourseSuccessModal';
 import Logo from '@/components/ui/Logo';
 import Button from '@/components/ui/Button';
 import PhiErrorModal from './PhiErrorModal';
@@ -18,6 +20,7 @@ import { getDocuments, uploadDocument, deleteDocument } from '@/app/actions/docu
 import { CourseWizardData, GeneratedCourse, CourseDocument } from '@/types/course';
 
 const INITIAL_FORM_DATA: CourseWizardData = {
+  categoryId: '',
   title: '',
   description: '',
   difficulty: 'moderate',
@@ -44,7 +47,7 @@ export default function CourseWizard() {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
-  const totalSteps = 6;
+  const totalSteps = 7;
   const [formData, setFormData] = useState<CourseWizardData>(INITIAL_FORM_DATA);
 
   // Documents State
@@ -62,6 +65,7 @@ export default function CourseWizard() {
   const [isScanningPhi, setIsScanningPhi] = useState(false);
   const [showPhiError, setShowPhiError] = useState(false);
   const [phiReason, setPhiReason] = useState<string | undefined>(undefined);
+  const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
 
   // Exit confirmation state
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -159,7 +163,7 @@ export default function CourseWizard() {
   };
 
   const handleNext = async () => {
-    if (currentStep === 2) {
+    if (currentStep === 3) {
       const selectedDoc = documents.find((d) => d.selected);
       if (!selectedDoc) return;
 
@@ -193,7 +197,7 @@ export default function CourseWizard() {
     }
 
     if (currentStep < totalSteps) {
-      if (currentStep === 4 && !generatedContent) {
+      if (currentStep === 5 && !generatedContent) {
         setIsGenerating(true);
       }
       setCurrentStep(currentStep + 1);
@@ -215,6 +219,7 @@ export default function CourseWizard() {
 
       try {
         const result = await createFullCourse({
+          categoryId: formData.categoryId,
           title: formData.title,
           description: formData.description,
           difficulty: formData.difficulty,
@@ -255,7 +260,7 @@ export default function CourseWizard() {
           setShowPhiError(false);
           setPhiReason(undefined);
           hasAutoAnalyzed.current = false;
-          router.push('/dashboard/training');
+          setCreatedCourseId(result.courseId);
         } else {
           setPublishError('Failed to create course. Please try again.');
         }
@@ -356,6 +361,13 @@ export default function CourseWizard() {
     switch (currentStep) {
       case 1:
         return (
+          <Step1Category
+            selectedCategoryId={formData.categoryId}
+            onSelect={(id) => setFormData({ ...formData, categoryId: id })}
+          />
+        );
+      case 2:
+        return (
           <Step2Documents
             documents={documents}
             onToggleSelect={handleToggleSelect}
@@ -367,21 +379,21 @@ export default function CourseWizard() {
             isScanningPhi={isScanningPhi}
           />
         );
-      case 2:
+      case 3:
         return (
           <Step3Details
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
         );
-      case 3:
+      case 4:
         return (
           <Step4Quiz
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
         );
-      case 4:
+      case 5:
         return (
           <Step5Review
             data={formData}
@@ -390,7 +402,7 @@ export default function CourseWizard() {
             onComplete={handleGenerationComplete}
           />
         );
-      case 5:
+      case 6:
         return (
           <Step6QuizReview
             data={formData}
@@ -401,7 +413,7 @@ export default function CourseWizard() {
             }
           />
         );
-      case 6:
+      case 7:
         return (
           <Step7Publish
             data={formData}
@@ -415,11 +427,15 @@ export default function CourseWizard() {
 
   const isNextDisabled = () => {
     if (currentStep === 1) {
+      if (!formData.categoryId) return true;
+      return false;
+    }
+    if (currentStep === 2) {
       if (!documents.some((d) => d.selected)) return true;
       if (isAnalyzing || isScanningPhi) return true;
       return false;
     }
-    if (currentStep === 2) {
+    if (currentStep === 3) {
       if (!formData.title?.trim()) return true;
       if (!formData.description?.trim()) return true;
 
@@ -428,7 +444,7 @@ export default function CourseWizard() {
       if (formData.objectives.some((obj) => !obj.trim())) return true;
       return false;
     }
-    if (currentStep === 3) {
+    if (currentStep === 4) {
       if (!formData.quizTitle?.trim()) return true;
       if (!formData.quizQuestionCount) return true;
 
@@ -436,11 +452,11 @@ export default function CourseWizard() {
       if (!formData.quizPassMark || isNaN(passMark) || passMark <= 0) return true;
       return false;
     }
-    if (currentStep === 4) {
+    if (currentStep === 5) {
       if (!generatedContent?.modules || generatedContent.modules.length === 0) return true;
       return false;
     }
-    if (currentStep === 5) {
+    if (currentStep === 6) {
       if (!generatedContent?.quiz || generatedContent.quiz.length === 0) return true;
       return false;
     }
@@ -480,8 +496,8 @@ export default function CourseWizard() {
       <main className={styles.content}>
         {renderStep()}
 
-        {(!isGenerating || currentStep !== 4) && (
-          <div className={`${styles.footer} ${currentStep === 4 ? styles.footerWide : ''}`}>
+        {(!isGenerating || currentStep !== 5) && (
+          <div className={`${styles.footer} ${currentStep === 5 ? styles.footerWide : ''}`}>
             {publishError && <div className={styles.errorMessage}>{publishError}</div>}
             <div className={styles.footerButtons}>
               <Button variant="secondary" size="md" onClick={handleBack} disabled={isPublishing}>
@@ -491,16 +507,26 @@ export default function CourseWizard() {
                 variant="primary"
                 size="md"
                 onClick={handleNext}
-                disabled={isNextDisabled() || isAnalyzing}
-                loading={isPublishing}
+                disabled={
+                  isNextDisabled() || isGenerating || isPublishing || isAnalyzing || isScanningPhi
+                }
+                loading={isGenerating || isPublishing || isAnalyzing || isScanningPhi}
               >
-                {currentStep === totalSteps ? 'Publish' : 'Next'}
+                {currentStep === totalSteps ? 'Publish Course' : 'Next Step'}
               </Button>
             </div>
           </div>
         )}
 
-        {currentStep === 1 && (
+        {createdCourseId && (
+          <CourseSuccessModal
+            isOpen={true}
+            onClose={() => setCreatedCourseId(null)}
+            courseId={createdCourseId}
+          />
+        )}
+
+        {currentStep === 2 && (
           <div className={styles.privacyNotice}>
             <svg
               width="16"

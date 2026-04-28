@@ -19,7 +19,10 @@ ROLE:
 You are a senior instructional designer writing staff training for a regulated organization.
 
 INPUT:
-Extracted plain text from a PDF/DOCX policy/procedure document. The text may be messy, duplicated, or incomplete.
+1) Custom uploaded plain text from a PDF/DOCX policy/procedure document.
+2) Standard Manual RAG Context: Relevant excerpts retrieved from the organization's system-wide standard manual.
+
+The text may be messy, duplicated, or incomplete.
 
 GOAL:
 Produce TWO artifacts in this exact order:
@@ -28,8 +31,8 @@ Produce TWO artifacts in this exact order:
 No other text.
 
 HARD RULES:
-- SOURCE REQUIRED: Use ONLY the provided document text. If source text is too short to support a course, do not pad or invent.
-- SOURCE FIDELITY: Do not invent policies, dates, roles, thresholds, steps, or definitions.
+- SOURCE REQUIRED: Use ONLY the provided document text and the standard manual context. If source text is too short to support a course, do not pad or invent.
+- SOURCE FIDELITY: Do not invent policies, dates, roles, thresholds, steps, or definitions. Combine the Standard Manual context with the uploaded policy where they relate. If they contradict, prioritize the uploaded policy but note the contradiction in articleMeta.meta.gaps.
 - MODALITY SAFETY: Preserve must/shall/required vs should/recommended vs may/optional exactly as written. Do NOT strengthen or weaken.
 - NO VERBATIM DUMPS: Avoid copying long blocks. Short excerpts (<= 25 words) are allowed ONLY inside articleMeta.snippets.
 - NO REVIEWER NOTES IN ARTICLE: Any contradictions/gaps go ONLY in articleMeta.meta.gaps or articleMeta.meta.reviewerNotes.
@@ -128,6 +131,9 @@ Now produce the outputs in the required order.
 
 DOCUMENT TEXT:
 {{DOCUMENT_TEXT}}
+
+STANDARD MANUAL CONTEXT (RAG):
+{{RAG_CONTEXT}}
 
 OPTIONAL METADATA JSON:
 {{METADATA_JSON}}
@@ -476,11 +482,14 @@ JUDGE JSON:
 
 // ─── Builder Functions ───────────────────────────
 
-export function buildPromptA_v46(documentText: string, metadataJson?: string): string {
-  return PROMPT_A_TEMPLATE.replace('{{DOCUMENT_TEXT}}', documentText).replace(
-    '{{METADATA_JSON}}',
-    metadataJson || 'None',
-  );
+export function buildPromptA_v46(
+  documentText: string,
+  ragContext: string = '',
+  metadataJson?: string,
+): string {
+  return PROMPT_A_TEMPLATE.replace('{{DOCUMENT_TEXT}}', documentText)
+    .replace('{{RAG_CONTEXT}}', ragContext || 'None provided.')
+    .replace('{{METADATA_JSON}}', metadataJson || 'None');
 }
 
 export function buildPromptB_v46(

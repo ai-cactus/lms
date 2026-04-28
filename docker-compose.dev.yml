@@ -1,7 +1,7 @@
 # docker-compose.dev.yml
 #
 # Manages the backing services for local development:
-#   - db    → PostgreSQL 16 (port 5432 exposed to host)
+#   - db    → PostgreSQL 16 + pgvector (port 5432 exposed to host)
 #   - redis → Redis 7 (port 6379 exposed to host)
 #
 # Usage:
@@ -16,7 +16,10 @@ services:
   # ── PostgreSQL Database ───────────────────────────────────────────────────────
   db:
     container_name: lms-dev-db
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 is the official pgvector image built on top of
+    # postgres:16. It includes the vector extension pre-compiled and ready to
+    # activate with: CREATE EXTENSION IF NOT EXISTS vector;
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     ports:
       - '5433:5432'

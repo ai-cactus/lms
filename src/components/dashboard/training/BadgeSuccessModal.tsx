@@ -12,6 +12,7 @@ interface BadgeSuccessModalProps {
   badgeId?: string;
   issuedDate: string;
   courseId?: string; // Optional for navigation
+  certificateId?: string;
 }
 
 export default function BadgeSuccessModal({
@@ -22,6 +23,7 @@ export default function BadgeSuccessModal({
   badgeId = 'LMS-104',
   issuedDate,
   courseId,
+  certificateId,
 }: BadgeSuccessModalProps) {
   const router = useRouter();
 
@@ -104,6 +106,17 @@ export default function BadgeSuccessModal({
           >
             View Course Status
           </Button>
+
+          {certificateId && (
+            <Button
+              variant="outline"
+              fullWidth
+              style={{ marginTop: '12px' }}
+              onClick={() => window.open(`/api/certificates/${certificateId}`, '_blank')}
+            >
+              View Certificate
+            </Button>
+          )}
 
           <div className={styles.startNewLink}>
             or{' '}
