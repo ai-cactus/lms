@@ -23,7 +23,7 @@ LMS is an AI-powered Learning Management System built with Next.js 16 (App Route
 
 ## Coding Style & Naming Conventions
 - **TypeScript**: Strict typing required; avoid `any`.
-- **UI & Styling**: Tailwind CSS for responsive design.
+- **UI & Styling**: Vanila CSS for responsive design.
 - **State Management**: React Hook Form for data-heavy forms.
 - **Logging**: Use the centralized logger in `src/lib/logger.ts`. ALWAYS use `logger.info`, `logger.error`, etc. instead of `console.log` or `console.error` for this codebase.
 - **Naming**: Use descriptive names for components and utility functions.

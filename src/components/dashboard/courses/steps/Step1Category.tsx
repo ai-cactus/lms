@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { getCategories, createCustomCategory } from '@/app/actions/categories';
 import Button from '@/components/ui/Button';
+import styles from './Step1Category.module.css';
 
 interface Category {
   id: string;
@@ -54,84 +55,72 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
   };
 
   if (loading) {
-    return <div className="p-8 text-center text-gray-500">Loading categories...</div>;
+    return <div className={styles.loading}>Loading categories...</div>;
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto py-8 px-4">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900">Select a Course Category</h2>
-        <p className="text-gray-500 mt-2">
+    <div className={styles.container}>
+      <div className={styles.heading}>
+        <h2 className={styles.title}>Select a Course Category</h2>
+        <p className={styles.subtitle}>
           Choose a system category to automatically pull standard manual policies, or create a
           custom one.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className={styles.grid}>
         {categories.map((cat) => (
           <div
             key={cat.id}
             onClick={() => onSelect(cat.id)}
-            className={`cursor-pointer border rounded-xl p-5 transition-all ${
-              selectedCategoryId === cat.id
-                ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                : 'border-gray-200 hover:border-gray-300 hover:shadow-sm bg-white'
-            }`}
+            className={`${styles.card} ${selectedCategoryId === cat.id ? styles.cardSelected : ''}`}
           >
-            <div className="flex justify-between items-start">
-              <h3 className="font-semibold text-gray-900">{cat.name}</h3>
+            <div className={styles.cardHeader}>
+              <h3 className={styles.cardName}>{cat.name}</h3>
               {cat.isSystem ? (
-                <span className="text-xs font-medium px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
-                  System
-                </span>
+                <span className={styles.badgeSystem}>System</span>
               ) : (
-                <span className="text-xs font-medium px-2 py-1 bg-green-100 text-green-700 rounded-full">
-                  Custom
-                </span>
+                <span className={styles.badgeCustom}>Custom</span>
               )}
             </div>
-            {cat.description && (
-              <p className="text-sm text-gray-500 mt-2 leading-relaxed">{cat.description}</p>
-            )}
+            {cat.description && <p className={styles.cardDescription}>{cat.description}</p>}
           </div>
         ))}
       </div>
 
       {!isCreating ? (
-        <div className="mt-8 text-center">
-          <p className="text-sm text-gray-500 mb-3">Don&apos;t see what you need?</p>
+        <div className={styles.createPrompt}>
+          <p className={styles.createPromptText}>Don&apos;t see what you need?</p>
           <Button variant="outline" size="sm" onClick={() => setIsCreating(true)}>
             + Create Custom Category
           </Button>
         </div>
       ) : (
-        <div className="mt-8 border border-gray-200 rounded-xl p-6 bg-gray-50">
-          <h3 className="font-semibold text-gray-900 mb-4">Create Custom Category</h3>
-          <form onSubmit={handleCreateCustom} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category Name</label>
+        <div className={styles.createForm}>
+          <h3 className={styles.createFormTitle}>Create Custom Category</h3>
+          <form onSubmit={handleCreateCustom}>
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldLabel}>Category Name</label>
               <input
                 type="text"
-                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className={styles.fieldInput}
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
                 placeholder="e.g. Specialized Tool Training"
                 required
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Description (Optional)
-              </label>
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldLabel}>Description (Optional)</label>
               <textarea
-                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className={styles.fieldTextarea}
                 rows={2}
                 value={customDesc}
                 onChange={(e) => setCustomDesc(e.target.value)}
                 placeholder="Briefly describe this category"
               />
             </div>
-            <div className="flex justify-end space-x-3 pt-2">
+            <div className={styles.formActions}>
               <Button type="button" variant="ghost" size="sm" onClick={() => setIsCreating(false)}>
                 Cancel
               </Button>
