@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { getStandardManualHistory } from '@/app/actions/standard-manual';
+import styles from './manual.module.css';
 
 interface ManualHistory {
   id: string;
@@ -70,39 +71,34 @@ export default function StandardManualPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto py-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Standard Manual Management</h1>
-        <p className="text-muted-foreground mt-2">
+    <div className={styles.page}>
+      <div className={styles.pageHeader}>
+        <h1 className={styles.pageTitle}>Standard Manual Management</h1>
+        <p className={styles.pageDescription}>
           Upload and manage the central Standard Manual PDF used by the RAG AI pipeline.
         </p>
       </div>
 
       {message && (
         <div
-          className={`p-4 rounded-md mb-6 ${
-            message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-          }`}
+          className={`${styles.alert} ${message.type === 'success' ? styles.alertSuccess : styles.alertError}`}
         >
           {message.text}
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold leading-none tracking-tight">Upload New Manual</h2>
-          <p className="text-sm text-gray-500 mt-2">
+      <div className={styles.card}>
+        <div className={styles.cardHeader}>
+          <h2 className={styles.cardTitle}>Upload New Manual</h2>
+          <p className={styles.cardSubtitle}>
             Uploading a new manual will deactivate the previous one and start the vector indexing
             process.
           </p>
         </div>
-        <div className="p-6 pt-4">
-          <form onSubmit={handleUpload} className="space-y-4">
-            <div className="grid gap-2">
-              <label
-                htmlFor="version"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
+        <div className={styles.cardBody}>
+          <form onSubmit={handleUpload} className={styles.form}>
+            <div className={styles.fieldGroup}>
+              <label htmlFor="version" className={styles.fieldLabel}>
                 Version Tag
               </label>
               <Input
@@ -113,18 +109,15 @@ export default function StandardManualPage() {
                 required
               />
             </div>
-            <div className="grid gap-2">
-              <label
-                htmlFor="file"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
+            <div className={styles.fieldGroup}>
+              <label htmlFor="file" className={styles.fieldLabel}>
                 PDF Document
               </label>
               <input
                 id="file"
                 type="file"
                 accept="application/pdf"
-                className="flex h-10 w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className={styles.fileInput}
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
                 required
               />
@@ -136,39 +129,37 @@ export default function StandardManualPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold leading-none tracking-tight">Version History</h2>
-          <p className="text-sm text-gray-500 mt-2">Previously uploaded standard manuals</p>
+      <div className={styles.card}>
+        <div className={styles.cardHeader}>
+          <h2 className={styles.cardTitle}>Version History</h2>
+          <p className={styles.cardSubtitle}>Previously uploaded standard manuals</p>
         </div>
-        <div className="p-6 pt-4">
+        <div className={styles.cardBody}>
           {isLoadingHistory ? (
-            <p className="text-sm text-gray-500">Loading history...</p>
+            <p className={styles.stateText}>Loading history...</p>
           ) : history.length === 0 ? (
-            <p className="text-sm text-gray-500">No manuals uploaded yet.</p>
+            <p className={styles.stateText}>No manuals uploaded yet.</p>
           ) : (
-            <div className="divide-y divide-gray-200">
+            <div className={styles.historyList}>
               {history.map((manual) => (
-                <div key={manual.id} className="py-4 flex items-center justify-between">
-                  <div>
-                    <div className="font-medium flex items-center gap-2 text-gray-900">
+                <div key={manual.id} className={styles.historyItem}>
+                  <div className={styles.historyMeta}>
+                    <div className={styles.historyFilename}>
                       {manual.filename}
-                      {manual.isActive && (
-                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-gray-900 text-white hover:bg-gray-900/80">
-                          Active
-                        </span>
-                      )}
+                      {manual.isActive && <span className={styles.badgeActive}>Active</span>}
                     </div>
-                    <div className="text-sm text-gray-500 mt-1">
-                      Version: {manual.version} • Uploaded:{' '}
+                    <div className={styles.historyDetails}>
+                      Version: {manual.version} &bull; Uploaded:{' '}
                       {new Date(manual.createdAt).toLocaleDateString()}
                     </div>
-                    <div className="text-sm text-gray-500 mt-1">
+                    <div className={styles.historyStatus}>
                       Status:{' '}
                       {manual.processedAt ? (
-                        <span className="text-green-600">Indexed ({manual.chunkCount} chunks)</span>
+                        <span className={styles.statusIndexed}>
+                          Indexed ({manual.chunkCount} chunks)
+                        </span>
                       ) : (
-                        <span className="text-amber-600 animate-pulse">Processing...</span>
+                        <span className={styles.statusProcessing}>Processing...</span>
                       )}
                     </div>
                   </div>
