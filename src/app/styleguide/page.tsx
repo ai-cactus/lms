@@ -288,9 +288,7 @@ export default function StyleGuidePage() {
         {/* Spacing Section */}
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Spacing</h2>
-          <p className={styles.sectionDescription}>
-            Consistent spacing scale using 4px base unit (Tailwind-compatible)
-          </p>
+          <p className={styles.sectionDescription}>Consistent spacing scale using 4px base unit</p>
           <div className={styles.spacingGrid}>
             {[0, 1, 2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 48, 64].map((key) => {
               const value = spacing[key as keyof typeof spacing];

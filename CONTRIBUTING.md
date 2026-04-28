@@ -51,7 +51,7 @@ git push origin feature/auth-refactor
 - **TypeScript**: Use strict typing where possible. Avoid `any`.
 - **Next.js**: Follow App Router conventions.
 - **Prisma**: Ensure all schema changes are backed by migrations or documented push steps.
-- **Styling**: Use Tailwind CSS and follow the existing design system.
+- **Styling**: Use Vanila CSS and follow the existing design system.
 - **Logging**: Use the centralized logger in `src/lib/logger.ts`.
 
 ## 🐛 Bug Reports & Feature Requests
