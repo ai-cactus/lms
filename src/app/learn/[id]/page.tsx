@@ -18,6 +18,7 @@ interface Lesson {
   id: string;
   title: string;
   content: string;
+  slideContent?: string;
   duration: number | null;
   order: number;
   moduleIndex: number;
@@ -823,7 +824,7 @@ export default function LearnPage() {
             <CourseSlide
               lesson={{
                 title: currentLesson!.title,
-                content: currentLesson!.content,
+                content: currentLesson!.slideContent || currentLesson!.content,
                 moduleIndex: activeIndex,
                 totalModules: course.lessons.length,
               }}

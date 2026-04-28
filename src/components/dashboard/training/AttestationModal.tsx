@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import styles from './AttestationModal.module.css';
 import { attestCourse } from '@/app/actions/course';
+import { issueCertificate } from '@/app/actions/certificate';
 
 import { Modal, Button } from '@/components/ui';
 
@@ -12,14 +13,13 @@ interface AttestationModalProps {
   enrollmentId: string;
   courseName: string;
   userEmail: string;
-  onSuccess: () => void;
+  onSuccess: (certificateId?: string) => void;
 }
 
 export default function AttestationModal({
   isOpen,
   onClose,
   enrollmentId,
-  courseName,
   userEmail,
   onSuccess,
 }: AttestationModalProps) {
@@ -35,7 +35,8 @@ export default function AttestationModal({
 
     try {
       await attestCourse(enrollmentId, signature, '');
-      onSuccess();
+      const certificate = await issueCertificate(enrollmentId);
+      onSuccess(certificate.id);
     } catch (err: unknown) {
       const error = err as Error;
       setError(error.message || 'Failed to attest. Please try again.');

@@ -2,7 +2,7 @@
 #
 # Manages the full LMS staging stack:
 #   - app   → Next.js (port 3001, served via Nginx on the host)
-#   - db    → PostgreSQL 16 (internal network only — no host port)
+#   - db    → PostgreSQL 16 + pgvector (internal network only — no host port)
 #   - redis → Redis 7 (internal network only — no host port)
 #
 # Usage on the VM (after SCPing .env.staging):
@@ -58,7 +58,10 @@ services:
   # ── PostgreSQL Database ───────────────────────────────────────────────────────
   db:
     container_name: lms-staging-db
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 is the official pgvector image built on top of
+    # postgres:16. It includes the vector extension pre-compiled and ready to
+    # activate with: CREATE EXTENSION IF NOT EXISTS vector;
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lms_staging}

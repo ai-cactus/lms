@@ -75,7 +75,10 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
         },
       },
       enrollments: {
-        include: { user: { include: { profile: true } } },
+        include: {
+          user: { include: { profile: true } },
+          certificate: true,
+        },
       },
       creator: {
         include: { profile: true },
@@ -475,8 +478,9 @@ export async function createFullCourse(data: {
   description: string;
   difficulty: string;
   duration: string;
+  categoryId?: string;
   objectives?: string[];
-  modules: { title: string; content: string; duration: string }[];
+  modules: { title: string; content: string; slideContent?: string; duration: string }[];
   quiz: QuizQuestion[];
   assignments: string[];
   dueDate?: Date;
@@ -521,6 +525,7 @@ export async function createFullCourse(data: {
     data: {
       title: data.title,
       description: data.description,
+      categoryId: data.categoryId || null,
       duration: parseInt(data.duration) || 0,
       objectives: data.objectives || [],
       status: 'published',
@@ -539,6 +544,7 @@ export async function createFullCourse(data: {
         create: data.modules.map((mod, index) => ({
           title: mod.title,
           content: mod.content,
+          slideContent: mod.slideContent || null,
           order: index,
           duration: parseInt(mod.duration.replace(' min', '')) || 10,
           quiz:
