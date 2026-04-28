@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { buildPromptA_v46 } from './prompts-v4.6';
 
 describe('buildPromptA_v46', () => {
