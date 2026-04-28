@@ -34,8 +34,10 @@ export default async function WorkerCourseDetailsPage(props: PageProps) {
     include: {
       quizAttempts: true,
       user: {
-        include: { profile: true },
+        include: { profile: true, organization: true },
       },
+      course: true,
+      certificate: true,
     },
   });
 

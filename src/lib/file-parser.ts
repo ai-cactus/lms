@@ -1,6 +1,10 @@
+/**
+ * File text extraction utilities.
+ * Uses pdf-parse@1.1.1 (pure Node.js, no DOM polyfills required) for PDF files
+ * and mammoth for DOCX files.
+ */
 import mammoth from 'mammoth';
-import { PDFParse } from 'pdf-parse';
-import path from 'path';
+import pdfParse from 'pdf-parse';
 
 export async function extractTextFromFile(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
@@ -8,17 +12,7 @@ export async function extractTextFromFile(file: File): Promise<string> {
 
   if (file.type === 'application/pdf') {
     try {
-      // pdf-parse relies on pdfjs-dist which needs a worker
-      // In Node environments, we need to point to the legacy worker file
-      const workerPath = path.resolve(
-        process.cwd(),
-        'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
-      );
-      PDFParse.setWorker(workerPath);
-
-      // pdf-parse v2+ is a class
-      const parser = new PDFParse({ data: buffer });
-      const data = await parser.getText();
+      const data = await pdfParse(buffer);
       const text = data.text.trim();
 
       if (text.length === 0) {

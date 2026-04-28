@@ -243,6 +243,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
           id: l.id,
           title: l.title,
           content: l.content,
+          slideContent: l.slideContent,
           duration: l.duration,
           order: l.order,
         })),

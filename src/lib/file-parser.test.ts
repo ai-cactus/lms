@@ -8,23 +8,13 @@ vi.mock('mammoth', () => ({
   },
 }));
 
-const mockGetText = vi.fn().mockResolvedValue({ text: '' });
+vi.mock('pdf-parse', () => ({
+  default: mockPDFParse,
+}));
 
-vi.mock('pdf-parse', () => {
-  const mockPDFParse = class {
-    constructor() {}
-    getText() {
-      return mockGetText();
-    }
-  };
-  // Mock static method setWorker
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (mockPDFParse as any).setWorker = vi.fn();
-
-  return {
-    PDFParse: mockPDFParse,
-  };
-});
+const { mockPDFParse } = vi.hoisted(() => ({
+  mockPDFParse: vi.fn().mockResolvedValue({ text: '' }),
+}));
 
 // Polyfill File for Node.js environment
 class MockFile {
@@ -58,13 +48,11 @@ describe('extractTextFromFile', () => {
       type: 'application/pdf',
     });
 
-    mockGetText.mockResolvedValueOnce({ text: mockText });
-    const { PDFParse: MockPDFParse } = await import('pdf-parse');
+    mockPDFParse.mockResolvedValueOnce({ text: mockText });
 
     const result = await extractTextFromFile(mockFile as unknown as File);
     expect(result).toBe(mockText);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((MockPDFParse as any).setWorker).toHaveBeenCalled();
+    expect(mockPDFParse).toHaveBeenCalled();
   });
 
   it('should extract text from a valid DOCX file', async () => {
@@ -89,7 +77,7 @@ describe('extractTextFromFile', () => {
     });
 
     const errorMessage = 'Simulated PDF error';
-    mockGetText.mockRejectedValueOnce(new Error(errorMessage));
+    mockPDFParse.mockRejectedValueOnce(new Error(errorMessage));
 
     await expect(extractTextFromFile(mockFile as unknown as File)).rejects.toThrow(
       `PDF Parsing Failed: ${errorMessage}`,

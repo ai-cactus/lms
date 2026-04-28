@@ -7,6 +7,7 @@ import Link from 'next/link';
 import ShareCourseModal from './ShareCourseModal';
 
 import { CourseWithRelations } from '@/types/course';
+import { removeWorkerAssignment } from '@/app/actions/enrollment';
 
 interface TrainingDetailsProps {
   course: CourseWithRelations;
@@ -15,6 +16,8 @@ interface TrainingDetailsProps {
 export default function TrainingDetails({ course }: TrainingDetailsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'staff' | 'certificates'>('staff');
+  const [isRemoving, setIsRemoving] = useState<string | null>(null);
 
   // Use real enrollments from database only
   const enrollments = course.enrollments || [];
@@ -36,11 +39,27 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         )
       : 0;
 
-  // Filter Staff
+  // Filter enrollments based on search query
   const filteredEnrollments = enrollments.filter((e) => {
-    const name = e.user?.profile?.fullName || e.user?.email || '';
-    return name.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const nameMatch = e.user?.profile?.fullName?.toLowerCase().includes(q);
+    const emailMatch = e.user?.email.toLowerCase().includes(q);
+    return nameMatch || emailMatch;
   });
+
+  const handleRemoveAssignment = async (enrollmentId: string) => {
+    if (!window.confirm('Are you sure you want to unassign this worker?')) return;
+    setIsRemoving(enrollmentId);
+    try {
+      await removeWorkerAssignment(enrollmentId);
+      // Let Server Actions revalidatePath do the refresh
+    } catch (err) {
+      console.error('Failed to unassign worker', err);
+      alert('Failed to unassign worker.');
+    } finally {
+      setIsRemoving(null);
+    }
+  };
 
   return (
     <div className={styles.container}>
@@ -236,194 +255,290 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         </div>
       </div>
 
-      {/* Staff Section */}
       <div className={styles.staffSection}>
-        <div className={styles.searchContainer}>
-          <Input
-            placeholder="Search for staff..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={styles.searchInput}
-            leftIcon={
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ color: '#aaa' }}
-              >
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            }
-          />
+        <div
+          style={{
+            display: 'flex',
+            gap: '24px',
+            borderBottom: '1px solid #E2E8F0',
+            marginBottom: '24px',
+          }}
+        >
+          <button
+            className={activeTab === 'staff' ? styles.tabActive : styles.tabInactive}
+            onClick={() => setActiveTab('staff')}
+          >
+            Enrolled Staff
+          </button>
+          <button
+            className={activeTab === 'certificates' ? styles.tabActive : styles.tabInactive}
+            onClick={() => setActiveTab('certificates')}
+          >
+            Certificates Issued
+          </button>
         </div>
 
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ width: '40%' }}>Staff Name</th>
-              <th style={{ width: '20%' }}>Score</th>
-              <th style={{ width: '20%' }}>Status</th>
-              <th style={{ width: '20%', textAlign: 'right' }}>Quiz result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredEnrollments.map((enrollment) => (
-              <tr key={enrollment.id}>
-                <td>
-                  <div className={styles.staffProfile}>
-                    <div className={styles.avatar}>
-                      {(
-                        enrollment.user?.profile?.fullName?.[0] ||
-                        enrollment.user?.email?.[0] ||
-                        '?'
-                      ).toUpperCase()}
-                    </div>
-                    <div>
-                      <span className={styles.staffName}>
-                        {enrollment.user?.profile?.fullName || enrollment.user?.email}
-                      </span>
-                      <span className={styles.staffRole}>{enrollment.user?.role || 'Staff'}</span>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <span className={styles.score}>
-                    {enrollment.score !== null ? `${enrollment.score}%` : '-'}
-                  </span>
-                </td>
-                <td>
-                  {(enrollment.status === 'completed' || enrollment.status === 'attested') &&
-                  (enrollment.score ?? 0) >= 70 ? (
-                    <span className={`${styles.statusBadge} ${styles.passed}`}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                      Passed
-                    </span>
-                  ) : enrollment.status === 'completed' || enrollment.status === 'attested' ? (
-                    <span className={`${styles.statusBadge} ${styles.failed}`}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                      Failed
-                    </span>
-                  ) : enrollment.status === 'lessons_complete' ? (
-                    <span className={`${styles.statusBadge} ${styles.inProgress}`}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                      </svg>
-                      Awaiting Quiz
-                    </span>
-                  ) : enrollment.status === 'in_progress' || enrollment.progress > 0 ? (
-                    <span className={`${styles.statusBadge} ${styles.inProgress}`}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                      </svg>
-                      In Progress
-                    </span>
-                  ) : (
-                    <span className={`${styles.statusBadge} ${styles.notStarted}`}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <circle cx="12" cy="12" r="10"></circle>
-                      </svg>
-                      Not Started
-                    </span>
-                  )}
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'flex-end',
-                      gap: 12,
-                      alignItems: 'center',
-                    }}
+        {activeTab === 'staff' ? (
+          <>
+            <div className={styles.searchContainer}>
+              <Input
+                placeholder="Search for staff..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={styles.searchInput}
+                leftIcon={
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ color: '#aaa' }}
                   >
-                    {enrollment.score !== null ? (
-                      <Link
-                        href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                }
+              />
+            </div>
+
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th style={{ width: '40%' }}>Staff Name</th>
+                  <th style={{ width: '20%' }}>Score</th>
+                  <th style={{ width: '20%' }}>Status</th>
+                  <th style={{ width: '20%', textAlign: 'right' }}>Quiz result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEnrollments.map((enrollment) => (
+                  <tr key={enrollment.id}>
+                    <td>
+                      <div className={styles.staffProfile}>
+                        <div className={styles.avatar}>
+                          {(
+                            enrollment.user?.profile?.fullName?.[0] ||
+                            enrollment.user?.email?.[0] ||
+                            '?'
+                          ).toUpperCase()}
+                        </div>
+                        <div>
+                          <span className={styles.staffName}>
+                            {enrollment.user?.profile?.fullName || enrollment.user?.email}
+                          </span>
+                          <span className={styles.staffRole}>
+                            {enrollment.user?.role || 'Staff'}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={styles.score}>
+                        {enrollment.score !== null ? `${enrollment.score}%` : '-'}
+                      </span>
+                    </td>
+                    <td>
+                      {(enrollment.status === 'completed' || enrollment.status === 'attested') &&
+                      (enrollment.score ?? 0) >= 70 ? (
+                        <span className={`${styles.statusBadge} ${styles.passed}`}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                          Passed
+                        </span>
+                      ) : enrollment.status === 'completed' || enrollment.status === 'attested' ? (
+                        <span className={`${styles.statusBadge} ${styles.failed}`}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                          </svg>
+                          Failed
+                        </span>
+                      ) : enrollment.status === 'lessons_complete' ? (
+                        <span className={`${styles.statusBadge} ${styles.inProgress}`}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                          </svg>
+                          Awaiting Quiz
+                        </span>
+                      ) : enrollment.status === 'in_progress' || enrollment.progress > 0 ? (
+                        <span className={`${styles.statusBadge} ${styles.inProgress}`}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                          </svg>
+                          In Progress
+                        </span>
+                      ) : (
+                        <span className={`${styles.statusBadge} ${styles.notStarted}`}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="12" cy="12" r="10"></circle>
+                          </svg>
+                          Not Started
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'flex-end',
+                          gap: 12,
+                          alignItems: 'center',
+                        }}
                       >
-                        <Button size="sm" variant="outline" className={styles.viewButton}>
-                          View
+                        {enrollment.score !== null ? (
+                          <Link
+                            href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
+                          >
+                            <Button size="sm" variant="outline" className={styles.viewButton}>
+                              View
+                            </Button>
+                          </Link>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={`${styles.viewButton} ${styles.viewButtonDisabled}`}
+                            disabled
+                          >
+                            View
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={styles.viewButton}
+                          onClick={() => handleRemoveAssignment(enrollment.id)}
+                          disabled={isRemoving === enrollment.id}
+                        >
+                          {isRemoving === enrollment.id ? 'Removing...' : 'Unassign'}
                         </Button>
-                      </Link>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className={`${styles.viewButton} ${styles.viewButtonDisabled}`}
-                        disabled
-                      >
-                        View
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filteredEnrollments.length === 0 && (
-              <tr>
-                <td colSpan={4} style={{ textAlign: 'center', color: '#718096', padding: 24 }}>
-                  No staff enrolled yet.
-                </td>
-              </tr>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredEnrollments.length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', color: '#718096', padding: 24 }}>
+                      No staff enrolled yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <div className="space-y-4">
+            {enrollments.filter((e) => e.certificate).length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#718096', padding: 24 }}>
+                No certificates have been issued for this course yet.
+              </div>
+            ) : (
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '40%' }}>Staff Name</th>
+                    <th style={{ width: '30%' }}>Issue Date</th>
+                    <th style={{ width: '30%', textAlign: 'right' }}>Certificate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {enrollments
+                    .filter((e) => e.certificate)
+                    .map((enrollment) => (
+                      <tr key={enrollment.id}>
+                        <td>
+                          <div className={styles.staffProfile}>
+                            <div className={styles.avatar}>
+                              {(
+                                enrollment.user?.profile?.fullName?.[0] ||
+                                enrollment.user?.email?.[0] ||
+                                '?'
+                              ).toUpperCase()}
+                            </div>
+                            <div>
+                              <span className={styles.staffName}>
+                                {enrollment.user?.profile?.fullName || enrollment.user?.email}
+                              </span>
+                              <span className={styles.staffRole}>
+                                {enrollment.user?.role || 'Staff'}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>{new Date(enrollment.certificate!.issuedAt).toLocaleDateString()}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              window.open(
+                                `/api/certificates/${enrollment.certificate!.id}`,
+                                '_blank',
+                              )
+                            }
+                          >
+                            View PDF
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             )}
-          </tbody>
-        </table>
+          </div>
+        )}
       </div>
       <ShareCourseModal
         isOpen={isShareModalOpen}

@@ -2,6 +2,7 @@
 
 import { after } from 'next/server';
 import { callVertexAI, truncateToContext } from '@/lib/ai-client';
+import { retrieveRelevantChunks } from '@/lib/rag';
 import { JobStatus } from '@/types/job';
 import {
   buildPromptA_v46,
@@ -134,9 +135,10 @@ function parseDualOutput(rawResponse: string): { jsonStr: string; markdown: stri
 
 export async function generateArticleV46(
   sourceText: string,
+  ragContext?: string,
   metadataJson?: string,
 ): Promise<{ articleMeta: ArticleMetaV46; articleMarkdown: string; rawArticleMetaJson: string }> {
-  const prompt = buildPromptA_v46(sourceText, metadataJson);
+  const prompt = buildPromptA_v46(sourceText, ragContext, metadataJson);
 
   let rawResponse = '';
   try {
@@ -502,6 +504,20 @@ async function processBackgroundV46(
     console.log(`[v4.6 Background] Parsed course data for job ${jobId}. Title: ${data.title}`);
     const maxAttempts = 3;
 
+    // ── Pre-Stage: Retrieve RAG Context ──
+    let ragContext = '';
+    try {
+      if (data.category) {
+        console.log(`[v4.6 Background] Retrieving RAG chunks for category ${data.category}`);
+        const chunks = await retrieveRelevantChunks(sourceText.slice(0, 1000), data.category);
+        ragContext = chunks.map((c) => `[From Standard Manual]:\n${c.content}`).join('\n\n');
+        console.log(`[v4.6 Background] Retrieved ${chunks.length} RAG chunks.`);
+      }
+    } catch (ragErr) {
+      console.error(`[v4.6 Background] RAG retrieval failed:`, ragErr);
+      // Proceed without RAG if it fails
+    }
+
     // ── Stage A: Generate Article + ArticleMeta ──
 
     let articleMeta: ArticleMetaV46 | null = null;
@@ -512,7 +528,7 @@ async function processBackgroundV46(
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         console.log(`[v4.6 Background] Stage A attempt ${attempt}/${maxAttempts} for job ${jobId}`);
-        const result = await generateArticleV46(sourceText);
+        const result = await generateArticleV46(sourceText, ragContext);
         articleMeta = result.articleMeta;
         articleMarkdown = result.articleMarkdown;
         rawArticleMetaJson = result.rawArticleMetaJson;
