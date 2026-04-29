@@ -26,94 +26,15 @@
   line-height: 1.5;
 }
 
-/* ── Category Grid ─────────────────────────────────────────────────────── */
+/* ── Dropdown Selection ────────────────────────────────────────────────── */
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+.selectWrapper {
+  max-width: 480px;
+  margin: 0 auto 32px;
 }
 
-@media (max-width: 600px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.card {
-  background: #ffffff;
-  border: 1.5px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 20px;
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.card:hover {
-  border-color: #a0aec0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.cardSelected {
-  border-color: #4c6ef5;
-  background: #eef2ff;
-  box-shadow: 0 0 0 3px rgba(76, 110, 245, 0.15);
-}
-
-.cardHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.cardName {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1a202c;
-}
-
-.badgeSystem {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  background: #f1f5f9;
-  color: #64748b;
-  padding: 2px 8px;
-  border-radius: 20px;
-}
-
-.badgeCustom {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  background: #dcfce7;
-  color: #166534;
-  padding: 2px 8px;
-  border-radius: 20px;
-}
-
-.cardDescription {
-  font-size: 13px;
-  color: #718096;
-  margin-top: 8px;
-  line-height: 1.5;
-}
-
-/* ── Create Custom Section ─────────────────────────────────────────────── */
-
-.createPrompt {
-  margin-top: 32px;
-  text-align: center;
-}
-
-.createPromptText {
-  font-size: 13px;
-  color: #718096;
-  margin-bottom: 12px;
+.asterisk {
+  color: #4c6ef5;
 }
 
 .createForm {

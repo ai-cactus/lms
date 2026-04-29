@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { getCategories, createCustomCategory } from '@/app/actions/categories';
 import Button from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import styles from './Step1Category.module.css';
 
 interface Category {
@@ -58,44 +59,40 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
     return <div className={styles.loading}>Loading categories...</div>;
   }
 
+  const options = categories.map((cat) => ({
+    label: cat.name,
+    value: cat.id,
+  }));
+  options.push({ label: 'Others (Custom)', value: 'custom' });
+
+  const handleSelectChange = (val: string) => {
+    if (val === 'custom') {
+      setIsCreating(true);
+    } else {
+      setIsCreating(false);
+      onSelect(val);
+    }
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.heading}>
-        <h2 className={styles.title}>Select a Course Category</h2>
-        <p className={styles.subtitle}>
-          Choose a system category to automatically pull standard manual policies, or create a
-          custom one.
-        </p>
+        <h2 className={styles.title}>What category best fits the course you&apos;re creating?</h2>
       </div>
 
-      <div className={styles.grid}>
-        {categories.map((cat) => (
-          <div
-            key={cat.id}
-            onClick={() => onSelect(cat.id)}
-            className={`${styles.card} ${selectedCategoryId === cat.id ? styles.cardSelected : ''}`}
-          >
-            <div className={styles.cardHeader}>
-              <h3 className={styles.cardName}>{cat.name}</h3>
-              {cat.isSystem ? (
-                <span className={styles.badgeSystem}>System</span>
-              ) : (
-                <span className={styles.badgeCustom}>Custom</span>
-              )}
-            </div>
-            {cat.description && <p className={styles.cardDescription}>{cat.description}</p>}
-          </div>
-        ))}
+      <div className={styles.selectWrapper}>
+        <label className={styles.fieldLabel}>
+          Category <span className={styles.asterisk}>*</span>
+        </label>
+        <Select
+          options={options}
+          value={isCreating ? 'custom' : selectedCategoryId}
+          onChange={handleSelectChange}
+          placeholder="Select an option"
+        />
       </div>
 
-      {!isCreating ? (
-        <div className={styles.createPrompt}>
-          <p className={styles.createPromptText}>Don&apos;t see what you need?</p>
-          <Button variant="outline" size="sm" onClick={() => setIsCreating(true)}>
-            + Create Custom Category
-          </Button>
-        </div>
-      ) : (
+      {isCreating && (
         <div className={styles.createForm}>
           <h3 className={styles.createFormTitle}>Create Custom Category</h3>
           <form onSubmit={handleCreateCustom}>
