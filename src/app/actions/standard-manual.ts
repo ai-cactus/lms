@@ -2,12 +2,14 @@
 
 import { PrismaClient } from '@prisma/client';
 import { auth } from '@/auth';
+import { checkSystemAuth } from '@/app/actions/system-admin';
 
 const prisma = new PrismaClient();
 
 export async function getActiveStandardManual() {
+  const isSystemAdmin = await checkSystemAuth();
   const session = await auth();
-  if (!session?.user) throw new Error('Unauthorized');
+  if (!session?.user && !isSystemAdmin) throw new Error('Unauthorized');
 
   return prisma.standardManual.findFirst({
     where: { isActive: true },
@@ -16,11 +18,13 @@ export async function getActiveStandardManual() {
 }
 
 export async function getStandardManualHistory() {
+  const isSystemAdmin = await checkSystemAuth();
   const session = await auth();
-  if (!session?.user) throw new Error('Unauthorized');
 
-  // Must be an admin to see history usually, but let's just protect the call
-  if (session.user.role !== 'admin') throw new Error('Forbidden');
+  if (!isSystemAdmin) {
+    if (!session?.user) throw new Error('Unauthorized');
+    if (session.user.role !== 'admin') throw new Error('Forbidden');
+  }
 
   return prisma.standardManual.findMany({
     orderBy: { createdAt: 'desc' },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
+import { checkSystemAuth } from '@/app/actions/system-admin';
 import { PrismaClient } from '@prisma/client';
 import { uploadFile } from '@/lib/storage';
 import { indexStandardManual } from '@/lib/manual-indexer';
@@ -8,8 +8,8 @@ const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.role !== 'admin') {
+    const isAuthenticated = await checkSystemAuth();
+    if (!isAuthenticated) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
         filename: file.name,
         storagePath: uploadResult.storageUri,
         version,
-        uploadedBy: session.user.id,
+        uploadedBy: 'system-admin',
         isActive: true,
       },
     });
