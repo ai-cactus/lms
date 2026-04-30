@@ -40,6 +40,12 @@ export interface StorageProvider {
    * Should not throw if the object is already gone (idempotent).
    */
   delete(storageUri: string): Promise<void>;
+
+  /**
+   * Download the object identified by the storageUri as a Buffer.
+   * Used by background workers that need the raw bytes for processing.
+   */
+  download(storageUri: string): Promise<Buffer>;
 }
 
 /**

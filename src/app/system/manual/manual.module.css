@@ -194,3 +194,79 @@
   font-size: 14px;
   color: #64748b;
 }
+
+/* ── Active Manual Status Banner ───────────────────────────────────────── */
+
+.statusBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.statusBannerContent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.statusBannerLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94a3b8;
+}
+
+.statusBannerFilename {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.statusBannerVersion {
+  font-size: 12px;
+  color: #64748b;
+  background: #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.statusBannerState {
+  flex-shrink: 0;
+}
+
+/* ── Spinner ────────────────────────────────────────────────────────────── */
+
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #b45309;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── File Info ──────────────────────────────────────────────────────────── */
+
+.fileInfo {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
