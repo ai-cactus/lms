@@ -77,6 +77,17 @@ export async function uploadFile(
 }
 
 /**
+ * Download a stored file as a Buffer.
+ * Works for both gcs:// and minio:// URIs.
+ *
+ * @param storageUri  The value from StandardManual.storagePath
+ */
+export async function downloadFile(storageUri: string): Promise<Buffer> {
+  const provider = resolveProvider(storageUri);
+  return provider.download(storageUri);
+}
+
+/**
  * Get a short-lived URL (default 15 min) for a stored file.
  * Works for both gcs:// and minio:// URIs.
  *

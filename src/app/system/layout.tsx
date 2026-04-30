@@ -11,6 +11,13 @@ import styles from './system.module.css';
 
 export const dynamic = 'force-dynamic';
 
+// Boot the manual-indexer BullMQ worker as a singleton on the Node.js process.
+// Must be imported here (Server Component) so it starts as soon as an
+// authenticated system-admin page loads. This is a no-op after the first call.
+import('@/lib/queue/manual-indexer-worker').then(({ getManualIndexerWorker }) => {
+  getManualIndexerWorker();
+});
+
 export default async function SystemLayout({ children }: { children: React.ReactNode }) {
   // If env var not set, return 404 — invisible in production
   const enabled = await isSystemAdminEnabled();

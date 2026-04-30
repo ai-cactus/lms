@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifySystemAdminCookie } from '@/lib/system-auth';
 import { prisma } from '@/lib/prisma';
 import { uploadFile } from '@/lib/storage';
-import { indexStandardManual } from '@/lib/manual-indexer';
+import { manualIndexerQueue } from '@/lib/queue/manual-indexer-queue';
 import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
@@ -46,18 +46,17 @@ export async function POST(req: NextRequest) {
       sizeBytes: file.size,
     });
 
-    // 1. Convert to buffer
+    // 1. Convert to buffer and upload to storage
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // 2. Upload to storage
     const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const key = `system/manuals/${Date.now()}-${safeFilename}`;
     const uploadResult = await uploadFile(key, buffer, 'application/pdf');
 
     logger.info({ msg: '[ManualUpload] Uploaded to storage', storageUri: uploadResult.storageUri });
 
-    // 3. Deactivate previous manuals and create new record in a transaction
+    // 2. Deactivate previous manuals and create new record — in a transaction
     const manual = await prisma.$transaction(async (tx) => {
       await tx.standardManual.updateMany({
         where: { isActive: true },
@@ -71,28 +70,38 @@ export async function POST(req: NextRequest) {
           version: version.trim(),
           uploadedBy: 'system-admin',
           isActive: true,
+          // processedAt stays null until the indexer worker completes
         },
       });
     });
 
     logger.info({ msg: '[ManualUpload] DB record created', manualId: manual.id });
 
-    // 4. Trigger background indexing — logged but non-blocking.
-    //    In production this should be a BullMQ job. For the current architecture
-    //    (persistent server process) a non-awaited promise is acceptable provided
-    //    the process stays alive long enough to complete it.
-    indexStandardManual(manual.id, buffer).catch((err: unknown) => {
-      logger.error({
-        msg: '[ManualUpload] Background indexing failed',
+    // 3. Enqueue the indexing job via BullMQ.
+    //    The worker downloads the file from storage and runs the full pipeline.
+    //    This returns immediately — the Next.js server process is never blocked.
+    const job = await manualIndexerQueue.add(
+      'index-manual',
+      {
         manualId: manual.id,
-        err,
-      });
+        storagePath: uploadResult.storageUri,
+      },
+      {
+        // Use the manualId as the job ID so duplicate uploads are safe to detect
+        jobId: `manual-${manual.id}`,
+      },
+    );
+
+    logger.info({
+      msg: '[ManualUpload] Indexing job enqueued',
+      manualId: manual.id,
+      bullJobId: job.id,
     });
 
     return NextResponse.json(
       {
         message:
-          'Standard manual uploaded successfully. Background indexing has started — this may take a few minutes.',
+          'Standard manual uploaded successfully. Indexing job has been queued — this may take a few minutes.',
         manual: {
           id: manual.id,
           filename: manual.filename,

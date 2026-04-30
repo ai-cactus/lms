@@ -86,4 +86,14 @@ export class GCSProvider implements StorageProvider {
       throw err;
     }
   }
+
+  async download(storageUri: string): Promise<Buffer> {
+    const { key } = parseStorageUri(storageUri);
+    const bucket = this.storage.bucket(this.bucketName);
+    const file = bucket.file(key);
+
+    // file.download() resolves to [Buffer]
+    const [contents] = await file.download();
+    return contents;
+  }
 }
