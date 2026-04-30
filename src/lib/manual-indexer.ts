@@ -1,37 +1,52 @@
-// pdf-parse@1.1.1 - pure Node.js, no DOM polyfills required
+/**
+ * Standard Manual PDF indexer.
+ *
+ * Parses a PDF buffer, splits it into overlapping text chunks, embeds each
+ * chunk using the AI client, and stores the results in the ManualChunk table.
+ * The embedding vector column is managed outside Prisma's type system via raw
+ * SQL (pgvector).
+ *
+ * Called from: POST /api/system/manual  (non-blocking, fire-and-forget)
+ */
+
+// pdf-parse@1.1.1 — pure Node.js, no DOM polyfills required
 import pdfParse from 'pdf-parse';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { generateEmbedding } from './ai-client';
+import { logger } from '@/lib/logger';
 
-const prisma = new PrismaClient();
+// ── Chunking constants ────────────────────────────────────────────────────────
 
-const CHUNK_SIZE = 1500; // characters (~350 tokens)
-const CHUNK_OVERLAP = 200; // characters
+const CHUNK_SIZE = 1500; // target characters per chunk (~350 tokens)
+const CHUNK_OVERLAP = 200; // characters of overlap between consecutive chunks
+const MIN_CHUNK_LENGTH = 50; // discard very short chunks (headers, page numbers, etc.)
+const EMBED_DELAY_MS = 200; // delay between embedding API calls to respect rate limits
+const LOG_INTERVAL = 10; // log progress every N chunks
 
-export interface IndexedChunk {
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface TextChunk {
   text: string;
   pageNumber: number | null;
 }
 
-/**
- * Basic recursive character splitter.
- * Splitting by paragraphs, then sentences, then words if needed.
- */
-function splitTextIntoChunks(text: string): IndexedChunk[] {
-  const chunks: IndexedChunk[] = [];
+// ── Chunking ──────────────────────────────────────────────────────────────────
 
-  // A robust chunker would track page numbers accurately, but pdf-parse's
-  // page text isn't perfectly segmented without custom render callbacks.
-  // For simplicity, we just split by characters with overlap here.
+/**
+ * Splits a flat text string into overlapping chunks, each roughly CHUNK_SIZE
+ * characters long. Tries to break at sentence boundaries when possible.
+ */
+function splitTextIntoChunks(text: string): TextChunk[] {
+  const chunks: TextChunk[] = [];
   let startIndex = 0;
 
   while (startIndex < text.length) {
     let endIndex = startIndex + CHUNK_SIZE;
 
-    // If not at the end of the string, find the nearest sentence boundary
     if (endIndex < text.length) {
-      const remainingText = text.substring(startIndex, endIndex);
-      const lastPeriod = remainingText.lastIndexOf('. ');
+      // Prefer breaking at a sentence boundary within the last 50% of the chunk
+      const window = text.substring(startIndex, endIndex);
+      const lastPeriod = window.lastIndexOf('. ');
       if (lastPeriod > CHUNK_SIZE * 0.5) {
         endIndex = startIndex + lastPeriod + 1;
       }
@@ -39,83 +54,144 @@ function splitTextIntoChunks(text: string): IndexedChunk[] {
       endIndex = text.length;
     }
 
-    chunks.push({
-      text: text.substring(startIndex, endIndex).trim(),
-      pageNumber: null, // pdf-parse basic usage doesn't give us per-string page numbers easily
-    });
+    const chunkText = text.substring(startIndex, endIndex).trim();
+    if (chunkText.length >= MIN_CHUNK_LENGTH) {
+      chunks.push({ text: chunkText, pageNumber: null });
+    }
 
-    startIndex = endIndex - CHUNK_OVERLAP;
-    // Prevent infinite loop if no progress made
-    if (startIndex <= 0) startIndex = endIndex;
+    // Advance with overlap; guard against zero-progress if endIndex didn't move
+    startIndex = endIndex > startIndex ? endIndex - CHUNK_OVERLAP : endIndex;
   }
 
   return chunks;
 }
 
+// ── Public API ────────────────────────────────────────────────────────────────
+
 /**
- * Process a PDF Standard Manual, chunk it, embed it, and insert into DB.
+ * Process a PDF Standard Manual:
+ *  1. Parse the PDF to extract plain text.
+ *  2. Split into overlapping chunks.
+ *  3. Embed each chunk via the AI client.
+ *  4. Persist chunks + embeddings to the database.
+ *  5. Mark the StandardManual record as processed.
+ *
+ * Designed to run as a background task (non-awaited promise). Errors in
+ * individual chunks are logged and skipped; a persistent failure will not
+ * update processedAt, leaving the manual in "Processing..." state so the
+ * operator knows something went wrong.
  */
 export async function indexStandardManual(manualId: string, pdfBuffer: Buffer): Promise<void> {
-  console.log(`[Indexer] Starting indexing for manual ${manualId}...`);
+  logger.info({ msg: '[Indexer] Starting', manualId });
 
-  // 1. Parse PDF using classic pdf-parse v1 (Node-native, no DOM deps)
-  const pdfData = await pdfParse(pdfBuffer);
-  const fullText = pdfData.text || '';
-
-  console.log(`[Indexer] Extracted ${fullText.length} characters from PDF.`);
-
-  // 2. Chunk the text
-  const chunks = splitTextIntoChunks(fullText).filter((c) => c.text.length > 50);
-  console.log(`[Indexer] Created ${chunks.length} chunks.`);
-
-  // 3. Process each chunk: embed and store
-  // We process sequentially or in small batches to respect rate limits
   let processedCount = 0;
+  let failedCount = 0;
 
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
+  try {
+    // 1. Parse PDF
+    const pdfData = await pdfParse(pdfBuffer);
+    const fullText = (pdfData.text || '').trim();
 
-    try {
-      const embedding = await generateEmbedding(chunk.text);
-      const embeddingString = `[${embedding.join(',')}]`;
+    if (!fullText) {
+      logger.warn({ msg: '[Indexer] PDF produced no extractable text', manualId });
+      return;
+    }
 
-      // Insert chunk text normally, then update embedding via raw SQL
-      const newChunk = await prisma.manualChunk.create({
-        data: {
+    logger.info({
+      msg: '[Indexer] PDF parsed',
+      manualId,
+      charCount: fullText.length,
+    });
+
+    // 2. Chunk
+    const chunks = splitTextIntoChunks(fullText);
+    logger.info({ msg: '[Indexer] Chunks created', manualId, chunkCount: chunks.length });
+
+    if (chunks.length === 0) {
+      logger.warn({ msg: '[Indexer] No chunks created — aborting', manualId });
+      return;
+    }
+
+    // 3. Delete any previously indexed chunks for this manual (idempotent re-run)
+    await prisma.manualChunk.deleteMany({ where: { manualId } });
+
+    // 4. Embed and store each chunk
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      try {
+        const embedding = await generateEmbedding(chunk.text);
+        const embeddingString = `[${embedding.join(',')}]`;
+
+        // Create the chunk record, then set the vector via raw SQL because
+        // Prisma's type system does not model pgvector columns.
+        const newChunk = await prisma.manualChunk.create({
+          data: {
+            manualId,
+            chunkIndex: i,
+            pageNumber: chunk.pageNumber,
+            content: chunk.text,
+          },
+        });
+
+        await prisma.$executeRaw`
+          UPDATE "ManualChunk"
+          SET embedding = ${embeddingString}::vector
+          WHERE id = ${newChunk.id}
+        `;
+
+        processedCount++;
+
+        if (processedCount % LOG_INTERVAL === 0) {
+          logger.info({
+            msg: '[Indexer] Progress',
+            manualId,
+            processed: processedCount,
+            total: chunks.length,
+          });
+        }
+      } catch (err) {
+        failedCount++;
+        logger.error({
+          msg: '[Indexer] Failed to process chunk',
           manualId,
           chunkIndex: i,
-          pageNumber: chunk.pageNumber,
-          content: chunk.text,
+          err,
+        });
+        // Continue with remaining chunks rather than aborting the whole job
+      }
+
+      // Throttle embedding API calls
+      if (i < chunks.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, EMBED_DELAY_MS));
+      }
+    }
+
+    // 5. Mark manual as processed (only if at least some chunks were indexed)
+    if (processedCount > 0) {
+      await prisma.standardManual.update({
+        where: { id: manualId },
+        data: {
+          processedAt: new Date(),
+          chunkCount: processedCount,
         },
       });
 
-      // Execute raw SQL to set the vector
-      await prisma.$executeRaw`
-        UPDATE "ManualChunk"
-        SET embedding = ${embeddingString}::vector
-        WHERE id = ${newChunk.id}
-      `;
-
-      processedCount++;
-      if (processedCount % 10 === 0) {
-        console.log(`[Indexer] Processed ${processedCount}/${chunks.length} chunks...`);
-      }
-    } catch (err) {
-      console.error(`[Indexer] Failed to process chunk ${i}:`, err);
+      logger.info({
+        msg: '[Indexer] Finished',
+        manualId,
+        processedCount,
+        failedCount,
+      });
+    } else {
+      logger.error({
+        msg: '[Indexer] All chunks failed — manual not marked as processed',
+        manualId,
+        failedCount,
+      });
     }
-
-    // Add a small delay between requests to avoid hitting rate limits
-    await new Promise((r) => setTimeout(r, 200));
+  } catch (err) {
+    logger.error({ msg: '[Indexer] Fatal error during indexing', manualId, err });
+    // Re-throw so the caller's .catch() handler is invoked
+    throw err;
   }
-
-  // 4. Mark manual as processed
-  await prisma.standardManual.update({
-    where: { id: manualId },
-    data: {
-      processedAt: new Date(),
-      chunkCount: processedCount,
-    },
-  });
-
-  console.log(`[Indexer] Finished indexing manual ${manualId}.`);
 }

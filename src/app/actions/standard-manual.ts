@@ -1,15 +1,15 @@
 'use server';
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
-import { checkSystemAuth } from '@/app/actions/system-admin';
-
-const prisma = new PrismaClient();
+import { verifySystemAdminCookie } from '@/lib/system-auth';
 
 export async function getActiveStandardManual() {
-  const isSystemAdmin = await checkSystemAuth();
-  const session = await auth();
-  if (!session?.user && !isSystemAdmin) throw new Error('Unauthorized');
+  const [isSystemAdmin, session] = await Promise.all([verifySystemAdminCookie(), auth()]);
+
+  if (!isSystemAdmin && !session?.user) {
+    throw new Error('Unauthorized');
+  }
 
   return prisma.standardManual.findFirst({
     where: { isActive: true },
@@ -18,8 +18,7 @@ export async function getActiveStandardManual() {
 }
 
 export async function getStandardManualHistory() {
-  const isSystemAdmin = await checkSystemAuth();
-  const session = await auth();
+  const [isSystemAdmin, session] = await Promise.all([verifySystemAdminCookie(), auth()]);
 
   if (!isSystemAdmin) {
     if (!session?.user) throw new Error('Unauthorized');
