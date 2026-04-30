@@ -97,4 +97,17 @@ export class MinIOProvider implements StorageProvider {
       throw err;
     }
   }
+
+  async download(storageUri: string): Promise<Buffer> {
+    await this.ensureBucket();
+    const { key } = parseStorageUri(storageUri);
+
+    const stream = await this.client.getObject(this.bucketName, key);
+    return new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
+    });
+  }
 }
