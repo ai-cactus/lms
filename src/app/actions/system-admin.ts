@@ -5,9 +5,10 @@ import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
+import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const COOKIE_NAME = 'system_admin_auth';
+// Cookie name is imported from the shared utility to stay in sync.
 const COOKIE_MAX_AGE = 4 * 60 * 60; // 4 hours
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -33,26 +34,6 @@ function signToken(payload: string): string {
   return `${payload}.${hmac}`;
 }
 
-function verifyToken(token: string): boolean {
-  const secret = getAuthSecret();
-  const [payload, signature] = token.split('.');
-  if (!payload || !signature) return false;
-  const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-}
-
-/**
- * Returns true if the current request carries a valid system-admin cookie.
- * Every protected server action calls this before doing any work.
- */
-async function isAuthenticated(): Promise<boolean> {
-  if (!getSystemPassword()) return false;
-  const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  if (!token) return false;
-  return verifyToken(token);
-}
-
 // ── Auth Action ──────────────────────────────────────────────────────────────
 
 export async function verifySystemPassword(
@@ -74,11 +55,15 @@ export async function verifySystemPassword(
   const token = signToken(payload);
 
   const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, token, {
+  cookieStore.set(SYSTEM_ADMIN_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/system',
+    // 'lax' allows the cookie to be sent on top-level navigations from
+    // external links while still protecting against CSRF.
+    sameSite: 'lax',
+    // Path must be '/' so the cookie is sent on both /system/** UI routes
+    // AND /api/** route handlers (e.g. POST /api/system/manual).
+    path: '/',
     maxAge: COOKIE_MAX_AGE,
   });
 
@@ -91,7 +76,8 @@ export async function verifySystemPassword(
  */
 export async function logoutSystemAdmin(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
+  // Delete with the same path used when the cookie was set
+  cookieStore.delete({ name: SYSTEM_ADMIN_COOKIE, path: '/' });
 }
 
 // ── Data Fetching Actions ────────────────────────────────────────────────────
@@ -132,7 +118,7 @@ export async function getAllUsers(options: {
   totalPages: number;
   organizations: { id: string; name: string }[];
 }> {
-  if (!(await isAuthenticated())) {
+  if (!(await verifySystemAdminCookie())) {
     throw new Error('Unauthorized');
   }
 
@@ -277,7 +263,7 @@ export interface SystemUserDetail {
 }
 
 export async function getUserDetail(userId: string): Promise<SystemUserDetail | null> {
-  if (!(await isAuthenticated())) {
+  if (!(await verifySystemAdminCookie())) {
     throw new Error('Unauthorized');
   }
 
@@ -380,7 +366,7 @@ export interface DeletePreview {
 }
 
 export async function getUserDeletePreview(userId: string): Promise<DeletePreview | null> {
-  if (!(await isAuthenticated())) {
+  if (!(await verifySystemAdminCookie())) {
     throw new Error('Unauthorized');
   }
 
@@ -470,7 +456,7 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
 export async function deleteUserWithRelations(
   userId: string,
 ): Promise<{ success: boolean; error?: string; deletedCounts?: Record<string, number> }> {
-  if (!(await isAuthenticated())) {
+  if (!(await verifySystemAdminCookie())) {
     throw new Error('Unauthorized');
   }
 
@@ -598,8 +584,8 @@ export async function isSystemAdminEnabled(): Promise<boolean> {
 
 /**
  * Check if the current request has a valid system-admin session.
- * Used by pages for conditional rendering.
+ * Used by pages and server actions for conditional rendering/authorization.
  */
 export async function checkSystemAuth(): Promise<boolean> {
-  return isAuthenticated();
+  return verifySystemAdminCookie();
 }
