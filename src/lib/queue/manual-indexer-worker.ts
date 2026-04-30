@@ -24,7 +24,6 @@ import { MANUAL_INDEXER_QUEUE_NAME, type ManualIndexerJobData } from './manual-i
 // ─────────────────────────────────────────────────────────────────────────────
 
 declare global {
-   
   var __manualIndexerWorker: Worker | undefined;
 }
 
