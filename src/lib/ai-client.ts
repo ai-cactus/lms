@@ -157,6 +157,20 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
  * Generate a 768-dimensional vector embedding for the given text using text-embedding-004.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
+  const results = await generateBatchEmbeddings([text]);
+  return results[0];
+}
+
+/**
+ * Generate embeddings for multiple texts in a single Vertex AI API call.
+ * text-embedding-004 supports up to 250 instances per request.
+ *
+ * @param texts Array of text strings to embed (max 250 per call enforced internally)
+ * @returns     Array of 768-dimensional embedding vectors, same order as input
+ */
+export async function generateBatchEmbeddings(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return [];
+
   const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
   const location = process.env.GOOGLE_LOCATION || 'us-central1';
   const model = 'text-embedding-004';
@@ -169,13 +183,11 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predict`;
 
   const body = JSON.stringify({
-    instances: [
-      {
-        task_type: 'RETRIEVAL_DOCUMENT',
-        title: '',
-        content: text,
-      },
-    ],
+    instances: texts.map((text) => ({
+      task_type: 'RETRIEVAL_DOCUMENT',
+      title: '',
+      content: text,
+    })),
   });
 
   const response = await fetch(url, {
@@ -189,15 +201,25 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Vertex AI Embedding ${response.status} ${response.statusText}: ${errorText}`);
+    throw new Error(
+      `Vertex AI Batch Embedding ${response.status} ${response.statusText}: ${errorText}`,
+    );
   }
 
   const json = await response.json();
-  const values = json.predictions?.[0]?.embeddings?.values;
+  const predictions: Array<{ embeddings: { values: number[] } }> = json.predictions ?? [];
 
-  if (!Array.isArray(values)) {
-    throw new Error('Vertex AI Embedding returned no values.');
+  if (predictions.length !== texts.length) {
+    throw new Error(
+      `Vertex AI returned ${predictions.length} predictions for ${texts.length} inputs`,
+    );
   }
 
-  return values as number[];
+  return predictions.map((p, i) => {
+    const values = p?.embeddings?.values;
+    if (!Array.isArray(values)) {
+      throw new Error(`Vertex AI Embedding: no values for input at index ${i}`);
+    }
+    return values;
+  });
 }
