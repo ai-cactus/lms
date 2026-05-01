@@ -39,5 +39,4 @@ docs
 # Scripts not needed inside the container
 deploy*.sh
 start-tunnel.sh
-scripts
 base_file.js
