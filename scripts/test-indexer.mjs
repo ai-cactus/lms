@@ -98,7 +98,7 @@ async function run() {
 
   // Try Gemini REST API (what ai-client.ts likely uses)
   if (GOOGLE_AI_API_KEY) {
-    const model = 'text-embedding-004';
+    const model = VERTEX_EMBEDDING_MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${GOOGLE_AI_API_KEY}`;
     try {
       const res = await fetch(url, {
