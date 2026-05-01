@@ -49,7 +49,7 @@ RUN npm run build
 # ──────────────────────────────────────────────────────────────────────────────
 FROM node:20-slim AS runner
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl curl \
+RUN apt-get update && apt-get install -y --no-install-recommends openssl curl poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -67,6 +67,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 # Copy the compiled application output
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
 
