@@ -87,7 +87,6 @@ async function run() {
   // 4. Test generateEmbedding with one small chunk
   console.log('\n─── Testing embedding API...');
   const GOOGLE_VERTEX_PROJECT = process.env.GOOGLE_PROJECT_ID || process.env.GCP_PROJECT_ID;
-  const GOOGLE_VERTEX_LOCATION = process.env.VERTEX_LOCATION || 'us-central1';
   const VERTEX_EMBEDDING_MODEL = process.env.VERTEX_EMBEDDING_MODEL || 'text-embedding-004';
   const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
 
