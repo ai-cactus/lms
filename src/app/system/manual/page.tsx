@@ -226,10 +226,17 @@ export default function StandardManualPage() {
                     </div>
                     <div className={styles.historyStatus}>
                       {manual.processedAt ? (
-                        <span className={styles.statusIndexed}>
-                          ✓ Indexed ({manual.chunkCount} chunks) &mdash;{' '}
-                          {new Date(manual.processedAt).toLocaleString()}
-                        </span>
+                        manual.chunkCount > 0 ? (
+                          <span className={styles.statusIndexed}>
+                            ✓ Indexed ({manual.chunkCount} chunks) &mdash;{' '}
+                            {new Date(manual.processedAt).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className={styles.statusProcessing} style={{ color: '#ef4444' }}>
+                            ✗ Indexing Failed &mdash;{' '}
+                            {new Date(manual.processedAt).toLocaleString()}
+                          </span>
+                        )
                       ) : (
                         <span className={styles.statusProcessing}>
                           <span className={styles.spinner} /> Indexing in queue&hellip;
