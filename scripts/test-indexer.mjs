@@ -41,7 +41,6 @@ const client = new Minio.Client({
   accessKey: process.env.MINIO_ACCESS_KEY ?? 'lms_minio_dev',
   secretKey: process.env.MINIO_SECRET_KEY ?? 'lms_minio_secret_dev',
 });
-const BUCKET = process.env.MINIO_BUCKET ?? 'lms-documents';
 
 async function downloadBuffer(storagePath) {
   const match = storagePath.match(/^minio:\/\/([^/]+)\/(.+)$/);
