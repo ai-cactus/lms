@@ -3,22 +3,58 @@
  * - Outputs JSON in production (for log aggregators)
  * - Outputs readable format in development
  * - Never log raw PII — use maskEmail() before passing email fields
+ *
+ * Error serialisation:
+ *   Pass errors under the key `err`. The logger will expand them to
+ *   { errName, errMessage, errStack } so JSON.stringify doesn't lose them.
  */
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 interface LogPayload {
   msg: string;
+  err?: unknown;
   [key: string]: unknown;
 }
 
+/**
+ * Safely serialize an unknown error value into plain JSON-compatible fields.
+ * Error instances have non-enumerable properties so JSON.stringify drops them.
+ */
+function serializeError(err: unknown): Record<string, unknown> {
+  if (err instanceof Error) {
+    return {
+      errName: err.name,
+      errMessage: err.message,
+      errStack: err.stack,
+      // Capture any extra own properties (e.g. S3Error.code, .bucketname)
+      ...Object.fromEntries(
+        Object.getOwnPropertyNames(err)
+          .filter((k) => !['name', 'message', 'stack'].includes(k))
+          .map((k) => [`err_${k}`, (err as unknown as Record<string, unknown>)[k]]),
+      ),
+    };
+  }
+  if (typeof err === 'object' && err !== null) {
+    return { errRaw: JSON.stringify(err) };
+  }
+  return { errRaw: String(err) };
+}
+
 function emit(level: LogLevel, payload: LogPayload): void {
-  const entry = {
+  const { err, ...rest } = payload;
+
+  const entry: Record<string, unknown> = {
     level,
     time: new Date().toISOString(),
     env: process.env.NODE_ENV,
-    ...payload,
+    ...rest,
   };
+
+  // Expand Error objects so JSON.stringify captures message + stack
+  if (err !== undefined) {
+    Object.assign(entry, serializeError(err));
+  }
 
   if (process.env.NODE_ENV === 'production') {
     // Structured JSON for log aggregators (Datadog, CloudWatch, etc.)
