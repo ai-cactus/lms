@@ -73,6 +73,12 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
       temperature: config?.temperature ?? 0.7,
       maxOutputTokens: config?.maxOutputTokens ?? 8192,
     },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+    ],
   });
 
   let lastError: Error | null = null;
@@ -123,7 +129,11 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
       const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!textPart) {
-        throw new Error('Vertex AI returned no content in response.');
+        logger.error({ msg: '[ai-client] Vertex AI returned no content', data: json });
+        const finishReason = json.candidates?.[0]?.finishReason;
+        throw new Error(
+          `Vertex AI returned no content in response. Finish Reason: ${finishReason || 'unknown'}`,
+        );
       }
 
       return textPart;
