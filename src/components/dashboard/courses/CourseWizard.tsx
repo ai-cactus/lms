@@ -44,9 +44,10 @@ export default function CourseWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialDocId = searchParams.get('documentId');
-  const hasAutoAnalyzed = useRef(false);
+  const analyzedDocId = useRef<string | null>(null);
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const totalSteps = 7;
   const [formData, setFormData] = useState<CourseWizardData>(INITIAL_FORM_DATA);
@@ -88,8 +89,8 @@ export default function CourseWizard() {
           }),
         );
 
-        if (initialDocId && !hasAutoAnalyzed.current) {
-          hasAutoAnalyzed.current = true;
+        if (initialDocId && analyzedDocId.current !== initialDocId) {
+          analyzedDocId.current = initialDocId;
           handleAutoAnalyze(initialDocId);
         }
       } catch (e) {
@@ -98,6 +99,23 @@ export default function CourseWizard() {
     };
     loadDocs();
   }, [initialDocId]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('lms_pending_generation');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Date.now() - parsed.timestamp < 60 * 60 * 1000) {
+          setFormData(parsed.formData);
+          setPendingJobId(parsed.jobId);
+          setCurrentStep(5);
+        }
+        localStorage.removeItem('lms_pending_generation');
+      }
+    } catch (e) {
+      // Ignored
+    }
+  }, []);
 
   const handleAutoAnalyze = async (docId: string) => {
     setIsAnalyzing(true);
@@ -164,34 +182,42 @@ export default function CourseWizard() {
   };
 
   const handleNext = async () => {
-    if (currentStep === 3) {
+    if (currentStep === 2) {
       const selectedDoc = documents.find((d) => d.selected);
-      if (!selectedDoc) return;
+      if (!selectedDoc) {
+        setCurrentStep(currentStep + 1);
+        return;
+      }
 
-      setIsAnalyzing(true);
-      setAnalysisProgress(30);
+      if (analyzedDocId.current !== selectedDoc.id) {
+        setIsAnalyzing(true);
+        setAnalysisProgress(30);
 
-      try {
-        const result = await analyzeStoredDocument(selectedDoc.id);
-        setAnalysisProgress(100);
+        try {
+          const result = await analyzeStoredDocument(selectedDoc.id);
+          setAnalysisProgress(100);
 
-        if (result.error) {
-          logger.error({ msg: 'Analysis failed:', err: result.error });
-        } else {
-          setFormData((prev) => ({
-            ...prev,
-            title: result.title,
-            description: result.description,
-            objectives: result.objectives,
-            duration: result.duration,
-            quizTitle: result.quizTitle,
-          }));
+          if (result.error) {
+            logger.error({ msg: 'Analysis failed:', err: result.error });
+          } else {
+            setFormData((prev) => ({
+              ...prev,
+              title: result.title,
+              description: result.description,
+              objectives: result.objectives,
+              duration: result.duration,
+              quizTitle: result.quizTitle,
+            }));
+            analyzedDocId.current = selectedDoc.id;
+          }
+        } catch (err) {
+          logger.error({ msg: 'Error analyzing stored doc:', err: err });
+        } finally {
+          setIsAnalyzing(false);
+          setAnalysisProgress(0);
+          setCurrentStep(currentStep + 1);
         }
-      } catch (err) {
-        logger.error({ msg: 'Error analyzing stored doc:', err: err });
-      } finally {
-        setIsAnalyzing(false);
-        setAnalysisProgress(0);
+      } else {
         setCurrentStep(currentStep + 1);
       }
       return;
@@ -260,7 +286,8 @@ export default function CourseWizard() {
           setIsScanningPhi(false);
           setShowPhiError(false);
           setPhiReason(undefined);
-          hasAutoAnalyzed.current = false;
+          analyzedDocId.current = null;
+          setPendingJobId(null);
           setCreatedCourseId(result.courseId);
         } else {
           setPublishError('Failed to create course. Please try again.');
@@ -326,6 +353,11 @@ export default function CourseWizard() {
         })),
       );
       setAnalysisProgress(60);
+
+      const matchedDoc = updatedDocs.find((d) => d.filename === file.name);
+      if (matchedDoc) {
+        analyzedDocId.current = matchedDoc.id;
+      }
 
       const { analyzeDocument } = await import('@/app/actions/course-ai');
       const analysisFormData = new FormData();
@@ -401,6 +433,7 @@ export default function CourseWizard() {
             documents={documents}
             initialContent={generatedContent}
             onComplete={handleGenerationComplete}
+            pendingJobId={pendingJobId}
           />
         );
       case 6:

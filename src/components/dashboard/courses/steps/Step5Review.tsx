@@ -26,6 +26,7 @@ interface Step5ReviewProps {
   documents: CourseDocument[];
   initialContent?: GeneratedCourse | null;
   onComplete: (content: GeneratedCourse) => void;
+  pendingJobId?: string | null;
 }
 
 /**
@@ -247,6 +248,7 @@ export default function Step5Review({
   documents,
   initialContent,
   onComplete,
+  pendingJobId,
 }: Step5ReviewProps) {
   // Core State
   const [isGenerating, setIsGenerating] = useState(!initialContent);
@@ -276,28 +278,33 @@ export default function Step5Review({
 
     const generate = async () => {
       try {
-        const formData = new FormData();
-        formData.append('data', JSON.stringify(data));
+        let jobId = pendingJobId;
 
-        // Try to send the File blob if available (freshly uploaded)
-        const selectedDocWithFile = documents.find((d) => d.selected && d.file);
-        if (selectedDocWithFile?.file) {
-          formData.append('file', selectedDocWithFile.file);
-        }
+        if (!jobId) {
+          const formData = new FormData();
+          formData.append('data', JSON.stringify(data));
 
-        // Always pass the selected document ID so the server can
-        // read from DB if no File blob is available
-        const selectedDoc = documents.find((d) => d.selected);
-        if (selectedDoc) {
-          formData.append('documentId', selectedDoc.id);
-        }
+          // Try to send the File blob if available (freshly uploaded)
+          const selectedDocWithFile = documents.find((d) => d.selected && d.file);
+          if (selectedDocWithFile?.file) {
+            formData.append('file', selectedDocWithFile.file);
+          }
 
-        const { jobId, error: startError } = await generateCourseAndQuizV46(formData);
+          // Always pass the selected document ID so the server can
+          // read from DB if no File blob is available
+          const selectedDoc = documents.find((d) => d.selected);
+          if (selectedDoc) {
+            formData.append('documentId', selectedDoc.id);
+          }
 
-        if (startError || !jobId) {
-          setError(startError || 'Failed to start generation job');
-          setIsGenerating(false);
-          return;
+          const { jobId: newJobId, error: startError } = await generateCourseAndQuizV46(formData);
+
+          if (startError || !newJobId) {
+            setError(startError || 'Failed to start generation job');
+            setIsGenerating(false);
+            return;
+          }
+          jobId = newJobId;
         }
 
         // Store so the "Back to Dashboard" button can persist it
@@ -367,7 +374,7 @@ export default function Step5Review({
     };
 
     generate();
-  }, [data, documents, onComplete, hasInitialContent]);
+  }, [data, documents, onComplete, hasInitialContent, pendingJobId]);
 
   // Called from the loading UI — saves job state so courses list can show a banner
   const handleBackToDashboard = (jobIdToSave: string) => {
