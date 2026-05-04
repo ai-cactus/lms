@@ -14,17 +14,18 @@
 
 import { PrismaClient } from '@prisma/client';
 import { deleteFile, isLegacyPath } from '../lib/storage';
+import { logger } from '../lib/logger';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Fetching all document versions...');
+  logger.info({ msg: 'Fetching all document versions...' });
 
   const versions = await prisma.documentVersion.findMany({
     select: { id: true, storagePath: true },
   });
 
-  console.log(`Found ${versions.length} document version(s) to clean up.`);
+  logger.info({ msg: `Found ${versions.length} document version(s) to clean up.` });
 
   let deleted = 0;
   let skipped = 0;
@@ -32,32 +33,39 @@ async function main() {
 
   for (const version of versions) {
     if (isLegacyPath(version.storagePath)) {
-      console.warn(`  [SKIP] Legacy local path — skipping storage delete: ${version.storagePath}`);
+      logger.warn({
+        msg: `  [SKIP] Legacy local path — skipping storage delete: ${version.storagePath}`,
+      });
       skipped++;
       continue;
     }
 
     try {
       await deleteFile(version.storagePath);
-      console.log(`  [OK]   Deleted: ${version.storagePath}`);
+      logger.info({ msg: `  [OK]   Deleted: ${version.storagePath}` });
       deleted++;
     } catch (err: unknown) {
       const e = err as Error;
-      console.error(`  [FAIL] Could not delete ${version.storagePath}: ${e.message}`);
+      logger.error({
+        msg: `  [FAIL] Could not delete ${version.storagePath}: ${e.message}`,
+        err: e,
+      });
       failed++;
     }
   }
 
-  console.log(`\nStorage cleanup: ${deleted} deleted, ${skipped} skipped, ${failed} failed.`);
+  logger.info({
+    msg: `\nStorage cleanup: ${deleted} deleted, ${skipped} skipped, ${failed} failed.`,
+  });
 
-  console.log('\nDeleting all documents from database...');
+  logger.info({ msg: '\nDeleting all documents from database...' });
   const result = await prisma.document.deleteMany({});
-  console.log(`Database cleared — removed ${result.count} document(s).`);
+  logger.info({ msg: `Database cleared — removed ${result.count} document(s).` });
 }
 
 main()
   .catch((e) => {
-    console.error('Fatal error:', e);
+    logger.error({ msg: 'Fatal error:', err: e });
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());

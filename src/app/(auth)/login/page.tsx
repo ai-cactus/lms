@@ -10,6 +10,7 @@ import { PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
 import styles from './page.module.css';
 import { signIn } from 'next-auth/react';
 import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
+import { logger } from '@/lib/logger';
 
 function LoginForm() {
   const router = useRouter();
@@ -63,9 +64,9 @@ function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    console.log('[Login Client] Submit clicked! Current form data:', formData);
+    logger.info({ msg: '[Login Client] Submit clicked! Current form data:', data: formData });
     const isValid = validateForm();
-    console.log('[Login Client] Validation result:', isValid, errors);
+    logger.info({ msg: '[Login Client] Validation result:', data: { isValid, errors } });
     if (!isValid) return;
 
     setErrors({});
@@ -74,22 +75,22 @@ function LoginForm() {
     form.append('email', formData.email);
     form.append('password', formData.password);
 
-    console.log('[Login Client] Dispatching form to authenticate action...');
+    logger.info({ msg: '[Login Client] Dispatching form to authenticate action...' });
     React.startTransition(() => {
       dispatch(form);
     });
   };
 
   useEffect(() => {
-    console.log('[Login Client] Action state changed:', state);
+    logger.info({ msg: '[Login Client] Action state changed:', data: state });
     if (state?.redirect) {
       // Auto-route to the correct login page for their role
       router.push(state.redirect);
     } else if (state?.success) {
-      console.log('[Login Client] Success! Redirecting to /dashboard');
+      logger.info({ msg: '[Login Client] Success! Redirecting to /dashboard' });
       router.push('/dashboard');
     } else if (state?.error) {
-      console.log('[Login Client] Error returned from action:', state.error);
+      logger.error({ msg: '[Login Client] Error returned from action:', err: state.error });
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional sync of server error to local state for UX control
       setErrors((prev) => ({ ...prev, email: state.error }));
     }

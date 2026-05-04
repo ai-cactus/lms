@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { validatePassword, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '@/lib/password-policy';
+import { logger } from '@/lib/logger';
 
 const prisma = new PrismaClient();
 
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, userId: newUser.id });
   } catch (error: unknown) {
     const err = error as Error;
-    console.error('Error accepting invite:', err);
+    logger.error({ msg: 'Error accepting invite:', err: err });
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

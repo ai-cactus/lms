@@ -4,6 +4,7 @@ import React from 'react';
 import styles from './ShareCourseModal.module.css';
 import { enrollUsers } from '@/app/actions/enrollment';
 import { Modal, Button } from '@/components/ui';
+import { logger } from '@/lib/logger';
 
 interface ShareCourseModalProps {
   isOpen: boolean;
@@ -66,7 +67,7 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
         }, 1500);
       }
     } catch (error) {
-      console.error('Failed to enroll users:', error);
+      logger.error({ msg: 'Failed to enroll users:', err: error });
     } finally {
       setIsLoading(false);
     }

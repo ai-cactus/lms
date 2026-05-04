@@ -5,6 +5,7 @@
 // ──────────────────────────────────────────────
 
 import { GoogleAuth } from 'google-auth-library';
+import { logger } from '@/lib/logger';
 
 const DEFAULT_MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1000;
@@ -84,7 +85,7 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
 
     try {
       if (attempt > 0) {
-        console.log(`[ai-client] Retry ${attempt}/${DEFAULT_MAX_RETRIES - 1}...`);
+        logger.info({ msg: `[ai-client] Retry ${attempt}/${DEFAULT_MAX_RETRIES - 1}...` });
       }
 
       const response = await fetch(url, {
@@ -101,7 +102,10 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
       if (response.status === 429 || response.status >= 500) {
         const errorText = await response.text();
         lastError = new Error(`Vertex AI ${response.status} ${response.statusText}: ${errorText}`);
-        console.warn(`[ai-client] Retryable error (${response.status}):`, lastError.message);
+        logger.warn({
+          msg: `[ai-client] Retryable error (${response.status}):`,
+          data: lastError.message,
+        });
 
         // Exponential backoff with jitter
         const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
@@ -130,7 +134,7 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
         lastError = new Error(
           `Vertex AI request timed out after ${VERTEX_AI_TIMEOUT_MS / 1000}s (attempt ${attempt + 1})`,
         );
-        console.warn(`[ai-client] ${lastError.message}`);
+        logger.warn({ msg: `[ai-client] ${lastError.message}` });
         const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
         await new Promise((r) => setTimeout(r, delay));
         continue;

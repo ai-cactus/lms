@@ -5,6 +5,7 @@ import styles from './StaffList.module.css';
 import { Button } from '@/components/ui';
 import { removeStaff } from '@/app/actions/staff';
 import { useRouter } from 'next/navigation';
+import { logger } from '@/lib/logger';
 
 interface RemoveStaffModalProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ export default function RemoveStaffModal({
       }
     } catch (err) {
       setError('An unexpected error occurred');
-      console.error(err);
+      logger.error({ msg: 'Error:', err: err });
     } finally {
       setIsRemoving(false);
     }

@@ -179,6 +179,7 @@ const adaptModulesForRenderingV46 = (
 };
 
 import { QuizQuestion } from '@/types/quiz';
+import { logger } from '@/lib/logger';
 
 interface RawAIQuizQuestion {
   question: string;
@@ -355,11 +356,11 @@ export default function Step5Review({
             }
             // If status is 'processing', keep polling
           } catch (pollErr) {
-            console.error('Polling failed', pollErr);
+            logger.error({ msg: 'Polling failed', err: pollErr });
           }
         }, 3000);
       } catch (err) {
-        console.error('Generation failed', err);
+        logger.error({ msg: 'Generation failed', err: err });
         setError('An unexpected response was received from the server.');
         setIsGenerating(false);
       }

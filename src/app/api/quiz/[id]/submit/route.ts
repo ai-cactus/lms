@@ -5,6 +5,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { callVertexAI } from '@/lib/ai-client';
+import { logger } from '@/lib/logger';
 const submitQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
   answers: z.array(
@@ -79,7 +80,7 @@ No markdown, no extra text.`;
     });
     return explanationMap;
   } catch (err) {
-    console.error('AI explanation generation failed:', err);
+    logger.error({ msg: 'AI explanation generation failed:', err: err });
     return {};
   }
 }
@@ -290,7 +291,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
                 currentAttemptCount,
                 `${appUrl}/dashboard/staff/${enrollmentWithDetails.user.id}`,
               ).catch((err) =>
-                console.error(`Failed to send quiz locked email to ${admin.email}`, err),
+                logger.error({
+                  msg: `Failed to send quiz locked email to ${admin.email}`,
+                  err: err,
+                }),
               ),
             ),
           );
@@ -344,7 +348,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       }),
     });
   } catch (error) {
-    console.error('Error submitting quiz:', error);
+    logger.error({ msg: 'Error submitting quiz:', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

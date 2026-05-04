@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const startQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           : 'Started new attempt';
     return NextResponse.json({ message, attempt: result.attempt });
   } catch (error) {
-    console.error('Error starting quiz:', error);
+    logger.error({ msg: 'Error starting quiz:', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

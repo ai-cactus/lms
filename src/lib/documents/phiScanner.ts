@@ -52,7 +52,7 @@ export async function scanText(text: string): Promise<ScanResult> {
     // JSON extraction
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.warn('PHI Scanner: No JSON found in response');
+      logger.warn({ msg: 'PHI Scanner: No JSON found in response' });
       return { hasPHI: false, findings: [] };
     }
 
@@ -73,7 +73,7 @@ export async function scanText(text: string): Promise<ScanResult> {
 
     return { hasPHI: false, findings: [] };
   } catch (error) {
-    logger.error({ msg: 'PHI scan failed', error: String(error) });
+    logger.error({ msg: 'PHI scan failed', err: String(error) });
 
     if (PHI_FAIL_CLOSED) {
       // Fail closed: treat scan failure as potential PHI presence

@@ -5,6 +5,7 @@ import { getCategories, createCustomCategory } from '@/app/actions/categories';
 import Button from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import styles from './Step1Category.module.css';
+import { logger } from '@/lib/logger';
 
 interface Category {
   id: string;
@@ -31,7 +32,7 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
         const data = await getCategories();
         setCategories(data);
       } catch (err) {
-        console.error('Failed to load categories', err);
+        logger.error({ msg: 'Failed to load categories', err: err });
       } finally {
         setLoading(false);
       }
@@ -51,7 +52,7 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
       setCustomName('');
       setCustomDesc('');
     } catch (err) {
-      console.error('Failed to create custom category', err);
+      logger.error({ msg: 'Failed to create custom category', err: err });
     }
   };
 

@@ -6,6 +6,7 @@ import { generateSingleQuestion } from '@/app/actions/quiz-ai';
 import { Button } from '@/components/ui';
 import { QuizQuestion } from '@/types/quiz';
 import { CourseWizardData } from '@/types/course';
+import { logger } from '@/lib/logger';
 
 // QuizQuestion is now imported from '@/types/quiz'
 
@@ -80,7 +81,7 @@ export default function Step6QuizReview({
         alert(res.error || 'Failed to generate question with AI.');
       }
     } catch (error) {
-      console.error('Failed to call AI generation:', error);
+      logger.error({ msg: 'Failed to call AI generation:', err: error });
       alert('An unexpected error occurred.');
     } finally {
       setIsGenerating(false);

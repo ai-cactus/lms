@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
 import { getExportWorker } from '@/lib/queue/auditor-export-worker';
+import { logger } from '@/lib/logger';
 
 export async function POST() {
   try {
@@ -37,7 +38,7 @@ export async function POST() {
 
     return NextResponse.json({ jobId: dbJob.id });
   } catch (error) {
-    console.error('Failed to start export:', error);
+    logger.error({ msg: 'Failed to start export:', err: error });
     return NextResponse.json({ error: 'Failed to start export' }, { status: 500 });
   }
 }

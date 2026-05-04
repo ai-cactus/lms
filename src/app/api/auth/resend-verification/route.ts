@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendEmailVerification } from '@/lib/email';
 import crypto from 'crypto';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Resend verification error:', error);
+    logger.error({ msg: 'Resend verification error:', err: error });
     return NextResponse.json({ success: false, error: 'Server error' }, { status: 500 });
   }
 }

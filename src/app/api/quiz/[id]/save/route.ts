@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const saveQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error saving quiz progress:', error);
+    logger.error({ msg: 'Error saving quiz progress:', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

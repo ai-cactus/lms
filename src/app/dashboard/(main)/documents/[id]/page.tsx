@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import styles from './page.module.css';
 import PdfViewer from '@/components/dashboard/documents/PdfViewer';
 import { getDocumentSignedUrl } from '@/app/actions/storage';
+import { logger } from '@/lib/logger';
 
 export default async function DocumentViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -40,7 +41,7 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
       fileUrl = url;
     } else {
       // Non-fatal: viewer will show an error state if fileUrl is null
-      console.error('Could not resolve signed URL for document:', error);
+      logger.error({ msg: 'Could not resolve signed URL for document:', err: error });
     }
   }
 

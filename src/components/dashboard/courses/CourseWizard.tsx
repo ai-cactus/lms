@@ -18,6 +18,7 @@ import { createFullCourse } from '@/app/actions/course';
 import { analyzeStoredDocument } from '@/app/actions/course-ai';
 import { getDocuments, uploadDocument, deleteDocument } from '@/app/actions/documents';
 import { CourseWizardData, GeneratedCourse, CourseDocument } from '@/types/course';
+import { logger } from '@/lib/logger';
 
 const INITIAL_FORM_DATA: CourseWizardData = {
   categoryId: '',
@@ -92,7 +93,7 @@ export default function CourseWizard() {
           handleAutoAnalyze(initialDocId);
         }
       } catch (e) {
-        console.error('Failed to load documents', e);
+        logger.error({ msg: 'Failed to load documents', err: e });
       }
     };
     loadDocs();
@@ -115,7 +116,7 @@ export default function CourseWizard() {
       }
       setAnalysisProgress(100);
     } catch (err) {
-      console.error('Auto-analysis failed', err);
+      logger.error({ msg: 'Auto-analysis failed', err: err });
     } finally {
       setTimeout(() => {
         setIsAnalyzing(false);
@@ -139,7 +140,7 @@ export default function CourseWizard() {
       await deleteDocument(id);
     } catch (err) {
       // Re-fetch list so the doc reappears if the server call failed
-      console.error('Failed to delete document from wizard:', err);
+      logger.error({ msg: 'Failed to delete document from wizard:', err: err });
       const refreshed = await getDocuments();
       setDocuments(
         refreshed.map((d) => ({
@@ -175,7 +176,7 @@ export default function CourseWizard() {
         setAnalysisProgress(100);
 
         if (result.error) {
-          console.error('Analysis failed:', result.error);
+          logger.error({ msg: 'Analysis failed:', err: result.error });
         } else {
           setFormData((prev) => ({
             ...prev,
@@ -187,7 +188,7 @@ export default function CourseWizard() {
           }));
         }
       } catch (err) {
-        console.error('Error analyzing stored doc:', err);
+        logger.error({ msg: 'Error analyzing stored doc:', err: err });
       } finally {
         setIsAnalyzing(false);
         setAnalysisProgress(0);
@@ -265,7 +266,7 @@ export default function CourseWizard() {
           setPublishError('Failed to create course. Please try again.');
         }
       } catch (error) {
-        console.error('Error submitting course:', error);
+        logger.error({ msg: 'Error submitting course:', err: error });
         setPublishError('An unexpected error occurred. Please try again.');
       } finally {
         setIsPublishing(false);
@@ -334,7 +335,7 @@ export default function CourseWizard() {
       setAnalysisProgress(100);
 
       if (result.error) {
-        console.error('Analysis Error:', result.error);
+        logger.error({ msg: 'Analysis Error:', err: result.error });
         setUploadError(result.error);
       } else {
         setFormData((prev) => ({
@@ -347,7 +348,7 @@ export default function CourseWizard() {
         }));
       }
     } catch (err: unknown) {
-      console.error('Upload/Analysis Failed:', err);
+      logger.error({ msg: 'Upload/Analysis Failed:', err: err });
       setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
       setTimeout(() => {

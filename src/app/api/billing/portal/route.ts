@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import stripe from '@/lib/stripe';
+import { logger } from '@/lib/logger';
 
 // POST /api/billing/portal — creates a Stripe Billing Portal session and returns the redirect URL.
 // The portal lets customers add/update/remove payment methods and view invoices on a
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ url: portalSession.url });
   } catch (error) {
-    console.error('[POST /api/billing/portal]', error);
+    logger.error({ msg: '[POST /api/billing/portal]', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

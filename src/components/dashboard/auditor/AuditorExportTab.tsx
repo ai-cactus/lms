@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from './auditor-pack.module.css';
+import { logger } from '@/lib/logger';
 
 type ExportState = 'idle' | 'processing' | 'completed';
 
@@ -23,7 +24,7 @@ export default function AuditorExportTab() {
       const data = await res.json();
       setJobId(data.jobId);
     } catch (e) {
-      console.error(e);
+      logger.error({ msg: 'Error:', err: e });
       setExportState('idle');
       alert('Failed to start export');
     }
@@ -56,7 +57,7 @@ export default function AuditorExportTab() {
           clearInterval(interval);
         }
       } catch (err) {
-        console.error('Polling error', err);
+        logger.error({ msg: 'Polling error', err: err });
       }
     }, 1500);
 

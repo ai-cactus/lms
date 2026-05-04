@@ -6,6 +6,7 @@ import type { SystemUserRow, DeletePreview } from '@/app/actions/system-admin';
 import DeleteUserModal from './DeleteUserModal';
 import Link from 'next/link';
 import styles from '@/app/system/system.module.css';
+import { logger } from '@/lib/logger';
 
 interface SystemUsersClientProps {
   initialUsers: SystemUserRow[];
@@ -49,7 +50,7 @@ export default function SystemUsersClient({
       setTotal(result.total);
       setTotalPages(result.totalPages);
     } catch (err) {
-      console.error('Failed to fetch users:', err);
+      logger.error({ msg: 'Failed to fetch users:', err: err });
     } finally {
       setLoading(false);
     }
@@ -73,7 +74,7 @@ export default function SystemUsersClient({
         setDeletePreview(preview);
       }
     } catch (err) {
-      console.error('Failed to load delete preview:', err);
+      logger.error({ msg: 'Failed to load delete preview:', err: err });
     } finally {
       setDeleteLoading(false);
     }

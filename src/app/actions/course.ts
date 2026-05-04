@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation';
 import { notifyOrganizationAdmins } from './notifications';
 import { CourseWithStats, CourseWithRelations } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
+import { logger } from '@/lib/logger';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -694,7 +695,7 @@ export async function createFullCourse(data: {
       try {
         await sendCourseInviteEmail(email, tempPassword, data.title, orgName);
       } catch (emailError) {
-        console.error(`Failed to send email to ${email}:`, emailError);
+        logger.error({ msg: `Failed to send email to ${email}:`, err: emailError });
       }
 
       return newUser.id;
@@ -707,7 +708,7 @@ export async function createFullCourse(data: {
         newUserIds.push(result.value);
         inviteResults.newInvited++;
       } else {
-        console.error(`Failed to create user ${newEmails[index]}:`, result.reason);
+        logger.error({ msg: `Failed to create user ${newEmails[index]}:`, err: result.reason });
         inviteResults.failed.push(newEmails[index]);
       }
     });
@@ -740,12 +741,12 @@ export async function createFullCourse(data: {
               course.title,
               orgName,
             ).catch((err) =>
-              console.error(`Failed to send enrollment email to ${user.email}`, err),
+              logger.error({ msg: `Failed to send enrollment email to ${user.email}`, err }),
             ),
           ),
         );
       } catch (enrollError) {
-        console.error('Failed to create enrollments:', enrollError);
+        logger.error({ msg: 'Failed to create enrollments:', err: enrollError });
       }
     }
   }

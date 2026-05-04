@@ -25,7 +25,7 @@ LMS is an AI-powered Learning Management System built with Next.js 16 (App Route
 - **TypeScript**: Strict typing required; avoid `any`.
 - **UI & Styling**: Vanila CSS for responsive design.
 - **State Management**: React Hook Form for data-heavy forms.
-- **Logging**: Use the centralized logger in `src/lib/logger.ts`. ALWAYS use `logger.info`, `logger.error`, etc. instead of `console.log` or `console.error` for this codebase.
+- **Logging**: Use the centralized structured logger in `src/lib/logger.ts`. ALWAYS use `logger.info({ msg, data })`, `logger.error({ msg, err })`, etc., instead of `console.log` or `console.error`. Do not use native console methods anywhere in the codebase.
 - **Naming**: Use descriptive names for components and utility functions.
 - **Enforced Hooks**: Pre-commit hooks via Husky/lint-staged (ESLint + Prettier).
 

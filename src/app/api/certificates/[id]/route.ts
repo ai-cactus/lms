@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { getSignedUrl } from '@/lib/storage';
+import { logger } from '@/lib/logger';
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     const signedUrl = await getSignedUrl(certificate.pdfStoragePath);
     return NextResponse.redirect(signedUrl);
   } catch (error) {
-    console.error('Error fetching certificate:', error);
+    logger.error({ msg: 'Error fetching certificate:', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

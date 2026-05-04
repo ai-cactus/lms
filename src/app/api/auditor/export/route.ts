@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { generateAuditorPackCsv } from '@/app/actions/auditor';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
@@ -35,7 +36,10 @@ export async function GET() {
     const csv = await generateAuditorPackCsv();
     const fileName = `auditor-pack-${org.name.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
 
-    console.info('[auditor] CSV export generated', { organizationId: user.organizationId });
+    logger.info({
+      msg: '[auditor] CSV export generated',
+      data: { organizationId: user.organizationId },
+    });
 
     return new NextResponse(csv, {
       status: 200,
@@ -46,7 +50,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error('[auditor] export failed', { error });
+    logger.error({ msg: '[auditor] export failed', err: { error } });
     return NextResponse.json({ error: 'Export failed. Please try again.' }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import * as XLSX from 'xlsx';
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
+import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
   try {
@@ -172,7 +173,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
 
     return NextResponse.json({ error: 'Unsupported format' }, { status: 400 });
   } catch (error) {
-    console.error('Failed to download job result:', error);
+    logger.error({ msg: 'Failed to download job result:', err: error });
     return NextResponse.json({ error: 'Failed to generate download' }, { status: 500 });
   }
 }

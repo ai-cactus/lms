@@ -8,6 +8,7 @@ import ShareCourseModal from './ShareCourseModal';
 
 import { CourseWithRelations } from '@/types/course';
 import { removeWorkerAssignment } from '@/app/actions/enrollment';
+import { logger } from '@/lib/logger';
 
 interface TrainingDetailsProps {
   course: CourseWithRelations;
@@ -54,7 +55,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
       await removeWorkerAssignment(enrollmentId);
       // Let Server Actions revalidatePath do the refresh
     } catch (err) {
-      console.error('Failed to unassign worker', err);
+      logger.error({ msg: 'Failed to unassign worker', err: err });
       alert('Failed to unassign worker.');
     } finally {
       setIsRemoving(null);

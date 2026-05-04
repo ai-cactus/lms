@@ -6,6 +6,7 @@ import { updateOrganization } from '@/app/actions/organization';
 import { generateOrganizationCode, getOrganizationCode } from '@/app/actions/organization-code';
 import { useRouter } from 'next/navigation';
 import { Button, Input, Select, Checkbox } from '@/components/ui';
+import { logger } from '@/lib/logger';
 
 interface OrganizationData {
   id: string;
@@ -144,7 +145,7 @@ function OrgCodeGenerator() {
           setExpiresAt(result.expiresAt ? new Date(result.expiresAt) : null);
         }
       } catch (err) {
-        console.error(err);
+        logger.error({ msg: 'Error loading code', err });
       }
     }
     loadCode();
