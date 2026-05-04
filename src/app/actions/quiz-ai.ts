@@ -11,6 +11,7 @@ const SingleQuestionSchema = z.object({
   options: z.array(z.string()).length(4),
   answer: z.number().min(0).max(3),
   type: z.string().default('multiple_choice'),
+  explanation: z.string().optional(),
 });
 
 type GeneratedQuestion = z.infer<typeof SingleQuestionSchema>;
@@ -100,7 +101,8 @@ Return ONLY a valid JSON object matching this schema:
 {
   "question": "string",
   "options": ["string", "string", "string", "string"],
-  "answer": number
+  "answer": number,
+  "explanation": "string"
 }
 `;
 

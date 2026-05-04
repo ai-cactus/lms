@@ -227,7 +227,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
               })),
               selectedAnswer: selectedLetter,
               correctAnswer: correctLetter,
-              explanation: userAnswer?.explanation || '',
+              explanation: q.explanation || userAnswer?.explanation || '',
             };
           }),
         };
