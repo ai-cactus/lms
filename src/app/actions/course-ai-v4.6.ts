@@ -515,10 +515,33 @@ async function processBackgroundV46(
     let ragContext = '';
     try {
       if (data.category) {
-        console.log(`[v4.6 Background] Retrieving RAG chunks for category ${data.category}`);
-        const chunks = await retrieveRelevantChunks(sourceText.slice(0, 1000), data.category);
+        const categoryObj = await prisma.courseCategory.findUnique({
+          where: { id: data.category },
+          select: { name: true },
+        });
+        const categoryName = categoryObj?.name || '';
+
+        console.log(
+          `[v4.6 Background] Retrieving RAG chunks for category ${data.category} (${categoryName})`,
+        );
+
+        // Build a strong semantic query combining the category, title, and description
+        const semanticQuery = [
+          categoryName ? `Category: ${categoryName}` : '',
+          data.title ? `Course Title: ${data.title}` : '',
+          data.description ? `Course Description: ${data.description}` : '',
+        ]
+          .filter(Boolean)
+          .join('. ');
+
+        // Fallback to the beginning of the source text if metadata is completely empty
+        const finalQuery = semanticQuery || sourceText.slice(0, 1000);
+
+        const chunks = await retrieveRelevantChunks(finalQuery, data.category, 5);
         ragContext = chunks.map((c) => `[From Standard Manual]:\n${c.content}`).join('\n\n');
-        console.log(`[v4.6 Background] Retrieved ${chunks.length} RAG chunks.`);
+        console.log(
+          `[v4.6 Background] Retrieved ${chunks.length} RAG chunks using query: "${finalQuery}"`,
+        );
       }
     } catch (ragErr) {
       console.error(`[v4.6 Background] RAG retrieval failed:`, ragErr);
