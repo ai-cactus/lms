@@ -5,6 +5,7 @@ import { extractTextFromFile } from '@/lib/file-parser';
 import { callVertexAI, truncateToContext } from '@/lib/ai-client';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { logger } from '@/lib/logger';
 
 // Token budget for quick metadata analysis (~50k chars)
 const MAX_ANALYSIS_TOKENS = 12500;
@@ -37,12 +38,12 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
     };
 
   try {
-    console.log(`Analyzing file: ${file.name} (${file.type}, ${file.size} bytes)`);
+    logger.info({ msg: `Analyzing file: ${file.name} (${file.type}, ${file.size} bytes)` });
     const sourceText = await extractTextFromFile(file);
-    console.log(`Source text length for analysis: ${sourceText.length}`);
+    logger.info({ msg: `Source text length for analysis: ${sourceText.length}` });
 
     if (!sourceText || sourceText.length < 50) {
-      console.error(`Extraction failed: Text length is ${sourceText?.length || 0}`);
+      logger.error({ msg: `Extraction failed: Text length is ${sourceText?.length || 0}` });
       throw new Error(
         `Could not extract enough text (${sourceText?.length || 0} characters) from the file to analyze. Please ensure the PDF contains selectable text, not just images. If you cannot select the text with your mouse, it is likely an image scan.`,
       );
@@ -71,7 +72,7 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
     const textPart = await callVertexAI(prompt);
     let rawText = textPart;
 
-    console.log('Raw AI Response:', rawText);
+    logger.info({ msg: 'Raw AI Response:', data: rawText });
 
     // Robust JSON extraction: Find the first '{' and last '}'
     const firstOpenBrace = rawText.indexOf('{');
@@ -80,7 +81,7 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
     if (firstOpenBrace !== -1 && lastCloseBrace !== -1 && lastCloseBrace > firstOpenBrace) {
       rawText = rawText.substring(firstOpenBrace, lastCloseBrace + 1);
     } else {
-      console.error('No JSON block found in response.');
+      logger.error({ msg: 'No JSON block found in response.' });
       throw new Error('AI response did not contain valid JSON.');
     }
 
@@ -90,7 +91,7 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
     if (result.success) {
       return result.data;
     } else {
-      console.error('Analysis Schema Validation Failed:', result.error);
+      logger.error({ msg: 'Analysis Schema Validation Failed:', err: result.error });
       return {
         title: parsedData.title || file.name.replace(/\.[^/.]+$/, ''),
         description: parsedData.description || 'Generated from uploaded document.',
@@ -101,7 +102,7 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
     }
   } catch (error: unknown) {
     const err = error as Error;
-    console.error('Document Analysis Error:', err);
+    logger.error({ msg: 'Document Analysis Error:', err: err });
     return {
       title: file.name,
       description: 'Failed to analyze document automatically.',
@@ -149,10 +150,10 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
     const sourceText = latestVersion?.content || '';
     const filename = doc.filename;
 
-    console.log(`Analyzing stored file: ${filename} (Length: ${sourceText.length})`);
+    logger.info({ msg: `Analyzing stored file: ${filename} (Length: ${sourceText.length})` });
 
     if (!sourceText || sourceText.length < 50) {
-      console.error(`Extraction failed/empty: Text length is ${sourceText?.length || 0}`);
+      logger.error({ msg: `Extraction failed/empty: Text length is ${sourceText?.length || 0}` });
       return {
         title: filename,
         description: 'Document content is empty or too short to analyze.',
@@ -186,7 +187,7 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
     const textPart = await callVertexAI(prompt);
     let rawText = textPart;
 
-    console.log('Raw AI Response:', rawText);
+    logger.info({ msg: 'Raw AI Response:', data: rawText });
 
     // Robust JSON extraction
     const firstOpenBrace = rawText.indexOf('{');
@@ -195,7 +196,7 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
     if (firstOpenBrace !== -1 && lastCloseBrace !== -1 && lastCloseBrace > firstOpenBrace) {
       rawText = rawText.substring(firstOpenBrace, lastCloseBrace + 1);
     } else {
-      console.error('No JSON block found in response.');
+      logger.error({ msg: 'No JSON block found in response.' });
       throw new Error('AI response did not contain valid JSON.');
     }
 
@@ -205,7 +206,7 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
     if (result.success) {
       return result.data;
     } else {
-      console.error('Analysis Schema Validation Failed:', result.error);
+      logger.error({ msg: 'Analysis Schema Validation Failed:', err: result.error });
       return {
         title: parsedData.title || filename.replace(/\.[^/.]+$/, ''),
         description: parsedData.description || 'Generated from uploaded document.',
@@ -216,7 +217,7 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
     }
   } catch (error: unknown) {
     const err = error as Error;
-    console.error('Stored Document Analysis Error:', err);
+    logger.error({ msg: 'Stored Document Analysis Error:', err: err });
     return {
       title: 'Course Title',
       description: 'Failed to analyze document automatically.',

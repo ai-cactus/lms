@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { logger } from '@/lib/logger';
 
 export type JobType =
   | 'GENERATE_DRAFT'
@@ -21,7 +22,9 @@ export async function createJob(
   });
 
   // Mock async processing
-  processJob(job.id, payload).catch((err) => console.error('Job Processing Error', err));
+  processJob(job.id, payload).catch((err) =>
+    logger.error({ msg: 'Job Processing Error', err: err }),
+  );
 
   return job;
 }
@@ -57,7 +60,7 @@ async function processJob(jobId: string, payload: Record<string, unknown>) {
       result = { ...result, courseId: course.id } as Record<string, unknown>;
     }
   } catch (e) {
-    console.error('Failed to create course in job', e);
+    logger.error({ msg: 'Failed to create course in job', err: e });
   }
 
   await prisma.job.update({

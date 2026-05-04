@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import stripe from '@/lib/stripe';
+import { logger } from '@/lib/logger';
 
 // GET /api/billing/payment-methods — list all payment methods attached to the org's Stripe customer
 export async function GET() {
@@ -66,7 +67,7 @@ export async function GET() {
 
     return NextResponse.json({ paymentMethods, defaultPaymentMethodId });
   } catch (error) {
-    console.error('[GET /api/billing/payment-methods]', error);
+    logger.error({ msg: '[GET /api/billing/payment-methods]', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -14,6 +14,7 @@ import AssignRetakeModal from '../training/AssignRetakeModal';
 import RemoveStaffModal from './RemoveStaffModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentQuizResult } from '@/app/actions/staff';
+import { logger } from '@/lib/logger';
 
 interface StaffProfileClientProps {
   staff: {
@@ -89,7 +90,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         setViewingResult({ ...result, enrollmentId });
       }
     } catch (err) {
-      console.error(err);
+      logger.error({ msg: 'Error loading result', err });
     } finally {
       setLoadingEnrollmentId(null);
     }

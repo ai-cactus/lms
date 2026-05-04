@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { logger } from '@/lib/logger';
 
 // GET /api/billing/invoices?page=1 — returns paginated invoice list
 export async function GET(request: NextRequest) {
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[GET /api/billing/invoices]', error);
+    logger.error({ msg: '[GET /api/billing/invoices]', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
+import { logger } from '@/lib/logger';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -266,7 +267,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       },
     });
   } catch (error) {
-    console.error('Error fetching course for learning:', error);
+    logger.error({ msg: 'Error fetching course for learning:', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

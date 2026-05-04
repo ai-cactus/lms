@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { getSignedUrl } from '@/lib/storage';
 import WorkerProfileForm from '@/components/worker/WorkerProfileForm';
+import { logger } from '@/lib/logger';
 
 export default async function WorkerProfilePage() {
   const session = await auth();
@@ -13,7 +14,7 @@ export default async function WorkerProfilePage() {
   }
 
   // Fetch user with profile and organization
-  console.log('[WorkerProfilePage] Rendering for user:', session.user.id);
+  logger.info({ msg: '[WorkerProfilePage] Rendering for user:', data: session.user.id });
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: {
@@ -31,7 +32,7 @@ export default async function WorkerProfilePage() {
     try {
       avatarDisplayUrl = await getSignedUrl(user.profile.avatarUrl);
     } catch (error) {
-      console.error('Failed to get signed URL for avatar:', error);
+      logger.error({ msg: 'Failed to get signed URL for avatar:', err: error });
     }
   }
 

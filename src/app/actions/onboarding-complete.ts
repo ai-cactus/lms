@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { sendInviteEmail } from '@/lib/email';
 import type { UserRole } from '@prisma/client';
+import { logger } from '@/lib/logger';
 
 // Define types for the data we expect
 // Note: We are using 'any' for simplicity here to match the flexible structure,
@@ -47,7 +48,7 @@ export interface OnboardingData {
 }
 
 export async function completeOnboarding(data: OnboardingData) {
-  console.log('[completeOnboarding] Starting with data:', JSON.stringify(data, null, 2));
+  logger.info({ msg: '[completeOnboarding] Starting with data:', data });
 
   const session = await auth();
   if (!session?.user?.id) {
@@ -83,7 +84,7 @@ export async function completeOnboarding(data: OnboardingData) {
       // 2. Create Organization
       const slug = `${step1.legalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${crypto.randomInt(0, 10000)}`;
 
-      console.log('[completeOnboarding] Creating Organization...');
+      logger.info({ msg: '[completeOnboarding] Creating Organization...' });
       const org = await tx.organization.create({
         data: {
           name: step1.legalName,
@@ -110,10 +111,10 @@ export async function completeOnboarding(data: OnboardingData) {
           programServices: step3?.services || [], // Mapped from 'services' in frontend to 'programServices' in DB
         },
       });
-      console.log('[completeOnboarding] Organization Created:', org.id);
+      logger.info({ msg: '[completeOnboarding] Organization Created:', data: org.id });
 
       // 2. Link Admin User
-      console.log('[completeOnboarding] Linking User:', userId);
+      logger.info({ msg: '[completeOnboarding] Linking User:', data: userId });
       await tx.user.update({
         where: { id: userId },
         data: {
@@ -163,7 +164,7 @@ export async function completeOnboarding(data: OnboardingData) {
     });
 
     // 4. Send Emails (Outside Transaction logic, but initiated here)
-    console.log(`[completeOnboarding] Sending ${result.invitesToSend.length} emails...`);
+    logger.info({ msg: `[completeOnboarding] Sending ${result.invitesToSend.length} emails...` });
 
     Promise.allSettled(
       result.invitesToSend.map((invite) =>
@@ -174,11 +175,11 @@ export async function completeOnboarding(data: OnboardingData) {
           invite.role,
         ),
       ),
-    ).catch((e) => console.error('Error sending invite emails background:', e));
+    ).catch((e) => logger.error({ msg: 'Error sending invite emails background:', err: e }));
 
     return { success: true, organizationId: result.org.id };
   } catch (error) {
-    console.error('[completeOnboarding] Transaction Failed:', error);
+    logger.error({ msg: '[completeOnboarding] Transaction Failed:', err: error });
     return { success: false, error: 'Failed to complete onboarding. Please try again.' };
   }
 }

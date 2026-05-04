@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
+import { logger } from '@/lib/logger';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -31,7 +32,7 @@ export async function getNotifications() {
 
     return { success: true, notifications, unreadCount };
   } catch (error) {
-    console.error('Failed to get notifications:', error);
+    logger.error({ msg: 'Failed to get notifications:', err: error });
     return { success: false, error: 'Failed to fetch notifications' };
   }
 }
@@ -56,7 +57,7 @@ export async function markAsRead(notificationId: string) {
 
     return { success: true };
   } catch (error) {
-    console.error('Failed to mark read:', error);
+    logger.error({ msg: 'Failed to mark read:', err: error });
     return { success: false, error: 'Failed to update' };
   }
 }
@@ -81,7 +82,7 @@ export async function markAllAsRead() {
 
     return { success: true };
   } catch (error) {
-    console.error('Failed to mark all as read:', error);
+    logger.error({ msg: 'Failed to mark all as read:', err: error });
     return { success: false, error: 'Failed to update' };
   }
 }
@@ -109,7 +110,7 @@ export async function createNotification(data: {
       },
     });
   } catch (error) {
-    console.error('Failed to create notification:', error);
+    logger.error({ msg: 'Failed to create notification:', err: error });
     // We don't throw here to avoid disrupting the main flow (like course assignment)
   }
 }
@@ -149,6 +150,6 @@ export async function notifyOrganizationAdmins(
       })),
     });
   } catch (error) {
-    console.error('Failed to notify admins:', error);
+    logger.error({ msg: 'Failed to notify admins:', err: error });
   }
 }

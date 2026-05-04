@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import stripe from '@/lib/stripe';
 import { BILLING_PLANS, BillingCycle } from '@/lib/billing-plans';
+import { logger } from '@/lib/logger';
 
 // POST /api/billing/subscription/checkout — creates or updates a Stripe Checkout session
 export async function POST(request: NextRequest) {
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ url: checkoutSession.url });
   } catch (error) {
-    console.error('[POST /api/billing/subscription/checkout]', error);
+    logger.error({ msg: '[POST /api/billing/subscription/checkout]', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

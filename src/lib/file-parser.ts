@@ -5,6 +5,7 @@
  */
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
+import { logger } from '@/lib/logger';
 
 export async function extractTextFromFile(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
@@ -16,13 +17,13 @@ export async function extractTextFromFile(file: File): Promise<string> {
       const text = data.text.trim();
 
       if (text.length === 0) {
-        console.warn('PDF parsing returned empty string.');
+        logger.warn({ msg: 'PDF parsing returned empty string.' });
       }
 
       return text;
     } catch (e: unknown) {
       const error = e as Error;
-      console.error('PDF Parsing Error:', error);
+      logger.error({ msg: 'PDF Parsing Error:', err: error });
       throw new Error(`PDF Parsing Failed: ${error.message || 'Unknown error'}`);
     }
   } else if (

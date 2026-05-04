@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { callVertexAI } from '@/lib/ai-client';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { logger } from '@/lib/logger';
 
 const SingleQuestionSchema = z.object({
   question: z.string(),
@@ -115,14 +116,14 @@ Return ONLY a valid JSON object matching this schema:
     // 4. Validate
     const result = SingleQuestionSchema.safeParse(parsed);
     if (!result.success) {
-      console.error('Quiz JSON validation failed:', result.error.format());
+      logger.error({ msg: 'Quiz JSON validation failed:', err: result.error.format() });
       return { success: false, error: 'AI generated invalid question format.' };
     }
 
     return { success: true, question: result.data };
   } catch (err: unknown) {
     const error = err as Error;
-    console.error('generateSingleQuestion error:', error);
+    logger.error({ msg: 'generateSingleQuestion error:', err: error });
     return { success: false, error: error.message || 'Failed to generate question.' };
   }
 }

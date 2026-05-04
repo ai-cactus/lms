@@ -3,6 +3,7 @@ import { redis } from './redis';
 import { prisma } from '@/lib/prisma';
 import { AUDITOR_EXPORT_QUEUE_NAME } from './auditor-export-queue';
 import { Prisma } from '@prisma/client';
+import { logger } from '@/lib/logger';
 
 export function getExportWorker() {
   const globalAny = globalThis as unknown as { __auditorWorker?: Worker };
@@ -114,7 +115,7 @@ export function getExportWorker() {
   );
 
   worker.on('failed', async (job, err) => {
-    console.error(`Export Job ${job?.id} failed:`, err);
+    logger.error({ msg: `Export Job ${job?.id} failed:`, err: err });
     if (job?.data?.dbJobId) {
       await prisma.job.update({
         where: { id: job.data.dbJobId },

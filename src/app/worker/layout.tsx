@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import WorkerDashboardLayout from '@/components/worker/WorkerDashboardLayout';
 import { WorkerSessionProvider } from '@/components/providers/WorkerSessionProvider';
+import { logger } from '@/lib/logger';
 
 export default async function WorkerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -26,7 +27,10 @@ export default async function WorkerLayout({ children }: { children: React.React
 
   const fullName = profile?.fullName || session.user.name || session.user.email || 'User';
   const role = user?.role || session.user.role;
-  console.log('[WorkerLayout] Rendering for user:', session.user.email, 'Role:', role);
+  logger.info({
+    msg: '[WorkerLayout] Rendering for user:',
+    data: { email: session.user.email, role },
+  });
   const organizationId = user?.organizationId;
 
   if (!organizationId) {

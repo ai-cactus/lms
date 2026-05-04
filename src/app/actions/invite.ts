@@ -3,6 +3,7 @@
 import { PrismaClient, type InviteStatus, type UserRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { sendInviteEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
 
 const prisma = new PrismaClient();
 
@@ -153,7 +154,7 @@ export async function createInvites(
           results.push(result.value as InviteResultItem);
         }
       } else {
-        console.error(`Error processing invite for ${email}:`, result.reason);
+        logger.error({ msg: `Error processing invite for ${email}:`, err: result.reason });
         results.push({ email, status: 'error', message: 'Failed to process invitation.' });
       }
     });
@@ -161,7 +162,7 @@ export async function createInvites(
     revalidatePath('/dashboard/staff');
     return { success: true, results };
   } catch (error) {
-    console.error('Error creating invites:', error);
+    logger.error({ msg: 'Error creating invites:', err: error });
     return { success: false, results: [], error: 'Failed to process requests' };
   }
 }

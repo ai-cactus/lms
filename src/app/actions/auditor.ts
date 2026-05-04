@@ -2,6 +2,7 @@
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { logger } from '@/lib/logger';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -106,7 +107,8 @@ export async function getAuditorOverviewStats(): Promise<AuditorOverviewStats> {
   const completionRate =
     totalEnrollments > 0 ? Math.round((completedEnrollments / totalEnrollments) * 100) : 0;
 
-  console.info('[auditor] overview stats fetched', {
+  logger.info({
+    msg: '[auditor] overview stats fetched',
     organizationId,
     totalCourses,
     staffCount,

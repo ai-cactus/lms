@@ -5,6 +5,7 @@ import { getAuditorOverviewStats, getAuditorCourses } from '@/app/actions/audito
 import AuditorPackClient from '@/components/dashboard/auditor/AuditorPackClient';
 import AuditorBillingGate from '@/components/dashboard/auditor/AuditorBillingGate';
 import styles from '@/components/dashboard/auditor/auditor-pack.module.css';
+import { logger } from '@/lib/logger';
 
 export const metadata = {
   title: 'Auditor Pack | Theraptly LMS',
@@ -50,7 +51,7 @@ export default async function AuditorPackPage() {
         where: { id: session.user.id },
         data: { hasSeenAuditorWelcome: true },
       })
-      .catch((e) => console.error('Failed to update welcome flag', e));
+      .catch((e) => logger.error({ msg: 'Failed to update welcome flag', err: e }));
   }
 
   // Pre-fetch data server-side so initial render is instant (only if has access)

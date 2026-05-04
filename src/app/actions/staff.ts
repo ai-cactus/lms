@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import type { UserRole } from '@prisma/client';
+import { logger } from '@/lib/logger';
 
 export async function getStaffDetails(userId: string) {
   const session = await auth();
@@ -92,7 +93,7 @@ export async function getStaffDetails(userId: string) {
       })),
     };
   } catch (error) {
-    console.error('Failed to fetch staff details:', error);
+    logger.error({ msg: 'Failed to fetch staff details:', err: error });
     return null;
   }
 }
@@ -139,7 +140,7 @@ export async function updateStaffDetails(
     revalidatePath('/dashboard/staff');
     return { success: true };
   } catch (error) {
-    console.error('Failed to update staff details:', error);
+    logger.error({ msg: 'Failed to update staff details:', err: error });
     return { success: false, error: 'Failed to update user details' };
   }
 }
@@ -239,7 +240,7 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
       passingScore: quiz.passingScore,
     };
   } catch (error) {
-    console.error('Failed to fetch quiz result:', error);
+    logger.error({ msg: 'Failed to fetch quiz result:', err: error });
     return null;
   }
 }
@@ -304,13 +305,16 @@ export async function removeStaff(userId: string) {
       // Confirm to the admin
       await sendStaffRemovalConfirmationEmail(admin.email, staffName, admin.organization.name);
     } catch (emailError) {
-      console.error('[Email Error] Failed to send staff removal notifications:', emailError);
+      logger.error({
+        msg: '[Email Error] Failed to send staff removal notifications:',
+        err: emailError,
+      });
     }
 
     return { success: true };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to remove staff member';
-    console.error('Error removing staff:', error);
+    logger.error({ msg: 'Error removing staff:', err: error });
     return { success: false, error: errorMessage };
   }
 }

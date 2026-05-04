@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const progressSchema = z.object({
   progress: z.number().min(0).max(100),
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const err = error as Error;
-    console.error('Error updating progress:', err);
+    logger.error({ msg: 'Error updating progress:', err: err });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
