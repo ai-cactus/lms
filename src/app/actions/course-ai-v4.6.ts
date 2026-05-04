@@ -96,39 +96,46 @@ function extractJsonFromResponse(text: string): string {
 function parseDualOutput(rawResponse: string): { jsonStr: string; markdown: string } {
   const text = rawResponse.trim();
 
-  // Find the first ```json fence and its closing ```
-  const jsonFenceStart = text.search(/```json\s/);
-  if (jsonFenceStart === -1) {
-    // Fallback: try to find any JSON block
-    const jsonStr = extractJsonFromResponse(text);
-    return { jsonStr, markdown: '' };
+  // 1. Try to find the JSON block using regex to capture the JSON and the rest
+  // This handles ```json ... ``` and generic ``` ... ``` fences.
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```([\s\S]*)/i);
+  if (fenceMatch) {
+    let markdown = fenceMatch[2].trim();
+    // Strip any leading/trailing markdown fences from the article itself
+    if (markdown.startsWith('```markdown')) {
+      markdown = markdown
+        .replace(/^```markdown\s*/, '')
+        .replace(/```\s*$/, '')
+        .trim();
+    }
+    return {
+      jsonStr: fenceMatch[1].trim(),
+      markdown,
+    };
   }
 
-  // Find the content start (after ```json\n)
-  const contentStart = text.indexOf('\n', jsonFenceStart) + 1;
+  // 2. Fallback: No closing fence found, or no fences at all.
+  // Find the first { and the last } in the response
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
 
-  // Find the closing ``` for this fence
-  // We need to find the FIRST ``` after contentStart that closes this fence
-  const closingFence = text.indexOf('\n```', contentStart);
-  if (closingFence === -1) {
-    throw new Error('Could not find closing fence for articleMeta JSON block');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
+    const jsonStr = text.substring(firstBrace, lastBrace + 1).trim();
+    let markdown = text.substring(lastBrace + 1).trim();
+
+    // Clean up any stray fences in the markdown
+    if (markdown.startsWith('```')) {
+      markdown = markdown.replace(/^```(?:markdown)?\s*/i, '');
+    }
+    if (markdown.endsWith('```')) {
+      markdown = markdown.replace(/```\s*$/, '');
+    }
+
+    return { jsonStr, markdown: markdown.trim() };
   }
 
-  const jsonStr = text.substring(contentStart, closingFence).trim();
-
-  // Everything after the closing fence is Markdown
-  const afterFence = closingFence + 4; // skip \n```
-  let markdown = text.substring(afterFence).trim();
-
-  // Strip any leading/trailing markdown fences from the article itself
-  if (markdown.startsWith('```markdown')) {
-    markdown = markdown
-      .replace(/^```markdown\s*/, '')
-      .replace(/```\s*$/, '')
-      .trim();
-  }
-
-  return { jsonStr, markdown };
+  // 3. Absolute fallback (if it's completely malformed)
+  throw new Error('Could not parse dual output: No valid JSON block or fences found.');
 }
 
 // ─── Stage A: Article + ArticleMeta Generation ──
