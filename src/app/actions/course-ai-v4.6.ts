@@ -151,7 +151,7 @@ export async function generateArticleV46(
   let rawResponse = '';
   try {
     rawResponse = await callVertexAI(prompt, {
-      temperature: 0.4,
+      temperature: 0.7,
       maxOutputTokens: 16384,
     });
   } catch (error) {
@@ -248,12 +248,14 @@ async function generateQuizV46(
   articleMetaJson: string,
   requestedQuestionCount: number,
   quizDifficulty: QuizDifficulty,
+  ragContext: string = '',
 ): Promise<{ quizJson: QuizV46; raw: string }> {
   const prompt = buildPromptC_v46(
     articleMarkdown,
     articleMetaJson,
     requestedQuestionCount,
     quizDifficulty,
+    ragContext,
   );
 
   let rawResponse = '';
@@ -666,6 +668,7 @@ async function processBackgroundV46(
               rawArticleMetaJson,
               questionCount,
               difficulty,
+              sourceText,
             );
           } catch (error: unknown) {
             const err = error as Error;

@@ -874,6 +874,7 @@ export async function updateQuizQuestions(
     options: string[];
     answer: number;
     type?: string;
+    explanation?: string;
   }[],
 ) {
   const session = await resolveSession();
@@ -906,6 +907,7 @@ export async function updateQuizQuestions(
           type: q.type || 'multiple_choice',
           options: q.options,
           correctAnswer: q.options[q.answer],
+          explanation: q.explanation,
           order: index,
         })),
       });
