@@ -77,7 +77,7 @@ const MINIO = new Minio.Client({
 const CHUNK_SIZE       = 1500;
 const CHUNK_OVERLAP    = 200;
 const MIN_CHUNK_LEN    = 50;
-const EMBED_BATCH_SIZE = 100;
+const EMBED_BATCH_SIZE = 40;
 const LOG_INTERVAL     = 3;
 
 const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
