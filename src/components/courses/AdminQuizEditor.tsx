@@ -13,6 +13,7 @@ interface QuizQuestion {
   options: string[];
   answer: number;
   type?: string;
+  explanation?: string;
 }
 
 interface AdminQuizEditorProps {
@@ -24,6 +25,7 @@ interface AdminQuizEditorProps {
     correctAnswer: string;
     type: string;
     order: number;
+    explanation?: string | null;
   }[];
 }
 
@@ -37,6 +39,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
       options: q.options,
       answer: q.options.indexOf(q.correctAnswer) >= 0 ? q.options.indexOf(q.correctAnswer) : 0,
       type: q.type,
+      explanation: q.explanation || '',
     })),
   );
 
@@ -50,6 +53,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
     options: ['', '', '', ''],
     answer: 0,
     type: 'multiple_choice',
+    explanation: '',
   });
 
   const handleAddQuestion = () => {
@@ -62,7 +66,13 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
     }
     setQuestions([...questions, newQuestion]);
     setIsAdding(false);
-    setNewQuestion({ question: '', options: ['', '', '', ''], answer: 0, type: 'multiple_choice' });
+    setNewQuestion({
+      question: '',
+      options: ['', '', '', ''],
+      answer: 0,
+      type: 'multiple_choice',
+      explanation: '',
+    });
   };
 
   const updateOption = (index: number, value: string) => {
@@ -81,6 +91,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
           options: res.question.options,
           answer: res.question.answer,
           type: res.question.type,
+          explanation: res.question.explanation || '',
         });
       } else {
         alert(res.error || 'Failed to generate question with AI.');
@@ -207,6 +218,19 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                           </div>
                         ))}
                       </div>
+                    </div>
+
+                    <div className={styles.formGroup} style={{ marginTop: '16px' }}>
+                      <label>Detailed Explanation / Reference</label>
+                      <textarea
+                        className={styles.formInput}
+                        style={{ minHeight: '80px', resize: 'vertical' }}
+                        value={editingQuestion.explanation || ''}
+                        onChange={(e) =>
+                          setEditingQuestion({ ...editingQuestion, explanation: e.target.value })
+                        }
+                        placeholder="Provide a detailed explanation or cite the Standard Manual here..."
+                      />
                     </div>
 
                     <div className={styles.formActions}>
@@ -376,6 +400,17 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className={styles.formGroup} style={{ marginTop: '16px' }}>
+              <label>Detailed Explanation / Reference</label>
+              <textarea
+                className={styles.formInput}
+                style={{ minHeight: '80px', resize: 'vertical' }}
+                value={newQuestion.explanation || ''}
+                onChange={(e) => setNewQuestion({ ...newQuestion, explanation: e.target.value })}
+                placeholder="Provide a detailed explanation or cite the Standard Manual here..."
+              />
             </div>
 
             <div

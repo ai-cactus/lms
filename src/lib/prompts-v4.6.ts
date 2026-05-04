@@ -31,10 +31,15 @@ Produce TWO artifacts in this exact order:
 No other text.
 
 HARD RULES:
-- SOURCE REQUIRED: Use ONLY the provided document text and the standard manual context. If source text is too short to support a course, do not pad or invent.
+- SOURCE REQUIRED: Use ONLY the provided document text and the standard manual context. If the source text is too short to support a course, you MUST heavily supplement the article with relevant context from the Standard Manual RAG Context to reach the desired length. Do not pad or invent.
 - SOURCE FIDELITY: Do not invent policies, dates, roles, thresholds, steps, or definitions. Combine the Standard Manual context with the uploaded policy where they relate. If they contradict, prioritize the uploaded policy but note the contradiction in articleMeta.meta.gaps.
 - MODALITY SAFETY: Preserve must/shall/required vs should/recommended vs may/optional exactly as written. Do NOT strengthen or weaken.
-- NO VERBATIM DUMPS: Avoid copying long blocks. Short excerpts (<= 25 words) are allowed ONLY inside articleMeta.snippets.
+- NO VERBATIM DUMPS: Avoid copying long blocks. Short excerpts (<= 15 words) are allowed ONLY inside articleMeta.snippets.
+- CRITICAL ANTI-RECITATION HARD RULES:
+- If a fact is NOT in the document or the RAG Context, do NOT write it.
+- Never strengthen modality (e.g., turning "should" into "must").
+- For snippets (used in meta), they must be EXACT quotes <= 15 words.
+- CRITICAL RULE TO PREVENT RECITATION: For the generated markdown article, DO NOT copy large blocks of text verbatim from the DOCUMENT_TEXT or STANDARD MANUAL CONTEXT. You MUST synthesize and paraphrase all concepts in your own words in plain language. If you copy verbatim, the system will reject your output.
 - NO REVIEWER NOTES IN ARTICLE: Any contradictions/gaps go ONLY in articleMeta.meta.gaps or articleMeta.meta.reviewerNotes.
 
 LENGTH RULE (no padding):
@@ -57,7 +62,7 @@ ARTICLEMETA CONTRACT (generate first; article must follow it exactly):
   - snippetIds: min 1 referencing snippets
   - normIds: can be empty ONLY if no requirement language exists for that section
 - Snippets:
-  - snippet.text must be an exact excerpt from DOCUMENT_TEXT and <= 25 words.
+  - snippet.text must be a very short excerpt (<= 15 words) or slightly paraphrased to avoid exact matching of public text.
   - If you cannot extract a safe exact excerpt, still create the snippet with text "" and add a gap note describing why.
 - Norms:
   - short, testable requirements preserving modality
@@ -96,7 +101,7 @@ OUTPUT 1: articleMeta JSON SCHEMA:
       "snippetId": "sn1",
       "sectionId": "s1",
       "anchorHint": "",
-      "text": "Exact excerpt <= 25 words"
+      "text": "Short excerpt <= 15 words"
     }
   ],
   "norms": [
@@ -115,7 +120,7 @@ OUTPUT 2: Markdown article (must be grounded in articleMeta):
 - Title must match articleMeta.meta.title
 - Section order, headings, and meaning must match articleMeta.sections in order.
 - Use articleMeta.keyPoints and norms as the backbone.
-- Do NOT quote snippets verbatim in the article; paraphrase in plain language.
+- CRITICAL RULE: Do NOT quote snippets verbatim in the article; synthesize and paraphrase in your own words to prevent recitation blocks.
 - Format:
   # <Course Title>
   ## Overview (90–140 words)
@@ -218,6 +223,7 @@ INPUTS:
 2) articleMeta JSON (authoritative contract: sections, norms, snippets; promptVersion v4.6-article)
 3) requestedQuestionCount (integer set by admin)
 4) quizDifficulty ("easy" | "medium" | "hard")
+5) Standard Manual Context (RAG)
 
 GOAL:
 Output ONE artifact ONLY:
@@ -254,10 +260,10 @@ Difficulty mapping:
 - hard: mostly T3/T4 + T1 with subtle modality nuance (still excerpt-grounded)
 
 QUESTION COUNT RULE:
-- requestedQuestionCount is the target, but DO NOT force a minimum.
-- Generate only as many high-quality questions as the material supports.
-- If you output fewer than requestedQuestionCount, explain the shortfall in meta.gaps and meta.coverageNote.
-- Never create filler.
+- YOU MUST generate EXACTLY the requestedQuestionCount.
+- If the article alone does not support this many questions, you MUST dynamically leverage the Standard Manual Context (RAG) to generate additional questions until the count is met.
+- Never create filler or invent facts. Use the RAG context.
+- If you still cannot hit the target even with the RAG context, explain the shortfall in meta.gaps and meta.coverageNote.
 
 DISTRACTOR MECHANICS (must be logged per wrong option):
 For each wrong option, it must be wrong in exactly ONE way and you must label it:
@@ -277,7 +283,7 @@ OPTION RULES (strict):
 
 EXPLANATION RULES:
 - Each option object must include its own explanation:
-  - Correct option explanation: 25–55 words, grounded in the excerpt meaning (no new facts).
+  - Correct option explanation: 50–100 words. You MUST provide detailed rationales explicitly citing the Standard Manual Context or the article (e.g., "According to Section X of the standard manual...").
   - Distractor explanations: 12–30 words and must mention the distractorType logic (e.g., "This swaps must to should (D1)...").
 
 OUTPUT SCHEMA:
@@ -319,6 +325,9 @@ requestedQuestionCount:
 
 quizDifficulty:
 {{QUIZ_DIFFICULTY}}
+
+STANDARD MANUAL CONTEXT (RAG):
+{{RAG_CONTEXT}}
 
 COURSE ARTICLE MARKDOWN:
 {{ARTICLE_MARKDOWN}}
@@ -507,11 +516,13 @@ export function buildPromptC_v46(
   articleMetaJson: string,
   requestedQuestionCount: number,
   quizDifficulty: string,
+  ragContext: string = '',
 ): string {
   return PROMPT_C_TEMPLATE.replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
     .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
     .replace('{{REQUESTED_QUESTION_COUNT}}', String(requestedQuestionCount))
-    .replace('{{QUIZ_DIFFICULTY}}', quizDifficulty);
+    .replace('{{QUIZ_DIFFICULTY}}', quizDifficulty)
+    .replace('{{RAG_CONTEXT}}', ragContext || 'None provided.');
 }
 
 export function buildPromptD_v46(quizJson: string, articleMetaJson: string): string {
