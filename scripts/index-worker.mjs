@@ -80,8 +80,8 @@ const MIN_CHUNK_LEN    = 50;
 const EMBED_BATCH_SIZE = 100;
 const LOG_INTERVAL     = 3;
 
-const PROJECT_ID = process.env.GOOGLE_PROJECT_ID ?? '';
-const LOCATION   = process.env.GOOGLE_LOCATION   ?? 'us-central1';
+const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
+const LOCATION   = process.env.GOOGLE_LOCATION   || 'us-central1';
 const MODEL      = 'text-embedding-004';
 const EMBED_URL  = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict`;
 
