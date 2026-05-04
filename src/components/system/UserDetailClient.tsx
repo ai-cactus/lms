@@ -6,6 +6,7 @@ import { getUserDeletePreview } from '@/app/actions/system-admin';
 import type { SystemUserDetail, DeletePreview } from '@/app/actions/system-admin';
 import DeleteUserModal from './DeleteUserModal';
 import styles from '@/app/system/system.module.css';
+import { logger } from '@/lib/logger';
 
 interface UserDetailClientProps {
   user: SystemUserDetail;
@@ -23,7 +24,7 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
         setDeletePreview(preview);
       }
     } catch (err) {
-      console.error('Failed to load delete preview:', err);
+      logger.error({ msg: 'Failed to load delete preview:', err: err });
     } finally {
       setDeleteLoading(false);
     }

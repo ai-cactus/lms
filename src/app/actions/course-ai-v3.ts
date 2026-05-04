@@ -9,6 +9,7 @@ import type { CourseV3, QuizV3, QuizDifficulty } from '@/lib/prompt-types';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { auth } from '@/auth';
+import { logger } from '@/lib/logger';
 
 // Token budget for source content
 const MAX_SOURCE_TOKENS = 100000;
@@ -87,7 +88,7 @@ async function generateCourseJsonV3(
 
   const result = CourseV3Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v3.1] Course JSON validation failed:', result.error.format());
+    logger.error({ msg: '[v3.1] Course JSON validation failed:', err: result.error.format() });
     throw new Error(
       `Course JSON validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
@@ -119,7 +120,7 @@ async function generateQuizJsonV3(
 
   const result = QuizV3Schema.safeParse(parsed);
   if (!result.success) {
-    console.error('[v3.1] Quiz JSON validation failed:', result.error.format());
+    logger.error({ msg: '[v3.1] Quiz JSON validation failed:', err: result.error.format() });
     throw new Error(
       `Quiz JSON validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
@@ -149,14 +150,14 @@ export async function generateCourseAndQuizV3(
   if (file) {
     // Freshly uploaded file — read from blob
     try {
-      console.log(`[v3.1] Processing file: ${file.name} (${file.type})`);
+      logger.info({ msg: `[v3.1] Processing file: ${file.name} (${file.type})` });
       docFilename = file.name;
       sourceText = await extractTextFromFile(file);
-      console.log(`[v3.1] Extracted ${sourceText.length} characters from file.`);
+      logger.info({ msg: `[v3.1] Extracted ${sourceText.length} characters from file.` });
       sourceText = truncateToContext(sourceText, MAX_SOURCE_TOKENS);
     } catch (err: unknown) {
       const error = err as Error;
-      console.error('[v3.1] File parsing error:', error);
+      logger.error({ msg: '[v3.1] File parsing error:', err: error });
       return { error: `Failed to read document: ${error.message}` };
     }
   } else if (documentId) {
@@ -184,13 +185,13 @@ export async function generateCourseAndQuizV3(
         return { error: 'Document content is empty or too short to generate a course.' };
       }
 
-      console.log(
-        `[v3.1] Read ${sourceText.length} characters from stored document: ${docFilename}`,
-      );
+      logger.info({
+        msg: `[v3.1] Read ${sourceText.length} characters from stored document: ${docFilename}`,
+      });
       sourceText = truncateToContext(sourceText, MAX_SOURCE_TOKENS);
     } catch (err: unknown) {
       const error = err as Error;
-      console.error('[v3.1] DB document read error:', error);
+      logger.error({ msg: '[v3.1] DB document read error:', err: error });
       return { error: `Failed to read stored document: ${error.message}` };
     }
   } else {
@@ -215,7 +216,10 @@ export async function generateCourseAndQuizV3(
       await processBackgroundV3(jobId, sourceText, docFilename, rawData);
     } catch (err: unknown) {
       const error = err as Error;
-      console.error(`[v3.1] Background job ${jobId} failed in after():`, error.message);
+      logger.error({
+        msg: `[v3.1] Background job ${jobId} failed in after():`,
+        err: error.message,
+      });
       try {
         await prisma.job.update({
           where: { id: jobId },
@@ -227,7 +231,10 @@ export async function generateCourseAndQuizV3(
           },
         });
       } catch (updateErr) {
-        console.error(`[v3.1] CRITICAL: Failed to mark job ${jobId} as failed:`, updateErr);
+        logger.error({
+          msg: `[v3.1] CRITICAL: Failed to mark job ${jobId} as failed:`,
+          err: updateErr,
+        });
       }
     }
   });
@@ -254,9 +261,9 @@ async function processBackgroundV3(
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        console.log(
-          `[v3.1 Background] Course generation attempt ${attempt}/${maxAttempts} for job ${jobId}`,
-        );
+        logger.info({
+          msg: `[v3.1 Background] Course generation attempt ${attempt}/${maxAttempts} for job ${jobId}`,
+        });
         const result = await generateCourseJsonV3(
           sourceText,
           documents,
@@ -271,7 +278,10 @@ async function processBackgroundV3(
         break;
       } catch (error: unknown) {
         const err = error as Error;
-        console.error(`[v3.1 Background] Course attempt ${attempt} failed:`, err.message);
+        logger.error({
+          msg: `[v3.1 Background] Course attempt ${attempt} failed:`,
+          err: err.message,
+        });
         if (attempt === maxAttempts) errorMsg = err.message;
         await new Promise((r) => setTimeout(r, 1000 * attempt));
       }
@@ -295,23 +305,26 @@ async function processBackgroundV3(
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        console.log(
-          `[v3.1 Background] Quiz generation attempt ${attempt}/${maxAttempts} for job ${jobId}`,
-        );
+        logger.info({
+          msg: `[v3.1 Background] Quiz generation attempt ${attempt}/${maxAttempts} for job ${jobId}`,
+        });
         const result = await generateQuizJsonV3(courseRaw, questionCount, difficulty);
         quizJson = result.quizJson;
         break;
       } catch (error: unknown) {
         const err = error as Error;
-        console.error(`[v3.1 Background] Quiz attempt ${attempt} failed:`, err.message);
+        logger.error({
+          msg: `[v3.1 Background] Quiz attempt ${attempt} failed:`,
+          err: err.message,
+        });
         if (attempt === maxAttempts) errorMsg = err.message;
         await new Promise((r) => setTimeout(r, 1000 * attempt));
       }
     }
 
-    console.log(
-      `[v3.1 Background] Pipeline complete for job ${jobId}. Course modules: ${courseJson.modules.length}`,
-    );
+    logger.info({
+      msg: `[v3.1 Background] Pipeline complete for job ${jobId}. Course modules: ${courseJson.modules.length}`,
+    });
 
     const resultPayload = {
       courseJson,
@@ -326,7 +339,7 @@ async function processBackgroundV3(
     });
   } catch (err: unknown) {
     const error = err as Error;
-    console.error(`[v3.1 Background] Uncaught fatal error in job ${jobId}:`, error);
+    logger.error({ msg: `[v3.1 Background] Uncaught fatal error in job ${jobId}:`, err: error });
     await prisma.job.update({
       where: { id: jobId },
       data: {

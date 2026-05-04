@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Logo, Button } from '@/components/ui';
 import { updateRole } from '@/app/actions/user';
 import styles from './page.module.css';
+import { logger } from '@/lib/logger';
 
 export default function RoleSelectionPage() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function RoleSelectionPage() {
         setError(result.error || 'Failed to update role');
       }
     } catch (err) {
-      console.error('Unexpected error:', err);
+      logger.error({ msg: 'Unexpected error:', err: err });
       setError('An unexpected error occurred.');
     } finally {
       setIsLoading(false);

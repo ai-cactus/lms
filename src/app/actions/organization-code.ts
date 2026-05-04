@@ -5,6 +5,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { createNotification, notifyOrganizationAdmins } from './notifications';
+import { logger } from '@/lib/logger';
 
 // Helper to generate a random 6-digit code
 function generateCode() {
@@ -56,7 +57,7 @@ export async function generateOrganizationCode() {
     revalidatePath('/dashboard/profile');
     return { success: true, code, expiresAt };
   } catch (error) {
-    console.error('Failed to generate organization code:', error);
+    logger.error({ msg: 'Failed to generate organization code:', err: error });
     return {
       success: false,
       error: `Failed to generate code: ${error instanceof Error ? error.message : String(error)}`,
@@ -85,7 +86,7 @@ export async function getOrganizationCode() {
       expiresAt: org.joinCodeExpiresAt,
     };
   } catch (error) {
-    console.error('Failed to fetch organization code:', error);
+    logger.error({ msg: 'Failed to fetch organization code:', err: error });
     return { success: false, error: 'Failed to fetch code' };
   }
 }
@@ -127,7 +128,7 @@ export async function verifyOrganizationCode(code: string) {
       },
     };
   } catch (error) {
-    console.error('Failed to verify code:', error);
+    logger.error({ msg: 'Failed to verify code:', err: error });
     return { success: false, error: 'Failed to verify code' };
   }
 }
@@ -184,7 +185,7 @@ export async function joinOrganization(code: string) {
 
     return { success: true, organizationId: orgId };
   } catch (error) {
-    console.error('Failed to join organization:', error);
+    logger.error({ msg: 'Failed to join organization:', err: error });
     return { success: false, error: 'Failed to join organization' };
   }
 }

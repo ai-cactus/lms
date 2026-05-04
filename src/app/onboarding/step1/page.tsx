@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Input, Select, PhoneInput } from '@/components/ui';
 import styles from '@/app/onboarding/onboarding.module.css';
 import Stepper from '@/components/onboarding/Stepper';
+import { logger } from '@/lib/logger';
 
 interface Step1FormData {
   legalName: string;
@@ -35,7 +36,7 @@ export default function OnboardingStep1() {
   });
 
   const onSubmit = async (data: Step1FormData) => {
-    console.log('Step 1 Data Saved Locally:', data);
+    logger.info({ msg: 'Step 1 Data Saved Locally:', data: data });
     try {
       // Check availability
       const { checkOrganizationNameAvailable } = await import('@/app/actions/organization');
@@ -58,7 +59,7 @@ export default function OnboardingStep1() {
       }
       router.push('/onboarding/step2');
     } catch (error) {
-      console.error('Local save error:', error);
+      logger.error({ msg: 'Local save error:', err: error });
     }
   };
 

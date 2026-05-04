@@ -5,6 +5,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { getStandardManualHistory } from '@/app/actions/standard-manual';
 import styles from './manual.module.css';
+import { logger } from '@/lib/logger';
 
 interface ManualHistory {
   id: string;
@@ -35,7 +36,7 @@ export default function StandardManualPage() {
       setHistory(data as ManualHistory[]);
       return data;
     } catch (error) {
-      console.error('Failed to load history:', error);
+      logger.error({ msg: 'Failed to load history:', err: error });
       setMessage({ type: 'error', text: 'Failed to load manual history' });
       return [];
     } finally {

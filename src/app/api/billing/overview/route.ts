@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import stripe from '@/lib/stripe';
+import { logger } from '@/lib/logger';
 
 // GET /api/billing/overview — returns current plan, staff usage, payment method, last 2 invoices
 export async function GET() {
@@ -105,7 +106,7 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    console.error('[GET /api/billing/overview]', error);
+    logger.error({ msg: '[GET /api/billing/overview]', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

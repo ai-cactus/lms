@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { getSignedUrl } from '@/lib/storage';
+import { logger } from '@/lib/logger';
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -25,16 +26,16 @@ export default async function ProfilePage() {
 
   const role = user?.role || 'worker';
 
-  console.log('ProfilePage Session:', session?.user?.id);
-  console.log('ProfilePage Profile:', profile);
-  console.log('ProfilePage User:', user);
+  logger.info({ msg: 'ProfilePage Session:', data: session?.user?.id });
+  logger.info({ msg: 'ProfilePage Profile:', data: profile });
+  logger.info({ msg: 'ProfilePage User:', data: user });
 
   let avatarDisplayUrl: string | null = null;
   if (profile?.avatarUrl) {
     try {
       avatarDisplayUrl = await getSignedUrl(profile.avatarUrl);
     } catch (error) {
-      console.error('Failed to get signed URL for avatar:', error);
+      logger.error({ msg: 'Failed to get signed URL for avatar:', err: error });
     }
   }
 

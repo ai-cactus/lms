@@ -9,7 +9,7 @@ const port = parseInt(process.env.SMTP_PORT || '465', 10);
 const secure = port === 465;
 
 if (!user || !pass) {
-  console.warn('SMTP credentials not found in environment variables');
+  logger.warn({ msg: 'SMTP credentials not found in environment variables' });
 }
 
 const transporter = nodemailer.createTransport({
@@ -45,9 +45,9 @@ export async function sendInviteEmail(
     `;
 
   try {
-    console.log(`[Email Debug] Sending invite to: ${to}`);
-    console.log(`[Email Debug] Invite Link: ${inviteLink}`);
-    console.log(`[Email Debug] Org: ${orgName}`);
+    logger.info({ msg: `[Email Debug] Sending invite to: ${to}` });
+    logger.info({ msg: `[Email Debug] Invite Link: ${inviteLink}` });
+    logger.info({ msg: `[Email Debug] Org: ${orgName}` });
 
     const info = await transporter.sendMail({
       from: `"${appName}" <${user}>`,
@@ -55,10 +55,10 @@ export async function sendInviteEmail(
       subject: `Join ${orgName} on ${appName}`,
       html,
     });
-    console.log('Message sent: %s', info.messageId);
+    logger.info({ msg: 'Message sent: %s', data: info.messageId });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Error sending email:', error);
+    logger.error({ msg: 'Error sending email:', err: error });
     return { success: false, error };
   }
 }
@@ -87,10 +87,10 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
       subject: `Reset your password - ${appName}`,
       html,
     });
-    console.log('Password reset sent: %s', info.messageId);
+    logger.info({ msg: 'Password reset sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending password reset email:', error);
+    logger.error({ msg: 'Error sending password reset email:', err: error });
     return { success: false, error };
   }
 };
@@ -130,10 +130,10 @@ export const sendEmailVerification = async (email: string, token: string) => {
       subject: `Verify your email - ${appName}`,
       html,
     });
-    console.log('Email verification sent: %s', info.messageId);
+    logger.info({ msg: 'Email verification sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending email verification:', error);
+    logger.error({ msg: 'Error sending email verification:', err: error });
     return { success: false, error };
   }
 };
@@ -183,10 +183,10 @@ export const sendCourseInviteEmail = async (
       subject: `You've been assigned: ${courseName} - ${appName}`,
       html,
     });
-    console.log('Course invite email sent: %s', info.messageId);
+    logger.info({ msg: 'Course invite email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending course invite email:', error);
+    logger.error({ msg: 'Error sending course invite email:', err: error });
     return { success: false, error };
   }
 };
@@ -235,10 +235,10 @@ export const sendCourseEnrollmentEmail = async (
       subject: `New Course Assignment: ${courseName} - ${appName}`,
       html,
     });
-    console.log('Course enrollment email sent: %s', info.messageId);
+    logger.info({ msg: 'Course enrollment email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending course enrollment email:', error);
+    logger.error({ msg: 'Error sending course enrollment email:', err: error });
     return { success: false, error };
   }
 };
@@ -284,10 +284,10 @@ export async function sendQuizLockedEmail(
       subject: `Action Required: ${workerName} locked out of quiz - ${appName}`,
       html,
     });
-    console.log('Quiz locked email sent: %s', info.messageId);
+    logger.info({ msg: 'Quiz locked email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending quiz locked email:', error);
+    logger.error({ msg: 'Error sending quiz locked email:', err: error });
     return { success: false, error };
   }
 }
@@ -415,10 +415,10 @@ export async function sendEnterpriseInquiryEmail({
       subject: `Enterprise Plan Inquiry — ${organizationName}`,
       html,
     });
-    console.info('[Email] Enterprise inquiry sent: %s', info.messageId);
+    logger.info({ msg: '[Email] Enterprise inquiry sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('[Email] Error sending enterprise inquiry:', error);
+    logger.error({ msg: '[Email] Error sending enterprise inquiry:', err: error });
     return { success: false, error };
   }
 }
@@ -449,7 +449,7 @@ export async function sendStaffRemovedEmail(email: string, orgName: string) {
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Error sending staff removed email:', error);
+    logger.error({ msg: 'Error sending staff removed email:', err: error });
     return { success: false, error };
   }
 }
@@ -481,7 +481,7 @@ export async function sendStaffRemovalConfirmationEmail(
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Error sending staff removal confirmation email:', error);
+    logger.error({ msg: 'Error sending staff removal confirmation email:', err: error });
     return { success: false, error };
   }
 }

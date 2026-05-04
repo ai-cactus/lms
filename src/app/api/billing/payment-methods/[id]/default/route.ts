@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import stripe from '@/lib/stripe';
+import { logger } from '@/lib/logger';
 
 // POST /api/billing/payment-methods/[id]/default — set a payment method as the default
 export async function POST(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -43,7 +44,7 @@ export async function POST(_request: NextRequest, props: { params: Promise<{ id:
 
     return NextResponse.json({ success: true, message: 'Default payment method updated.' });
   } catch (error) {
-    console.error('[POST /api/billing/payment-methods/[id]/default]', error);
+    logger.error({ msg: '[POST /api/billing/payment-methods/[id]/default]', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

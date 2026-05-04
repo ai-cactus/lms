@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Select, Checkbox } from '@/components/ui';
 import styles from '@/app/onboarding/onboarding.module.css';
 import Stepper from '@/components/onboarding/Stepper';
+import { logger } from '@/lib/logger';
 
 interface Step3FormData {
   primaryBusinessType: string;
@@ -44,7 +45,7 @@ export default function OnboardingStep3() {
       }
       router.push('/onboarding/step4');
     } catch (error) {
-      console.error('Submission error:', error);
+      logger.error({ msg: 'Submission error:', err: error });
     }
   };
 

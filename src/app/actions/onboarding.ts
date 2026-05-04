@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const createOrgSchema = z.object({
   name: z.string().min(2, 'Organization name must be at least 2 characters'),
@@ -75,7 +76,7 @@ export async function createOrganization(prevState: State, formData: FormData): 
       });
     });
   } catch (error) {
-    console.error('Failed to create organization:', error);
+    logger.error({ msg: 'Failed to create organization:', err: error });
     return { error: 'Failed to create organization. Please try again.' };
   }
 

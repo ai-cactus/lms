@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
   try {
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       message,
     });
   } catch (error) {
-    console.error('Failed to get job status:', error);
+    logger.error({ msg: 'Failed to get job status:', err: error });
     return NextResponse.json({ error: 'Failed to fetch status' }, { status: 500 });
   }
 }

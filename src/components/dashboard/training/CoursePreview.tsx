@@ -17,6 +17,7 @@ interface CoursePreviewProps {
 
 import { startCourse } from '@/app/actions/course';
 import { requestCourseRetry } from '@/app/actions/enrollment';
+import { logger } from '@/lib/logger';
 
 function WorkerStartButton({
   courseId,
@@ -67,7 +68,7 @@ function WorkerStartButton({
       await startCourse(courseId);
       router.push(`/learn/${courseId}`);
     } catch (error) {
-      console.error('Failed to start/retry course:', error);
+      logger.error({ msg: 'Failed to start/retry course:', err: error });
       // Fallback navigation even if action fails (e.g. network)
       if (!isFailed) {
         router.push(`/learn/${courseId}`);

@@ -6,6 +6,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
+import { logger } from '@/lib/logger';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -124,11 +125,11 @@ export async function enrollUsers(courseId: string, emails: string[]) {
           );
           results.newInvited.push(email);
         } catch (emailErr) {
-          console.error(`Failed to send invite email to ${email}:`, emailErr);
+          logger.error({ msg: `Failed to send invite email to ${email}:`, err: emailErr });
           results.newInvited.push(email);
         }
       } catch (createErr) {
-        console.error(`Failed to create user for ${email}:`, createErr);
+        logger.error({ msg: `Failed to create user for ${email}:`, err: createErr });
         results.failed.push(email);
         continue;
       }
@@ -183,7 +184,7 @@ export async function enrollUsers(courseId: string, emails: string[]) {
           currentUser?.organization?.name || 'Your Organization',
         );
       } catch (emailErr) {
-        console.error(`Failed to send enrollment email to ${email}:`, emailErr);
+        logger.error({ msg: `Failed to send enrollment email to ${email}:`, err: emailErr });
       }
     }
 

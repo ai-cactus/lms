@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import stripe from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
 import Stripe from 'stripe';
+import { logger } from '@/lib/logger';
 import type {
   SubscriptionPlan,
   SubscriptionBillingCycle,
@@ -13,7 +14,7 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 export async function POST(request: NextRequest) {
   if (!webhookSecret) {
-    console.error('[Stripe Webhook] STRIPE_WEBHOOK_SECRET is not configured');
+    logger.error({ msg: '[Stripe Webhook] STRIPE_WEBHOOK_SECRET is not configured' });
     return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
   }
 
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[Stripe Webhook] Signature verification failed: ${message}`);
+    logger.error({ msg: `[Stripe Webhook] Signature verification failed: ${message}` });
     return NextResponse.json({ error: `Webhook error: ${message}` }, { status: 400 });
   }
 
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
         break;
     }
   } catch (error) {
-    console.error(`[Stripe Webhook] Error handling event ${event.type}:`, error);
+    logger.error({ msg: `[Stripe Webhook] Error handling event ${event.type}:`, err: error });
     // Return 200 to prevent Stripe retrying non-recoverable errors
     return NextResponse.json({ received: true, error: 'Event processing failed' });
   }
@@ -83,7 +84,7 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   });
 
   if (!organization) {
-    console.warn(`[Stripe Webhook] No organization found for customer: ${customerId}`);
+    logger.warn({ msg: `[Stripe Webhook] No organization found for customer: ${customerId}` });
     return;
   }
 
@@ -146,7 +147,7 @@ async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string)
   });
 
   if (!organization) {
-    console.warn(`[Stripe Webhook] No organization found for customer: ${customerId}`);
+    logger.warn({ msg: `[Stripe Webhook] No organization found for customer: ${customerId}` });
     return;
   }
 
@@ -185,7 +186,7 @@ async function handleAuditorAccessRevoke(sub: Stripe.Subscription) {
   });
 
   if (!organization) {
-    console.warn(`[Stripe Webhook] No organization found for customer: ${customerId}`);
+    logger.warn({ msg: `[Stripe Webhook] No organization found for customer: ${customerId}` });
     return;
   }
 
@@ -194,7 +195,7 @@ async function handleAuditorAccessRevoke(sub: Stripe.Subscription) {
     data: { hasAuditorAccess: false },
   });
 
-  console.info(
-    `[Stripe Webhook] Organization ${organization.id} — auditor access revoked (subscription deleted)`,
-  );
+  logger.info({
+    msg: `[Stripe Webhook] Organization ${organization.id} — auditor access revoked (subscription deleted)`,
+  });
 }

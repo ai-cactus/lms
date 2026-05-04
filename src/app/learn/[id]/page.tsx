@@ -13,6 +13,7 @@ import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
 import { Button } from '@/components/ui';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { logger } from '@/lib/logger';
 
 interface Lesson {
   id: string;
@@ -153,7 +154,7 @@ export default function LearnPage() {
         });
         setEnrollment((prev) => (prev ? { ...prev, progress } : prev));
       } catch (err) {
-        console.error('Failed to update progress', err);
+        logger.error({ msg: 'Failed to update progress', err: err });
       }
     }
   };
@@ -186,7 +187,7 @@ export default function LearnPage() {
       setQuizResults(result);
       setQuizStep('review');
     } catch (err) {
-      console.error(err);
+      logger.error({ msg: 'Error:', err: err });
       alert('Failed to submit quiz');
     } finally {
       setSubmitting(false);
@@ -288,7 +289,7 @@ export default function LearnPage() {
         : (course?.quiz?.questions.length || 5) * 60;
       setTimeLeft(limit);
     } catch (err) {
-      console.error('Failed to start quiz', err);
+      logger.error({ msg: 'Failed to start quiz', err: err });
       alert('Failed to start quiz session. Please try again.');
     }
   };
@@ -317,7 +318,7 @@ export default function LearnPage() {
         }),
       });
     } catch (err) {
-      console.error('Failed to save progress', err);
+      logger.error({ msg: 'Failed to save progress', err: err });
     }
   };
 
@@ -615,7 +616,7 @@ export default function LearnPage() {
                       await retakeQuiz(enrollment.id);
                       window.location.reload();
                     } catch (err) {
-                      console.error('Failed to retake quiz:', err);
+                      logger.error({ msg: 'Failed to retake quiz:', err: err });
                       alert('Failed to start retake. Please try again.');
                     }
                   }

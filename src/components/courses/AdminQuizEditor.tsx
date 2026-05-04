@@ -6,6 +6,7 @@ import { updateQuizQuestions } from '@/app/actions/course';
 import { useRouter } from 'next/navigation';
 import { generateSingleQuestion } from '@/app/actions/quiz-ai';
 import { Button } from '@/components/ui';
+import { logger } from '@/lib/logger';
 
 interface QuizQuestion {
   question: string;
@@ -85,7 +86,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
         alert(res.error || 'Failed to generate question with AI.');
       }
     } catch (error) {
-      console.error('Failed to call AI generation:', error);
+      logger.error({ msg: 'Failed to call AI generation:', err: error });
       alert('An unexpected error occurred.');
     } finally {
       setIsGenerating(false);
@@ -99,7 +100,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
       alert('Quiz updated successfully!');
       router.refresh();
     } catch (error) {
-      console.error('Failed to save quiz:', error);
+      logger.error({ msg: 'Failed to save quiz:', err: error });
       alert('Failed to save quiz. Please try again.');
     } finally {
       setIsSaving(false);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import stripe from '@/lib/stripe';
+import { logger } from '@/lib/logger';
 
 // DELETE /api/billing/payment-methods/[id] — detach a saved payment method
 export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -41,7 +42,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
 
     return NextResponse.json({ success: true, message: 'Payment method removed.' });
   } catch (error) {
-    console.error('[DELETE /api/billing/payment-methods/[id]]', error);
+    logger.error({ msg: '[DELETE /api/billing/payment-methods/[id]]', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

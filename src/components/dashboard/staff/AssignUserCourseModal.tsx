@@ -5,6 +5,7 @@ import { Modal, Button } from '@/components/ui';
 import { getCourses } from '@/app/actions/course';
 import { enrollUsers } from '@/app/actions/enrollment';
 import styles from './AssignUserCourseModal.module.css';
+import { logger } from '@/lib/logger';
 
 interface AssignUserCourseModalProps {
   isOpen: boolean;
@@ -43,7 +44,7 @@ export default function AssignUserCourseModal({
       const availableCourses = data.filter((course) => !enrolledCourseIds.includes(course.id));
       setCourses(availableCourses);
     } catch (error) {
-      console.error('Failed to fetch courses:', error);
+      logger.error({ msg: 'Failed to fetch courses:', err: error });
     } finally {
       setIsFetching(false);
     }
@@ -114,7 +115,7 @@ export default function AssignUserCourseModal({
         }, 1500);
       }
     } catch (error) {
-      console.error('Failed to assign course:', error);
+      logger.error({ msg: 'Failed to assign course:', err: error });
       setResult({ success: [], alreadyEnrolled: [], failed: finalEmails });
     } finally {
       setIsLoading(false);

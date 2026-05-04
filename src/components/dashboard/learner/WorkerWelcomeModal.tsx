@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import styles from './WorkerWelcomeModal.module.css';
 import { Modal, Button } from '@/components/ui';
 import { useModalContext } from '@/components/ui/ModalContext';
+import { logger } from '@/lib/logger';
 
 const SNOOZE_DURATION_MS = 12 * 60 * 60 * 1000;
 
@@ -40,19 +41,17 @@ export default function WorkerWelcomeModal({
     registerModal(modalId, 5);
 
     // Debug logging
-    console.log(
-      '[WorkerWelcomeModal] Effect run. CourseCount:',
-      courseCount,
-      'HasProgress:',
-      hasProgress,
-    );
+    logger.info({
+      msg: '[WorkerWelcomeModal] Effect run.',
+      data: { courseCount, hasProgress },
+    });
 
     if (typeof window !== 'undefined') {
       const shouldShow = shouldShowModal(modalId);
-      console.log('[WorkerWelcomeModal] Should show?', shouldShow);
+      logger.info({ msg: '[WorkerWelcomeModal] Should show?', data: shouldShow });
 
       if (courseCount > 0 && !hasProgress && shouldShow) {
-        console.log('[WorkerWelcomeModal] Requesting Open');
+        logger.info({ msg: '[WorkerWelcomeModal] Requesting Open' });
         requestOpen(modalId);
       }
     }
