@@ -133,8 +133,8 @@ export default function SignupPage() {
           <Logo size="md" />
 
           <div className={styles.formHeader}>
-            <h1 className={styles.title}>Create an account</h1>
-            <p className={styles.subtitle}>Start your learning journey with Theraptly</p>
+            <h1 className={styles.title}>Create a new account</h1>
+            <p className={styles.subtitle}>Create a new account to get started.</p>
           </div>
 
           <div className={styles.socialLogin}>
@@ -165,7 +165,7 @@ export default function SignupPage() {
                 label="First Name"
                 type="text"
                 name="firstName"
-                placeholder="First Name"
+                placeholder="Enter your first name"
                 value={formData.firstName}
                 onChange={handleChange}
                 error={errors.firstName}
@@ -175,7 +175,7 @@ export default function SignupPage() {
                 label="Last Name"
                 type="text"
                 name="lastName"
-                placeholder="Last Name"
+                placeholder="Enter your last name"
                 value={formData.lastName}
                 onChange={handleChange}
                 error={errors.lastName}
@@ -187,7 +187,7 @@ export default function SignupPage() {
               label="Email"
               type="email"
               name="email"
-              placeholder="Enter your email"
+              placeholder="Enter your email address"
               value={formData.email}
               onChange={handleChange}
               error={errors.email}
@@ -227,7 +227,7 @@ export default function SignupPage() {
                   className={styles.checkbox}
                 />
                 <span className={styles.checkboxText}>
-                  I agree to the{' '}
+                  I agree to the Theraptly{' '}
                   <Link href="/terms" className={styles.link}>
                     Terms of Service
                   </Link>{' '}

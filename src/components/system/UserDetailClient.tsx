@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { getUserDeletePreview } from '@/app/actions/system-admin';
 import type { SystemUserDetail, DeletePreview } from '@/app/actions/system-admin';
 import DeleteUserModal from './DeleteUserModal';
@@ -13,6 +14,7 @@ interface UserDetailClientProps {
 }
 
 export default function UserDetailClient({ user }: UserDetailClientProps) {
+  const router = useRouter();
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -407,7 +409,11 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
 
       {/* Delete Modal */}
       {deletePreview && (
-        <DeleteUserModal preview={deletePreview} onClose={() => setDeletePreview(null)} />
+        <DeleteUserModal
+          preview={deletePreview}
+          onClose={() => setDeletePreview(null)}
+          onSuccess={() => router.push('/system')}
+        />
       )}
     </>
   );

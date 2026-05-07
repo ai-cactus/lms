@@ -3,20 +3,19 @@
 import React, { useState } from 'react';
 import { deleteUserWithRelations } from '@/app/actions/system-admin';
 import type { DeletePreview } from '@/app/actions/system-admin';
-import { useRouter } from 'next/navigation';
 import styles from '@/app/system/system.module.css';
 
 interface DeleteUserModalProps {
   preview: DeletePreview;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export default function DeleteUserModal({ preview, onClose }: DeleteUserModalProps) {
+export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteUserModalProps) {
   const [confirmEmail, setConfirmEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
 
   const emailMatches = confirmEmail === preview.user.email;
 
@@ -30,8 +29,8 @@ export default function DeleteUserModal({ preview, onClose }: DeleteUserModalPro
       if (result.success) {
         setSuccess(true);
         setTimeout(() => {
-          router.push('/system');
-          router.refresh();
+          onSuccess?.();
+          onClose();
         }, 2000);
       } else {
         setError(result.error || 'Failed to delete user');
