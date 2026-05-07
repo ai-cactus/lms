@@ -327,7 +327,11 @@ export default function SystemUsersClient({
 
       {/* Delete Modal */}
       {deletePreview && (
-        <DeleteUserModal preview={deletePreview} onClose={() => setDeletePreview(null)} />
+        <DeleteUserModal
+          preview={deletePreview}
+          onClose={() => setDeletePreview(null)}
+          onSuccess={fetchUsers}
+        />
       )}
     </>
   );
