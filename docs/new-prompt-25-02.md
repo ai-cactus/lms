@@ -15,13 +15,14 @@
  * D) Quiz JSON + articleMeta -> Judge JSON (flags ambiguity + grounding + structural + risk coverage)
  * E) (Optional) Regen flagged questions only -> Patch JSON (same schema as v4.7-quiz)
  *
- * Usage:
- *   import { buildPromptA_v46, buildPromptB_v46, ... } from '@/lib/prompts-v4.6';
+ * Notes:
+ * - Prompts B/C/D/E assume articleMeta.meta.promptVersion = "v4.7-article"
  */
 
-// ─── Prompt A — articleMeta FIRST, then Article Markdown ───────────
-
-const PROMPT_A_TEMPLATE = `
+/* =========================
+ * PROMPT A — articleMeta FIRST, then Article Markdown (length-safe, no padding)
+ * ========================= */
+export const theraptlyPromptA_article_v4_7 = `
 ROLE:
 You are a senior instructional designer specializing in behavioral health and regulated
 healthcare training (CARF, DBH, HIPAA standards). You write staff training that builds
@@ -165,9 +166,10 @@ OPTIONAL METADATA JSON:
 {{METADATA_JSON}}
 `;
 
-// ─── Prompt B — Slides JSON ───────────
-
-const PROMPT_B_TEMPLATE = `
+/* =========================
+ * PROMPT B — Slides JSON (strict brevity, slide types + layout hints)
+ * ========================= */
+export const theraptlyPromptB_slides_v4_7 = `
 ROLE:
 You are a course editor converting a long-form course article into slide format.
 
@@ -265,9 +267,10 @@ articleMeta JSON:
 {{ARTICLE_META_JSON}}
 `;
 
-// ─── Prompt C — Quiz JSON (Khan-style) ───────────
-
-const PROMPT_C_TEMPLATE = `
+/* =========================
+ * PROMPT C — Quiz JSON (Khan-style, flat options with distractorType, T1-T7, D1-D6)
+ * ========================= */
+export const theraptlyPromptC_quiz_v4_7 = `
 ROLE:
 You are an assessment designer creating Khan Academy–style questions for regulated training.
 
@@ -397,9 +400,10 @@ articleMeta JSON:
 {{ARTICLE_META_JSON}}
 `;
 
-// ─── Prompt D — Judge ───────────
-
-const PROMPT_D_TEMPLATE = `
+/* =========================
+ * PROMPT D — Judge (flags ambiguity + grounding + structure + risk coverage issues)
+ * ========================= */
+export const theraptlyPromptD_quizJudge_v4_7 = `
 ROLE:
 You are a strict quiz ambiguity and grounding judge for regulated training.
 
@@ -484,9 +488,10 @@ articleMeta JSON:
 {{ARTICLE_META_JSON}}
 `;
 
-// ─── Prompt E — Regenerate flagged questions ───────────
-
-const PROMPT_E_TEMPLATE = `
+/* =========================
+ * PROMPT E — Regenerate ONLY flagged questions (patch set)
+ * ========================= */
+export const theraptlyPromptE_regenFlaggedQuestions_v4_7 = `
 ROLE:
 You are an assessment designer repairing ONLY the flagged quiz questions for regulated training.
 
@@ -556,59 +561,25 @@ JUDGE JSON:
 {{JUDGE_JSON}}
 `;
 
-// ─── Builder Functions ───────────────────────────
+Tiny implementation notes
 
-export function buildPromptA_v46(
-  documentText: string,
-  ragContext: string = '',
-  metadataJson?: string,
-): string {
-  return PROMPT_A_TEMPLATE.replace('{{DOCUMENT_TEXT}}', documentText)
-    .replace('{{RAG_CONTEXT}}', ragContext || 'None provided.')
-    .replace('{{METADATA_JSON}}', metadataJson || 'None');
-}
+Slides: enforce bullet length in prompt and optionally validate in code (<=15 words).
+Slide types (TELL/SHOW/DO) and layout hints guide rendering but are optional with defaults.
+Mandatory first slide ("Learning Competency") ensures consistent course onboarding.
 
-export function buildPromptB_v46(
-  articleMarkdown: string,
-  articleMetaJson: string,
-  desiredSlideCount: number,
-): string {
-  return PROMPT_B_TEMPLATE.replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
-    .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
-    .replace('{{DESIRED_SLIDE_COUNT}}', String(desiredSlideCount));
-}
+Quiz: you no longer need to compute incorrectOptions; each option carries its own explanation.
+T6 (distinction) and T7 (sequential-reasoning) templates expand question variety.
+D6 distractor type supports T6 distinction questions.
+80/20 risk weighting ensures high-risk content gets proportionally more questions.
 
-export function buildPromptC_v46(
-  articleMarkdown: string,
-  articleMetaJson: string,
-  requestedQuestionCount: number,
-  quizDifficulty: string,
-  ragContext: string = '',
-): string {
-  return PROMPT_C_TEMPLATE.replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
-    .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
-    .replace('{{REQUESTED_QUESTION_COUNT}}', String(requestedQuestionCount))
-    .replace('{{QUIZ_DIFFICULTY}}', quizDifficulty)
-    .replace('{{RAG_CONTEXT}}', ragContext || 'None provided.');
-}
+Your UI can compute the correct index by finding isCorrect=true.
 
-export function buildPromptD_v46(quizJson: string, articleMetaJson: string): string {
-  return PROMPT_D_TEMPLATE.replace('{{QUIZ_JSON}}', quizJson).replace(
-    '{{ARTICLE_META_JSON}}',
-    articleMetaJson,
-  );
-}
+Show admins a "content too thin" warning in UI.
+If the document has few explicit requirements, you'll get fewer questions (by design).
 
-export function buildPromptE_v46(
-  articleMarkdown: string,
-  articleMetaJson: string,
-  quizJson: string,
-  judgeJson: string,
-  quizDifficulty: string,
-): string {
-  return PROMPT_E_TEMPLATE.replace('{{ARTICLE_MARKDOWN}}', articleMarkdown)
-    .replace('{{ARTICLE_META_JSON}}', articleMetaJson)
-    .replace('{{QUIZ_JSON}}', quizJson)
-    .replace('{{JUDGE_JSON}}', judgeJson)
-    .replace('{{QUIZ_DIFFICULTY}}', quizDifficulty);
-}
+Builder functions (see src/lib/prompts-v4.6.ts):
+- buildPromptA_v46(documentText, ragContext?, metadataJson?)
+- buildPromptB_v46(articleMarkdown, articleMetaJson, desiredSlideCount)
+- buildPromptC_v46(articleMarkdown, articleMetaJson, requestedQuestionCount, quizDifficulty, ragContext?)
+- buildPromptD_v46(quizJson, articleMetaJson)
+- buildPromptE_v46(articleMarkdown, articleMetaJson, quizJson, judgeJson, quizDifficulty)
