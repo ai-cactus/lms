@@ -240,7 +240,13 @@ export default function SignupPage() {
               {errors.agreeTerms && <span className={styles.error}>{errors.agreeTerms}</span>}
             </div>
 
-            <Button type="submit" size="lg" fullWidth loading={isFormLoading || isPending}>
+            <Button
+              type="submit"
+              size="lg"
+              fullWidth
+              loading={isFormLoading || isPending}
+              disabled={isFormLoading || isPending}
+            >
               Create Account
             </Button>
           </form>

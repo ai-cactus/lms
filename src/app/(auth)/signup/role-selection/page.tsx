@@ -157,7 +157,13 @@ export default function RoleSelectionPage() {
 
           {error && <p className={styles.error}>{error}</p>}
 
-          <Button size="lg" fullWidth onClick={handleContinue} loading={isLoading}>
+          <Button
+            size="lg"
+            fullWidth
+            onClick={handleContinue}
+            loading={isLoading}
+            disabled={isLoading}
+          >
             Continue
           </Button>
 

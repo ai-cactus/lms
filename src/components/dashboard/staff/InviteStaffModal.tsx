@@ -9,13 +9,20 @@ interface InviteStaffModalProps {
   isOpen: boolean;
   onClose: () => void;
   organizationId: string;
+  /** Seats remaining under the current plan. null = unlimited (enterprise). */
+  remainingSeats: number | null;
+  planName: string;
 }
 
 export default function InviteStaffModal({
   isOpen,
   onClose,
   organizationId,
+  remainingSeats,
+  planName,
 }: InviteStaffModalProps) {
+  const isLimitedPlan = remainingSeats !== null;
+  const seatsExhausted = isLimitedPlan && remainingSeats === 0;
   const [emails, setEmails] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -227,6 +234,22 @@ export default function InviteStaffModal({
           </div>
         )}
 
+        {/* Seats remaining hint */}
+        {isLimitedPlan && (
+          <p
+            style={{
+              fontSize: '13px',
+              color: seatsExhausted ? '#C53030' : '#718096',
+              fontWeight: seatsExhausted ? 600 : 400,
+              margin: 0,
+            }}
+          >
+            {seatsExhausted
+              ? `Your ${planName} plan has no remaining worker seats. Please upgrade to invite more.`
+              : `${remainingSeats} seat${remainingSeats !== 1 ? 's' : ''} remaining on your ${planName} plan.`}
+          </p>
+        )}
+
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
           <Button variant="outline" type="button" onClick={onClose}>
             Cancel
@@ -235,7 +258,7 @@ export default function InviteStaffModal({
             variant="primary"
             type="submit"
             loading={isLoading}
-            disabled={emails.length === 0 && !inputValue}
+            disabled={(emails.length === 0 && !inputValue) || seatsExhausted}
           >
             Send Invites
           </Button>
