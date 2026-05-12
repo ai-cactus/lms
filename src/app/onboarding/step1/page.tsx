@@ -106,7 +106,7 @@ export default function OnboardingStep1() {
               Employer Identification Number (EIN){' '}
               <span className={styles.helperText}>(optional)</span>
             </label>
-            <Input {...register('ein')} placeholder="Enter your EIN (if applicable)" />
+            <Input {...register('ein')} placeholder="XX-XXXXXXX" />
           </div>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
@@ -189,7 +189,7 @@ export default function OnboardingStep1() {
                 <PhoneInput
                   value={field.value}
                   onChange={field.onChange}
-                  placeholder="Enter the phone number of the main contact"
+                  placeholder="(XXX) XXX-XXXX"
                   error={getError('phone')}
                   allowedCountries={['US']}
                 />
