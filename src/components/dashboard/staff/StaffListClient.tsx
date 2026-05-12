@@ -26,13 +26,27 @@ interface StaffListClientProps {
   users: StaffEntry[];
   hasOrganization: boolean;
   organizationId: string;
+  /** Maximum number of workers allowed by the current plan. null = unlimited. */
+  planLimit: number | null;
+  planName: string;
+  /** Count of active (non-admin) workers in the org */
+  currentWorkerCount: number;
+  /** Count of non-expired pending invites */
+  pendingInviteCount: number;
 }
 
 export default function StaffListClient({
   users: initialUsers,
   hasOrganization,
   organizationId,
+  planLimit,
+  planName,
+  currentWorkerCount,
+  pendingInviteCount,
 }: StaffListClientProps) {
+  // Total seats consumed = active workers + pending invites
+  const totalUsed = currentWorkerCount + pendingInviteCount;
+  const isAtLimit = planLimit !== null && totalUsed >= planLimit;
   const [showFeatureGate, setShowFeatureGate] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
@@ -96,10 +110,46 @@ export default function StaffListClient({
         <div className={styles.titleSection}>
           <h1 className={styles.title}>Staff Details</h1>
           <p className={styles.subtitle}>Here is an overview of your staff details</p>
+          {/* Plan seat usage badge — only shown when the org has a capped plan */}
+          {planLimit !== null && (
+            <p
+              style={{
+                marginTop: '4px',
+                fontSize: '13px',
+                color: isAtLimit ? '#C53030' : '#718096',
+                fontWeight: isAtLimit ? 600 : 400,
+              }}
+            >
+              {isAtLimit ? (
+                <>
+                  ⚠️ Worker limit reached &mdash; {totalUsed}/{planLimit} seats used ({planName}{' '}
+                  plan).{' '}
+                  <a
+                    href="/dashboard/billing"
+                    style={{ color: '#3182CE', textDecoration: 'underline' }}
+                  >
+                    Upgrade
+                  </a>{' '}
+                  to add more.
+                </>
+              ) : (
+                <>
+                  {totalUsed}/{planLimit} workers used &bull; {planLimit - totalUsed} seat
+                  {planLimit - totalUsed !== 1 ? 's' : ''} remaining ({planName})
+                </>
+              )}
+            </p>
+          )}
         </div>
         <Button
           variant="outline"
           size="sm"
+          disabled={isAtLimit}
+          title={
+            isAtLimit
+              ? `Worker limit reached (${totalUsed}/${planLimit}). Upgrade your plan to invite more.`
+              : undefined
+          }
           onClick={() => {
             if (!hasOrganization) {
               setShowFeatureGate(true);
@@ -412,6 +462,8 @@ export default function StaffListClient({
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
         organizationId={organizationId}
+        remainingSeats={planLimit !== null ? Math.max(0, planLimit - totalUsed) : null}
+        planName={planName}
       />
       {/* Revoke Invite Modal */}
       {revokeTarget && (
