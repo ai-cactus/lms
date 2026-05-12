@@ -26,12 +26,9 @@ interface StaffListClientProps {
   users: StaffEntry[];
   hasOrganization: boolean;
   organizationId: string;
-  /** Maximum number of workers allowed by the current plan. null = unlimited. */
   planLimit: number | null;
   planName: string;
-  /** Count of active (non-admin) workers in the org */
   currentWorkerCount: number;
-  /** Count of non-expired pending invites */
   pendingInviteCount: number;
 }
 
@@ -61,7 +58,6 @@ export default function StaffListClient({
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Filter Logic
-  // ⚡ Bolt: Memoize filtered users to avoid re-evaluating on every re-render (e.g. pagination or modal state changes).
   const filteredUsers = useMemo(() => {
     return initialUsers.filter(
       (user) =>
