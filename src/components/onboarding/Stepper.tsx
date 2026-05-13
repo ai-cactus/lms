@@ -2,10 +2,11 @@ import React from 'react';
 import styles from '@/app/onboarding/onboarding.module.css';
 
 const steps = [
-  { id: 1, label: 'Org details' },
+  { id: 1, label: 'Org. details' },
   { id: 2, label: 'Credentialing' },
   { id: 3, label: 'Services' },
-  { id: 4, label: 'Invite Team' },
+  { id: 4, label: 'Invite Team Members' },
+  { id: 5, label: 'Invite Workers' },
 ];
 
 interface StepperProps {
@@ -44,7 +45,7 @@ export default function Stepper({ currentStep }: StepperProps) {
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="3"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >

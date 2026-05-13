@@ -31,11 +31,6 @@ export default function OnboardingStep4() {
     // Combine manual emails and CSV emails
     const allEmails = [...emails, ...csvEmails];
 
-    if (allEmails.length === 0) {
-      setError('Please add at least one worker email or upload a CSV file, or skip this step.');
-      return;
-    }
-
     setIsLoading(true);
 
     try {
@@ -138,7 +133,7 @@ export default function OnboardingStep4() {
 
   return (
     <div className={styles.stepContainer}>
-      <Stepper currentStep={4} />
+      <Stepper currentStep={5} />
 
       <h1 className={styles.stepTitle}>Invite your Workers/Staffs</h1>
       <p className={styles.stepDescription}>
@@ -265,8 +260,8 @@ export default function OnboardingStep4() {
         )}
 
         <div className={styles.actions}>
-          <Button variant="outline" type="button" onClick={() => router.push('/dashboard')}>
-            Skip for now
+          <Button variant="outline" type="button" onClick={() => router.push('/onboarding/step3')}>
+            Back
           </Button>
           <Button variant="primary" type="submit" disabled={isLoading}>
             Complete Onboarding
