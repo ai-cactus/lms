@@ -253,6 +253,7 @@ export default function OnboardingStep1() {
                     { label: 'Colorado', value: 'CO' },
                     { label: 'Connecticut', value: 'CT' },
                     { label: 'Delaware', value: 'DE' },
+                    { label: 'District of Columbia', value: 'DC' },
                     { label: 'Florida', value: 'FL' },
                     { label: 'Georgia', value: 'GA' },
                     { label: 'Hawaii', value: 'HI' },
@@ -295,7 +296,6 @@ export default function OnboardingStep1() {
                     { label: 'West Virginia', value: 'WV' },
                     { label: 'Wisconsin', value: 'WI' },
                     { label: 'Wyoming', value: 'WY' },
-                    { label: 'District of Columbia', value: 'DC' },
                   ]}
                   placeholder="Select an option"
                   error={getError('state')}
@@ -305,10 +305,7 @@ export default function OnboardingStep1() {
           </div>
         </div>
 
-        <div className={styles.actions}>
-          <Button variant="outline" type="button" onClick={() => router.push('/dashboard')}>
-            Skip for now
-          </Button>
+        <div className={styles.actions} style={{ justifyContent: 'flex-end' }}>
           <Button variant="primary" type="submit">
             Next
           </Button>

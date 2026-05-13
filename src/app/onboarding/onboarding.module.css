@@ -70,6 +70,7 @@
   color: #a0aec0;
   font-weight: 500;
   text-transform: capitalize;
+  margin-top: 4px;
 }
 
 .step.active .stepCircle,
@@ -88,8 +89,8 @@
 .connector {
   position: absolute;
   top: 16px;
-  left: 0;
-  right: 0;
+  left: 16px;
+  right: 16px;
   height: 2px;
   background: #edf2f7;
   z-index: 0;
@@ -156,6 +157,7 @@
 .actions {
   display: flex;
   justify-content: space-between;
+  gap: 16px;
   margin-top: 24px;
 }
 
