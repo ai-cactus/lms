@@ -113,14 +113,43 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
         {state?.error && <div className={styles.error}>{state.error}</div>}
 
         {state?.phiDetected && (
-          <div className={styles.warning}>
-            <strong>⚠️ PHI Detected</strong>
-            <p>Our scanner found potential PHI in this document. It has been flagged for review.</p>
+          <div className={styles.phiWarningCard}>
+            <div className={styles.phiWarningHeader}>PHI WARNING</div>
+            <div className={styles.phiWarningBody}>
+              <svg
+                className={styles.phiWarningIcon}
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+              </svg>
+              <p className={styles.phiWarningText}>
+                <strong>WARNING:</strong> Protected Health Information (PHI) detected. Ensure all
+                uploads comply with HIPAA regulations. Unauthorized disclosure is strictly
+                prohibited.
+              </p>
+            </div>
           </div>
         )}
 
         {state?.success && !state.phiDetected && (
-          <div className={styles.success}>Upload Complete!</div>
+          <div className={styles.phiSuccessCard}>
+            <svg
+              className={styles.phiSuccessIcon}
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+            </svg>
+            <p className={styles.phiSuccessText}>
+              <strong>SUCCESS:</strong> No Protected Health Information (PHI) detected. Uploads are
+              not subject to HIPAA restrictions. Authorized sharing is permitted.
+            </p>
+          </div>
         )}
 
         <div className={styles.actions}>

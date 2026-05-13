@@ -77,18 +77,74 @@
   border-radius: var(--radius-sm);
 }
 
-.warning {
-  color: var(--warning);
-  background: #fffbeb;
-  padding: 0.5rem;
-  border-radius: var(--radius-sm);
+.phiWarningCard {
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.success {
-  color: var(--success);
-  background: #ecfdf5;
-  padding: 0.5rem;
-  border-radius: var(--radius-sm);
+.phiWarningHeader {
+  background-color: #fcd34d;
+  color: #000;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+.phiWarningBody {
+  background-color: #fef2f2;
+  padding: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  color: #000;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.phiWarningIcon {
+  color: #dc2626;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.phiWarningText {
+  margin: 0;
+}
+
+.phiWarningText strong {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.phiSuccessCard {
+  border: 1px solid #22c55e;
+  background-color: #f0fdf4;
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  color: #000;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.phiSuccessIcon {
+  color: #22c55e;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.phiSuccessText {
+  margin: 0;
+}
+
+.phiSuccessText strong {
+  color: #22c55e;
+  font-weight: 600;
 }
 
 .scanningFlex {
