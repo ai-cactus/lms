@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { deleteDocument } from '@/app/actions/documents';
 import EmptyTableState from '@/components/ui/EmptyTableState';
@@ -26,6 +26,11 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  // Sync state with props when a new document is uploaded and revalidatePath runs
+  useEffect(() => {
+    setDocs(initialDocs);
+  }, [initialDocs]);
 
   const handleRowClick = (docId: string) => {
     router.push(`/dashboard/documents/${docId}`);

@@ -16,6 +16,7 @@ interface ModalProps {
   showCloseButton?: boolean;
   preventClose?: boolean; // If true, clicking backdrop or escape won't close
   className?: string; // Additional classes for the modal content
+  contentClassName?: string; // Additional classes for the content wrapper
 }
 
 export const Modal = ({
@@ -28,6 +29,7 @@ export const Modal = ({
   showCloseButton = true,
   preventClose = false,
   className,
+  contentClassName,
 }: ModalProps) => {
   const [mounted, setMounted] = useState(false);
 
@@ -130,7 +132,7 @@ export const Modal = ({
                 </div>
               )}
 
-              <div className={styles.content}>{children}</div>
+              <div className={`${styles.content} ${contentClassName || ''}`}>{children}</div>
             </motion.div>
           </motion.div>
         </div>

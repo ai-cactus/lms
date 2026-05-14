@@ -31,16 +31,17 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
   const latest = doc.versions[0];
   const courseLinks = latest.courseVersions || [];
 
-  // Resolve a signed URL for the latest version's file server-side.
   // The signed URL is embedded in the page at render time — valid for 15 min.
   // For legacy local paths this returns the path as-is (backward compat).
-  let fileUrl: string | null = null;
+  let downloadUrl: string | null = null;
+  const previewUrl = `/api/documents/${latest.id}/preview`;
+
   if (doc.mimeType === 'application/pdf') {
     const { url, error } = await getDocumentSignedUrl(latest.id);
     if (url) {
-      fileUrl = url;
+      downloadUrl = url;
     } else {
-      // Non-fatal: viewer will show an error state if fileUrl is null
+      // Non-fatal: viewer will show an error state if downloadUrl is null
       logger.error({ msg: 'Could not resolve signed URL for document:', err: error });
     }
   }
@@ -59,9 +60,9 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
           <span>Uploaded: {doc.updatedAt.toLocaleDateString()}</span>
           <span>Size: {(doc.size / 1024).toFixed(1)} KB</span>
           {latest.phiReport?.hasPHI && <span className={styles.badgeWarning}>PHI Detected</span>}
-          {fileUrl && (
+          {downloadUrl && (
             <a
-              href={fileUrl}
+              href={downloadUrl}
               download={doc.filename}
               className={styles.downloadLink}
               target="_blank"
@@ -92,8 +93,8 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
 
         <div className={styles.mainContent}>
           {doc.mimeType === 'application/pdf' ? (
-            fileUrl ? (
-              <PdfViewer fileUrl={fileUrl} />
+            previewUrl ? (
+              <PdfViewer fileUrl={previewUrl} />
             ) : (
               <div className={styles.noContent}>
                 <p>Could not load PDF preview.</p>

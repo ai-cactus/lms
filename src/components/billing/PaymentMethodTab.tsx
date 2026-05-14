@@ -42,7 +42,7 @@ export default function PaymentMethodTab() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/billing/payment-methods');
+      const res = await fetch('/api/billing/payment-methods', { cache: 'no-store' });
       if (!res.ok) {
         const json = await res.json();
         throw new Error(json.error ?? 'Failed to load payment methods');
