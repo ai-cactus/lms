@@ -96,6 +96,7 @@ export default function OrganizationActivationModal({
       onClose={handleClose}
       size="xl"
       className={styles.modalParams}
+      contentClassName={styles.modalContentParams}
       preventClose={isWelcomeMode} // Force user to choose an action
       showCloseButton={!isWelcomeMode}
     >
