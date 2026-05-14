@@ -8,8 +8,6 @@ interface InactivityTimerProps {
   timeoutMinutes?: number;
   /** Minutes before expiry to show the warning modal. Default: 2 */
   warningMinutes?: number;
-  /** API path to ping for keep-alive (e.g. '/api/auth/keep-alive') */
-  keepAlivePath: string;
 }
 
 /**
@@ -26,13 +24,13 @@ interface InactivityTimerProps {
 export default function InactivityTimer({
   timeoutMinutes = parseInt(process.env.NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES || '15', 10),
   warningMinutes = 2,
-  keepAlivePath,
 }: InactivityTimerProps) {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const [showWarning, setShowWarning] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(0);
 
   const lastActivityRef = useRef<number>(0);
+  const lastUpdateRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -50,18 +48,14 @@ export default function InactivityTimer({
 
   const handleKeepAlive = useCallback(async () => {
     try {
-      const res = await fetch(keepAlivePath, { method: 'GET', credentials: 'same-origin' });
-      if (res.ok) {
-        resetActivity();
-      } else {
-        // Session already expired server-side
-        window.location.href = '/login?reason=inactive';
-      }
-    } catch {
-      // Network error — don't log out for this
+      await update();
       resetActivity();
+      lastUpdateRef.current = Date.now();
+    } catch {
+      // Network error or session already expired
+      window.location.href = '/login?reason=inactive';
     }
-  }, [keepAlivePath, resetActivity]);
+  }, [update, resetActivity]);
 
   const handleLogout = useCallback(() => {
     signOut({ callbackUrl: '/login?reason=inactive' });
@@ -74,6 +68,9 @@ export default function InactivityTimer({
     // Initialize on mount
     if (lastActivityRef.current === 0) {
       lastActivityRef.current = Date.now();
+    }
+    if (lastUpdateRef.current === 0) {
+      lastUpdateRef.current = Date.now();
     }
 
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'] as const;
@@ -99,7 +96,8 @@ export default function InactivityTimer({
     const checkInterval = 30_000; // Check every 30 seconds
 
     timerRef.current = setInterval(() => {
-      const elapsed = Date.now() - lastActivityRef.current;
+      const now = Date.now();
+      const elapsed = now - lastActivityRef.current;
 
       if (elapsed >= TIMEOUT_MS) {
         // Session expired — redirect
@@ -124,6 +122,14 @@ export default function InactivityTimer({
             return prev - 1;
           });
         }, 1000);
+      } else if (
+        !showWarning &&
+        lastActivityRef.current > lastUpdateRef.current &&
+        now - lastUpdateRef.current >= 4 * 60 * 1000
+      ) {
+        // Heartbeat: If user is active, silently update session every 4 minutes
+        update().catch(() => {});
+        lastUpdateRef.current = now;
       }
     }, checkInterval);
 
@@ -131,7 +137,7 @@ export default function InactivityTimer({
       if (timerRef.current) clearInterval(timerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [session, TIMEOUT_MS, WARNING_MS, showWarning, handleLogout]);
+  }, [session, TIMEOUT_MS, WARNING_MS, showWarning, handleLogout, update]);
 
   if (!session || !showWarning) return null;
 

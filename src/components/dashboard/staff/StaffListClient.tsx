@@ -21,6 +21,7 @@ import OrganizationActivationModal from '@/components/dashboard/OrganizationActi
 import InviteStaffModal from './InviteStaffModal';
 import RevokeInviteModal from './RevokeInviteModal';
 import RemoveStaffModal from './RemoveStaffModal';
+import WorkerLimitModal from './WorkerLimitModal';
 
 interface StaffListClientProps {
   users: StaffEntry[];
@@ -46,6 +47,7 @@ export default function StaffListClient({
   const isAtLimit = planLimit !== null && totalUsed >= planLimit;
   const [showFeatureGate, setShowFeatureGate] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showWorkerLimitModal, setShowWorkerLimitModal] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{
     id: string;
@@ -140,14 +142,10 @@ export default function StaffListClient({
         <Button
           variant="outline"
           size="sm"
-          disabled={isAtLimit}
-          title={
-            isAtLimit
-              ? `Worker limit reached (${totalUsed}/${planLimit}). Upgrade your plan to invite more.`
-              : undefined
-          }
           onClick={() => {
-            if (!hasOrganization) {
+            if (isAtLimit) {
+              setShowWorkerLimitModal(true);
+            } else if (!hasOrganization) {
               setShowFeatureGate(true);
             } else {
               setShowInviteModal(true);
@@ -481,6 +479,14 @@ export default function StaffListClient({
           staffEmail={removeTarget.email}
         />
       )}
+
+      {/* Worker Limit Modal */}
+      <WorkerLimitModal
+        isOpen={showWorkerLimitModal}
+        onClose={() => setShowWorkerLimitModal(false)}
+        planName={planName}
+        planLimit={planLimit || 0}
+      />
     </div>
   );
 }

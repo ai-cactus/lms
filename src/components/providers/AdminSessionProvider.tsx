@@ -6,7 +6,7 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
   return (
     <SessionProvider basePath="/api/auth">
       {children}
-      <InactivityTimer keepAlivePath="/api/auth/keep-alive" />
+      <InactivityTimer />
     </SessionProvider>
   );
 }
