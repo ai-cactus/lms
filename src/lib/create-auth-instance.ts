@@ -293,8 +293,6 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           if (user.name) {
             token.name = user.name;
           }
-          // Set initial activity timestamp on sign-in
-          token.lastActivity = Date.now();
         }
 
         // ✅ Re-validate against DB on every decode
@@ -313,28 +311,6 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           if (!freshUser) return null; // Invalidates session if user deleted
           if (freshUser.role !== allowedRole) return null; // Invalidates if role changed
-
-          // ── Inactivity timeout check ──────────────────────────────────────
-          const lastActivity = token.lastActivity as number | undefined;
-          if (lastActivity) {
-            const timeoutMinutes = Math.max(
-              5,
-              Math.min(120, parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '15', 10)),
-            );
-            const elapsed = Date.now() - lastActivity;
-            if (elapsed > timeoutMinutes * 60 * 1000) {
-              logger.info({
-                msg: 'Session expired due to inactivity',
-                userId: token.id,
-                elapsedMs: elapsed,
-                timeoutMinutes,
-                instance: cookiePrefix,
-              });
-              return null; // Invalidate session
-            }
-          }
-          // Refresh activity timestamp
-          token.lastActivity = Date.now();
 
           token.role = freshUser.role as Role;
           token.organizationId = freshUser.organizationId;
@@ -366,7 +342,10 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
       error: '/login',
     },
 
-    session: { strategy: 'jwt' },
+    session: {
+      strategy: 'jwt',
+      maxAge: parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '15', 10) * 60,
+    },
   };
 
   const instance = NextAuth(config);

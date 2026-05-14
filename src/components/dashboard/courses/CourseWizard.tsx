@@ -561,25 +561,112 @@ export default function CourseWizard() {
         )}
 
         {currentStep === 2 && (
-          <div className={styles.privacyNotice}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              textAlign: 'center',
+              padding: '24px 0',
+              marginTop: '16px',
+              backgroundColor: '#FAFCFE',
+              borderRadius: '12px',
+              border: '1px dashed #E2E8F0',
+              width: '100%',
+              maxWidth: '800px',
+            }}
+          >
+            {/* Icon Layer from PhiErrorModal */}
+            <div
+              style={{
+                position: 'relative',
+                width: '120px',
+                height: '120px',
+                marginBottom: '24px',
+              }}
             >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
-            <span>
-              We care about your privacy! Ensure that any document you upload does NOT contain
-              personal health information.
-            </span>
+              {/* Document Icon */}
+              <svg
+                width="100"
+                height="100"
+                viewBox="0 0 100 100"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <rect x="20" y="15" width="60" height="70" rx="4" fill="#F1F5F9" />
+                <rect
+                  x="20"
+                  y="15"
+                  width="60"
+                  height="70"
+                  rx="4"
+                  stroke="#E2E8F0"
+                  strokeWidth="2"
+                />
+                <line
+                  x1="30"
+                  y1="30"
+                  x2="70"
+                  y2="30"
+                  stroke="#CBD5E0"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="30"
+                  y1="40"
+                  x2="70"
+                  y2="40"
+                  stroke="#CBD5E0"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="30"
+                  y1="50"
+                  x2="70"
+                  y2="50"
+                  stroke="#CBD5E0"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+
+              {/* Magnifying Glass with Badge */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '0',
+                  left: '-10px',
+                  filter: 'drop-shadow(0px 10px 15px rgba(0,0,0,0.1))',
+                }}
+              >
+                <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
+                  <circle cx="25" cy="25" r="20" fill="white" stroke="#4C6EF5" strokeWidth="4" />
+                  <path d="M40 40L55 55" stroke="#4C6EF5" strokeWidth="6" strokeLinecap="round" />
+                  <path d="M18 25H32" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
+                  <path d="M18 18H28" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
+                  <path d="M18 32H24" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+              </div>
+            </div>
+
+            <h2
+              style={{ fontSize: '20px', fontWeight: 700, color: '#1A202C', marginBottom: '12px' }}
+            >
+              We care about your privacy!
+            </h2>
+            <p
+              style={{
+                fontSize: '15px',
+                color: '#4A5568',
+                maxWidth: '500px',
+                lineHeight: '1.5',
+                marginBottom: '0',
+              }}
+            >
+              Ensure that any document you upload does NOT contain personal health information.
+            </p>
           </div>
         )}
 
