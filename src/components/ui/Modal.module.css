@@ -92,7 +92,9 @@
 .content {
   padding: 24px;
   overflow-y: auto;
+  min-height: 0;
   /* Allow scrolling within content if needed */
+  /* min-height: 0 required for flex child to shrink below content size */
 }
 
 .closeButton {

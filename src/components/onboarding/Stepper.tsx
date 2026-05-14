@@ -16,8 +16,13 @@ interface StepperProps {
 export default function Stepper({ currentStep }: StepperProps) {
   return (
     <div className={styles.stepper}>
-      {/* Background Line */}
-      <div className={styles.connector}>
+      <div
+        className={styles.connector}
+        style={{
+          left: `${100 / (steps.length * 2)}%`,
+          right: `${100 / (steps.length * 2)}%`,
+        }}
+      >
         <div
           style={{
             height: '100%',

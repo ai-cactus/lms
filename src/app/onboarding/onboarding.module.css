@@ -34,7 +34,6 @@
 /* Stepper Styles */
 .stepper {
   display: flex;
-  justify-content: space-between;
   margin-bottom: 60px;
   position: relative;
   max-width: 700px;
@@ -43,6 +42,7 @@
 }
 
 .step {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -63,6 +63,7 @@
   justify-content: center;
   font-size: 14px;
   font-weight: 600;
+  box-shadow: 0 0 0 6px #f7fafc;
 }
 
 .stepLabel {
@@ -78,7 +79,13 @@
   background: #4c6ef5;
   border-color: #4c6ef5;
   color: white;
-  box-shadow: 0 0 0 4px rgba(76, 110, 245, 0.1);
+  box-shadow: 0 0 0 6px #f7fafc;
+}
+
+.step.active .stepCircle {
+  box-shadow:
+    0 0 0 6px #f7fafc,
+    0 0 0 10px rgba(76, 110, 245, 0.1);
 }
 
 .step.active .stepLabel,
@@ -89,8 +96,6 @@
 .connector {
   position: absolute;
   top: 16px;
-  left: 16px;
-  right: 16px;
   height: 2px;
   background: #edf2f7;
   z-index: 0;
