@@ -55,7 +55,7 @@ Copy the template and fill in your credentials:
 cp .env.example .env
 ```
 
-Refer to [.env.example](.env.example) for detailed descriptions of each required variable.
+Refer to [.env.example](.env.example) for detailed descriptions of each required variable for the project
 
 ### 🗄 Database Setup
 
