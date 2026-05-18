@@ -50,6 +50,7 @@ export default async function ProfilePage() {
     jobTitle: profile?.jobTitle || '',
     avatarUrl: profile?.avatarUrl || null,
     avatarDisplayUrl,
+    authProvider: user?.authProvider || 'credentials',
   };
 
   // Construct organization data
@@ -73,6 +74,11 @@ export default async function ProfilePage() {
         primaryBusinessType: user.organization.primaryBusinessType,
         additionalBusinessTypes: user.organization.additionalBusinessTypes || [],
         programServices: user.organization.programServices || [],
+        complianceDocumentUrl: user.organization.complianceDocumentUrl,
+        complianceDocumentName: user.organization.complianceDocumentName,
+        complianceDocumentDisplayUrl: user.organization.complianceDocumentUrl
+          ? await getSignedUrl(user.organization.complianceDocumentUrl).catch(() => null)
+          : null,
       }
     : null;
 

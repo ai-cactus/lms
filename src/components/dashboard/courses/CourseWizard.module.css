@@ -2949,3 +2949,49 @@ input:checked + .slider:before {
     transform: translateY(0);
   }
 }
+
+/* Quality Warning Card (mirrors PHI detected style) */
+.qualityWarningCard {
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+}
+
+.qualityWarningHeader {
+  background-color: #fcd34d;
+  color: #000;
+  font-weight: 600;
+  padding: 0.4rem 0.875rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.qualityWarningBody {
+  background-color: #fef2f2;
+  padding: 0.75rem 0.875rem;
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  color: #000;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.qualityWarningIcon {
+  color: #dc2626;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.qualityWarningText {
+  margin: 0;
+}
+
+.qualityWarningText strong {
+  color: #dc2626;
+  font-weight: 600;
+}

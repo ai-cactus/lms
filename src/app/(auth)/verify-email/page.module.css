@@ -167,3 +167,9 @@
     display: block;
   }
 }
+
+@media (max-width: 1023px) {
+  .formSection {
+    padding: 24px;
+  }
+}

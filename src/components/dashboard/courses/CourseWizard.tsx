@@ -112,7 +112,7 @@ export default function CourseWizard() {
         }
         localStorage.removeItem('lms_pending_generation');
       }
-    } catch (e) {
+    } catch {
       // Ignored
     }
   }, []);
