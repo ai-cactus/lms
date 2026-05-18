@@ -87,11 +87,12 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_REPO: ${{ github.repository }}
           IMAGE_REF: ${{ needs.build.outputs.image-ref }}
+          ENV_FILE_BASE64: ${{ secrets.STAGING_ENV_BASE64 }}
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: GITHUB_TOKEN,GITHUB_ACTOR,GITHUB_REPO,IMAGE_REF
+          envs: GITHUB_TOKEN,GITHUB_ACTOR,GITHUB_REPO,IMAGE_REF,ENV_FILE_BASE64
           script_stop: true
           script: |
             set -euo pipefail
@@ -99,6 +100,9 @@ jobs:
             APP_DIR="/home/deploy/apps/lms-staging"
             COMPOSE_FILE="${APP_DIR}/docker-compose.staging.yml"
             ENV_FILE="${APP_DIR}/.env.staging"
+
+            echo "==> Creating .env.staging from secret..."
+            echo "$ENV_FILE_BASE64" | base64 --decode > "${ENV_FILE}"
 
             # ── [1/4] Update compose files on the VM ──────────────────────────
             echo "==> [1/4] Pulling latest compose config..."
