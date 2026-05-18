@@ -102,7 +102,7 @@ jobs:
             ENV_FILE="${APP_DIR}/.env.staging"
 
             echo "==> Creating .env.staging from secret..."
-            echo "$ENV_FILE_BASE64" | base64 --decode > "${ENV_FILE}"
+            echo "$ENV_FILE_BASE64" | base64 --decode | tr -d '\r' > "${ENV_FILE}"
 
             # ── [1/4] Update compose files on the VM ──────────────────────────
             echo "==> [1/4] Pulling latest compose config..."
