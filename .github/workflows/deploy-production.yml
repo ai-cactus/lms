@@ -71,11 +71,13 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          ENV_FILE_BASE64: ${{ secrets.PRODUCTION_ENV_BASE64 }}
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: GITHUB_TOKEN,GITHUB_ACTOR,GITHUB_REPO,IMAGE_REF
+          envs: GITHUB_TOKEN,GITHUB_ACTOR,GITHUB_REPO,IMAGE_REF,ENV_FILE_BASE64
           script_stop: true
           script: |
             set -euo pipefail
@@ -84,6 +86,9 @@ jobs:
             APP_DIR="/home/deploy/apps/lms-production"
             COMPOSE_FILE="${APP_DIR}/docker-compose.production.yml"
             ENV_FILE="${APP_DIR}/.env.production"
+
+            echo "==> Creating .env.production from secret..."
+            echo "$ENV_FILE_BASE64" | base64 --decode > "${ENV_FILE}"
 
             # GITHUB variables need to be explicitly exported inside the script 
             # if passed via envs block to get interpolated inside strings if needed, 
