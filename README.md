@@ -84,9 +84,9 @@ node scripts/seed-courses.js
 
 ---
 
-## 🤝 Contribution
+## 🤝 Contributing
 
-We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to get started.
+As a team member, you can find detailed instructions on how to contribute and the current status of the project in the [CONTRIBUTING.md](CONTRIBUTING.md) file. We welcome contributions and appreciate your effort to improve our codebase. Please ensure you adhere to our guidelines when making changes.
 
 ---
 
