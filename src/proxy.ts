@@ -103,6 +103,17 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // ✅ MFA Step-up check
+  if (
+    (token as unknown as Record<string, unknown>).mfaEnabled === true &&
+    (token as unknown as Record<string, unknown>).mfaVerified !== true &&
+    pathname !== '/verify-2fa'
+  ) {
+    const mfaUrl = new URL('/verify-2fa', req.url);
+    mfaUrl.searchParams.set('callbackUrl', pathname);
+    return NextResponse.redirect(mfaUrl);
+  }
+
   // Worker-specific: force onboarding if no org
   if (
     context === 'worker' &&

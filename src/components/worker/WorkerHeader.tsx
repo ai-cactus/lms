@@ -273,7 +273,7 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
                     <line x1="9" y1="9" x2="9.01" y2="9"></line>
                     <line x1="15" y1="9" x2="15.01" y2="9"></line>
                   </svg>
-                  Edit Profile
+                  Profile
                 </Link>
                 <Button
                   variant="ghost"
