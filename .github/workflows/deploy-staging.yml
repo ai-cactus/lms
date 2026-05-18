@@ -142,7 +142,7 @@ jobs:
               fi
               if [ "$i" -eq 18 ]; then
                 echo "❌ Health check failed after 90s. Check logs:"
-                docker compose -f "${COMPOSE_FILE}" logs --tail=50 app
+                APP_IMAGE="${IMAGE_REF}" docker compose -f "${COMPOSE_FILE}" logs --tail=50 app
                 exit 1
               fi
               sleep 5
