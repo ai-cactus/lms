@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 
 import { headers } from 'next/headers';
 import { logger } from '@/lib/logger';
+import bcrypt from 'bcryptjs';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -274,5 +275,62 @@ export async function uploadAvatar(formData: FormData) {
   } catch (error) {
     logger.error({ msg: 'Failed to upload avatar:', err: error });
     return { error: 'Failed to upload avatar' };
+  }
+}
+
+export async function changePassword(data: { currentPassword?: string; newPassword: string }) {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const { currentPassword, newPassword } = data;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { password: true, authProvider: true },
+    });
+
+    if (!user) {
+      return { success: false, error: 'User not found' };
+    }
+
+    // Check if the user is using an OAuth provider (no password to change)
+    if (user.authProvider !== 'credentials') {
+      return { success: false, error: 'Cannot change password for OAuth accounts.' };
+    }
+
+    // Verify current password if user has one
+    if (user.password) {
+      if (!currentPassword) {
+        return { success: false, error: 'Current password is required.' };
+      }
+      const valid = await bcrypt.compare(currentPassword, user.password);
+      if (!valid) {
+        return { success: false, error: 'Incorrect current password.' };
+      }
+    }
+
+    // Password strength is validated on the client, but we should do a basic check here
+    if (newPassword.length < 12) {
+      return { success: false, error: 'New password must be at least 12 characters long.' };
+    }
+
+    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: {
+        password: hashedNewPassword,
+        passwordResetRequired: false,
+      },
+    });
+
+    logger.info({ msg: 'User changed password successfully', userId: session.user.id });
+    return { success: true };
+  } catch (error) {
+    logger.error({ msg: 'Failed to change password:', err: error });
+    return { success: false, error: 'Failed to change password' };
   }
 }

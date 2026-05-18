@@ -304,7 +304,9 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               role: true,
               organizationId: true,
               mfaEnabled: true,
+              mfaVerifiedAt: true,
               passwordResetRequired: true,
+              authProvider: true,
               profile: { select: { fullName: true } },
             },
           });
@@ -316,7 +318,22 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           token.organizationId = freshUser.organizationId;
           token.name = freshUser.profile?.fullName || token.email || 'User';
           token.mfaEnabled = freshUser.mfaEnabled;
+          token.authProvider = freshUser.authProvider;
           token.passwordResetRequired = freshUser.passwordResetRequired;
+
+          // Determine mfaVerified based on step-up timestamp:
+          // The token stores the session start time (iat). If the user completed
+          // an MFA challenge (mfaVerifiedAt) after this token was issued, grant access.
+          if (freshUser.mfaEnabled) {
+            const sessionStart = ((token.iat as number) ?? 0) * 1000; // iat is in seconds
+            const verifiedAt = freshUser.mfaVerifiedAt?.getTime() ?? 0;
+            // Allow a 30-second clock skew window
+            const verified = verifiedAt > sessionStart - 30_000;
+            token.mfaVerified = verified;
+          } else {
+            // MFA disabled — always considered verified
+            token.mfaVerified = true;
+          }
         }
 
         return token;
@@ -328,6 +345,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           session.user.id = token.id as string;
           session.user.role = token.role as Role;
           session.user.organizationId = token.organizationId as string | null;
+          session.user.authProvider = (token.authProvider as string) ?? 'credentials';
           (session.user as User & { mfaVerified?: boolean }).mfaVerified =
             (token.mfaVerified as boolean) ?? false;
           (session.user as User & { mfaEnabled?: boolean }).mfaEnabled =

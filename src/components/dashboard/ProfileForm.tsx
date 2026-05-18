@@ -7,6 +7,8 @@ import { updateProfile, uploadAvatar } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import OrganizationForm from './OrganizationForm';
+import { ChangePasswordTab } from './ChangePasswordTab';
+import { TwoFactorAuthTab } from './TwoFactorAuthTab';
 
 interface ProfileData {
   id: string;
@@ -18,6 +20,7 @@ interface ProfileData {
   company_name?: string;
   avatarUrl?: string | null;
   avatarDisplayUrl?: string | null;
+  authProvider?: string;
 }
 
 interface OrganizationData {
@@ -36,6 +39,9 @@ interface OrganizationData {
   city?: string | null;
   licenseNumber?: string | null;
   isHipaaCompliant?: boolean;
+  complianceDocumentUrl?: string | null;
+  complianceDocumentName?: string | null;
+  complianceDocumentDisplayUrl?: string | null;
 }
 
 interface ProfileFormProps {
@@ -44,7 +50,9 @@ interface ProfileFormProps {
 }
 
 export default function ProfileForm({ initialData, organizationData }: ProfileFormProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'organization'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'organization' | 'password' | '2fa'>(
+    'profile',
+  );
   const [baseData, setBaseData] = useState(initialData);
   const [formData, setFormData] = useState(initialData);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialData.avatarUrl || null);
@@ -179,22 +187,36 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
       </div>
 
       <div className={styles.card}>
-        <div className={styles.tabs}>
-          <div
-            className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
-            onClick={() => setActiveTab('profile')}
-          >
-            EDIT PROFILE
-          </div>
-          <div
-            className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
-            onClick={() => setActiveTab('organization')}
-          >
-            YOUR ORGANIZATION
+        <div style={{ padding: '0 40px' }}>
+          <div className={styles.tabs}>
+            <div
+              className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('profile')}
+            >
+              EDIT PROFILE
+            </div>
+            <div
+              className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('organization')}
+            >
+              YOUR ORGANIZATION
+            </div>
+            <div
+              className={`${styles.tab} ${activeTab === 'password' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('password')}
+            >
+              CHANGE PASSWORD
+            </div>
+            <div
+              className={`${styles.tab} ${activeTab === '2fa' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('2fa')}
+            >
+              TWO FACTOR AUTH (2FA)
+            </div>
           </div>
         </div>
 
-        {activeTab === 'profile' ? (
+        {activeTab === 'profile' && (
           <div className={styles.profileWrapper}>
             <div className={styles.avatarSection}>
               <div className={styles.avatarLarge}>
@@ -398,9 +420,15 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
               )}
             </form>
           </div>
-        ) : (
+        )}
+
+        {activeTab === 'organization' && (
           <OrganizationForm initialData={organizationData || null} isAdmin={isAdmin} />
         )}
+
+        {activeTab === 'password' && <ChangePasswordTab authProvider={initialData.authProvider} />}
+
+        {activeTab === '2fa' && <TwoFactorAuthTab userEmail={initialData.email} />}
       </div>
 
       {/* Confirmation Modal */}

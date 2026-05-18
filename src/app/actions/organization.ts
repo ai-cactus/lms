@@ -24,6 +24,8 @@ interface OrganizationUpdateData {
   primaryBusinessType?: string;
   additionalBusinessTypes?: string[];
   programServices?: string[];
+  complianceDocumentUrl?: string;
+  complianceDocumentName?: string;
 }
 
 export async function updateOrganization(data: OrganizationUpdateData) {
@@ -73,6 +75,8 @@ export async function updateOrganization(data: OrganizationUpdateData) {
         primaryBusinessType: data.primaryBusinessType,
         additionalBusinessTypes: data.additionalBusinessTypes || [],
         programServices: data.programServices || [],
+        complianceDocumentUrl: data.complianceDocumentUrl,
+        complianceDocumentName: data.complianceDocumentName,
       },
     });
 
@@ -214,5 +218,45 @@ export async function checkOrganizationNameAvailable(name: string) {
   } catch (error) {
     logger.error({ msg: 'Error checking organization name:', err: error });
     return { available: false, error: 'Failed to check organization name' };
+  }
+}
+
+export async function uploadComplianceDocument(formData: FormData) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const file = formData.get('file') as File;
+  if (!file) {
+    return { success: false, error: 'No file provided' };
+  }
+
+  // Validate file size (e.g., 10MB)
+  if (file.size > 10 * 1024 * 1024) {
+    return { success: false, error: 'File size too large. Max 10MB.' };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { organizationId: true, role: true },
+    });
+
+    if (!user?.organizationId || user.role !== 'admin') {
+      return { success: false, error: 'Unauthorized to upload organization documents' };
+    }
+
+    const { uploadFile } = await import('@/lib/storage');
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+    const key = `organizations/${user.organizationId}/compliance/${timestamp}-${safeName}`;
+    const { storageUri } = await uploadFile(key, buffer, file.type || 'application/pdf');
+
+    return { success: true, url: storageUri, filename: file.name };
+  } catch (error) {
+    logger.error({ msg: 'Failed to upload compliance document:', err: error });
+    return { success: false, error: 'Failed to upload document' };
   }
 }

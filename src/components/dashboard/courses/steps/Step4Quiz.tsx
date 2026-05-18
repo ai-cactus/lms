@@ -50,10 +50,24 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
                 placeholder="1 - 25"
               />
             </div>
-            <span style={{ color: '#E53E3E', fontSize: '13px', lineHeight: '1.4' }}>
-              Adding more questions may reduce question quality. We recommend keeping questions
-              concise.
-            </span>
+            <div className={styles.qualityWarningCard}>
+              <div className={styles.qualityWarningHeader}>Quality Notice</div>
+              <div className={styles.qualityWarningBody}>
+                <svg
+                  className={styles.qualityWarningIcon}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                </svg>
+                <p className={styles.qualityWarningText}>
+                  <strong>WARNING:</strong> Adding more questions may reduce question quality. We
+                  recommend keeping questions concise.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
