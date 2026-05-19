@@ -156,6 +156,14 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showBillingGate, setShowBillingGate] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setActiveDropdown(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // Filter Logic
   // ⚡ Bolt: Memoize filtered courses to prevent re-calculating on every render,
@@ -256,9 +264,11 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         <table className={styles.table}>
           <thead>
             <tr>
-              <th style={{ width: '50%' }}>Course Name</th>
-              <th style={{ width: '25%' }}>Assigned Staff</th>
-              <th style={{ width: '25%' }}>Date Created</th>
+              <th style={{ width: '40%' }}>Course Name</th>
+              <th style={{ width: '15%' }}>Assigned Staff</th>
+              <th style={{ width: '15%' }}>Role</th>
+              <th style={{ width: '20%' }}>Date Created</th>
+              <th style={{ width: '10%' }}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -286,12 +296,85 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                     </div>
                   </td>
                   <td>{course.enrollmentsCount}</td>
+                  <td>General</td>
                   <td>
                     {new Date(course.createdAt).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
                     })}
+                  </td>
+                  <td>
+                    <div className={styles.actionCell} onClick={(e) => e.stopPropagation()}>
+                      <span
+                        className={styles.viewAction}
+                        onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                      >
+                        View
+                      </span>
+                      <div className={styles.dropdownContainer}>
+                        <button
+                          className={styles.moreActionBtn}
+                          onClick={() =>
+                            setActiveDropdown(activeDropdown === course.id ? null : course.id)
+                          }
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="5" r="1"></circle>
+                            <circle cx="12" cy="19" r="1"></circle>
+                          </svg>
+                        </button>
+                        {activeDropdown === course.id && (
+                          <div className={styles.dropdownMenu}>
+                            <button className={styles.dropdownItem}>
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: 8 }}
+                              >
+                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                              </svg>
+                              Rename
+                            </button>
+                            <button className={`${styles.dropdownItem} ${styles.deleteItem}`}>
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: 8 }}
+                              >
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                              </svg>
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))

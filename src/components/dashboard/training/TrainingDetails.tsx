@@ -7,8 +7,6 @@ import Link from 'next/link';
 import ShareCourseModal from './ShareCourseModal';
 
 import { CourseWithRelations } from '@/types/course';
-import { removeWorkerAssignment } from '@/app/actions/enrollment';
-import { logger } from '@/lib/logger';
 
 interface TrainingDetailsProps {
   course: CourseWithRelations;
@@ -18,7 +16,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'staff' | 'certificates'>('staff');
-  const [isRemoving, setIsRemoving] = useState<string | null>(null);
 
   // Use real enrollments from database only
   const enrollments = course.enrollments || [];
@@ -27,7 +24,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
   // Calculate Stats
   const completedCount = enrollments.filter((e) => e.status === 'completed').length;
-  const attestedCount = enrollments.filter((e) => e.status === 'attested').length;
   const completionRate = totalLearners > 0 ? Math.round((completedCount / totalLearners) * 100) : 0;
 
   // Average Score
@@ -47,20 +43,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
     const emailMatch = e.user?.email.toLowerCase().includes(q);
     return nameMatch || emailMatch;
   });
-
-  const handleRemoveAssignment = async (enrollmentId: string) => {
-    if (!window.confirm('Are you sure you want to unassign this worker?')) return;
-    setIsRemoving(enrollmentId);
-    try {
-      await removeWorkerAssignment(enrollmentId);
-      // Let Server Actions revalidatePath do the refresh
-    } catch (err) {
-      logger.error({ msg: 'Failed to unassign worker', err: err });
-      alert('Failed to unassign worker.');
-    } finally {
-      setIsRemoving(null);
-    }
-  };
 
   return (
     <div className={styles.container}>
@@ -90,11 +72,67 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
         <div className={styles.header}>
           <div className={styles.titleSection}>
-            <h1 className={styles.title}>
-              {course.title}
+            <h1 className={styles.title}>{course.title}</h1>
+            <p className={styles.metaLink}>
+              Mandatory annual training aligned with organizational standards
+            </p>
+            <div className={styles.approvalSection}>
+              <span className={styles.approvedBy}>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="#38A169"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ marginRight: 6 }}
+                >
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="9 12 11 14 15 10"></polyline>
+                </svg>
+                <strong>Approved by: Admin</strong>
+              </span>
+            </div>
+            <div className={styles.courseBadges}>
               <span className={`${styles.badge} ${styles.badgeActive}`}>Active</span>
-            </h1>
-            <p className={styles.metaLink}></p>
+              <span className={styles.metaBadge}>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  style={{ marginRight: 6 }}
+                >
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                {course.duration || 10} min read
+              </span>
+              <span className={styles.metaBadge}>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  style={{ marginRight: 6 }}
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                Pass mark:{' '}
+                {course.lessons?.find((l) => (l as { quiz?: { passingScore?: number } }).quiz)?.quiz
+                  ?.passingScore || 80}
+                %
+              </span>
+            </div>
           </div>
           <div className={styles.actions}>
             <Link href={`/dashboard/training/courses/${course.id}/preview`}>
@@ -224,36 +262,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
             <div className={styles.statValue}>{course.duration || 0} mins</div>
           </div>
         </div>
-
-        {/* Attestation Status */}
-        <div className={`${styles.statCard} ${styles.cardPurple}`}>
-          <div className={`${styles.iconBox} ${styles.iconPurple}`}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-              <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-          </div>
-          <div className={styles.statInfo}>
-            <h4>Attestation Status</h4>
-            <div className={styles.statValue}>
-              {attestedCount}{' '}
-              <span style={{ fontSize: '0.6em', color: '#718096' }}>/ {completedCount}</span>
-            </div>
-            <div style={{ fontSize: 13, color: '#718096', marginTop: 4 }}>Attested / Completed</div>
-          </div>
-        </div>
       </div>
 
       <div className={styles.staffSection}>
@@ -304,6 +312,23 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                   </svg>
                 }
               />
+              <button className={styles.exportButton}>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Export
+              </button>
             </div>
 
             <table className={styles.table}>
@@ -442,29 +467,32 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                           <Link
                             href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
                           >
-                            <Button size="sm" variant="outline" className={styles.viewButton}>
-                              View
-                            </Button>
+                            <span className={styles.viewResultText}>View Result</span>
                           </Link>
                         ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className={`${styles.viewButton} ${styles.viewButtonDisabled}`}
-                            disabled
+                          <span
+                            className={styles.viewResultText}
+                            style={{ color: '#cbd5e0', cursor: 'not-allowed' }}
                           >
-                            View
-                          </Button>
+                            View Result
+                          </span>
                         )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className={styles.viewButton}
-                          onClick={() => handleRemoveAssignment(enrollment.id)}
-                          disabled={isRemoving === enrollment.id}
-                        >
-                          {isRemoving === enrollment.id ? 'Removing...' : 'Unassign'}
-                        </Button>
+                        <button className={styles.dotsButton} title="More actions">
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="5" r="1"></circle>
+                            <circle cx="12" cy="19" r="1"></circle>
+                          </svg>
+                        </button>
                       </div>
                     </td>
                   </tr>
