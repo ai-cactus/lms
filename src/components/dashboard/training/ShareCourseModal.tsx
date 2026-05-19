@@ -16,12 +16,53 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
   const [emails, setEmails] = React.useState<string[]>([]);
   const [inputValue, setInputValue] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
+  const [hasDeadline, setHasDeadline] = React.useState(false);
+  const [deadlineDate, setDeadlineDate] = React.useState('');
   const [result, setResult] = React.useState<{
     success: string[];
     alreadyEnrolled: string[];
     newInvited: string[];
     failed: string[];
   } | null>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split('\n');
+      const newEmails: string[] = [];
+      lines.forEach((line) => {
+        const parts = line.split(',');
+        parts.forEach((part) => {
+          const email = part.trim();
+          if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            newEmails.push(email);
+          }
+        });
+      });
+
+      const uniqueNew = newEmails.filter((e) => !emails.includes(e));
+      if (uniqueNew.length > 0) {
+        setEmails([...emails, ...uniqueNew]);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
+  };
+
+  const downloadTemplate = () => {
+    const csvContent = 'data:text/csv;charset=utf-8,Email\nuser1@example.com\nuser2@example.com';
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'assign_staff_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (['Enter', 'Tab', ',', ' '].includes(e.key)) {
@@ -146,6 +187,82 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
           {isLoading ? 'Assigning...' : 'Assign'}
         </Button>
       </div>
+
+      <div className={styles.csvLinks}>
+        <label className={styles.csvLink}>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ marginRight: 6 }}
+          >
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="16"></line>
+            <line x1="8" y1="12" x2="16" y2="12"></line>
+          </svg>
+          Click to upload .csv file instead
+          <input
+            type="file"
+            accept=".csv"
+            onChange={handleFileUpload}
+            style={{ display: 'none' }}
+          />
+        </label>
+        <button className={styles.csvLink} onClick={downloadTemplate}>
+          Download sample .csv template
+        </button>
+      </div>
+
+      <div className={styles.toggleRow}>
+        <div className={styles.labelGroup}>
+          <span className={styles.labelTitle}>Set Completion Deadline</span>
+          <span className={styles.labelDesc}>
+            Set a deadline for team member to complete this course
+          </span>
+        </div>
+        <label className={styles.switch}>
+          <input
+            type="checkbox"
+            checked={hasDeadline}
+            onChange={(e) => setHasDeadline(e.target.checked)}
+          />
+          <span className={styles.slider}></span>
+        </label>
+      </div>
+
+      {hasDeadline && (
+        <div className={styles.datePickerContainer}>
+          <div className={styles.dateInputWrapper}>
+            <svg
+              className={styles.dateIcon}
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <input
+              type="date"
+              value={deadlineDate}
+              onChange={(e) => setDeadlineDate(e.target.value)}
+              className={styles.dateInput}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Result feedback */}
       {result && (

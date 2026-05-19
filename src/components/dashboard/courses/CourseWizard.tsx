@@ -11,6 +11,7 @@ import Step5Review from './steps/Step5Review';
 import Step6QuizReview from './steps/Step6QuizReview';
 import Step7Publish from './steps/Step7Publish';
 import CourseSuccessModal from './CourseSuccessModal';
+import ConfirmPublishModal from './ConfirmPublishModal';
 import Logo from '@/components/ui/Logo';
 import Button from '@/components/ui/Button';
 import PhiErrorModal from './PhiErrorModal';
@@ -71,6 +72,9 @@ export default function CourseWizard() {
 
   // Exit confirmation state
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  // Publish confirmation state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
     const loadDocs = async () => {
@@ -239,65 +243,71 @@ export default function CourseWizard() {
         return;
       }
 
-      setIsPublishing(true);
       setPublishError(null);
+      setShowConfirmModal(true);
+    }
+  };
 
-      const selectedDocId = documents.find((d) => d.selected)?.id;
+  const handlePublish = async (reviewerName: string) => {
+    setIsPublishing(true);
+    setShowConfirmModal(false);
+    logger.info({ msg: `Course reviewed and published by ${reviewerName}` });
 
-      try {
-        const result = await createFullCourse({
-          categoryId: formData.categoryId,
-          title: formData.title,
-          description: formData.description,
-          difficulty: formData.difficulty,
-          duration: formData.duration,
-          modules: generatedContent?.modules || [],
-          objectives: formData.objectives || [],
-          quiz: generatedContent?.quiz || [],
-          assignments: formData.assignments || [],
-          dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,
-          dueTime: formData.dueTime,
-          quizTitle: formData.quizTitle,
-          quizPassMark: formData.quizPassMark,
-          quizQuestionType: formData.quizQuestionType,
-          quizAttempts: formData.quizAttempts,
-          quizDuration: formData.quizDuration,
-          quizDifficulty: formData.quizDifficulty,
-          documentId: selectedDocId,
-          rawArticleMeta: generatedContent?.rawArticleMeta || undefined,
-          rawArticleMarkdown: generatedContent?.rawArticleMarkdown || undefined,
-          rawSlidesJson: generatedContent?.rawSlidesJson || undefined,
-          rawJudgeJson: generatedContent?.rawJudgeJson || undefined,
-          rawQuizJson: generatedContent?.rawQuizJson || undefined,
-          rawCourseJson: generatedContent?.rawCourseJson || undefined,
-        });
+    const selectedDocId = documents.find((d) => d.selected)?.id;
 
-        if (result.success) {
-          // Reset all wizard state so the next course creation starts fresh
-          setCurrentStep(1);
-          setFormData(INITIAL_FORM_DATA);
-          setGeneratedContent(null);
-          setDocuments([]);
-          setPublishError(null);
-          setIsGenerating(false);
-          setIsAnalyzing(false);
-          setAnalysisProgress(0);
-          setUploadError(null);
-          setIsScanningPhi(false);
-          setShowPhiError(false);
-          setPhiReason(undefined);
-          analyzedDocId.current = null;
-          setPendingJobId(null);
-          setCreatedCourseId(result.courseId);
-        } else {
-          setPublishError('Failed to create course. Please try again.');
-        }
-      } catch (error) {
-        logger.error({ msg: 'Error submitting course:', err: error });
-        setPublishError('An unexpected error occurred. Please try again.');
-      } finally {
-        setIsPublishing(false);
+    try {
+      const result = await createFullCourse({
+        categoryId: formData.categoryId,
+        title: formData.title,
+        description: formData.description,
+        difficulty: formData.difficulty,
+        duration: formData.duration,
+        modules: generatedContent?.modules || [],
+        objectives: formData.objectives || [],
+        quiz: generatedContent?.quiz || [],
+        assignments: formData.assignments || [],
+        dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,
+        dueTime: formData.dueTime,
+        quizTitle: formData.quizTitle,
+        quizPassMark: formData.quizPassMark,
+        quizQuestionType: formData.quizQuestionType,
+        quizAttempts: formData.quizAttempts,
+        quizDuration: formData.quizDuration,
+        quizDifficulty: formData.quizDifficulty,
+        documentId: selectedDocId,
+        rawArticleMeta: generatedContent?.rawArticleMeta || undefined,
+        rawArticleMarkdown: generatedContent?.rawArticleMarkdown || undefined,
+        rawSlidesJson: generatedContent?.rawSlidesJson || undefined,
+        rawJudgeJson: generatedContent?.rawJudgeJson || undefined,
+        rawQuizJson: generatedContent?.rawQuizJson || undefined,
+        rawCourseJson: generatedContent?.rawCourseJson || undefined,
+      });
+
+      if (result.success) {
+        // Reset all wizard state so the next course creation starts fresh
+        setCurrentStep(1);
+        setFormData(INITIAL_FORM_DATA);
+        setGeneratedContent(null);
+        setDocuments([]);
+        setPublishError(null);
+        setIsGenerating(false);
+        setIsAnalyzing(false);
+        setAnalysisProgress(0);
+        setUploadError(null);
+        setIsScanningPhi(false);
+        setShowPhiError(false);
+        setPhiReason(undefined);
+        analyzedDocId.current = null;
+        setPendingJobId(null);
+        setCreatedCourseId(result.courseId);
+      } else {
+        setPublishError('Failed to create course. Please try again.');
       }
+    } catch (error) {
+      logger.error({ msg: 'Error submitting course:', err: error });
+      setPublishError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -557,8 +567,17 @@ export default function CourseWizard() {
             isOpen={true}
             onClose={() => setCreatedCourseId(null)}
             courseId={createdCourseId}
+            courseTitle={formData.title}
           />
         )}
+
+        <ConfirmPublishModal
+          isOpen={showConfirmModal}
+          onClose={() => setShowConfirmModal(false)}
+          onConfirm={handlePublish}
+          courseTitle={formData.title}
+          isPublishing={isPublishing}
+        />
 
         {currentStep === 2 && (
           <div

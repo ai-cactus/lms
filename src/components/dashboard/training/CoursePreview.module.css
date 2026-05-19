@@ -70,18 +70,24 @@
 .metaRow {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 32px;
-  border-top: 1px dashed #4a5568;
-  /* Dashed and lighter gray/blue */
-  border-bottom: 1px dashed #4a5568;
   padding: 16px 0;
-  width: 60%;
+  border-top: 1px dashed #4a5568;
+  border-bottom: 1px dashed #4a5568;
+  width: 70%;
 }
 
-.metaItem svg {
-  color: #ecc94b;
-  /* Yellow tint for icons */
+.metaBadge {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 /* Sidebar Title Refinement */
@@ -257,11 +263,29 @@
 }
 
 .lessonItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 14px;
-  color: #718096;
+  color: #2d3748;
   cursor: pointer;
-  padding: 4px 0;
-  /* Reduced from 8px 0 */
+  padding: 10px 0;
+  border-bottom: 1px dashed #edf2f7;
+}
+
+.lessonItem:last-child {
+  border-bottom: none;
+}
+
+.lessonTitle {
+  font-weight: 500;
+  color: #2d3748;
+}
+
+.lessonDuration {
+  font-size: 12px;
+  color: #a0aec0;
+  flex-shrink: 0;
 }
 
 .activeLesson {
