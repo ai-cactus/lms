@@ -237,3 +237,55 @@ input:checked + .slider::before {
   border-radius: 6px;
   margin-bottom: 8px;
 }
+
+.csvLinks {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.csvLink {
+  display: flex;
+  align-items: center;
+  color: #4c6ef5;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.csvLink:hover {
+  text-decoration: underline;
+}
+
+.datePickerContainer {
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+
+.dateInputWrapper {
+  display: flex;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: white;
+}
+
+.dateIcon {
+  color: #a0aec0;
+  margin-right: 8px;
+}
+
+.dateInput {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: #1a202c;
+  font-family: inherit;
+  background: transparent;
+}

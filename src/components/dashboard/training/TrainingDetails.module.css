@@ -97,6 +97,39 @@
   gap: 12px;
 }
 
+.approvalSection {
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.approvedBy {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  color: #38a169;
+  background: #f0fff4;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.courseBadges {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.metaBadge {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #718096;
+  background: #f7fafc;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+}
+
 .outlineButton {
   background: white;
   border: 1px solid #e2e8f0;
@@ -106,7 +139,7 @@
 /* Stats Cards */
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 24px;
   margin-bottom: 32px;
 }
@@ -120,21 +153,6 @@
 }
 
 /* Specific Card Colors match the image approximately */
-.cardBlue {
-  background-color: #dbeafe;
-  border: 1px solid #bfdbfe;
-}
-
-.cardGreen {
-  background-color: #dcfce7;
-  border: 1px solid #bbf7d0;
-}
-
-.cardRed {
-  background-color: #fee2e2;
-  border: 1px solid #fecaca;
-}
-
 .cardYellow {
   background-color: #fef9c3;
   border: 1px solid #fef08a;
@@ -306,6 +324,17 @@
   color: #718096;
 }
 
+.viewResultText {
+  color: #3182ce;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.viewResultText:hover {
+  text-decoration: underline;
+}
+
 .viewButton {
   padding: 0;
   background: transparent;
@@ -334,12 +363,22 @@
 }
 
 .dotsButton {
-  padding: 8px;
+  padding: 4px;
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   cursor: pointer;
   color: #718096;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.dotsButton:hover {
+  background: #f7fafc;
+  color: #2d3748;
 }
 
 .tabActive {
