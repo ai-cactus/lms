@@ -7,7 +7,7 @@ import styles from './HowItWorks.module.css';
 const steps = [
   {
     id: 1,
-    image: '/images/carousel-01.png',
+    image: '/images/carousel-01.jpg',
     alt: 'Upload Training Documents Screen',
     title: 'Upload Your Policy',
     description:
@@ -15,7 +15,7 @@ const steps = [
   },
   {
     id: 2,
-    image: '/images/carousel-02.png',
+    image: '/images/carousel-02.jpg',
     alt: 'Training Principle Overview Screen',
     title: 'Assign & Train Your Team',
     description:
@@ -23,7 +23,7 @@ const steps = [
   },
   {
     id: 3,
-    image: '/images/carousel-03.png',
+    image: '/images/carousel-03.jpg',
     alt: 'Assigned Courses Dashboard Screen',
     title: 'Track Performance & Be Audit-ready',
     description:
