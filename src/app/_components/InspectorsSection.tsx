@@ -1,9 +1,13 @@
 import React from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import styles from './InspectorsSection.module.css';
+import InspectorsActions from './InspectorsActions';
 
-export default function InspectorsSection() {
+interface InspectorsSectionProps {
+  showActions?: boolean;
+}
+
+export default function InspectorsSection({ showActions = true }: InspectorsSectionProps) {
   return (
     <section className={styles.inspectorsSection}>
       <div className={styles.inspectorsHeader}>
@@ -107,14 +111,7 @@ export default function InspectorsSection() {
         </div>
       </div>
 
-      <div className={styles.inspectorsActions}>
-        <Link href="/signup" className={styles.btnPrimary}>
-          Start for free &rarr;
-        </Link>
-        <Link href="/request-demo" className={styles.btnSecondary}>
-          Request Demo
-        </Link>
-      </div>
+      {showActions && <InspectorsActions />}
     </section>
   );
 }

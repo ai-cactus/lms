@@ -142,7 +142,7 @@ export default function RequestDemoPage() {
 
           <div className={styles.imageContainer}>
             <Image
-              src="/images/demo-main-image.png"
+              src="/images/demo-main.jpg"
               alt="Theraptly LMS System Preview"
               fill
               className={styles.mainImage}
@@ -278,7 +278,7 @@ export default function RequestDemoPage() {
       </main>
 
       <FeatureSection />
-      <InspectorsSection />
+      <InspectorsSection showActions={false} />
       <Footer />
     </div>
   );
