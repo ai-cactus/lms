@@ -278,7 +278,7 @@ export default function RequestDemoPage() {
       </main>
 
       <FeatureSection />
-      <InspectorsSection />
+      <InspectorsSection showActions={false} />
       <Footer />
     </div>
   );
