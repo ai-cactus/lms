@@ -27,7 +27,7 @@ export default function InspectorsSection({ showActions = true }: InspectorsSect
           </p>
           <div className={styles.inspectorCardImageWrapper}>
             <Image
-              src="/images/inspector-1.png"
+              src="/images/inspector-01.png"
               alt="Staff completion records UI mockup"
               width={400}
               height={250}
@@ -45,7 +45,7 @@ export default function InspectorsSection({ showActions = true }: InspectorsSect
           </p>
           <div className={styles.inspectorCardImageWrapper}>
             <Image
-              src="/images/inspector-2.png"
+              src="/images/inspector-02.png"
               alt="Completion timestamps UI mockup"
               width={400}
               height={250}
@@ -63,7 +63,7 @@ export default function InspectorsSection({ showActions = true }: InspectorsSect
           </p>
           <div className={styles.inspectorCardImageWrapper}>
             <Image
-              src="/images/inspector-3.png"
+              src="/images/inspector-03.png"
               alt="Course results line graph mockup"
               width={400}
               height={250}
@@ -81,7 +81,7 @@ export default function InspectorsSection({ showActions = true }: InspectorsSect
           </p>
           <div className={styles.inspectorCardImageWrapper}>
             <Image
-              src="/images/inspector-4.png"
+              src="/images/inspector-04.png"
               alt="Policy links diagram mockup"
               width={600}
               height={300}
@@ -101,7 +101,7 @@ export default function InspectorsSection({ showActions = true }: InspectorsSect
           </p>
           <div className={styles.inspectorCardImageWrapper}>
             <Image
-              src="/images/inspector-5.png"
+              src="/images/inspector-05.png"
               alt="Exportable documentation modal mockup"
               width={600}
               height={300}
