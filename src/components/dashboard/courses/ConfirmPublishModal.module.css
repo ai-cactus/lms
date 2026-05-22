@@ -1,0 +1,281 @@
+/* Remove the inner padding the Modal component adds so the left panel bleeds edge-to-edge */
+.noPad {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+/* ── Outer wrapper ───────────────────────────────────────────── */
+.wrapper {
+  display: flex;
+  flex-direction: row;
+  min-height: 460px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* ── Left panel ──────────────────────────────────────────────── */
+.leftPanel {
+  width: 42%;
+  flex-shrink: 0;
+  background: #eef1fb;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px 16px 16px 16px;
+  gap: 10px;
+}
+
+/* White card that houses the logo */
+.logoCard {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  min-height: 0;
+}
+
+.logoImgWrap {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 20px 12px 0 12px;
+}
+
+.logoImg {
+  width: 100%;
+  height: auto;
+  max-height: 160px;
+  object-fit: contain;
+  display: block;
+}
+
+.coursesLabel {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a202c;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+
+/* ── Toast notification ──────────────────────────────────────── */
+.toast {
+  background: white;
+  border-radius: 10px;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.08),
+    0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+.toastHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.toastIconWrap {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #dcfce7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.toastTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a202c;
+}
+
+.toastBody {
+  font-size: 11px;
+  color: #6b7280;
+  padding-left: 28px;
+  margin: 0;
+}
+
+/* ── Course list ─────────────────────────────────────────────── */
+.courseList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.courseItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #f1f5f9;
+  padding: 6px 10px;
+}
+
+.courseNum {
+  font-size: 11px;
+  color: #9ca3af;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.courseIconCircle {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.courseInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.courseName {
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.courseRole {
+  font-size: 10px;
+  color: #9ca3af;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.courseCheck {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #eff6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Right panel ─────────────────────────────────────────────── */
+.rightPanel {
+  flex: 1;
+  padding: 28px 28px 24px 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+.heading {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a202c;
+  margin: 0 0 16px 0;
+}
+
+.body {
+  font-size: 13.5px;
+  color: #4a5568;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex: 1;
+}
+
+.body p {
+  margin: 0;
+}
+
+/* ── Form section ────────────────────────────────────────────── */
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.reviewLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.reviewInput {
+  flex: 1;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #374151;
+  background: #f8fafc;
+  cursor: default;
+  outline: none;
+}
+
+/* Checkbox row */
+.checkLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: #4c6ef5;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.checkText {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+/* ── Action buttons ──────────────────────────────────────────── */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}

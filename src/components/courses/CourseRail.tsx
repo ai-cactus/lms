@@ -43,30 +43,32 @@ export default function CourseRail({
       {isOpen && <div className={styles.railBackdrop} onClick={onClose} />}
 
       <nav className={`${styles.rail} ${isOpen ? styles.railOpen : ''} ${className}`}>
-        <div className={styles.railLogo}>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onExitClick}
-            disabled={disableNav}
-            style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+        {onExitClick && (
+          <div className={styles.railLogo}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onExitClick}
+              disabled={disableNav}
+              style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-            Exit
-          </Button>
-        </div>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+              Exit
+            </Button>
+          </div>
+        )}
 
         {lessons.map((lesson, i) => {
           const isLocked = i > unlockedIndex;
