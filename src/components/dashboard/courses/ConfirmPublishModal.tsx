@@ -1,7 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
+import { useSession } from 'next-auth/react';
 import { Modal, Button } from '@/components/ui';
+import styles from './ConfirmPublishModal.module.css';
+import { getCourses } from '@/app/actions/course';
+import { CourseWithStats } from '@/types/course';
 
 interface ConfirmPublishModalProps {
   isOpen: boolean;
@@ -11,6 +16,33 @@ interface ConfirmPublishModalProps {
   isPublishing: boolean;
 }
 
+const COLORS = ['#22C55E', '#F97316', '#64748B', '#3B82F6', '#8B5CF6', '#EC4899'];
+
+function getInitials(title: string) {
+  if (!title) return 'C';
+  const parts = title.split(' ').filter(Boolean);
+  if (parts.length === 0) return 'C';
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function getColorForString(str: string) {
+  if (!str) return COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return COLORS[Math.abs(hash) % COLORS.length];
+}
+
+type PreviewCourse = {
+  num: number;
+  label: string;
+  role: string;
+  color: string;
+  initials: string;
+};
+
 export default function ConfirmPublishModal({
   isOpen,
   onClose,
@@ -18,72 +50,140 @@ export default function ConfirmPublishModal({
   courseTitle,
   isPublishing,
 }: ConfirmPublishModalProps) {
-  const [reviewer, setReviewer] = useState('John Smith');
+  const { data: session } = useSession();
+  // Pre-fill reviewer with the logged-in admin name; falls back gracefully
+  const reviewerName = session?.user?.name ?? 'Admin';
+
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [recentCourses, setRecentCourses] = useState<CourseWithStats[]>([]);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      getCourses()
+        .then((courses) => {
+          setRecentCourses(courses.slice(0, 2));
+        })
+        .catch(console.error);
+    }
+  }, [isOpen]);
+
+  const handleConfirm = () => {
+    onConfirm(reviewerName);
+  };
+
+  const previewList: PreviewCourse[] = [
+    {
+      num: 1,
+      label: courseTitle || 'New Course',
+      role: 'New',
+      color: getColorForString(courseTitle || 'New Course'),
+      initials: getInitials(courseTitle || 'New Course'),
+    },
+    ...recentCourses.map((c, i) => ({
+      num: i + 2,
+      label: c.title.length > 20 ? c.title.substring(0, 17) + '...' : c.title,
+      role: 'General',
+      color: getColorForString(c.title),
+      initials: getInitials(c.title),
+    })),
+  ];
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       size="lg"
-      className="p-0 overflow-hidden"
       preventClose={isPublishing}
+      /* Zero out the Modal's default 24px content padding */
+      contentClassName={styles.noPad}
     >
-      <div className="flex flex-col md:flex-row min-h-[400px]">
-        {/* Left Side - Illustration Area */}
-        <div className="hidden md:flex flex-col items-center justify-center bg-slate-50 w-2/5 p-6 border-r border-slate-100 relative">
-          <div className="relative w-full max-w-[200px] aspect-square flex items-center justify-center">
-            {/* The illustration requested in the image (A stylized M with a toast) */}
-            <div className="absolute inset-0 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center p-4">
-              <svg
-                width="100%"
-                height="100%"
-                viewBox="0 0 100 100"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* The blue M */}
-                <path
-                  d="M10 80 V 40 C 10 20, 45 20, 50 40 C 55 20, 90 20, 90 40 V 80"
-                  stroke="#2563EB"
-                  strokeWidth="15"
+      <div className={styles.wrapper}>
+        {/* ── Left Illustration Panel ───────────────────────── */}
+        <div className={styles.leftPanel}>
+          {/* Logo card */}
+          <div className={styles.logoCard}>
+            <div className={styles.logoImgWrap}>
+              {/*
+               * Use the actual Logomark SVG (not a hand-drawn M path).
+               * The image fills the card width so the full logomark is visible
+               * and the lower portion is not clipped by sibling elements.
+               */}
+              <Image
+                src="/images/Logomark.svg"
+                alt="Logomark"
+                width={200}
+                height={164}
+                className={styles.logoImg}
+                priority
+              />
+            </div>
+            <div className={styles.coursesLabel}>
+              Courses <span aria-hidden="true">✨</span>
+            </div>
+          </div>
+
+          {/* Toast notification */}
+          <div className={styles.toast}>
+            <div className={styles.toastHeader}>
+              <div className={styles.toastIconWrap}>
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#16A34A"
+                  strokeWidth="3.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  fill="none"
-                />
-              </svg>
+                >
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              </div>
+              <span className={styles.toastTitle}>New Course Added!</span>
             </div>
-            {/* Toast overlay */}
-            <div className="absolute -bottom-6 -right-6 bg-white rounded-lg shadow-lg border border-slate-100 p-3 w-[220px]">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
+            <p className={styles.toastBody}>New course added to the organization!</p>
+          </div>
+
+          {/* Illustrative course list */}
+          <div className={styles.courseList}>
+            {previewList.map((course) => (
+              <div key={course.num} className={styles.courseItem}>
+                <span className={styles.courseNum}>{course.num}.</span>
+                <div
+                  className={styles.courseIconCircle}
+                  style={{ background: course.color }}
+                  aria-hidden="true"
+                >
+                  {course.initials}
+                </div>
+                <div className={styles.courseInfo}>
+                  <span className={styles.courseName}>{course.label}</span>
+                  <span className={styles.courseRole}>{course.role}</span>
+                </div>
+                <div className={styles.courseCheck} aria-hidden="true">
                   <svg
-                    width="12"
-                    height="12"
+                    width="9"
+                    height="9"
                     viewBox="0 0 24 24"
                     fill="none"
-                    stroke="#16A34A"
-                    strokeWidth="3"
+                    stroke="#4C6EF5"
+                    strokeWidth="3.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   >
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                 </div>
-                <span className="text-sm font-bold text-slate-800">New Course Added!</span>
               </div>
-              <div className="text-xs text-slate-500 pl-7">
-                New course added to the organization!
-              </div>
-            </div>
+            ))}
           </div>
         </div>
 
-        {/* Right Side - Content */}
-        <div className="flex-1 p-8 flex flex-col">
-          <h2 className="text-xl font-bold text-slate-900 mb-4">Confirm Course Review</h2>
+        {/* ── Right Content Panel ───────────────────────────── */}
+        <div className={styles.rightPanel}>
+          <h2 className={styles.heading}>Confirm Course Review</h2>
 
-          <div className="text-sm text-slate-600 space-y-4 mb-6 flex-1">
+          <div className={styles.body}>
             <p>
               Please confirm that the course content for{' '}
               <strong>&quot;{courseTitle || 'this course'}&quot;</strong> has been reviewed and
@@ -94,43 +194,45 @@ export default function ConfirmPublishModal({
             <p>This confirmation will be recorded as part of the course audit trail.</p>
           </div>
 
-          <div className="space-y-4 mb-8">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-semibold text-slate-700">Reviewed by</label>
-              <select
-                className="w-full h-10 px-3 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={reviewer}
-                onChange={(e) => setReviewer(e.target.value)}
-                disabled={isPublishing}
-              >
-                <option value="John Smith">John Smith</option>
-                <option value="Admin User">Admin User</option>
-                <option value="Jane Doe">Jane Doe</option>
-              </select>
+          <div className={styles.formGroup}>
+            {/* Reviewer — read-only input pre-filled with the admin's name */}
+            <div className={styles.fieldRow}>
+              <label htmlFor="confirm-reviewer" className={styles.reviewLabel}>
+                Reviewed by
+              </label>
+              <input
+                id="confirm-reviewer"
+                type="text"
+                className={styles.reviewInput}
+                value={reviewerName}
+                readOnly
+                aria-label="Reviewer name"
+              />
             </div>
 
-            <label className="flex items-start gap-3 cursor-pointer mt-4">
+            {/* Confirmation checkbox */}
+            <label className={styles.checkLabel}>
               <input
                 type="checkbox"
-                className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                className={styles.checkbox}
                 checked={isConfirmed}
                 onChange={(e) => setIsConfirmed(e.target.checked)}
                 disabled={isPublishing}
               />
-              <span className="text-sm text-slate-700">
+              <span className={styles.checkText}>
                 I confirm that this course has been <strong>reviewed and approved</strong> before
                 publishing.
               </span>
             </label>
           </div>
 
-          <div className="flex items-center justify-end gap-3 mt-auto">
+          <div className={styles.actions}>
             <Button variant="outline" onClick={onClose} disabled={isPublishing}>
               Cancel
             </Button>
             <Button
               variant="primary"
-              onClick={() => onConfirm(reviewer)}
+              onClick={handleConfirm}
               disabled={!isConfirmed || isPublishing}
               loading={isPublishing}
             >
