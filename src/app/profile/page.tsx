@@ -1,6 +1,7 @@
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { redirect } from 'next/navigation';
+import { logger } from '@/lib/logger';
 
 export default async function ProfileRedirectPage() {
   let adminSession = null;
@@ -22,7 +23,7 @@ export default async function ProfileRedirectPage() {
   }
 
   const role = session.user.role;
-  console.log('[ProfileRedirectPage] Accessing profile with role:', role);
+  logger.info({ msg: '[ProfileRedirectPage] Accessing profile with role:', data: role });
 
   if (role === 'worker') {
     redirect('/worker/profile');

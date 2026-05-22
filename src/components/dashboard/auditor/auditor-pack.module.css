@@ -450,96 +450,211 @@
   transform: translateY(-1px);
 }
 
-/* Export Tab */
+/* Export Tab Root */
 .exportTabContent {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
-  gap: 24px;
-  text-align: center;
+  padding: 80px 24px;
 }
 
-.exportOptions {
+/* Idle State */
+.idleState {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  width: 100%;
-  max-width: 460px;
-}
-
-.exportOptionCard {
-  display: flex;
   align-items: center;
-  gap: 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 18px 20px;
-  background: white;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
 }
 
-.exportOptionCard:hover {
-  border-color: #4731f7;
-  box-shadow: 0 0 0 3px rgba(71, 49, 247, 0.08);
-}
-
-.exportOptionIcon {
-  width: 40px;
-  height: 40px;
+.exportIllustration {
+  width: 80px;
+  height: 80px;
   background: #eef2ff;
-  border-radius: 8px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  color: #4731f7;
 }
 
-.exportOptionLabel {
-  font-size: 15px;
-  font-weight: 600;
+.exportLabel {
+  font-size: 18px;
+  font-weight: 700;
   color: #0f172a;
-  margin: 0 0 2px;
-}
-
-.exportOptionDesc {
-  font-size: 13px;
-  color: #64748b;
   margin: 0;
 }
 
-.exportAllBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.startExportBtn {
   background: #4731f7;
-  color: white;
+  color: #fff;
   border: none;
-  border-radius: 10px;
-  padding: 12px 28px;
+  border-radius: 8px;
+  padding: 12px 24px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition:
-    background 0.2s,
-    transform 0.15s;
+  transition: opacity 0.2s;
+  margin-top: 12px;
+}
+.startExportBtn:hover {
+  opacity: 0.9;
 }
 
-.exportAllBtn:hover {
-  background: #3720d6;
-  transform: translateY(-1px);
+/* Progress Section */
+.progressSection {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%;
+  max-width: 480px;
+  text-align: left;
 }
 
-.exportAllBtn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.progressLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4731f7;
+}
+
+.progressMessage {
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.percentContainer {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.percentText {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4731f7;
+}
+
+.progressBarWrapper {
+  width: 100%;
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.progressBarFill {
+  height: 100%;
+  background: #4731f7;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.cancelBtn {
+  width: 100%;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.cancelBtn:hover {
+  background: #f8fafc;
+}
+
+/* Ready Section */
+.readySection {
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  padding: 32px 24px;
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.readyIconWrapper {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.readyTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+.readyDesc {
+  font-size: 14px;
+  color: #475569;
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.readyActions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.downloadDocxBtn,
+.downloadCsvBtn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.downloadDocxBtn {
+  background: #4731f7;
+  color: #fff;
+  border: none;
+  box-shadow: 0 2px 4px rgba(71, 49, 247, 0.2);
+}
+
+.downloadDocxBtn:hover {
+  opacity: 0.9;
+}
+
+.downloadCsvBtn {
+  background: #fff;
+  color: #4731f7;
+  border: 1px solid #4731f7;
+}
+
+.downloadCsvBtn:hover {
+  background: #eef2ff;
 }
 
 /* Staff avatar initial */

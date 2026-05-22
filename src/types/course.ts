@@ -15,6 +15,7 @@ export type CourseWithStats = {
 };
 
 export interface CourseWizardData {
+  categoryId: string;
   title: string;
   description: string;
   difficulty: string;
@@ -87,7 +88,10 @@ export type CourseWithRelations = Prisma.CourseGetPayload<{
       };
     };
     enrollments: {
-      include: { user: { include: { profile: true } } };
+      include: {
+        user: { include: { profile: true } };
+        certificate: true;
+      };
     };
     creator: {
       include: { profile: true };
@@ -99,7 +103,9 @@ export type EnrollmentWithRelations = Prisma.EnrollmentGetPayload<{
   include: {
     quizAttempts: true;
     user: {
-      include: { profile: true };
+      include: { profile: true; organization: true };
     };
+    course: true;
+    certificate: true;
   };
 }>;

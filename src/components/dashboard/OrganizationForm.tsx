@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './ProfileForm.module.css';
-import { updateOrganization } from '@/app/actions/organization';
+import { updateOrganization, uploadComplianceDocument } from '@/app/actions/organization';
 import { generateOrganizationCode, getOrganizationCode } from '@/app/actions/organization-code';
 import { useRouter } from 'next/navigation';
 import { Button, Input, Select, Checkbox } from '@/components/ui';
+import { logger } from '@/lib/logger';
 
 interface OrganizationData {
   id: string;
@@ -23,6 +24,9 @@ interface OrganizationData {
   city?: string | null;
   licenseNumber?: string | null;
   isHipaaCompliant?: boolean;
+  complianceDocumentUrl?: string | null;
+  complianceDocumentName?: string | null;
+  complianceDocumentDisplayUrl?: string | null;
   primaryBusinessType?: string | null;
   additionalBusinessTypes?: string[];
   programServices?: string[];
@@ -136,20 +140,19 @@ function OrgCodeGenerator() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadCode();
-  }, [loadCode]);
-
-  async function loadCode() {
-    try {
-      const result = await getOrganizationCode();
-      if (result.success && result.code) {
-        setCode(result.code);
-        setExpiresAt(result.expiresAt ? new Date(result.expiresAt) : null);
+    async function loadCode() {
+      try {
+        const result = await getOrganizationCode();
+        if (result.success && result.code) {
+          setCode(result.code);
+          setExpiresAt(result.expiresAt ? new Date(result.expiresAt) : null);
+        }
+      } catch (err) {
+        logger.error({ msg: 'Error loading code', err });
       }
-    } catch (err) {
-      console.error(err);
     }
-  }
+    loadCode();
+  }, []);
 
   async function handleGenerate() {
     setLoading(true);
@@ -162,7 +165,7 @@ function OrgCodeGenerator() {
       } else {
         setError(result.error || 'Failed to generate code');
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred');
     } finally {
       setLoading(false);
@@ -313,6 +316,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       : null,
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const router = useRouter();
 
@@ -348,7 +352,8 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     JSON.stringify(formData.additionalBusinessTypes || []) !==
       JSON.stringify(baseData.additionalBusinessTypes || []) ||
     JSON.stringify(formData.programServices || []) !==
-      JSON.stringify(baseData.programServices || []);
+      JSON.stringify(baseData.programServices || []) ||
+    formData.complianceDocumentUrl !== baseData.complianceDocumentUrl;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -435,10 +440,39 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to update' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An error occurred' });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingDocument(true);
+    const data = new FormData();
+    data.append('file', file);
+
+    try {
+      const result = await uploadComplianceDocument(data);
+      if (result.success && result.url) {
+        setFormData((prev) => ({
+          ...prev!,
+          complianceDocumentUrl: result.url,
+          complianceDocumentName: result.filename,
+        }));
+        setMessage({ type: 'success', text: 'Document uploaded successfully' });
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Failed to upload document' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Upload failed' });
+    } finally {
+      setIsUploadingDocument(false);
+      // Reset input so the same file can be uploaded again if needed
+      e.target.value = '';
     }
   };
 
@@ -702,16 +736,59 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
           </div>
         </div>
 
-        {/* Placeholder for uploaded documents - matches step2 file upload */}
+        {/* Uploaded documents */}
         <div className={styles.fieldGroup}>
           <label className={styles.label}>
             Upload your compliance certifications{' '}
             <span className={styles.optional}>(optional)</span>
           </label>
           <div className={styles.uploadedDocsList}>
-            <p className={styles.placeholder}>
-              Document uploads will be available in a future update.
-            </p>
+            {formData.complianceDocumentName ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  marginBottom: '0.5rem',
+                }}
+              >
+                <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+                  {formData.complianceDocumentName}
+                </span>
+                {formData.complianceDocumentUrl && (
+                  <a
+                    href={formData.complianceDocumentDisplayUrl || formData.complianceDocumentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--primary-600)',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    View
+                  </a>
+                )}
+              </div>
+            ) : null}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => document.getElementById('compliance-upload')?.click()}
+                disabled={!isAdmin || isUploadingDocument}
+                loading={isUploadingDocument}
+              >
+                {formData.complianceDocumentUrl ? 'Replace Document' : 'Upload Document'}
+              </Button>
+              <input
+                id="compliance-upload"
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                style={{ display: 'none' }}
+                onChange={handleDocumentUpload}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -764,7 +841,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                 key={service.id}
                 label={service.label}
                 checked={(formData.programServices || []).includes(service.id)}
-                onChange={(e) => {
+                onChange={() => {
                   if (isAdmin) {
                     handleProgramServiceToggle(service.id);
                   }

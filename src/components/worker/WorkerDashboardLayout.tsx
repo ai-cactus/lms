@@ -9,15 +9,10 @@ import { usePathname } from 'next/navigation';
 
 interface WorkerDashboardLayoutProps {
   children: React.ReactNode;
-  userEmail: string;
   fullName: string;
 }
 
-export default function WorkerDashboardLayout({
-  children,
-  userEmail,
-  fullName,
-}: WorkerDashboardLayoutProps) {
+export default function WorkerDashboardLayout({ children, fullName }: WorkerDashboardLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -101,11 +96,7 @@ export default function WorkerDashboardLayout({
       {/* Main Content Area */}
       <main className={styles.main}>
         {/* Top Header */}
-        <WorkerHeader
-          userEmail={userEmail}
-          fullName={fullName}
-          onMenuClick={() => setSidebarOpen(true)}
-        />
+        <WorkerHeader fullName={fullName} onMenuClick={() => setSidebarOpen(true)} />
 
         <div className={styles.content}>{children}</div>
       </main>

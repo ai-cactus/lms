@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import styles from './CoursesList.module.css';
 import { Button, Input, Select } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
@@ -8,16 +8,162 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
+import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
+import CoursesBillingGate from './CoursesBillingGate';
+
+const PENDING_KEY = 'lms_pending_generation';
+const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
+interface PendingGeneration {
+  jobId: string;
+  formData: Record<string, unknown>;
+  timestamp: number;
+}
+
+type BannerState = 'generating' | 'done' | 'failed' | 'hidden';
+
+function PendingGenerationBanner() {
+  const [banner, setBanner] = useState<BannerState>('hidden');
+  const [pending, setPending] = useState<PendingGeneration | null>(null);
+
+  const dismiss = useCallback(() => {
+    localStorage.removeItem(PENDING_KEY);
+    setBanner('hidden');
+  }, []);
+
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(PENDING_KEY);
+    } catch {
+      return; // localStorage unavailable
+    }
+    if (!raw) return;
+
+    let parsed: PendingGeneration;
+    try {
+      parsed = JSON.parse(raw) as PendingGeneration;
+    } catch {
+      localStorage.removeItem(PENDING_KEY);
+      return;
+    }
+
+    // Discard entries older than 1 hour
+    if (Date.now() - parsed.timestamp > STALE_THRESHOLD_MS) {
+      localStorage.removeItem(PENDING_KEY);
+      return;
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: initialising banner state from localStorage inside effect
+    setPending(parsed);
+
+    setBanner('generating');
+
+    // Poll until done
+    const interval = setInterval(async () => {
+      try {
+        const res = await checkCourseGenerationJobV46(parsed.jobId);
+        if (res.status === 'completed') {
+          clearInterval(interval);
+          setBanner('done');
+        } else if (res.status === 'failed' || res.error) {
+          clearInterval(interval);
+          setBanner('failed');
+        }
+      } catch {
+        // network blip — keep polling
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  if (banner === 'hidden' || !pending) return null;
+
+  const bannerStyles: Record<string, React.CSSProperties> = {
+    generating: { background: '#EBF4FF', borderColor: '#4C6EF5', color: '#1e3a8a' },
+    done: { background: '#F0FFF4', borderColor: '#38A169', color: '#1a4731' },
+    failed: { background: '#FFF5F5', borderColor: '#E53E3E', color: '#742a2a' },
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '12px 16px',
+        border: '1px solid',
+        borderRadius: 10,
+        marginBottom: 16,
+        fontSize: 14,
+        ...(bannerStyles[banner] ?? {}),
+      }}
+    >
+      {banner === 'generating' && (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          style={{ flexShrink: 0, animation: 'spin 1s linear infinite' }}
+        >
+          <circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10" />
+          <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
+        </svg>
+      )}
+      <span style={{ flex: 1 }}>
+        {banner === 'generating' && 'Your course is still being generated in the background…'}
+        {banner === 'done' &&
+          '✅ Course generation complete! Resume the wizard to review and publish.'}
+        {banner === 'failed' && '⚠️ Course generation failed. Please start a new course.'}
+      </span>
+      {banner === 'done' && (
+        <Link
+          href="/dashboard/courses/create"
+          style={{
+            fontWeight: 600,
+            color: '#38A169',
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Resume Setup →
+        </Link>
+      )}
+      <button
+        onClick={dismiss}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, padding: 4 }}
+        title="Dismiss"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 interface CoursesListClientProps {
   courses: CourseWithStats[];
+  /** Whether the organization has an active or trialing billing subscription. */
+  hasBilling: boolean;
 }
 
-export default function CoursesListClient({ courses }: CoursesListClientProps) {
+export default function CoursesListClient({ courses, hasBilling }: CoursesListClientProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [showBillingGate, setShowBillingGate] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setActiveDropdown(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // Filter Logic
   // ⚡ Bolt: Memoize filtered courses to prevent re-calculating on every render,
@@ -50,8 +196,16 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
           <h1 className={styles.title}>Courses</h1>
         </div>
         <Button
+          id="create-course-btn"
           className={styles.createButton}
-          onClick={() => router.push('/dashboard/courses/create')}
+          onClick={() => {
+            if (!hasBilling) {
+              // Gate course creation behind an active subscription
+              setShowBillingGate(true);
+              return;
+            }
+            router.push('/dashboard/courses/create');
+          }}
         >
           <svg
             width="20"
@@ -62,6 +216,7 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
+            aria-hidden="true"
           >
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -71,6 +226,9 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
       </div>
 
       {/* Content Card */}
+      {/* Billing gate — rendered when admin lacks an active subscription */}
+      {showBillingGate && <CoursesBillingGate onClose={() => setShowBillingGate(false)} />}
+      <PendingGenerationBanner />
       <div className={styles.card}>
         {/* Search */}
         <div className={styles.searchContainer}>
@@ -106,9 +264,11 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th style={{ width: '50%' }}>Course Name</th>
-              <th style={{ width: '25%' }}>Assigned Staff</th>
-              <th style={{ width: '25%' }}>Date Created</th>
+              <th style={{ width: '40%' }}>Course Name</th>
+              <th style={{ width: '15%' }}>Assigned Staff</th>
+              <th style={{ width: '15%' }}>Role</th>
+              <th style={{ width: '20%' }}>Date Created</th>
+              <th style={{ width: '10%' }}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -136,12 +296,85 @@ export default function CoursesListClient({ courses }: CoursesListClientProps) {
                     </div>
                   </td>
                   <td>{course.enrollmentsCount}</td>
+                  <td>General</td>
                   <td>
                     {new Date(course.createdAt).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
                     })}
+                  </td>
+                  <td>
+                    <div className={styles.actionCell} onClick={(e) => e.stopPropagation()}>
+                      <span
+                        className={styles.viewAction}
+                        onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                      >
+                        View
+                      </span>
+                      <div className={styles.dropdownContainer}>
+                        <button
+                          className={styles.moreActionBtn}
+                          onClick={() =>
+                            setActiveDropdown(activeDropdown === course.id ? null : course.id)
+                          }
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="5" r="1"></circle>
+                            <circle cx="12" cy="19" r="1"></circle>
+                          </svg>
+                        </button>
+                        {activeDropdown === course.id && (
+                          <div className={styles.dropdownMenu}>
+                            <button className={styles.dropdownItem}>
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: 8 }}
+                              >
+                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                              </svg>
+                              Rename
+                            </button>
+                            <button className={`${styles.dropdownItem} ${styles.deleteItem}`}>
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: 8 }}
+                              >
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                              </svg>
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))

@@ -6,6 +6,8 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 
 import { headers } from 'next/headers';
+import { logger } from '@/lib/logger';
+import bcrypt from 'bcryptjs';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -45,20 +47,29 @@ export async function getStaffUsers() {
   }
 
   try {
-    const users = await prisma.user.findMany({
-      where: {
-        organizationId: currentUser.organizationId,
-        role: { not: 'admin' },
-      },
-      include: {
-        profile: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const [users, invites] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          organizationId: currentUser.organizationId,
+          role: { not: 'admin' },
+        },
+        include: { profile: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.invite.findMany({
+        where: {
+          organizationId: currentUser.organizationId,
+          status: 'pending',
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
 
-    return users.map((user) => ({
+    // Build a set of emails that already have accounts to avoid duplication
+    const acceptedEmails = new Set(users.map((u) => u.email.toLowerCase()));
+
+    const acceptedEntries = users.map((user) => ({
       id: user.id,
       name: user.profile?.fullName || user.email.split('@')[0],
       email: user.email,
@@ -66,9 +77,26 @@ export async function getStaffUsers() {
       role: user.role || 'worker',
       jobTitle: user.profile?.jobTitle || 'Staff Member',
       dateInvited: user.createdAt,
+      isPending: false,
     }));
+
+    const pendingEntries = invites
+      .filter((invite) => !acceptedEmails.has(invite.email.toLowerCase()))
+      .map((invite) => ({
+        id: invite.id,
+        name: invite.email.split('@')[0],
+        email: invite.email,
+        avatarUrl: null,
+        role: invite.role || 'worker',
+        jobTitle: 'Pending Invite',
+        dateInvited: invite.createdAt,
+        isPending: true,
+      }));
+
+    // Accepted users first, then pending invites (both already ordered desc by createdAt)
+    return [...acceptedEntries, ...pendingEntries];
   } catch (error) {
-    console.error('Failed to fetch staff users:', error);
+    logger.error({ msg: 'Failed to fetch staff users and invites:', err: error });
     return [];
   }
 }
@@ -115,7 +143,7 @@ export async function searchStaffUsers(query: string) {
       role: user.role || 'worker',
     }));
   } catch (error) {
-    console.error('Failed to search staff:', error);
+    logger.error({ msg: 'Failed to search staff:', err: error });
     return [];
   }
 }
@@ -141,7 +169,7 @@ export async function updateRole(role: 'admin' | 'worker') {
     revalidatePath('/dashboard');
     return { success: true };
   } catch (error) {
-    console.error('Failed to update role:', error);
+    logger.error({ msg: 'Failed to update role:', err: error });
     return { success: false, error: 'Failed to update role' };
   }
 }
@@ -150,14 +178,15 @@ export async function updateProfile(data: {
   first_name: string;
   last_name: string;
   company_name?: string;
+  jobTitle?: string;
   avatarUrl?: string; // New field
 }) {
-  console.log('[UpdateProfile Action] Called with data:', data);
+  logger.info({ msg: '[UpdateProfile Action] Called with data:', data: data });
   const session = await resolveSession();
-  console.log('[UpdateProfile Action] Session:', session?.user?.id);
+  logger.info({ msg: '[UpdateProfile Action] Session:', data: session?.user?.id });
 
   if (!session?.user?.email) {
-    console.log('[UpdateProfile Action] Failed: Not authenticated');
+    logger.info({ msg: '[UpdateProfile Action] Failed: Not authenticated' });
     return { success: false, error: 'Not authenticated' };
   }
 
@@ -165,11 +194,11 @@ export async function updateProfile(data: {
     const fullName = `${data.first_name} ${data.last_name}`.trim();
 
     if (!session.user.id) {
-      console.log('[UpdateProfile Action] Failed: User ID missing');
+      logger.info({ msg: '[UpdateProfile Action] Failed: User ID missing' });
       return { success: false, error: 'User ID missing' };
     }
 
-    console.log(`[UpdateProfile Action] Upserting profile for user ${session.user.id}...`);
+    logger.info({ msg: `[UpdateProfile Action] Upserting profile for user ${session.user.id}...` });
     const result = await prisma.profile.upsert({
       where: {
         id: session.user.id,
@@ -179,6 +208,7 @@ export async function updateProfile(data: {
         lastName: data.last_name,
         fullName: fullName,
         companyName: data.company_name,
+        jobTitle: data.jobTitle,
         email: session.user.email,
         avatarUrl: data.avatarUrl,
       },
@@ -189,19 +219,22 @@ export async function updateProfile(data: {
         lastName: data.last_name,
         fullName: fullName,
         companyName: data.company_name,
+        jobTitle: data.jobTitle,
         avatarUrl: data.avatarUrl,
       },
     });
 
-    console.log('[UpdateProfile Action] Upsert successful:', result);
+    logger.info({ msg: '[UpdateProfile Action] Upsert successful:', data: result });
 
     revalidatePath('/dashboard/profile');
     revalidatePath('/worker/profile');
-    console.log('[UpdateProfile Action] Paths revalidated');
+    revalidatePath('/dashboard');
+    revalidatePath('/worker');
+    logger.info({ msg: '[UpdateProfile Action] Paths revalidated' });
     return { success: true };
   } catch (error: unknown) {
     const err = error as Error;
-    console.error('[UpdateProfile Action] Failed to update profile:', err);
+    logger.error({ msg: '[UpdateProfile Action] Failed to update profile:', err });
     return { success: false, error: 'Failed to update profile' };
   }
 }
@@ -228,11 +261,76 @@ export async function uploadAvatar(formData: FormData) {
   }
 
   try {
-    const { saveFile } = await import('@/lib/documents/uploadHandler');
-    const publicUrl = await saveFile(file);
-    return { success: true, url: publicUrl };
+    // Upload avatar to cloud storage — namespaced under avatars/ to separate from documents
+    const { uploadFile } = await import('@/lib/storage');
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+    const key = `avatars/${session.user.id}/${timestamp}-${safeName}`;
+    const { storageUri } = await uploadFile(key, buffer, file.type || 'image/jpeg');
+
+    // Return the storageUri as the avatar URL — the client stores this in profile.avatarUrl
+    // and the signed URL is resolved when needed.
+    return { success: true, url: storageUri };
   } catch (error) {
-    console.error('Failed to upload avatar:', error);
+    logger.error({ msg: 'Failed to upload avatar:', err: error });
     return { error: 'Failed to upload avatar' };
+  }
+}
+
+export async function changePassword(data: { currentPassword?: string; newPassword: string }) {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const { currentPassword, newPassword } = data;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { password: true, authProvider: true },
+    });
+
+    if (!user) {
+      return { success: false, error: 'User not found' };
+    }
+
+    // Check if the user is using an OAuth provider (no password to change)
+    if (user.authProvider !== 'credentials') {
+      return { success: false, error: 'Cannot change password for OAuth accounts.' };
+    }
+
+    // Verify current password if user has one
+    if (user.password) {
+      if (!currentPassword) {
+        return { success: false, error: 'Current password is required.' };
+      }
+      const valid = await bcrypt.compare(currentPassword, user.password);
+      if (!valid) {
+        return { success: false, error: 'Incorrect current password.' };
+      }
+    }
+
+    // Password strength is validated on the client, but we should do a basic check here
+    if (newPassword.length < 12) {
+      return { success: false, error: 'New password must be at least 12 characters long.' };
+    }
+
+    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: {
+        password: hashedNewPassword,
+        passwordResetRequired: false,
+      },
+    });
+
+    logger.info({ msg: 'User changed password successfully', userId: session.user.id });
+    return { success: true };
+  } catch (error) {
+    logger.error({ msg: 'Failed to change password:', err: error });
+    return { success: false, error: 'Failed to change password' };
   }
 }

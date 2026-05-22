@@ -2,7 +2,9 @@ import NextAuth, { NextAuthConfig, User } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
+import { logger, maskEmail } from '@/lib/logger';
 type Role = 'admin' | 'worker';
 
 interface AuthInstanceConfig {
@@ -15,7 +17,21 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
   const { cookiePrefix, allowedRole, basePath } = instanceConfig;
   const useSecureCookies = process.env.NODE_ENV === 'production';
 
+  // Fail fast at startup — prevents silent session failures in production.
+  // In test or build environments, we allow a fallback to prevents crashes during CI/CD.
+  const isBuildOrTest =
+    process.env.NODE_ENV === 'test' ||
+    process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.CI === 'true';
+  const authSecret =
+    process.env.NEXTAUTH_SECRET || (isBuildOrTest ? 'build-time-dummy-secret' : undefined);
+
+  if (!authSecret) {
+    throw new Error('[Auth] NEXTAUTH_SECRET is not defined. Set it in your environment variables.');
+  }
+
   const config: NextAuthConfig = {
+    secret: authSecret,
     basePath,
     trustHost: true,
 
@@ -48,37 +64,60 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             password: string;
           };
 
-          console.log(
-            `[NextAuth Factory] Attempting login for ${email} on instance ${cookiePrefix}`,
-          );
-          const user = await prisma.user.findUnique({ where: { email } });
+          logger.info({
+            msg: 'Auth login attempt',
+            email: maskEmail(email),
+            instance: cookiePrefix,
+          });
+          const user = await prisma.user.findUnique({
+            where: { email },
+            select: {
+              id: true,
+              email: true,
+              password: true,
+              role: true,
+              organizationId: true,
+              mfaEnabled: true,
+              passwordResetRequired: true,
+            },
+          });
 
           if (!user || !user.password) {
-            console.log('[NextAuth Factory] User not found or no password map');
+            logger.warn({ msg: 'Auth login failed: user not found', instance: cookiePrefix });
             return null;
           }
 
           if (user.role !== allowedRole) {
-            console.log(
-              `[NextAuth Factory] Role blocked. Found: ${user.role}, Allowed: ${allowedRole}`,
-            );
+            logger.warn({
+              msg: 'Auth login failed: role mismatch',
+              role: user.role,
+              allowed: allowedRole,
+              instance: cookiePrefix,
+            });
             return null;
           }
 
           const valid = await bcrypt.compare(password, user.password);
           if (!valid) {
-            console.log('[NextAuth Factory] Password bcrypt validation failed');
+            logger.warn({ msg: 'Auth login failed: invalid password', instance: cookiePrefix });
             return null;
           }
 
-          console.log(`[NextAuth Factory] Validated securely. Creating session for ${user.email}`);
+          logger.info({
+            msg: 'Auth login success',
+            email: maskEmail(user.email),
+            instance: cookiePrefix,
+            mfaEnabled: user.mfaEnabled,
+          });
 
           return {
             id: user.id,
             email: user.email,
             role: user.role as Role,
             organizationId: user.organizationId,
-          } as User;
+            passwordResetRequired: user.passwordResetRequired,
+            mfaVerified: !user.mfaEnabled, // If MFA disabled, auto-verified; if enabled, must verify
+          } as User & { mfaVerified: boolean; passwordResetRequired: boolean };
         },
       }),
 
@@ -89,14 +128,17 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
               clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
               issuer: `https://login.microsoftonline.com/${process.env.AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}/v2.0`,
-              allowDangerousEmailAccountLinking: true,
+              // allowDangerousEmailAccountLinking removed — prevents silent account takeover
+              // via Microsoft OAuth for users with existing credentials accounts.
+              // New users signing up via Microsoft OAuth are still created normally.
             }),
           ]
         : []),
     ],
 
     callbacks: {
-      async signIn({ user, account }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async signIn({ user, account }: any) {
         if (account?.provider === 'microsoft-entra-id') {
           let dbUser = await prisma.user.findUnique({
             where: { email: user.email! },
@@ -111,9 +153,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           if (!dbUser) {
             // New user Signup Flow
-            console.log(
-              `[NextAuth] Creating new ${allowedRole} user via Microsoft OAuth: ${user.email}`,
-            );
+            logger.info({
+              msg: 'OAuth: creating new user',
+              email: maskEmail(user.email!),
+              role: allowedRole,
+            });
 
             let matchedOrgId = null;
             let matchedRole = allowedRole;
@@ -123,15 +167,24 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               const inviteRole = pendingInvite.role;
               matchedRole =
                 inviteRole === 'admin' || inviteRole === 'worker' ? inviteRole : 'worker';
-              console.log(
-                `[NextAuth] Found pending invite for ${user.email}, joining org ${matchedOrgId} as ${matchedRole}`,
-              );
+              logger.info({
+                msg: 'OAuth: pending invite found',
+                email: maskEmail(user.email!),
+                orgId: matchedOrgId,
+                role: matchedRole,
+              });
             }
+
+            const randomPassword = await bcrypt.hash(
+              crypto.randomUUID() + Date.now().toString(),
+              12,
+            );
 
             dbUser = await prisma.user.create({
               data: {
                 email: user.email!,
-                password: '', // OAuth users don't need a password initially
+                password: randomPassword,
+                authProvider: 'microsoft-entra-id',
                 role: matchedRole,
                 organizationId: matchedOrgId,
                 emailVerified: true, // Trust OAuth provider email verification
@@ -150,9 +203,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             // Existing user login
             if (pendingInvite && !dbUser.organizationId) {
               // User exists but has no org yet, and has a new invite
-              console.log(
-                `[NextAuth] Existing user ${user.email} accepting invite to org ${pendingInvite.organizationId}`,
-              );
+              logger.info({
+                msg: 'OAuth: existing user accepting invite',
+                email: maskEmail(user.email!),
+                orgId: pendingInvite.organizationId,
+              });
               dbUser = await prisma.user.update({
                 where: { id: dbUser.id },
                 data: {
@@ -172,10 +227,14 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             }
           }
 
-          if (dbUser.role !== allowedRole) {
-            console.log(
-              `[NextAuth] Role mismatch during SSO. Expected ${allowedRole}, got ${dbUser.role}. Automatically routing to correct instance...`,
-            );
+          if (!dbUser.role) {
+            logger.info({ msg: 'OAuth: user has no role, continuing for onboarding' });
+          } else if (dbUser.role !== allowedRole) {
+            logger.warn({
+              msg: 'OAuth: role mismatch, routing to correct instance',
+              expected: allowedRole,
+              got: dbUser.role,
+            });
             if (dbUser.role === 'worker')
               return '/api/auth-worker/signin/microsoft-entra-id?callbackUrl=/worker';
             if (dbUser.role === 'admin')
@@ -186,6 +245,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           user.id = dbUser.id;
           user.organizationId = dbUser.organizationId;
           user.role = dbUser.role as Role;
+          // OAuth users bypass MFA — Microsoft Entra ID has its own MFA policies
+          (user as User & { mfaVerified?: boolean }).mfaVerified = true;
 
           const profile = await prisma.profile.findUnique({
             where: { id: dbUser.id },
@@ -212,7 +273,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               });
               user.name = oauthName || user.email!;
             } catch (profileErr) {
-              console.error('[Auth] Failed to create profile for OAuth user:', profileErr);
+              logger.error({ msg: 'OAuth: failed to create profile', error: String(profileErr) });
               user.name = user.email!;
             }
           }
@@ -220,11 +281,15 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
         return true;
       },
 
-      async jwt({ token, user }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async jwt({ token, user }: any) {
         if (user) {
           token.id = user.id;
           token.role = user.role;
           token.organizationId = user.organizationId;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          token.passwordResetRequired = (user as any).passwordResetRequired ?? false;
+          token.mfaVerified = (user as User & { mfaVerified?: boolean }).mfaVerified ?? false;
           if (user.name) {
             token.name = user.name;
           }
@@ -238,6 +303,10 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               id: true,
               role: true,
               organizationId: true,
+              mfaEnabled: true,
+              mfaVerifiedAt: true,
+              passwordResetRequired: true,
+              authProvider: true,
               profile: { select: { fullName: true } },
             },
           });
@@ -248,16 +317,39 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           token.role = freshUser.role as Role;
           token.organizationId = freshUser.organizationId;
           token.name = freshUser.profile?.fullName || token.email || 'User';
+          token.mfaEnabled = freshUser.mfaEnabled;
+          token.authProvider = freshUser.authProvider;
+          token.passwordResetRequired = freshUser.passwordResetRequired;
+
+          // Determine mfaVerified based on step-up timestamp:
+          // The token stores the session start time (iat). If the user completed
+          // an MFA challenge (mfaVerifiedAt) after this token was issued, grant access.
+          if (freshUser.mfaEnabled) {
+            const sessionStart = ((token.iat as number) ?? 0) * 1000; // iat is in seconds
+            const verifiedAt = freshUser.mfaVerifiedAt?.getTime() ?? 0;
+            // Allow a 30-second clock skew window
+            const verified = verifiedAt > sessionStart - 30_000;
+            token.mfaVerified = verified;
+          } else {
+            // MFA disabled — always considered verified
+            token.mfaVerified = true;
+          }
         }
 
         return token;
       },
 
-      async session({ session, token }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async session({ session, token }: any) {
         if (token) {
           session.user.id = token.id as string;
           session.user.role = token.role as Role;
           session.user.organizationId = token.organizationId as string | null;
+          session.user.authProvider = (token.authProvider as string) ?? 'credentials';
+          (session.user as User & { mfaVerified?: boolean }).mfaVerified =
+            (token.mfaVerified as boolean) ?? false;
+          (session.user as User & { mfaEnabled?: boolean }).mfaEnabled =
+            (token.mfaEnabled as boolean) ?? false;
         }
         return session;
       },
@@ -268,8 +360,12 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
       error: '/login',
     },
 
-    session: { strategy: 'jwt' },
+    session: {
+      strategy: 'jwt',
+      maxAge: parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '15', 10) * 60,
+    },
   };
 
-  return NextAuth(config);
+  const instance = NextAuth(config);
+  return { ...instance, options: config };
 }

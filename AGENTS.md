@@ -14,9 +14,7 @@ LMS is an AI-powered Learning Management System built with Next.js 16 (App Route
 - **Development**: `npm run dev`
 - **Build & Start**: `npm run build` then `npm run start`
 - **Database Setup**:
-  - `npx prisma generate`: Generate Prisma Client.
-  - `npx prisma db push`: Sync schema during development.
-  - `node scripts/seed-courses.js`: Seed database with sample courses.
+  - Always create and follow proper migration procedures.
 - **Linting & Formatting**:
   - `npm run lint`: ESLint check.
   - `npm run lint:fix`: Automatically fix ESLint errors.
@@ -25,9 +23,9 @@ LMS is an AI-powered Learning Management System built with Next.js 16 (App Route
 
 ## Coding Style & Naming Conventions
 - **TypeScript**: Strict typing required; avoid `any`.
-- **UI & Styling**: Tailwind CSS for responsive design.
+- **UI & Styling**: Vanila CSS for responsive design.
 - **State Management**: React Hook Form for data-heavy forms.
-- **Logging**: Use the centralized logger in `src/lib/logger.ts`.
+- **Logging**: Use the centralized structured logger in `src/lib/logger.ts`. ALWAYS use `logger.info({ msg, data })`, `logger.error({ msg, err })`, etc., instead of `console.log` or `console.error`. Do not use native console methods anywhere in the codebase.
 - **Naming**: Use descriptive names for components and utility functions.
 - **Enforced Hooks**: Pre-commit hooks via Husky/lint-staged (ESLint + Prettier).
 

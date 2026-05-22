@@ -4,9 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { notifyOrganizationAdmins } from './notifications';
 import { CourseWithStats, CourseWithRelations } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
+import { logger } from '@/lib/logger';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -74,7 +76,10 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
         },
       },
       enrollments: {
-        include: { user: { include: { profile: true } } },
+        include: {
+          user: { include: { profile: true } },
+          certificate: true,
+        },
       },
       creator: {
         include: { profile: true },
@@ -195,15 +200,35 @@ export async function getDashboardData() {
 
   // ⚡ Bolt: Single query replaces parallel getCourses() and getDashboardStats() calls,
   // fixing an N+1/redundant query pattern and cutting database hits for dashboard in half.
-  const coursesRaw = await prisma.course.findMany({
-    where: { createdBy: session.user.id },
-    include: {
-      enrollments: true,
-      lessons: {
-        include: { quiz: true },
+  const [coursesRaw, currentUser] = await Promise.all([
+    prisma.course.findMany({
+      where: { createdBy: session.user.id },
+      include: {
+        enrollments: true,
+        lessons: {
+          include: { quiz: true },
+        },
       },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { organizationId: true },
+    }),
+  ]);
+
+  if (!currentUser?.organizationId) {
+    // User authenticated but has no organization — they skipped or failed onboarding.
+    // Redirect them back to complete onboarding rather than crashing the page.
+    redirect('/onboarding');
+  }
+
+  // Get total staff (workers) in organization to ensure accurate coverage base
+  const totalOrgStaff = await prisma.user.count({
+    where: {
+      organizationId: currentUser.organizationId,
+      role: 'worker',
     },
-    orderBy: { createdAt: 'desc' },
   });
 
   const courses: CourseWithStats[] = coursesRaw.map((course) => ({
@@ -293,12 +318,84 @@ export async function getDashboardData() {
     };
   });
 
-  const completedCount = enrollments.filter(
-    (e) => e.status === 'completed' || e.status === 'attested',
-  ).length;
-  const inProgressCount = enrollments.filter((e) => e.status === 'in_progress').length;
-  const enrolledCount = enrollments.filter((e) => e.status === 'enrolled').length;
-  const totalEnrollments = enrollments.length;
+  // --- Training Coverage ---
+  // Classify each unique staff member by their aggregate status across ALL their enrollments.
+  // Classification priority (highest wins): in_progress > not_started (enrolled) > completed.
+  // A user who has finished some courses but has others still "enrolled" is shown as in_progress
+  // because they have outstanding training — this gives the most actionable signal for admins.
+  const enrollmentsByUser = new Map<
+    string,
+    { hasCompleted: boolean; hasInProgress: boolean; hasNotStarted: boolean }
+  >();
+  for (const e of enrollments) {
+    const entry = enrollmentsByUser.get(e.userId) ?? {
+      hasCompleted: false,
+      hasInProgress: false,
+      hasNotStarted: false,
+    };
+    if (e.status === 'completed' || e.status === 'attested') {
+      entry.hasCompleted = true;
+    } else if (e.status === 'in_progress') {
+      entry.hasInProgress = true;
+    } else {
+      // 'enrolled' / 'assigned' — course has been assigned but not yet started
+      entry.hasNotStarted = true;
+    }
+    enrollmentsByUser.set(e.userId, entry);
+  }
+
+  let staffCompleted = 0;
+  let staffInProgress = 0;
+  let staffNotStarted = 0;
+  for (const record of enrollmentsByUser.values()) {
+    if (record.hasInProgress || record.hasNotStarted) {
+      // Any outstanding (in_progress or unstarted) enrollment means the user is not fully done.
+      // Distinguish the two for more granular UI display.
+      if (record.hasInProgress) {
+        staffInProgress++;
+      } else {
+        staffNotStarted++;
+      }
+    } else {
+      // All enrollments are completed/attested.
+      staffCompleted++;
+    }
+  }
+
+  // Users who were never enrolled at all are added to the 'not started' figure.
+  // This ensures the total base reflects the entire organization staff.
+  const staffWithNoEnrollments = Math.max(0, totalOrgStaff - enrollmentsByUser.size);
+  staffNotStarted += staffWithNoEnrollments;
+
+  const coverageBase = totalOrgStaff > 0 ? totalOrgStaff : enrollmentsByUser.size;
+
+  // Use largest-remainder (Hamilton) rounding so the three percentages always sum to exactly 100.
+  let pctCompleted = 0;
+  let pctInProgress = 0;
+  let pctNotStarted = 0;
+  if (coverageBase > 0) {
+    const rawCompleted = (staffCompleted / coverageBase) * 100;
+    const rawInProgress = (staffInProgress / coverageBase) * 100;
+    const rawNotStarted = (staffNotStarted / coverageBase) * 100;
+
+    pctCompleted = Math.floor(rawCompleted);
+    pctInProgress = Math.floor(rawInProgress);
+    pctNotStarted = Math.floor(rawNotStarted);
+
+    // Distribute remaining integer points to whichever values have the largest fractional parts.
+    const remainder = 100 - pctCompleted - pctInProgress - pctNotStarted;
+    const fractions = [
+      { key: 'completed' as const, frac: rawCompleted - pctCompleted },
+      { key: 'inProgress' as const, frac: rawInProgress - pctInProgress },
+      { key: 'notStarted' as const, frac: rawNotStarted - pctNotStarted },
+    ].sort((a, b) => b.frac - a.frac);
+
+    for (let i = 0; i < remainder; i++) {
+      if (fractions[i].key === 'completed') pctCompleted++;
+      else if (fractions[i].key === 'inProgress') pctInProgress++;
+      else pctNotStarted++;
+    }
+  }
 
   return {
     courses,
@@ -307,13 +404,12 @@ export async function getDashboardData() {
       totalStaffAssigned,
       averageGrade: averageScore,
       monthlyPerformance,
-      coursePerformance, // New Field
+      coursePerformance,
       trainingCoverage: {
-        completed: totalEnrollments > 0 ? Math.round((completedCount / totalEnrollments) * 100) : 0,
-        inProgress:
-          totalEnrollments > 0 ? Math.round((inProgressCount / totalEnrollments) * 100) : 0,
-        notStarted: totalEnrollments > 0 ? Math.round((enrolledCount / totalEnrollments) * 100) : 0,
-        totalStaff: totalStaffAssigned, // Add total staff for donut label
+        completed: pctCompleted,
+        inProgress: pctInProgress,
+        notStarted: pctNotStarted,
+        totalStaff: totalStaffAssigned,
       },
     },
   };
@@ -363,7 +459,7 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   const enrollmentData = usersToAssign.map((u) => ({
     userId: u.id,
     courseId: courseId,
-    status: 'enrolled',
+    status: 'enrolled' as const,
     progress: 0,
     startedAt: new Date(),
   }));
@@ -383,8 +479,9 @@ export async function createFullCourse(data: {
   description: string;
   difficulty: string;
   duration: string;
+  categoryId?: string;
   objectives?: string[];
-  modules: { title: string; content: string; duration: string }[];
+  modules: { title: string; content: string; slideContent?: string; duration: string }[];
   quiz: QuizQuestion[];
   assignments: string[];
   dueDate?: Date;
@@ -429,6 +526,7 @@ export async function createFullCourse(data: {
     data: {
       title: data.title,
       description: data.description,
+      categoryId: data.categoryId || null,
       duration: parseInt(data.duration) || 0,
       objectives: data.objectives || [],
       status: 'published',
@@ -447,6 +545,7 @@ export async function createFullCourse(data: {
         create: data.modules.map((mod, index) => ({
           title: mod.title,
           content: mod.content,
+          slideContent: mod.slideContent || null,
           order: index,
           duration: parseInt(mod.duration.replace(' min', '')) || 10,
           quiz:
@@ -596,7 +695,7 @@ export async function createFullCourse(data: {
       try {
         await sendCourseInviteEmail(email, tempPassword, data.title, orgName);
       } catch (emailError) {
-        console.error(`Failed to send email to ${email}:`, emailError);
+        logger.error({ msg: `Failed to send email to ${email}:`, err: emailError });
       }
 
       return newUser.id;
@@ -609,7 +708,7 @@ export async function createFullCourse(data: {
         newUserIds.push(result.value);
         inviteResults.newInvited++;
       } else {
-        console.error(`Failed to create user ${newEmails[index]}:`, result.reason);
+        logger.error({ msg: `Failed to create user ${newEmails[index]}:`, err: result.reason });
         inviteResults.failed.push(newEmails[index]);
       }
     });
@@ -623,7 +722,7 @@ export async function createFullCourse(data: {
           data: allUserIds.map((userId) => ({
             userId,
             courseId: course.id,
-            status: 'enrolled',
+            status: 'enrolled' as const,
             startedAt: new Date(),
           })),
           skipDuplicates: true,
@@ -642,12 +741,12 @@ export async function createFullCourse(data: {
               course.title,
               orgName,
             ).catch((err) =>
-              console.error(`Failed to send enrollment email to ${user.email}`, err),
+              logger.error({ msg: `Failed to send enrollment email to ${user.email}`, err }),
             ),
           ),
         );
       } catch (enrollError) {
-        console.error('Failed to create enrollments:', enrollError);
+        logger.error({ msg: 'Failed to create enrollments:', err: enrollError });
       }
     }
   }
@@ -775,6 +874,7 @@ export async function updateQuizQuestions(
     options: string[];
     answer: number;
     type?: string;
+    explanation?: string;
   }[],
 ) {
   const session = await resolveSession();
@@ -807,6 +907,7 @@ export async function updateQuizQuestions(
           type: q.type || 'multiple_choice',
           options: q.options,
           correctAnswer: q.options[q.answer],
+          explanation: q.explanation,
           order: index,
         })),
       });
@@ -935,6 +1036,13 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
 
   if (lockedEnrollment.status !== 'locked') {
     throw new Error('Enrollment is not locked');
+  }
+
+  const existingRetake = await prisma.enrollment.findFirst({
+    where: { retakeOf: enrollmentId, status: 'enrolled' },
+  });
+  if (existingRetake) {
+    throw new Error('An active retake already exists for this enrollment');
   }
 
   const retakeEnrollment = await prisma.enrollment.create({

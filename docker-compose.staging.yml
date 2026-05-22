@@ -1,0 +1,124 @@
+# docker-compose.staging.yml
+#
+# Manages the full LMS staging stack:
+#   - app   → Next.js (port 3001, served via Nginx on the host)
+#   - db    → PostgreSQL 16 + pgvector (internal network only — no host port)
+#   - redis → Redis 7 (internal network only — no host port)
+#
+# Usage on the VM (after SCPing .env.staging):
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging build
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
+#
+# The --env-file flag makes variables available for YAML interpolation (build
+# args, service environment overrides) AND passes them into containers.
+
+name: lms-staging
+
+services:
+  # ── Next.js Application ──────────────────────────────────────────────────────
+  app:
+    container_name: lms-staging-app
+    # Image is built in GitHub Actions CI, pushed to GHCR, then pulled here.
+    # APP_IMAGE is set by the deploy workflow, e.g.:
+    #   APP_IMAGE=ghcr.io/owner/repo:staging-abc1234
+    image: ${APP_IMAGE:?APP_IMAGE must be set. Run via the deploy workflow or set manually.}
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: production
+      PORT: '3001'
+      # Override REDIS_URL to point to the Docker redis service.
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # MinIO is on the internal Docker network — override the endpoint
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: '9000'
+      MINIO_USE_SSL: 'false'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - staging-net
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3001/api/health 2>/dev/null || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── PostgreSQL Database ───────────────────────────────────────────────────────
+  db:
+    container_name: lms-staging-db
+    # pgvector/pgvector:pg16 is the official pgvector image built on top of
+    # postgres:16. It includes the vector extension pre-compiled and ready to
+    # activate with: CREATE EXTENSION IF NOT EXISTS vector;
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lms_staging}
+      POSTGRES_USER: ${POSTGRES_USER:-lms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.staging}
+    volumes:
+      # Data persists on the VM host — survives container restarts and rebuilds
+      - /home/deploy/data/postgres-staging:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-lms} -d ${POSTGRES_DB:-lms_staging}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - staging-net
+
+  # ── Redis (for BullMQ job queues) ────────────────────────────────────────────
+  redis:
+    container_name: lms-staging-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    # requirepass enforces auth even on the internal network (defence in depth)
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging} --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      # AOF persistence — survives container restarts
+      - /home/deploy/data/redis-staging:/data
+    healthcheck:
+      # $$REDIS_PASSWORD: $$ in compose YAML → literal $ in shell → container env var
+      test: ['CMD-SHELL', 'redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - staging-net
+
+  # ── MinIO (GCS fallback / local object storage) ───────────────────────────────
+  minio:
+    container_name: lms-staging-minio
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY must be set in .env.staging}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY must be set in .env.staging}
+    volumes:
+      - /home/deploy/data/minio-staging:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - staging-net
+
+networks:
+  staging-net:
+    driver: bridge
+    name: lms-staging-net

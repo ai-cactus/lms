@@ -18,10 +18,13 @@
   width: 100%;
   max-width: 900px;
   position: relative;
-  overflow: hidden;
   box-shadow:
     0px 20px 25px -5px rgba(0, 0, 0, 0.1),
     0px 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  margin: auto;
+  padding: 16px;
 }
 
 .closeButton {
@@ -64,6 +67,7 @@
   align-items: center;
   text-align: center;
   position: relative;
+  border-radius: 20px;
 }
 
 .illustrationImage {
@@ -169,9 +173,12 @@
 
   .illustrationSection {
     padding: 32px;
+    margin-top: 48px;
+    border-radius: 16px;
+    margin-bottom: 24px;
   }
 
   .checklistSection {
-    padding: 32px;
+    padding: 16px;
   }
 }

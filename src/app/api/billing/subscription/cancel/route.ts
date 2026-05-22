@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import stripe from '@/lib/stripe';
+import { logger } from '@/lib/logger';
 
 // POST /api/billing/subscription/cancel — cancels subscription at end of current period
 export async function POST() {
@@ -55,7 +56,7 @@ export async function POST() {
       currentPeriodEnd: subscription.currentPeriodEnd,
     });
   } catch (error) {
-    console.error('[POST /api/billing/subscription/cancel]', error);
+    logger.error({ msg: '[POST /api/billing/subscription/cancel]', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

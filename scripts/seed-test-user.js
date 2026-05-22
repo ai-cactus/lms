@@ -70,6 +70,34 @@ async function main() {
       },
     });
   }
+  // Create a document and version for the admin to use in the wizard
+    console.log('Creating sample document for admin');
+    const doc = await prisma.document.upsert({
+      where: { id: 'test-doc-id-01' },
+      update: {},
+      create: {
+        id: 'test-doc-id-01',
+        userId: admin.id,
+        filename: 'HIPAA_Compliance_Guide.pdf',
+        originalName: 'HIPAA_Compliance_Guide.pdf',
+        mimeType: 'application/pdf',
+        size: 1024 * 1024, // 1MB
+      },
+    });
+  
+    await prisma.documentVersion.upsert({
+      where: { id: 'test-doc-version-id-01' },
+      update: {},
+      create: {
+        id: 'test-doc-version-id-01',
+        documentId: doc.id,
+        version: 1,
+        storagePath: 'documents/test-guideline.pdf',
+        hash: 'dummy-hash-123',
+        content: 'This is a sample HIPAA compliance document content for training purposes.',
+      },
+    });
+
   console.log('3 workers created');
   console.log('\n✅ Done! Login: admin@test.com / Admin123!');
 }

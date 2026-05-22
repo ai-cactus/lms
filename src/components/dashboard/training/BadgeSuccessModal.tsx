@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './BadgeSuccessModal.module.css';
 import { Modal, Button } from '@/components/ui';
@@ -13,6 +12,7 @@ interface BadgeSuccessModalProps {
   badgeId?: string;
   issuedDate: string;
   courseId?: string; // Optional for navigation
+  certificateId?: string;
 }
 
 export default function BadgeSuccessModal({
@@ -23,6 +23,7 @@ export default function BadgeSuccessModal({
   badgeId = 'LMS-104',
   issuedDate,
   courseId,
+  certificateId,
 }: BadgeSuccessModalProps) {
   const router = useRouter();
 
@@ -66,7 +67,7 @@ export default function BadgeSuccessModal({
             <div className={styles.ribbon} />
           </div>
 
-          <h2 className={styles.title}>Well done! You’ve earned a badge!</h2>
+          <h2 className={styles.title}>{`Well done! You've earned a certificate!`}</h2>
 
           <p className={styles.description}>
             The attestation is now securely stored and accessible on your dashboard anytime.
@@ -93,19 +94,38 @@ export default function BadgeSuccessModal({
             <div className={styles.badgeDetails}>
               <div>{organizationName}</div>
               <div>Issued on: {issuedDate}</div>
-              <div>Badge ID: {badgeId}</div>
+              <div>Certificate ID: {badgeId}</div>
             </div>
           </div>
 
-          <Button variant="primary" className={styles.dashboardBtn} onClick={handleDashboard}>
+          <Button
+            variant="primary"
+            fullWidth
+            className={styles.dashboardBtn}
+            onClick={handleDashboard}
+          >
             View Course Status
           </Button>
+
+          {certificateId && (
+            <Button
+              variant="outline"
+              fullWidth
+              style={{ marginTop: '12px' }}
+              onClick={() => window.open(`/api/certificates/${certificateId}`, '_blank')}
+            >
+              View Certificate
+            </Button>
+          )}
 
           <div className={styles.startNewLink}>
             or{' '}
             <span
+              className={styles.startNewSpan}
               onClick={() => router.push('/worker')}
-              style={{ textDecoration: 'underline', cursor: 'pointer' }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && router.push('/worker')}
             >
               start a new course here
             </span>

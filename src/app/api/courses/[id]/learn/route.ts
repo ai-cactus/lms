@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
+import { logger } from '@/lib/logger';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     if (activeUserId) {
       enrollment = await prisma.enrollment.findFirst({
         where: { courseId: courseId, userId: activeUserId },
+        orderBy: { startedAt: 'desc' },
         include: { quizAttempts: true },
       });
     }
@@ -69,13 +71,14 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
       const adminEnroll = await prisma.enrollment.findFirst({
         where: { courseId: courseId, userId: adminSession.user.id },
+        orderBy: { startedAt: 'desc' },
         include: { quizAttempts: true },
       });
 
       const isSameOrg = Boolean(
         adminUser?.organizationId &&
         course.creator?.organizationId &&
-        adminUser.organizationId === course.creator.organizationId
+        adminUser.organizationId === course.creator.organizationId,
       );
 
       if (adminEnroll || (adminUser?.role === 'admin' && isSameOrg)) {
@@ -126,20 +129,12 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
           passingScore: quizData.passingScore,
           allowedAttempts: quizData.allowedAttempts,
           timeLimit: quizData.timeLimit,
-          questions: quizData.questions.map((q) => {
-            const options = Array.isArray(q.options) ? [...q.options] : [];
-            // Fisher-Yates shuffle
-            for (let i = options.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [options[i], options[j]] = [options[j], options[i]];
-            }
-            return {
-              id: q.id,
-              text: q.text,
-              type: q.type,
-              options,
-            };
-          }),
+          questions: quizData.questions.map((q) => ({
+            id: q.id,
+            text: q.text,
+            type: q.type,
+            options: Array.isArray(q.options) ? [...q.options] : [],
+          })),
         }
       : null;
 
@@ -232,7 +227,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
               })),
               selectedAnswer: selectedLetter,
               correctAnswer: correctLetter,
-              explanation: userAnswer?.explanation || '',
+              explanation: q.explanation || userAnswer?.explanation || '',
             };
           }),
         };
@@ -249,6 +244,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
           id: l.id,
           title: l.title,
           content: l.content,
+          slideContent: l.slideContent,
           duration: l.duration,
           order: l.order,
         })),
@@ -268,11 +264,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         organizationName: user?.organization?.name || undefined,
         email: user?.email || '',
         jobTitle: user?.profile?.jobTitle || '',
-
       },
     });
   } catch (error) {
-    console.error('Error fetching course for learning:', error);
+    logger.error({ msg: 'Error fetching course for learning:', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

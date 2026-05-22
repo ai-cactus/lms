@@ -12,9 +12,26 @@ export default function ForgotPasswordPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldError, setFieldError] = useState('');
+
+  const validateForm = () => {
+    if (!email.trim()) {
+      setFieldError('Email is required');
+      return false;
+    }
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setFieldError('Please enter a valid email address');
+      return false;
+    }
+    setFieldError('');
+    return true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) return;
+
     setLoading(true);
     setError('');
 
@@ -55,10 +72,12 @@ export default function ForgotPasswordPage() {
                   name="email"
                   placeholder="Enter your email address"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (fieldError) setFieldError('');
+                  }}
                   autoComplete="email"
-                  error={error}
+                  error={fieldError || error}
                 />
 
                 <Button type="submit" size="lg" fullWidth loading={loading}>

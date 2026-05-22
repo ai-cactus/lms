@@ -14,7 +14,6 @@ import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui';
 import { sanitizeHtml } from '@/lib/sanitize';
 
-import DOMPurify from 'isomorphic-dompurify';
 import {
   CourseWizardData,
   GeneratedCourse,
@@ -27,7 +26,7 @@ interface Step5ReviewProps {
   documents: CourseDocument[];
   initialContent?: GeneratedCourse | null;
   onComplete: (content: GeneratedCourse) => void;
-  onBack?: () => void;
+  pendingJobId?: string | null;
 }
 
 /**
@@ -181,6 +180,7 @@ const adaptModulesForRenderingV46 = (
 };
 
 import { QuizQuestion } from '@/types/quiz';
+import { logger } from '@/lib/logger';
 
 interface RawAIQuizQuestion {
   question: string;
@@ -194,23 +194,52 @@ interface RawAIQuizQuestion {
 }
 
 /**
+ * Fisher-Yates shuffle for an array. Returns a NEW shuffled array.
+ * Used to randomise quiz option order so the correct answer is not always option A.
+ */
+function shuffleArray<T>(arr: T[]): T[] {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+/**
  * Adapts v4.6 quiz questions into the format expected by Step6QuizReview
  * and createFullCourse: { question, options: string[], answer: number, ... }
+ *
+ * Options are SHUFFLED so the correct answer is randomly distributed across
+ * positions A–D, preventing the LLM bias of always placing the correct answer first.
  */
 const adaptQuizForRenderingV46 = (
   quizJson: { questions: RawAIQuizQuestion[] } | null | undefined,
 ): QuizQuestion[] => {
   if (!quizJson?.questions) return [];
   return quizJson.questions.map((q) => {
-    // Find correct answer index
-    const correctIdx = (q.options as { isCorrect: boolean }[]).findIndex((o) => o.isCorrect);
+    // Tag each raw option with its original index so we can track the correct one after shuffle
+    type TaggedOption = {
+      text: string;
+      isCorrect: boolean;
+      explanation?: string;
+      originalIndex: number;
+    };
+    const taggedOptions: TaggedOption[] = (
+      q.options as { text: string; isCorrect: boolean; explanation?: string }[]
+    ).map((o, idx) => ({ ...o, originalIndex: idx }));
 
-    // Build explanation from option explanations
-    const correctOption = (q.options as { isCorrect: boolean; explanation?: string }[]).find(
-      (o) => o.isCorrect,
-    );
+    // Shuffle so the correct answer lands at a random position
+    const shuffled = shuffleArray(taggedOptions);
+
+    // The new correct-answer index is wherever isCorrect ended up after the shuffle
+    const newCorrectIdx = shuffled.findIndex((o) => o.isCorrect);
+
+    const correctOption = shuffled.find((o) => o.isCorrect);
+
+    // Build incorrectOptions keyed by NEW (shuffled) index so explanations stay in sync
     const incorrectOptions: Record<string, string> = {};
-    (q.options as { isCorrect: boolean; explanation?: string }[]).forEach((o, idx: number) => {
+    shuffled.forEach((o, idx) => {
       if (!o.isCorrect) {
         incorrectOptions[String(idx)] = o.explanation || '';
       }
@@ -219,8 +248,8 @@ const adaptQuizForRenderingV46 = (
     return {
       // Legacy-compatible fields expected by Step6QuizReview
       question: q.question,
-      options: (q.options as { text: string }[]).map((o) => o.text),
-      answer: correctIdx >= 0 ? correctIdx : 0,
+      options: shuffled.map((o) => o.text),
+      answer: newCorrectIdx >= 0 ? newCorrectIdx : 0,
       type: 'multiple_choice',
       // v4.6 rich data
       archetype: q.skill || q.templateId,
@@ -248,7 +277,7 @@ export default function Step5Review({
   documents,
   initialContent,
   onComplete,
-  onBack,
+  pendingJobId,
 }: Step5ReviewProps) {
   // Core State
   const [isGenerating, setIsGenerating] = useState(!initialContent);
@@ -264,8 +293,10 @@ export default function Step5Review({
     initialContent?.modules || [],
   );
 
-  // Generation Ref
+  // Generation Refs
   const hasStartedRef = useRef(false);
+  // Stores the active jobId so the "Back to Dashboard" button can persist it to localStorage
+  const activeJobIdRef = useRef<string | null>(null);
   const hasInitialContent = !!initialContent;
 
   // Generate Request — v4.6 five-stage pipeline
@@ -276,31 +307,38 @@ export default function Step5Review({
 
     const generate = async () => {
       try {
-        const formData = new FormData();
-        formData.append('data', JSON.stringify(data));
+        let jobId = pendingJobId;
 
-        // Try to send the File blob if available (freshly uploaded)
-        const selectedDocWithFile = documents.find((d) => d.selected && d.file);
-        if (selectedDocWithFile?.file) {
-          formData.append('file', selectedDocWithFile.file);
+        if (!jobId) {
+          const formData = new FormData();
+          formData.append('data', JSON.stringify(data));
+
+          // Try to send the File blob if available (freshly uploaded)
+          const selectedDocWithFile = documents.find((d) => d.selected && d.file);
+          if (selectedDocWithFile?.file) {
+            formData.append('file', selectedDocWithFile.file);
+          }
+
+          // Always pass the selected document ID so the server can
+          // read from DB if no File blob is available
+          const selectedDoc = documents.find((d) => d.selected);
+          if (selectedDoc) {
+            formData.append('documentId', selectedDoc.id);
+          }
+
+          const { jobId: newJobId, error: startError } = await generateCourseAndQuizV46(formData);
+
+          if (startError || !newJobId) {
+            setError(startError || 'Failed to start generation job');
+            setIsGenerating(false);
+            return;
+          }
+          jobId = newJobId;
         }
 
-        // Always pass the selected document ID so the server can
-        // read from DB if no File blob is available
-        const selectedDoc = documents.find((d) => d.selected);
-        if (selectedDoc) {
-          formData.append('documentId', selectedDoc.id);
-        }
+        // Store so the "Back to Dashboard" button can persist it
+        activeJobIdRef.current = jobId;
 
-        const { jobId, error: startError } = await generateCourseAndQuizV46(formData);
-
-        if (startError || !jobId) {
-          setError(startError || 'Failed to start generation job');
-          setIsGenerating(false);
-          return;
-        }
-
-        // Poll for completion
         const pollInterval = setInterval(async () => {
           try {
             const statusRes = await checkCourseGenerationJobV46(jobId);
@@ -354,18 +392,31 @@ export default function Step5Review({
             }
             // If status is 'processing', keep polling
           } catch (pollErr) {
-            console.error('Polling failed', pollErr);
+            logger.error({ msg: 'Polling failed', err: pollErr });
           }
         }, 3000);
       } catch (err) {
-        console.error('Generation failed', err);
+        logger.error({ msg: 'Generation failed', err: err });
         setError('An unexpected response was received from the server.');
         setIsGenerating(false);
       }
     };
 
     generate();
-  }, [data, documents, onComplete, hasInitialContent]);
+  }, [data, documents, onComplete, hasInitialContent, pendingJobId]);
+
+  // Called from the loading UI — saves job state so courses list can show a banner
+  const handleBackToDashboard = (jobIdToSave: string) => {
+    try {
+      localStorage.setItem(
+        'lms_pending_generation',
+        JSON.stringify({ jobId: jobIdToSave, formData: data, timestamp: Date.now() }),
+      );
+    } catch {
+      // localStorage may be unavailable (private browsing); silently continue
+    }
+    window.location.href = '/dashboard/courses';
+  };
 
   // Handlers
   const handleModuleChange = (index: number) => {
@@ -375,13 +426,6 @@ export default function Step5Review({
 
   const handleSwitchView = (mode: 'slides' | 'article') => {
     setViewMode(mode);
-  };
-
-  const updateParent = (modules: RenderableModule[]) => {
-    if (!generatedContent) return;
-    const newContent = { ...generatedContent, modules };
-    setGeneratedContent(newContent);
-    onComplete(newContent);
   };
 
   // Loading / Error States
@@ -402,6 +446,8 @@ export default function Step5Review({
     );
   }
 
+  // Capture jobId from the generate() closure via ref so the Back button can read it
+  // (ref is declared near the top of the component, above all early returns)
   if (isGenerating) {
     return (
       <div
@@ -419,7 +465,7 @@ export default function Step5Review({
               animation: 'spin 1s linear infinite',
               margin: '0 auto 24px',
             }}
-          ></div>
+          />
           <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1A202C', marginBottom: 8 }}>
             Creating your course and quiz…
@@ -431,19 +477,26 @@ export default function Step5Review({
           <p style={{ color: '#A0AEC0', fontSize: 13 }}>
             You&apos;ll be able to review and edit everything before publishing.
           </p>
-          <a
-            href="/dashboard"
+          <p style={{ color: '#A0AEC0', fontSize: 12, marginTop: 8 }}>
+            You can go back to the dashboard — generation will continue and you can resume from
+            there.
+          </p>
+          <button
+            onClick={() => handleBackToDashboard(activeJobIdRef.current ?? '')}
             style={{
               display: 'inline-block',
               marginTop: 32,
               fontSize: 14,
               fontWeight: 600,
               color: '#4C6EF5',
-              textDecoration: 'none',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              textDecoration: 'underline',
             }}
           >
             ← Back to Dashboard
-          </a>
+          </button>
         </div>
       </div>
     );
@@ -455,7 +508,7 @@ export default function Step5Review({
   const displayContent =
     viewMode === 'slides'
       ? currentModule?.slideContent || currentModule?.content || ''
-      : (generatedContent?.rawArticleMarkdown ? articleMarkdownToHtml(generatedContent.rawArticleMarkdown) : currentModule?.content || '');
+      : currentModule?.content || '';
 
   return (
     <div className={styles.playerContainer}>
@@ -518,6 +571,26 @@ export default function Step5Review({
             </CourseArticle>
           )}
         </div>
+
+        {/* Warning banner for content shortfall */}
+        {(generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
+          ?.coverageNote && (
+          <div
+            style={{
+              padding: '12px 16px',
+              background: '#EFF6FF',
+              borderTop: '1px solid #60A5FA',
+              color: '#1E3A8A',
+              fontSize: 13,
+            }}
+          >
+            ℹ <strong>Less content generated:</strong>{' '}
+            {
+              (generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
+                ?.coverageNote
+            }
+          </div>
+        )}
 
         {/* Warning banner for partial failures */}
         {generatedContent?.warning && (

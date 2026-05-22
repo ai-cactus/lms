@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import styles from '../../../components/courses/CoursePlayer.module.css';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -13,11 +13,13 @@ import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
 import { Button } from '@/components/ui';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { logger } from '@/lib/logger';
 
 interface Lesson {
   id: string;
   title: string;
   content: string;
+  slideContent?: string;
   duration: number | null;
   order: number;
   moduleIndex: number;
@@ -152,12 +154,12 @@ export default function LearnPage() {
         });
         setEnrollment((prev) => (prev ? { ...prev, progress } : prev));
       } catch (err) {
-        console.error('Failed to update progress', err);
+        logger.error({ msg: 'Failed to update progress', err: err });
       }
     }
   };
 
-  const handleSubmitQuiz = async () => {
+  const handleSubmitQuiz = React.useCallback(async () => {
     if (!course?.quiz || !enrollment) return;
     setSubmitting(true);
     const answers = Object.entries(quizAnswers).map(([qId, val]) => ({
@@ -185,12 +187,12 @@ export default function LearnPage() {
       setQuizResults(result);
       setQuizStep('review');
     } catch (err) {
-      console.error(err);
+      logger.error({ msg: 'Error:', err: err });
       alert('Failed to submit quiz');
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [course, enrollment, quizAnswers, timeLeft]);
 
   const handleNextQuestion = () => {
     if (!course?.quiz) return;
@@ -245,7 +247,7 @@ export default function LearnPage() {
 
       if (quizUnlocked || userData?.role === 'admin') {
         setIsQuizActive(true);
-        setQuizStep('intro');
+        setQuizStep(quizResults ? 'review' : 'intro');
         setActiveIndex(course.lessons.length);
       } else {
         setShowQuizGateModal(true);
@@ -287,7 +289,7 @@ export default function LearnPage() {
         : (course?.quiz?.questions.length || 5) * 60;
       setTimeLeft(limit);
     } catch (err) {
-      console.error('Failed to start quiz', err);
+      logger.error({ msg: 'Failed to start quiz', err: err });
       alert('Failed to start quiz session. Please try again.');
     }
   };
@@ -316,7 +318,7 @@ export default function LearnPage() {
         }),
       });
     } catch (err) {
-      console.error('Failed to save progress', err);
+      logger.error({ msg: 'Failed to save progress', err: err });
     }
   };
 
@@ -382,12 +384,30 @@ export default function LearnPage() {
 
           const remaining = Math.max(0, limit - elapsedSeconds);
           setTimeLeft(remaining);
+        } else if (isCompleted) {
+          // Completed/attested: show course content by default, quiz results accessible via rail
+          const resultsData: QuizResultsData = data.quizResultsData || {
+            passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
+            score: data.enrollment.score || 0,
+            totalQuestions: 0,
+            correctCount: 0,
+            answered: 0,
+            correct: 0,
+            wrong: 0,
+            time: 0,
+            questions: [],
+          };
+          setQuizResults(resultsData);
+          // Default to first lesson so workers can review course content
+          setActiveIndex(0);
+          setIsQuizActive(false);
+          setQuizUnlocked(true);
+          setHighestUnlockedIndex(lessonCount - 1);
         } else if (
-          (isCompleted ||
-            data.enrollment?.status === 'locked' ||
-            (hasQuizAttempt && !activeAttempt)) &&
+          (data.enrollment?.status === 'locked' || (hasQuizAttempt && !activeAttempt)) &&
           data.enrollment?.status !== 'in_progress'
         ) {
+          // Locked or has submitted quiz (not completed): show quiz review
           const resultsData: QuizResultsData = data.quizResultsData || {
             passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
             score: data.enrollment.score || 0,
@@ -489,7 +509,7 @@ export default function LearnPage() {
         quiz={course.quiz}
         onExitClick={() => {
           if (!isQuizLocked) {
-            router.push(userData?.role === 'admin' ? '/dashboard/courses' : '/dashboard/worker');
+            router.push(userData?.role === 'admin' ? '/dashboard/courses' : '/worker');
           }
         }}
         disableNav={isQuizLocked}
@@ -596,7 +616,7 @@ export default function LearnPage() {
                       await retakeQuiz(enrollment.id);
                       window.location.reload();
                     } catch (err) {
-                      console.error('Failed to retake quiz:', err);
+                      logger.error({ msg: 'Failed to retake quiz:', err: err });
                       alert('Failed to start retake. Please try again.');
                     }
                   }
@@ -805,7 +825,7 @@ export default function LearnPage() {
             <CourseSlide
               lesson={{
                 title: currentLesson!.title,
-                content: currentLesson!.content,
+                content: currentLesson!.slideContent || currentLesson!.content,
                 moduleIndex: activeIndex,
                 totalModules: course.lessons.length,
               }}
@@ -823,7 +843,7 @@ export default function LearnPage() {
                 updateProgress(endIdx);
                 setQuizUnlocked(true);
                 setIsQuizActive(true);
-                setQuizStep('intro');
+                setQuizStep(quizResults ? 'review' : 'intro');
                 setActiveIndex(course.lessons.length);
               }}
               hasQuiz={!!course.quiz}

@@ -8,10 +8,13 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import Link from 'next/link';
 import Image from 'next/image';
 import EditStaffModal from './EditStaffModal';
+import type { UserRole } from '@prisma/client';
 import AssignUserCourseModal from './AssignUserCourseModal';
 import AssignRetakeModal from '../training/AssignRetakeModal';
+import RemoveStaffModal from './RemoveStaffModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentQuizResult } from '@/app/actions/staff';
+import { logger } from '@/lib/logger';
 
 interface StaffProfileClientProps {
   staff: {
@@ -76,19 +79,20 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
     }[];
     organizationName?: string;
   } | null>(null);
-  const [isLoadingResult, setIsLoadingResult] = useState(false);
+  const [loadingEnrollmentId, setLoadingEnrollmentId] = useState<string | null>(null);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
 
   const handleViewResult = async (enrollmentId: string) => {
-    setIsLoadingResult(true);
+    setLoadingEnrollmentId(enrollmentId);
     try {
       const result = await getEnrollmentQuizResult(enrollmentId);
       if (result) {
         setViewingResult({ ...result, enrollmentId });
       }
     } catch (err) {
-      console.error(err);
+      logger.error({ msg: 'Error loading result', err });
     } finally {
-      setIsLoadingResult(false);
+      setLoadingEnrollmentId(null);
     }
   };
 
@@ -126,7 +130,13 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         <div className={styles.profileInfo}>
           <div className={styles.avatarLarge}>
             {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.name} className={styles.avatarImage} />
+              <Image
+                src={user.avatarUrl}
+                alt={user.name}
+                width={80}
+                height={80}
+                className={styles.avatarImage}
+              />
             ) : (
               <div
                 style={{
@@ -167,37 +177,19 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           </div>
         </div>
 
-        <div className={styles.headerActions} style={{ display: 'flex', gap: '8px' }}>
+        <div className={styles.headerActions} style={{ display: 'flex', gap: '12px' }}>
           <Button variant="ghost" size="md" onClick={() => setIsEditModalOpen(true)}>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
             Edit Profile
           </Button>
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => setShowRemoveModal(true)}
+            style={{ color: '#E53E3E', border: '1px solid #E53E3E' }}
+          >
+            Remove Staff
+          </Button>
           <Button variant="primary" size="md" onClick={() => setIsAssignModalOpen(true)}>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
             Assign Course
           </Button>
         </div>
@@ -473,13 +465,15 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                         Retake
                       </Button>
                     )}
-                    {(enrollment.status === 'completed' || enrollment.progress === 100 || (enrollment.quizAttempts && enrollment.quizAttempts.length > 0)) && (
+                    {(enrollment.status === 'completed' ||
+                      enrollment.progress === 100 ||
+                      (enrollment.quizAttempts && enrollment.quizAttempts.length > 0)) && (
                       <Button
                         variant="outline"
                         size="xs"
                         onClick={() => handleViewResult(enrollment.id)}
-                        disabled={isLoadingResult}
-                        loading={isLoadingResult}
+                        disabled={loadingEnrollmentId === enrollment.id}
+                        loading={loadingEnrollmentId === enrollment.id}
                       >
                         View
                       </Button>
@@ -508,7 +502,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           id: user.id,
           name: user.name,
           email: user.email,
-          role: user.role,
+          role: user.role as UserRole,
           jobTitle: user.jobTitle,
         }}
       />
@@ -592,6 +586,14 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           </div>
         </div>
       )}
+
+      <RemoveStaffModal
+        isOpen={showRemoveModal}
+        onClose={() => setShowRemoveModal(false)}
+        staffId={user.id}
+        staffName={user.name}
+        staffEmail={user.email}
+      />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { CourseDocument } from '@/types/course';
 interface Step2DocumentsProps {
   documents: CourseDocument[];
   onToggleSelect: (id: string) => void;
+  onDelete?: (id: string) => void;
   onUpload?: (files: File[]) => void;
   isAnalyzing?: boolean;
   progress?: number;
@@ -20,6 +21,7 @@ interface Step2DocumentsProps {
 export default function Step2Documents({
   documents,
   onToggleSelect,
+  onDelete,
   onUpload,
   isAnalyzing = false,
   progress = 0,
@@ -227,6 +229,10 @@ export default function Step2Documents({
                         size="icon-sm"
                         className={styles.trashBtn}
                         disabled={isAnalyzing}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete?.(doc.id);
+                        }}
                       >
                         <svg
                           width="18"

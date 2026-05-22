@@ -144,13 +144,14 @@ export const semanticColors = {
 // =============================================================================
 
 /**
- * Font families used in the design system
+ * Font families used in the design system.
+ * Suisse Int'l (self-hosted) is the primary typeface; JetBrains Mono is used for code.
+ * Both are injected as CSS custom properties: --font-sans, --font-mono
  */
 export const fontFamilies = {
-  primary:
-    '"Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  secondary: '"Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  mono: '"SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace',
+  primary: 'var(--font-sans)',
+  secondary: 'var(--font-sans)',
+  mono: 'var(--font-mono)',
 } as const;
 
 /**

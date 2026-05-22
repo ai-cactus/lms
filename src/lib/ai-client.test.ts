@@ -2,6 +2,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { estimateTokens, truncateToContext, callVertexAI } from './ai-client';
 
+vi.mock('google-auth-library', () => {
+  return {
+    GoogleAuth: class MockGoogleAuth {
+      async getAccessToken() {
+        return 'test-token';
+      }
+    },
+  };
+});
+
 describe('ai-client utilities', () => {
   describe('estimateTokens', () => {
     it('should estimate tokens correctly for basic ASCII strings', () => {
@@ -167,7 +177,7 @@ describe('ai-client utilities', () => {
     beforeEach(() => {
       vi.stubGlobal('fetch', vi.fn());
       vi.useFakeTimers();
-      process.env = { ...originalEnv, GEMINI_API_KEY: 'test-key' };
+      process.env = { ...originalEnv };
     });
 
     afterEach(() => {
@@ -176,10 +186,28 @@ describe('ai-client utilities', () => {
       process.env = originalEnv;
     });
 
-    it('should throw if API key is missing', async () => {
-      delete process.env.GEMINI_API_KEY;
-      delete process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      await expect(callVertexAI('test')).rejects.toThrow('Missing Gemini API Key');
+    it('should use OAuth Bearer token instead of API key', async () => {
+      const mockResponse = {
+        candidates: [{ content: { parts: [{ text: 'AI response' }] } }],
+      };
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      } as any);
+
+      await callVertexAI('test prompt');
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('publishers/google/models/gemini-2.5-flash-lite:generateContent'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer test-token',
+          }),
+        }),
+      );
+
+      const fetchUrl = (global.fetch as any).mock.calls[0][0];
+      expect(fetchUrl).not.toContain('key=');
     });
 
     it('should return text on successful response', async () => {
@@ -195,9 +223,7 @@ describe('ai-client utilities', () => {
       const result = await callVertexAI('test prompt');
       expect(result).toBe('AI response');
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'publishers/google/models/gemini-2.5-flash-lite:generateContent?key=test-key',
-        ),
+        expect.stringContaining('publishers/google/models/gemini-2.5-flash-lite:generateContent'),
         expect.objectContaining({
           method: 'POST',
           body: expect.stringContaining('test prompt'),
@@ -407,9 +433,7 @@ describe('ai-client utilities', () => {
       await callVertexAI('test config', config);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'publishers/google/models/custom-model-test:generateContent?key=test-key',
-        ),
+        expect.stringContaining('publishers/google/models/custom-model-test:generateContent'),
         expect.objectContaining({
           method: 'POST',
           body: expect.stringContaining('"temperature":0.2'),

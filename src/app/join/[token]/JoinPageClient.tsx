@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Input, Checkbox, Logo } from '@/components/ui';
+import { validatePassword, PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
+import PasswordStrengthIndicator from '@/components/ui/PasswordStrengthIndicator';
 import styles from './JoinPage.module.css';
 
 interface JoinPageClientProps {
@@ -37,13 +39,19 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
       return;
     }
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (!password) {
+      setError('Password is required');
       return;
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) {
+      setError(pwCheck.errors[0]);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
 
@@ -184,17 +192,18 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
           <Input
             label="Password"
             type="password"
-            placeholder="Password (at least 8 characters long)"
+            placeholder={`Password (at least ${PASSWORD_MIN_LENGTH} characters)`}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+          <PasswordStrengthIndicator password={password} />
 
           {/* Confirm Password */}
           <Input
             label="Confirm Password"
             type="password"
-            placeholder="Password (at least 8 characters long)"
+            placeholder={`Password (at least ${PASSWORD_MIN_LENGTH} characters)`}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required

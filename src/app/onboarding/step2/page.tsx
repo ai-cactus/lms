@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Input, Select, FileUpload } from '@/components/ui';
 import styles from '@/app/onboarding/onboarding.module.css'; // Reusing existing styles
 import Stepper from '@/components/onboarding/Stepper';
+import { logger } from '@/lib/logger';
 
 interface Step2FormData {
   licenseNumber: string;
@@ -23,7 +24,7 @@ export default function OnboardingStep2() {
   const [files, setFiles] = useState<File[]>([]);
 
   const onSubmit = (data: Step2FormData) => {
-    console.log('Step 2 Data Saved Locally:', data);
+    logger.info({ msg: 'Step 2 Data Saved Locally:', data: data });
     try {
       // Save to localStorage
       if (typeof window !== 'undefined') {
@@ -33,7 +34,7 @@ export default function OnboardingStep2() {
       }
       router.push('/onboarding/step3');
     } catch (error) {
-      console.error('Local save error:', error);
+      logger.error({ msg: 'Local save error:', err: error });
     }
   };
 
@@ -257,8 +258,8 @@ export default function OnboardingStep2() {
         </div>
 
         <div className={styles.actions}>
-          <Button variant="outline" type="button" onClick={() => router.push('/dashboard')}>
-            Skip for now
+          <Button variant="outline" type="button" onClick={() => router.push('/onboarding/step1')}>
+            Back
           </Button>
           <Button variant="primary" type="submit">
             Next

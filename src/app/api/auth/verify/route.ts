@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import type { UserRole } from '@prisma/client';
+import { logger } from '@/lib/logger';
 
 const getBaseUrl = () => {
   return (
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Default to 'worker' if role not set
-    const userRole = verificationToken.role || 'worker';
+    const userRole = (verificationToken.role || 'worker') as UserRole;
 
     await prisma.$transaction(async (tx) => {
       // Create the user
@@ -108,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, role: userRole });
   } catch (error) {
-    console.error('Verification POST error:', error);
+    logger.error({ msg: 'Verification POST error:', err: error });
     return NextResponse.json({ success: false, error: 'server_error' }, { status: 500 });
   }
 }

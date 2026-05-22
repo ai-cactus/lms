@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { logger } from '@/lib/logger';
 
 type ModalId = 'organizationActivation' | 'workerWelcome' | string;
 
@@ -115,7 +116,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
     if (candidates.length > 0) {
       // registeredModals is already sorted by priority desc
       const nextModal = candidates[0];
-      console.log('[ModalContext] Activating modal:', nextModal.id);
+      logger.info({ msg: '[ModalContext] Activating modal:', data: nextModal.id });
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional activation of highest priority modal
       setActiveModal(nextModal.id);
     }

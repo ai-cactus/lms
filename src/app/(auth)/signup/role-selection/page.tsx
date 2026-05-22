@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { Logo, Button } from '@/components/ui';
 import { signupWithRole } from '@/app/actions/auth';
 import styles from './page.module.css';
+import { logger } from '@/lib/logger';
 
 interface PendingSignup {
   email: string;
@@ -62,7 +63,7 @@ export default function RoleSelectionPage() {
         setError(result.error || 'Failed to create account');
       }
     } catch (err) {
-      console.error('Signup error:', err);
+      logger.error({ msg: 'Signup error:', err: err });
       setError('An unexpected error occurred.');
     } finally {
       setIsLoading(false);
@@ -156,7 +157,13 @@ export default function RoleSelectionPage() {
 
           {error && <p className={styles.error}>{error}</p>}
 
-          <Button size="lg" fullWidth onClick={handleContinue} loading={isLoading}>
+          <Button
+            size="lg"
+            fullWidth
+            onClick={handleContinue}
+            loading={isLoading}
+            disabled={isLoading}
+          >
             Continue
           </Button>
 

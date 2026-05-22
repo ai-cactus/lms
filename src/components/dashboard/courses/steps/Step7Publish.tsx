@@ -8,6 +8,7 @@ import { Button } from '@/components/ui';
 
 import { CourseWizardData } from '@/types/course';
 import { searchStaffUsers } from '@/app/actions/user';
+import { logger } from '@/lib/logger';
 
 interface Step7PublishProps {
   data: CourseWizardData;
@@ -46,7 +47,7 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
           const available = results.filter((w: Worker) => !data.assignments?.includes(w.email));
           setSuggestions(available);
         } catch (err) {
-          console.error('Failed to search staff', err);
+          logger.error({ msg: 'Failed to search staff', err: err });
         } finally {
           setIsLoading(false);
         }

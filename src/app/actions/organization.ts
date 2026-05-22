@@ -3,6 +3,7 @@
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { logger } from '@/lib/logger';
 
 interface OrganizationUpdateData {
   name?: string;
@@ -23,12 +24,14 @@ interface OrganizationUpdateData {
   primaryBusinessType?: string;
   additionalBusinessTypes?: string[];
   programServices?: string[];
+  complianceDocumentUrl?: string;
+  complianceDocumentName?: string;
 }
 
 export async function updateOrganization(data: OrganizationUpdateData) {
   try {
     const session = await auth();
-    console.log('[updateOrganization] Session:', session?.user);
+    logger.info({ msg: '[updateOrganization] Session:', data: session?.user });
 
     if (!session?.user?.id) {
       return { success: false, error: 'Not authenticated' };
@@ -39,10 +42,10 @@ export async function updateOrganization(data: OrganizationUpdateData) {
       where: { id: session.user.id },
       select: { organizationId: true, role: true },
     });
-    console.log('[updateOrganization] Fetched User:', user);
+    logger.info({ msg: '[updateOrganization] Fetched User:', data: user });
 
     if (!user?.organizationId) {
-      console.error('[updateOrganization] No org ID found for user', session.user.id);
+      logger.error({ msg: '[updateOrganization] No org ID found for user', err: session.user.id });
       return { success: false, error: 'No organization found' };
     }
 
@@ -72,12 +75,14 @@ export async function updateOrganization(data: OrganizationUpdateData) {
         primaryBusinessType: data.primaryBusinessType,
         additionalBusinessTypes: data.additionalBusinessTypes || [],
         programServices: data.programServices || [],
+        complianceDocumentUrl: data.complianceDocumentUrl,
+        complianceDocumentName: data.complianceDocumentName,
       },
     });
 
     return { success: true };
   } catch (error) {
-    console.error('Error updating organization:', error);
+    logger.error({ msg: 'Error updating organization:', err: error });
     return { success: false, error: 'Failed to update organization' };
   }
 }
@@ -100,7 +105,7 @@ export async function getOrganization() {
 
     return { success: true, data: user.organization };
   } catch (error) {
-    console.error('Error fetching organization:', error);
+    logger.error({ msg: 'Error fetching organization:', err: error });
     return { success: false, error: 'Failed to fetch organization', data: null };
   }
 }
@@ -121,20 +126,20 @@ interface OrganizationCreationData {
 
 // Create a new organization (used during onboarding Step 1)
 export async function createOrganization(data: OrganizationCreationData) {
-  console.log('[createOrganization] Start', data);
+  logger.info({ msg: '[createOrganization] Start', data: data });
   try {
     const session = await auth();
-    console.log('[createOrganization] Session User:', session?.user);
+    logger.info({ msg: '[createOrganization] Session User:', data: session?.user });
 
     if (!session?.user?.id) {
-      console.error('[createOrganization] No authenticated user');
+      logger.error({ msg: '[createOrganization] No authenticated user' });
       return { success: false, error: 'Not authenticated' };
     }
     const userId = session.user.id;
 
     // Basic validation
     if (!data.legalName || !data.primaryContactEmail) {
-      console.error('[createOrganization] Missing fields');
+      logger.error({ msg: '[createOrganization] Missing fields' });
       return { success: false, error: 'Missing required fields' };
     }
 
@@ -149,7 +154,10 @@ export async function createOrganization(data: OrganizationCreationData) {
     });
 
     if (existingOrg) {
-      console.log('[createOrganization] Duplicate organization found:', data.legalName);
+      logger.info({
+        msg: '[createOrganization] Duplicate organization found:',
+        data: data.legalName,
+      });
       return {
         success: false,
         error: 'Organization with this name already exists. Please contact your admin for access.',
@@ -173,7 +181,7 @@ export async function createOrganization(data: OrganizationCreationData) {
         isHipaaCompliant: false,
       },
     });
-    console.log('[createOrganization] Organization created:', org.id);
+    logger.info({ msg: '[createOrganization] Organization created:', data: org.id });
 
     // Link user to this new org as Admin
     const updatedUser = await prisma.user.update({
@@ -183,15 +191,14 @@ export async function createOrganization(data: OrganizationCreationData) {
         role: 'admin',
       },
     });
-    console.log(
-      '[createOrganization] User updated with Org ID:',
-      updatedUser.id,
-      updatedUser.organizationId,
-    );
+    logger.info({
+      msg: '[createOrganization] User updated with Org ID:',
+      data: { userId: updatedUser.id, orgId: updatedUser.organizationId },
+    });
 
     return { success: true, organizationId: org.id };
   } catch (error) {
-    console.error('Error creating organization:', error);
+    logger.error({ msg: 'Error creating organization:', err: error });
     return { success: false, error: 'Failed to create organization' };
   }
 }
@@ -209,7 +216,47 @@ export async function checkOrganizationNameAvailable(name: string) {
 
     return { available: !existingOrg };
   } catch (error) {
-    console.error('Error checking organization name:', error);
+    logger.error({ msg: 'Error checking organization name:', err: error });
     return { available: false, error: 'Failed to check organization name' };
+  }
+}
+
+export async function uploadComplianceDocument(formData: FormData) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const file = formData.get('file') as File;
+  if (!file) {
+    return { success: false, error: 'No file provided' };
+  }
+
+  // Validate file size (e.g., 10MB)
+  if (file.size > 10 * 1024 * 1024) {
+    return { success: false, error: 'File size too large. Max 10MB.' };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { organizationId: true, role: true },
+    });
+
+    if (!user?.organizationId || user.role !== 'admin') {
+      return { success: false, error: 'Unauthorized to upload organization documents' };
+    }
+
+    const { uploadFile } = await import('@/lib/storage');
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+    const key = `organizations/${user.organizationId}/compliance/${timestamp}-${safeName}`;
+    const { storageUri } = await uploadFile(key, buffer, file.type || 'application/pdf');
+
+    return { success: true, url: storageUri, filename: file.name };
+  } catch (error) {
+    logger.error({ msg: 'Failed to upload compliance document:', err: error });
+    return { success: false, error: 'Failed to upload document' };
   }
 }

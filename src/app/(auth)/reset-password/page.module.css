@@ -6,7 +6,7 @@
 
 /* Form Section - Left Side */
 .formSection {
-  flex: 0 0 50%;
+  flex: 1;
   /* Adjusted for Figma proportions */
   display: flex;
   flex-direction: column;
@@ -14,6 +14,13 @@
   align-items: center;
   padding: 40px;
   background: #ffffff;
+  min-width: 0;
+}
+
+@media (max-width: 1023px) {
+  .formSection {
+    padding: 24px;
+  }
 }
 
 /* Success Message State */
@@ -231,7 +238,7 @@
 }
 
 .heroTitle {
-  font-family: 'Inter Tight', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 32px;
   font-weight: 600;
   line-height: 1.3;

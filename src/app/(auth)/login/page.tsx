@@ -6,14 +6,18 @@ import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Logo, Input, Button } from '@/components/ui';
 import { authenticate } from '@/app/actions/auth';
+import { PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
 import styles from './page.module.css';
 import { signIn } from 'next-auth/react';
+import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
+import { logger } from '@/lib/logger';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const joined = searchParams.get('joined');
   const oauthError = searchParams.get('error');
+  const inactiveReason = searchParams.get('reason');
 
   const [state, dispatch, isPending] = useActionState(authenticate, undefined);
 
@@ -49,8 +53,8 @@ function LoginForm() {
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if ((formData.password || '').length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if ((formData.password || '').length < PASSWORD_MIN_LENGTH) {
+      newErrors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
     }
 
     setErrors(newErrors);
@@ -60,9 +64,9 @@ function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    console.log('[Login Client] Submit clicked! Current form data:', formData);
+    logger.info({ msg: '[Login Client] Submit clicked! Current form data:', data: formData });
     const isValid = validateForm();
-    console.log('[Login Client] Validation result:', isValid, errors);
+    logger.info({ msg: '[Login Client] Validation result:', data: { isValid, errors } });
     if (!isValid) return;
 
     setErrors({});
@@ -71,22 +75,22 @@ function LoginForm() {
     form.append('email', formData.email);
     form.append('password', formData.password);
 
-    console.log('[Login Client] Dispatching form to authenticate action...');
+    logger.info({ msg: '[Login Client] Dispatching form to authenticate action...' });
     React.startTransition(() => {
       dispatch(form);
     });
   };
 
   useEffect(() => {
-    console.log('[Login Client] Action state changed:', state);
+    logger.info({ msg: '[Login Client] Action state changed:', data: state });
     if (state?.redirect) {
       // Auto-route to the correct login page for their role
       router.push(state.redirect);
     } else if (state?.success) {
-      console.log('[Login Client] Success! Redirecting to /dashboard');
+      logger.info({ msg: '[Login Client] Success! Redirecting to /dashboard' });
       router.push('/dashboard');
     } else if (state?.error) {
-      console.log('[Login Client] Error returned from action:', state.error);
+      logger.error({ msg: '[Login Client] Error returned from action:', err: state.error });
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional sync of server error to local state for UX control
       setErrors((prev) => ({ ...prev, email: state.error }));
     }
@@ -221,6 +225,58 @@ function LoginForm() {
         </div>
       )}
 
+      {inactiveReason === 'inactive' && (
+        <div
+          style={{
+            backgroundColor: '#FEF3C7',
+            color: '#92400E',
+            padding: '16px 20px',
+            borderRadius: '12px',
+            marginBottom: '24px',
+            border: '1px solid #FCD34D',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            width: '100%',
+          }}
+        >
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              backgroundColor: '#F59E0B',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '2px' }}>
+              Session Expired
+            </div>
+            <div style={{ fontSize: '13px', color: '#A16207' }}>
+              You were logged out due to inactivity. Please log in again.
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className={styles.socialLogin}>
         <Button
           variant="outline"
@@ -292,35 +348,8 @@ export default function LoginPage() {
         </Suspense>
       </div>
 
-      {/* Right Side - Hero Image */}
-      <div className={styles.heroSection}>
-        <Image
-          src="/images/login-bg.png"
-          alt="Theraptly Training"
-          fill
-          className={styles.heroImage}
-          priority
-          quality={100}
-        />
-
-        {/* Overlay Content */}
-        <div className={styles.heroOverlay}>
-          <div className={styles.heroTextContent}>
-            <h2 className={styles.heroTitle}>Audit-ready training, built from your policies</h2>
-            <p className={styles.heroSubtitle}>
-              Turn compliance policies into structured training, track completion automatically, and
-              keep clear records that stand up during audits.
-            </p>
-          </div>
-
-          <div className={styles.progressBarContainer}>
-            <div className={`${styles.progressSegment} ${styles.active}`}></div>
-            <div className={styles.progressSegment}></div>
-            <div className={styles.progressSegment}></div>
-            <div className={styles.progressSegment}></div>
-          </div>
-        </div>
-      </div>
+      {/* Right Side - Hero Slider */}
+      <AuthHeroSlider />
     </div>
   );
 }

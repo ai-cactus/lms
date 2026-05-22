@@ -1,0 +1,105 @@
+# docker-compose.dev.yml
+#
+# Manages the backing services for local development:
+#   - db    → PostgreSQL 16 + pgvector (port 5432 exposed to host)
+#   - redis → Redis 7 (port 6379 exposed to host)
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# This allows you to run the Next.js app locally via `npm run dev` 
+# while docker manages the database and redis.
+
+name: lms-dev
+
+services:
+  # ── PostgreSQL Database ───────────────────────────────────────────────────────
+  db:
+    container_name: lms-dev-db
+    # pgvector/pgvector:pg16 is the official pgvector image built on top of
+    # postgres:16. It includes the vector extension pre-compiled and ready to
+    # activate with: CREATE EXTENSION IF NOT EXISTS vector;
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    ports:
+      - '5433:5432'
+    environment:
+      # These default to the values used in your local DATABASE_URL in .env
+      POSTGRES_DB: ${POSTGRES_DB:-lms}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-0951}
+    volumes:
+      # Data persists locally in a named volume
+      - dev-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-lms}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - dev-net
+
+  # ── Redis (for BullMQ job queues) ────────────────────────────────────────────
+  redis:
+    container_name: lms-dev-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    volumes:
+      # AOF persistence
+      - dev-redis-data:/data
+    # In development, you usually don't need a password for Redis on localhost,
+    # but we support REDIS_PASSWORD if it's set in your .env.
+    command: >
+      sh -c '
+      if [ -n "$$REDIS_PASSWORD" ]; then
+        redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes
+      else
+        redis-server --appendonly yes
+      fi
+      '
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    healthcheck:
+      test: ['CMD-SHELL', 'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - dev-net
+
+  # ── MinIO (GCS fallback / local object storage) ───────────────────────────────
+  minio:
+    container_name: lms-dev-minio
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - '9005:9000'   # S3-compatible API  → MINIO_ENDPOINT=localhost, MINIO_PORT=9000
+      - '9006:9001'   # Browser console    → http://localhost:9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-lms_minio_dev}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-lms_minio_secret_dev}
+    volumes:
+      - dev-minio-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'mc ready local 2>/dev/null || curl -sf http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dev-net
+
+volumes:
+  dev-postgres-data:
+  dev-redis-data:
+  dev-minio-data:
+
+networks:
+  dev-net:
+    driver: bridge
+    name: lms-dev-net

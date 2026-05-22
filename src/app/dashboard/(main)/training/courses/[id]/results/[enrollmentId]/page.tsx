@@ -2,6 +2,7 @@ import React from 'react';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentWithResults } from '@/app/actions/enrollment';
 import { redirect } from 'next/navigation';
+import { logger } from '@/lib/logger';
 
 export default async function QuizResultsPage({
   params,
@@ -81,7 +82,7 @@ export default async function QuizResultsPage({
       />
     );
   } catch (error) {
-    console.error('Failed to load enrollment:', error);
+    logger.error({ msg: 'Failed to load enrollment:', err: error });
     // If it's an access/auth error, show a message instead of redirect
     if (error instanceof Error) {
       if (error.message === 'Unauthorized') {

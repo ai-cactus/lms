@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import styles from './WorkerDashboard.module.css';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 
 interface Course {
@@ -244,7 +243,11 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                     key={course.id + '-' + course.enrollmentId}
                     onClick={() => {
                       if (isLocked) return;
-                      isCompleted ? handleViewResultClick(course.id) : handleStartClick(course.id);
+                      if (isCompleted) {
+                        handleViewResultClick(course.id);
+                      } else {
+                        handleStartClick(course.id);
+                      }
                     }}
                     style={{
                       cursor: isLocked ? 'not-allowed' : 'pointer',

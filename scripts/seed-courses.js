@@ -7,7 +7,7 @@ async function main() {
 
   // Get the admin user (course creator)
   const admin = await prisma.user.findFirst({
-    where: { profile: { role: 'admin' } },
+    where: { role: 'admin' },
     include: { profile: true },
   });
 
@@ -60,13 +60,13 @@ async function main() {
       data: {
         email: s.email,
         password: hashedPassword,
+        role: 'worker',
         profile: {
           create: {
             email: s.email,
             firstName: s.firstName,
             lastName: s.lastName,
             fullName: `${s.firstName} ${s.lastName}`,
-            role: 'worker',
           },
         },
       },
@@ -349,9 +349,6 @@ async function main() {
         return prisma.course.create({
           data: {
             title: c.title,
-            difficulty: c.difficulty,
-            category: c.category,
-            duration: c.duration,
             createdBy: admin.id,
             status: 'published',
             description: `Comprehensive training on ${c.title.toLowerCase()}.`,

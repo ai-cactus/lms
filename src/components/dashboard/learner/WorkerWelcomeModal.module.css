@@ -7,7 +7,8 @@
 .container {
   display: flex;
   flex-direction: row;
-  height: 600px;
+  min-height: 500px;
+  height: auto;
   width: 100%;
 }
 
@@ -112,10 +113,11 @@
 
 .rightPanel {
   flex: 1;
-  padding: 60px 50px;
+  padding: 48px 40px;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  position: relative;
 }
 
 .stepsTitle {
@@ -163,19 +165,92 @@
 }
 
 @media (max-width: 768px) {
-  .modal {
+  .modalParams {
+    max-width: 95vw !important;
+  }
+
+  .container {
     flex-direction: column;
     height: auto;
-    max-height: 95vh;
+    max-height: 85vh;
     overflow-y: auto;
   }
 
-  .leftPanel,
+  .leftPanel {
+    padding: 32px 24px;
+    min-height: auto;
+  }
+
   .rightPanel {
-    padding: 30px 20px;
+    padding: 32px 24px;
   }
 
   .illustration {
     width: 180px;
+    margin-bottom: 20px;
+  }
+
+  .welcomeTitle {
+    font-size: 22px;
+    margin-bottom: 12px;
+  }
+
+  .welcomeText {
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+
+  .stepsTitle {
+    font-size: 20px;
+    margin-bottom: 24px;
+  }
+
+  .stepsList {
+    gap: 20px;
+  }
+
+  .stepHeading {
+    font-size: 15px;
+  }
+
+  .stepDesc {
+    font-size: 13px;
+  }
+
+  .blob {
+    width: 200px;
+    height: 200px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    max-height: 90vh;
+  }
+
+  .leftPanel {
+    padding: 24px 16px;
+  }
+
+  .rightPanel {
+    padding: 24px 16px;
+  }
+
+  .illustration {
+    width: 140px;
+    margin-bottom: 16px;
+  }
+
+  .welcomeTitle {
+    font-size: 20px;
+  }
+
+  .stepsTitle {
+    font-size: 18px;
+    margin-bottom: 20px;
+  }
+
+  .stepsList {
+    gap: 16px;
   }
 }

@@ -31,55 +31,6 @@ export default function SlideContentFitter({
   }, [content, maxFontSize]);
 
   useLayoutEffect(() => {
-    const adjustFontSize = () => {
-      const el = containerRef.current;
-      if (!el) return;
-
-      // Simple iterative binary-ish search or step-down would work.
-      // Since we start successfully at max, we likely need to shrink.
-
-      // Check if overflowing
-      if (el.scrollHeight > el.clientHeight) {
-        // If font is already min, we can't do anything
-        if (fontSize <= minFontSize) {
-          setIsAdjusting(false);
-          return;
-        }
-
-        // Reduce font size
-        // We use a state update here which triggers re-render,
-        // but useLayoutEffect runs before paint, so it might be efficient enough if steps are small.
-        // However, doing this loop synchronously is better for layout thrashing prevention?
-        // We can't change state in a loop easily without effects.
-        // Let's try a binary search approach if possible, but we need the refs.
-
-        // Better approach:
-        // We are in useLayoutEffect. We can modify the style directly to test, then set state final.
-        // But we want to impact the render.
-
-        let currentSize = fontSize;
-        while (el.scrollHeight > el.clientHeight && currentSize > minFontSize) {
-          currentSize -= 0.5;
-          el.style.fontSize = `${currentSize}px`;
-        }
-
-        // If we shrunk, update state to match (or just keep the direct style?)
-        // Updating state is cleaner for React.
-        if (currentSize !== fontSize) {
-          setFontSize(currentSize);
-        }
-      } else {
-        // Logic to GROW if too small?
-        // If we started at max (reset above), we only shrink.
-        // So we don't need to grow unless window resized larger.
-        // Handle Resize: If we are smaller than max, and have space, grow?
-        // This is harder because adding size might overflow immediately.
-        // Let's stick to "shrink to fit" from max for now which covers "fill the card".
-      }
-
-      setIsAdjusting(false);
-    };
-
     // We can run the adjustment loop directly on the element
     const el = containerRef.current;
     if (el && isAdjusting) {
@@ -100,7 +51,7 @@ export default function SlideContentFitter({
       setFontSize(currentSize);
       setIsAdjusting(false);
     }
-  }, [content, maxFontSize, minFontSize, isAdjusting]); // Dependencies
+  }, [content, maxFontSize, minFontSize, isAdjusting, fontSize]); // Dependencies
 
   // Handle Window Resize
   useEffect(() => {

@@ -3,52 +3,55 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './CourseWizard.module.css';
+import Step1Category from './steps/Step1Category';
 import Step2Documents from './steps/Step2Documents';
 import Step3Details from './steps/Step3Details';
 import Step4Quiz from './steps/Step4Quiz';
 import Step5Review from './steps/Step5Review';
 import Step6QuizReview from './steps/Step6QuizReview';
 import Step7Publish from './steps/Step7Publish';
+import CourseSuccessModal from './CourseSuccessModal';
+import ConfirmPublishModal from './ConfirmPublishModal';
 import Logo from '@/components/ui/Logo';
 import Button from '@/components/ui/Button';
 import PhiErrorModal from './PhiErrorModal';
 import { createFullCourse } from '@/app/actions/course';
 import { analyzeStoredDocument } from '@/app/actions/course-ai';
-import { getDocuments, uploadDocument } from '@/app/actions/documents';
+import { getDocuments, uploadDocument, deleteDocument } from '@/app/actions/documents';
 import { CourseWizardData, GeneratedCourse, CourseDocument } from '@/types/course';
+import { logger } from '@/lib/logger';
+
+const INITIAL_FORM_DATA: CourseWizardData = {
+  categoryId: '',
+  title: '',
+  description: '',
+  difficulty: 'moderate',
+  duration: '',
+  notesCount: '10',
+  objectives: ['', '', ''],
+  quizTitle: '',
+  quizQuestionCount: '15',
+  quizDifficulty: 'medium',
+  quizQuestionType: 'multiple_choice',
+  quizDuration: '',
+  quizPassMark: '80%',
+  quizAttempts: '2',
+  assignments: [],
+  dueDate: '',
+  dueTime: '',
+};
 
 export default function CourseWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialDocId = searchParams.get('documentId');
-  const hasAutoAnalyzed = useRef(false);
+  const analyzedDocId = useRef<string | null>(null);
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const totalSteps = 6;
-  const [formData, setFormData] = useState<CourseWizardData>({
-    title: 'HIPAA Privacy and Security Training',
-    description:
-      'This course provides essential training on the HIPAA Privacy and Security Rules, helping healthcare professionals understand how to safeguard Protected Health Information (PHI).',
-    difficulty: 'moderate',
-    duration: '',
-    notesCount: '10',
-    objectives: [
-      'To train staff on HIPAA compliance in behavioral health.',
-      'Learn how to handle PHI securely',
-      'Understand HIPAA privacy rules',
-    ],
-    quizTitle: 'HIPAA Privacy and Security Quiz',
-    quizQuestionCount: '15',
-    quizDifficulty: 'medium',
-    quizQuestionType: 'multiple_choice',
-    quizDuration: '',
-    quizPassMark: '80%',
-    quizAttempts: '2',
-    assignments: [],
-    dueDate: '',
-    dueTime: '',
-  });
+  const totalSteps = 7;
+  const [formData, setFormData] = useState<CourseWizardData>(INITIAL_FORM_DATA);
 
   // Documents State
   const [documents, setDocuments] = useState<CourseDocument[]>([]);
@@ -65,6 +68,13 @@ export default function CourseWizard() {
   const [isScanningPhi, setIsScanningPhi] = useState(false);
   const [showPhiError, setShowPhiError] = useState(false);
   const [phiReason, setPhiReason] = useState<string | undefined>(undefined);
+  const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
+
+  // Exit confirmation state
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  // Publish confirmation state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
     const loadDocs = async () => {
@@ -83,16 +93,33 @@ export default function CourseWizard() {
           }),
         );
 
-        if (initialDocId && !hasAutoAnalyzed.current) {
-          hasAutoAnalyzed.current = true;
+        if (initialDocId && analyzedDocId.current !== initialDocId) {
+          analyzedDocId.current = initialDocId;
           handleAutoAnalyze(initialDocId);
         }
       } catch (e) {
-        console.error('Failed to load documents', e);
+        logger.error({ msg: 'Failed to load documents', err: e });
       }
     };
     loadDocs();
   }, [initialDocId]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('lms_pending_generation');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Date.now() - parsed.timestamp < 60 * 60 * 1000) {
+          setFormData(parsed.formData);
+          setPendingJobId(parsed.jobId);
+          setCurrentStep(5);
+        }
+        localStorage.removeItem('lms_pending_generation');
+      }
+    } catch {
+      // Ignored
+    }
+  }, []);
 
   const handleAutoAnalyze = async (docId: string) => {
     setIsAnalyzing(true);
@@ -111,7 +138,7 @@ export default function CourseWizard() {
       }
       setAnalysisProgress(100);
     } catch (err) {
-      console.error('Auto-analysis failed', err);
+      logger.error({ msg: 'Auto-analysis failed', err: err });
     } finally {
       setTimeout(() => {
         setIsAnalyzing(false);
@@ -128,6 +155,27 @@ export default function CourseWizard() {
     );
   };
 
+  const handleDeleteWizardDoc = async (id: string) => {
+    // Optimistic removal so the UI responds instantly
+    setDocuments((docs) => docs.filter((d) => d.id !== id));
+    try {
+      await deleteDocument(id);
+    } catch (err) {
+      // Re-fetch list so the doc reappears if the server call failed
+      logger.error({ msg: 'Failed to delete document from wizard:', err: err });
+      const refreshed = await getDocuments();
+      setDocuments(
+        refreshed.map((d) => ({
+          id: d.id,
+          name: d.filename,
+          type: d.filename.endsWith('.pdf') ? 'pdf' : 'docx',
+          status: 'analyzed' as const,
+          selected: false,
+        })),
+      );
+    }
+  };
+
   const handleGenerationComplete = (content: GeneratedCourse) => {
     setGeneratedContent(content);
     setIsGenerating(false);
@@ -140,39 +188,47 @@ export default function CourseWizard() {
   const handleNext = async () => {
     if (currentStep === 2) {
       const selectedDoc = documents.find((d) => d.selected);
-      if (!selectedDoc) return;
+      if (!selectedDoc) {
+        setCurrentStep(currentStep + 1);
+        return;
+      }
 
-      setIsAnalyzing(true);
-      setAnalysisProgress(30);
+      if (analyzedDocId.current !== selectedDoc.id) {
+        setIsAnalyzing(true);
+        setAnalysisProgress(30);
 
-      try {
-        const result = await analyzeStoredDocument(selectedDoc.id);
-        setAnalysisProgress(100);
+        try {
+          const result = await analyzeStoredDocument(selectedDoc.id);
+          setAnalysisProgress(100);
 
-        if (result.error) {
-          console.error('Analysis failed:', result.error);
-        } else {
-          setFormData((prev) => ({
-            ...prev,
-            title: result.title,
-            description: result.description,
-            objectives: result.objectives,
-            duration: result.duration,
-            quizTitle: result.quizTitle,
-          }));
+          if (result.error) {
+            logger.error({ msg: 'Analysis failed:', err: result.error });
+          } else {
+            setFormData((prev) => ({
+              ...prev,
+              title: result.title,
+              description: result.description,
+              objectives: result.objectives,
+              duration: result.duration,
+              quizTitle: result.quizTitle,
+            }));
+            analyzedDocId.current = selectedDoc.id;
+          }
+        } catch (err) {
+          logger.error({ msg: 'Error analyzing stored doc:', err: err });
+        } finally {
+          setIsAnalyzing(false);
+          setAnalysisProgress(0);
+          setCurrentStep(currentStep + 1);
         }
-      } catch (err) {
-        console.error('Error analyzing stored doc:', err);
-      } finally {
-        setIsAnalyzing(false);
-        setAnalysisProgress(0);
+      } else {
         setCurrentStep(currentStep + 1);
       }
       return;
     }
 
     if (currentStep < totalSteps) {
-      if (currentStep === 4 && !generatedContent) {
+      if (currentStep === 5 && !generatedContent) {
         setIsGenerating(true);
       }
       setCurrentStep(currentStep + 1);
@@ -187,49 +243,71 @@ export default function CourseWizard() {
         return;
       }
 
-      setIsPublishing(true);
       setPublishError(null);
+      setShowConfirmModal(true);
+    }
+  };
 
-      const selectedDocId = documents.find((d) => d.selected)?.id;
+  const handlePublish = async (reviewerName: string) => {
+    setIsPublishing(true);
+    setShowConfirmModal(false);
+    logger.info({ msg: `Course reviewed and published by ${reviewerName}` });
 
-      try {
-        const result = await createFullCourse({
-          title: formData.title,
-          description: formData.description,
-          difficulty: formData.difficulty,
-          duration: formData.duration,
-          modules: generatedContent?.modules || [],
-          objectives: formData.objectives || [],
-          quiz: generatedContent?.quiz || [],
-          assignments: formData.assignments || [],
-          dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,
-          dueTime: formData.dueTime,
-          quizTitle: formData.quizTitle,
-          quizPassMark: formData.quizPassMark,
-          quizQuestionType: formData.quizQuestionType,
-          quizAttempts: formData.quizAttempts,
-          quizDuration: formData.quizDuration,
-          quizDifficulty: formData.quizDifficulty,
-          documentId: selectedDocId,
-          rawArticleMeta: generatedContent?.rawArticleMeta || undefined,
-          rawArticleMarkdown: generatedContent?.rawArticleMarkdown || undefined,
-          rawSlidesJson: generatedContent?.rawSlidesJson || undefined,
-          rawJudgeJson: generatedContent?.rawJudgeJson || undefined,
-          rawQuizJson: generatedContent?.rawQuizJson || undefined,
-          rawCourseJson: generatedContent?.rawCourseJson || undefined,
-        });
+    const selectedDocId = documents.find((d) => d.selected)?.id;
 
-        if (result.success) {
-          router.push('/dashboard/training');
-        } else {
-          setPublishError('Failed to create course. Please try again.');
-        }
-      } catch (error) {
-        console.error('Error submitting course:', error);
-        setPublishError('An unexpected error occurred. Please try again.');
-      } finally {
-        setIsPublishing(false);
+    try {
+      const result = await createFullCourse({
+        categoryId: formData.categoryId,
+        title: formData.title,
+        description: formData.description,
+        difficulty: formData.difficulty,
+        duration: formData.duration,
+        modules: generatedContent?.modules || [],
+        objectives: formData.objectives || [],
+        quiz: generatedContent?.quiz || [],
+        assignments: formData.assignments || [],
+        dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,
+        dueTime: formData.dueTime,
+        quizTitle: formData.quizTitle,
+        quizPassMark: formData.quizPassMark,
+        quizQuestionType: formData.quizQuestionType,
+        quizAttempts: formData.quizAttempts,
+        quizDuration: formData.quizDuration,
+        quizDifficulty: formData.quizDifficulty,
+        documentId: selectedDocId,
+        rawArticleMeta: generatedContent?.rawArticleMeta || undefined,
+        rawArticleMarkdown: generatedContent?.rawArticleMarkdown || undefined,
+        rawSlidesJson: generatedContent?.rawSlidesJson || undefined,
+        rawJudgeJson: generatedContent?.rawJudgeJson || undefined,
+        rawQuizJson: generatedContent?.rawQuizJson || undefined,
+        rawCourseJson: generatedContent?.rawCourseJson || undefined,
+      });
+
+      if (result.success) {
+        // Reset all wizard state so the next course creation starts fresh
+        setCurrentStep(1);
+        setFormData(INITIAL_FORM_DATA);
+        setGeneratedContent(null);
+        setDocuments([]);
+        setPublishError(null);
+        setIsGenerating(false);
+        setIsAnalyzing(false);
+        setAnalysisProgress(0);
+        setUploadError(null);
+        setIsScanningPhi(false);
+        setShowPhiError(false);
+        setPhiReason(undefined);
+        analyzedDocId.current = null;
+        setPendingJobId(null);
+        setCreatedCourseId(result.courseId);
+      } else {
+        setPublishError('Failed to create course. Please try again.');
       }
+    } catch (error) {
+      logger.error({ msg: 'Error submitting course:', err: error });
+      setPublishError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -275,7 +353,7 @@ export default function CourseWizard() {
       }
 
       const updatedDocs = await getDocuments();
-      setDocuments((prevDocs) =>
+      setDocuments(
         updatedDocs.map((d) => ({
           id: d.id,
           name: d.filename,
@@ -286,6 +364,11 @@ export default function CourseWizard() {
       );
       setAnalysisProgress(60);
 
+      const matchedDoc = updatedDocs.find((d) => d.filename === file.name);
+      if (matchedDoc) {
+        analyzedDocId.current = matchedDoc.id;
+      }
+
       const { analyzeDocument } = await import('@/app/actions/course-ai');
       const analysisFormData = new FormData();
       analysisFormData.append('file', file);
@@ -294,7 +377,7 @@ export default function CourseWizard() {
       setAnalysisProgress(100);
 
       if (result.error) {
-        console.error('Analysis Error:', result.error);
+        logger.error({ msg: 'Analysis Error:', err: result.error });
         setUploadError(result.error);
       } else {
         setFormData((prev) => ({
@@ -307,7 +390,7 @@ export default function CourseWizard() {
         }));
       }
     } catch (err: unknown) {
-      console.error('Upload/Analysis Failed:', err);
+      logger.error({ msg: 'Upload/Analysis Failed:', err: err });
       setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
       setTimeout(() => {
@@ -321,9 +404,17 @@ export default function CourseWizard() {
     switch (currentStep) {
       case 1:
         return (
+          <Step1Category
+            selectedCategoryId={formData.categoryId}
+            onSelect={(id) => setFormData({ ...formData, categoryId: id })}
+          />
+        );
+      case 2:
+        return (
           <Step2Documents
             documents={documents}
             onToggleSelect={handleToggleSelect}
+            onDelete={handleDeleteWizardDoc}
             onUpload={handleUpload}
             isAnalyzing={isAnalyzing}
             progress={analysisProgress}
@@ -331,30 +422,31 @@ export default function CourseWizard() {
             isScanningPhi={isScanningPhi}
           />
         );
-      case 2:
+      case 3:
         return (
           <Step3Details
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
         );
-      case 3:
+      case 4:
         return (
           <Step4Quiz
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
         );
-      case 4:
+      case 5:
         return (
           <Step5Review
             data={formData}
             documents={documents}
             initialContent={generatedContent}
             onComplete={handleGenerationComplete}
+            pendingJobId={pendingJobId}
           />
         );
-      case 5:
+      case 6:
         return (
           <Step6QuizReview
             data={formData}
@@ -365,7 +457,7 @@ export default function CourseWizard() {
             }
           />
         );
-      case 6:
+      case 7:
         return (
           <Step7Publish
             data={formData}
@@ -379,11 +471,15 @@ export default function CourseWizard() {
 
   const isNextDisabled = () => {
     if (currentStep === 1) {
+      if (!formData.categoryId) return true;
+      return false;
+    }
+    if (currentStep === 2) {
       if (!documents.some((d) => d.selected)) return true;
       if (isAnalyzing || isScanningPhi) return true;
       return false;
     }
-    if (currentStep === 2) {
+    if (currentStep === 3) {
       if (!formData.title?.trim()) return true;
       if (!formData.description?.trim()) return true;
 
@@ -392,7 +488,7 @@ export default function CourseWizard() {
       if (formData.objectives.some((obj) => !obj.trim())) return true;
       return false;
     }
-    if (currentStep === 3) {
+    if (currentStep === 4) {
       if (!formData.quizTitle?.trim()) return true;
       if (!formData.quizQuestionCount) return true;
 
@@ -400,11 +496,11 @@ export default function CourseWizard() {
       if (!formData.quizPassMark || isNaN(passMark) || passMark <= 0) return true;
       return false;
     }
-    if (currentStep === 4) {
+    if (currentStep === 5) {
       if (!generatedContent?.modules || generatedContent.modules.length === 0) return true;
       return false;
     }
-    if (currentStep === 5) {
+    if (currentStep === 6) {
       if (!generatedContent?.quiz || generatedContent.quiz.length === 0) return true;
       return false;
     }
@@ -421,7 +517,17 @@ export default function CourseWizard() {
           <span className={styles.stepText}>
             Step {currentStep} of {totalSteps}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/courses')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (currentStep > 1) {
+                setShowExitConfirm(true);
+              } else {
+                router.push('/dashboard/courses');
+              }
+            }}
+          >
             Exit
           </Button>
         </div>
@@ -434,8 +540,8 @@ export default function CourseWizard() {
       <main className={styles.content}>
         {renderStep()}
 
-        {(!isGenerating || currentStep !== 4) && (
-          <div className={`${styles.footer} ${currentStep === 4 ? styles.footerWide : ''}`}>
+        {(!isGenerating || currentStep !== 5) && (
+          <div className={`${styles.footer} ${currentStep === 5 ? styles.footerWide : ''}`}>
             {publishError && <div className={styles.errorMessage}>{publishError}</div>}
             <div className={styles.footerButtons}>
               <Button variant="secondary" size="md" onClick={handleBack} disabled={isPublishing}>
@@ -445,35 +551,141 @@ export default function CourseWizard() {
                 variant="primary"
                 size="md"
                 onClick={handleNext}
-                disabled={isNextDisabled() || isAnalyzing}
-                loading={isPublishing}
+                disabled={
+                  isNextDisabled() || isGenerating || isPublishing || isAnalyzing || isScanningPhi
+                }
+                loading={isGenerating || isPublishing || isAnalyzing || isScanningPhi}
               >
-                {currentStep === totalSteps ? 'Publish' : 'Next'}
+                {currentStep === totalSteps ? 'Publish Course' : 'Next Step'}
               </Button>
             </div>
           </div>
         )}
 
-        {currentStep === 1 && (
-          <div className={styles.privacyNotice}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+        {createdCourseId && (
+          <CourseSuccessModal
+            isOpen={true}
+            onClose={() => setCreatedCourseId(null)}
+            courseId={createdCourseId}
+            courseTitle={formData.title}
+          />
+        )}
+
+        <ConfirmPublishModal
+          isOpen={showConfirmModal}
+          onClose={() => setShowConfirmModal(false)}
+          onConfirm={handlePublish}
+          courseTitle={formData.title}
+          isPublishing={isPublishing}
+        />
+
+        {currentStep === 2 && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              textAlign: 'center',
+              padding: '24px 0',
+              marginTop: '16px',
+              backgroundColor: '#FAFCFE',
+              borderRadius: '12px',
+              border: '1px dashed #E2E8F0',
+              width: '100%',
+              maxWidth: '800px',
+            }}
+          >
+            {/* Icon Layer from PhiErrorModal */}
+            <div
+              style={{
+                position: 'relative',
+                width: '120px',
+                height: '120px',
+                marginBottom: '24px',
+              }}
             >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
-            <span>
-              We care about your privacy! Ensure that any document you upload does NOT contain
-              personal health information.
-            </span>
+              {/* Document Icon */}
+              <svg
+                width="100"
+                height="100"
+                viewBox="0 0 100 100"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <rect x="20" y="15" width="60" height="70" rx="4" fill="#F1F5F9" />
+                <rect
+                  x="20"
+                  y="15"
+                  width="60"
+                  height="70"
+                  rx="4"
+                  stroke="#E2E8F0"
+                  strokeWidth="2"
+                />
+                <line
+                  x1="30"
+                  y1="30"
+                  x2="70"
+                  y2="30"
+                  stroke="#CBD5E0"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="30"
+                  y1="40"
+                  x2="70"
+                  y2="40"
+                  stroke="#CBD5E0"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="30"
+                  y1="50"
+                  x2="70"
+                  y2="50"
+                  stroke="#CBD5E0"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+
+              {/* Magnifying Glass with Badge */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '0',
+                  left: '-10px',
+                  filter: 'drop-shadow(0px 10px 15px rgba(0,0,0,0.1))',
+                }}
+              >
+                <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
+                  <circle cx="25" cy="25" r="20" fill="white" stroke="#4C6EF5" strokeWidth="4" />
+                  <path d="M40 40L55 55" stroke="#4C6EF5" strokeWidth="6" strokeLinecap="round" />
+                  <path d="M18 25H32" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
+                  <path d="M18 18H28" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
+                  <path d="M18 32H24" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+              </div>
+            </div>
+
+            <h2
+              style={{ fontSize: '20px', fontWeight: 700, color: '#1A202C', marginBottom: '12px' }}
+            >
+              We care about your privacy!
+            </h2>
+            <p
+              style={{
+                fontSize: '15px',
+                color: '#4A5568',
+                maxWidth: '500px',
+                lineHeight: '1.5',
+                marginBottom: '0',
+              }}
+            >
+              Ensure that any document you upload does NOT contain personal health information.
+            </p>
           </div>
         )}
 
@@ -483,6 +695,67 @@ export default function CourseWizard() {
           onRetry={handleRetryUpload}
           reason={phiReason}
         />
+
+        {showExitConfirm && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+            }}
+          >
+            <div
+              style={{
+                background: 'white',
+                width: '90%',
+                maxWidth: '420px',
+                borderRadius: '16px',
+                padding: '24px',
+                boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: '18px',
+                  fontWeight: 600,
+                  color: '#1A202C',
+                  marginBottom: '12px',
+                }}
+              >
+                Exit course creation?
+              </h2>
+              <p
+                style={{
+                  fontSize: '14px',
+                  color: '#4A5568',
+                  marginBottom: '24px',
+                  lineHeight: 1.5,
+                }}
+              >
+                You have unsaved progress. If you exit now, your work will be lost.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <Button variant="outline" size="sm" onClick={() => setShowExitConfirm(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => router.push('/dashboard/courses')}
+                >
+                  Exit
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

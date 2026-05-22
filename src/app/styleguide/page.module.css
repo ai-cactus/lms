@@ -11,12 +11,7 @@
 }
 
 .title {
-  font-family:
-    'Inter Tight',
-    'Inter',
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 48px;
   font-weight: 600;
   color: #0f172a;
@@ -25,12 +20,7 @@
 }
 
 .subtitle {
-  font-family:
-    'Inter Tight',
-    'Inter',
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 18px;
   color: #64748b;
   max-width: 600px;
@@ -48,12 +38,7 @@
 }
 
 .sectionTitle {
-  font-family:
-    'Inter Tight',
-    'Inter',
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 28px;
   font-weight: 600;
   color: #0f172a;
@@ -73,12 +58,7 @@
 }
 
 .colorCategoryTitle {
-  font-family:
-    'Inter Tight',
-    'Inter',
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 18px;
   font-weight: 600;
   color: #334155;
@@ -133,7 +113,7 @@
 }
 
 .colorHex {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: #64748b;
 }
@@ -169,7 +149,7 @@
 }
 
 .typographySpecs {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: #64748b;
   line-height: 1.5;
@@ -201,14 +181,14 @@
 }
 
 .spacingLabel {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: #64748b;
   text-align: center;
 }
 
 .spacingValue {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   color: #94a3b8;
 }
@@ -243,7 +223,7 @@
 }
 
 .radiusValue {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: #64748b;
 }
@@ -303,7 +283,7 @@
 }
 
 .breakpointValue {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   color: #6366f1;
   min-width: 80px;
@@ -338,7 +318,7 @@
 }
 
 .fontFamilyStack {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: #64748b;
   margin-bottom: 16px;

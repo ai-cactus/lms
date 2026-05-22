@@ -1,19 +1,25 @@
 import nodemailer from 'nodemailer';
+import { logger } from './logger';
 
 const user = process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
 const pass = process.env.SMTP_PASSWORD || process.env.ZOHO_MAIL_PASSWORD;
 const host = process.env.SMTP_HOST || 'smtp.zoho.com';
-const port = parseInt(process.env.SMTP_PORT || '465');
-const secure = port === 465; // Typically true for 465, false for 587 (requires STARTTLS)
+const port = parseInt(process.env.SMTP_PORT || '465', 10);
+// Port 465 = implicit TLS (secure: true). Port 587 = STARTTLS (secure: false + requireTLS: true).
+const secure = port === 465;
 
 if (!user || !pass) {
-  console.warn('SMTP credentials not found in environment variables');
+  logger.warn({ msg: 'SMTP credentials not found in environment variables' });
 }
 
 const transporter = nodemailer.createTransport({
   host,
   port,
   secure,
+  requireTLS: !secure, // Force STARTTLS on port 587 — prevents plaintext fallback
+  connectionTimeout: 10_000, // 10 s — fail fast instead of hanging
+  greetingTimeout: 8_000, // 8 s — max time to wait for server greeting
+  socketTimeout: 10_000, // 10 s — idle socket timeout per send
   auth: {
     user,
     pass,
@@ -39,9 +45,9 @@ export async function sendInviteEmail(
     `;
 
   try {
-    console.log(`[Email Debug] Sending invite to: ${to}`);
-    console.log(`[Email Debug] Invite Link: ${inviteLink}`);
-    console.log(`[Email Debug] Org: ${orgName}`);
+    logger.info({ msg: `[Email Debug] Sending invite to: ${to}` });
+    logger.info({ msg: `[Email Debug] Invite Link: ${inviteLink}` });
+    logger.info({ msg: `[Email Debug] Org: ${orgName}` });
 
     const info = await transporter.sendMail({
       from: `"${appName}" <${user}>`,
@@ -49,10 +55,10 @@ export async function sendInviteEmail(
       subject: `Join ${orgName} on ${appName}`,
       html,
     });
-    console.log('Message sent: %s', info.messageId);
+    logger.info({ msg: 'Message sent: %s', data: info.messageId });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Error sending email:', error);
+    logger.error({ msg: 'Error sending email:', err: error });
     return { success: false, error };
   }
 }
@@ -81,10 +87,10 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
       subject: `Reset your password - ${appName}`,
       html,
     });
-    console.log('Password reset sent: %s', info.messageId);
+    logger.info({ msg: 'Password reset sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending password reset email:', error);
+    logger.error({ msg: 'Error sending password reset email:', err: error });
     return { success: false, error };
   }
 };
@@ -124,10 +130,10 @@ export const sendEmailVerification = async (email: string, token: string) => {
       subject: `Verify your email - ${appName}`,
       html,
     });
-    console.log('Email verification sent: %s', info.messageId);
+    logger.info({ msg: 'Email verification sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending email verification:', error);
+    logger.error({ msg: 'Error sending email verification:', err: error });
     return { success: false, error };
   }
 };
@@ -177,10 +183,10 @@ export const sendCourseInviteEmail = async (
       subject: `You've been assigned: ${courseName} - ${appName}`,
       html,
     });
-    console.log('Course invite email sent: %s', info.messageId);
+    logger.info({ msg: 'Course invite email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending course invite email:', error);
+    logger.error({ msg: 'Error sending course invite email:', err: error });
     return { success: false, error };
   }
 };
@@ -229,10 +235,10 @@ export const sendCourseEnrollmentEmail = async (
       subject: `New Course Assignment: ${courseName} - ${appName}`,
       html,
     });
-    console.log('Course enrollment email sent: %s', info.messageId);
+    logger.info({ msg: 'Course enrollment email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending course enrollment email:', error);
+    logger.error({ msg: 'Error sending course enrollment email:', err: error });
     return { success: false, error };
   }
 };
@@ -278,46 +284,125 @@ export async function sendQuizLockedEmail(
       subject: `Action Required: ${workerName} locked out of quiz - ${appName}`,
       html,
     });
-    console.log('Quiz locked email sent: %s', info.messageId);
+    logger.info({ msg: 'Quiz locked email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('Error sending quiz locked email:', error);
+    logger.error({ msg: 'Error sending quiz locked email:', err: error });
     return { success: false, error };
   }
 }
 
 export async function sendEnterpriseInquiryEmail({
   to,
-  contactName,
+  firstName,
+  lastName,
+  workEmail,
+  jobTitle,
+  organizationName,
+  facilityType,
+  numberOfFacilities,
+  numberOfStaff,
+  currentAccreditation,
+  currentTrainingMethod,
+  primaryPainPoint,
+  authUserEmail,
   orgName,
-  contactEmail,
-  staffCount,
-  message,
 }: {
   to: string;
-  contactName: string;
+  firstName: string;
+  lastName: string;
+  workEmail: string;
+  jobTitle: string;
+  organizationName: string;
+  facilityType: string;
+  numberOfFacilities: string;
+  numberOfStaff: string;
+  currentAccreditation: string;
+  currentTrainingMethod: string;
+  primaryPainPoint: string;
+  /** Authenticated session email — used as reply-to fallback */
+  authUserEmail: string;
+  /** Organization name from the DB (may differ from form input) */
   orgName: string;
-  contactEmail: string;
-  staffCount: string;
-  message: string;
 }) {
   const appName = 'Theraptly';
+  const contactName = [firstName, lastName].filter(Boolean).join(' ') || 'Not provided';
+  const replyToEmail = workEmail || authUserEmail;
+
+  /** Renders a table row only when the value is non-empty */
+  const row = (label: string, value: string) =>
+    value
+      ? `<tr>
+           <td style="padding: 8px 12px; font-weight: 600; color: #4a5568; white-space: nowrap; vertical-align: top; width: 40%;">${label}</td>
+           <td style="padding: 8px 12px; color: #2d3748; vertical-align: top;">${value}</td>
+         </tr>`
+      : '';
+
   const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-      <h2 style="color: #4C6EF5;">New Enterprise Plan Inquiry</h2>
-      <p style="color: #333; font-size: 16px;">An organization has expressed interest in the Enterprise plan.</p>
-      <div style="background: #f7fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
-        <p style="margin: 4px 0;"><strong>Organization:</strong> ${orgName}</p>
-        <p style="margin: 4px 0;"><strong>Contact Name:</strong> ${contactName}</p>
-        <p style="margin: 4px 0;"><strong>Email:</strong> <a href="mailto:${contactEmail}">${contactEmail}</a></p>
-        <p style="margin: 4px 0;"><strong>Staff Count:</strong> ${staffCount}</p>
+    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 40px 20px; background: #f8f9fc;">
+      <!-- Header -->
+      <div style="background: #4C6EF5; border-radius: 12px 12px 0 0; padding: 28px 32px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 22px;">New Enterprise Plan Inquiry</h1>
+        <p style="margin: 6px 0 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">
+          Submitted via the ${appName} billing page
+        </p>
       </div>
-      <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
-        <p style="margin: 0; font-weight: 600;">Message:</p>
-        <p style="margin: 8px 0 0 0; color: #4a5568;">${message}</p>
+
+      <!-- Body card -->
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; padding: 32px;">
+
+        <!-- Contact details -->
+        <h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Contact Details</h2>
+        <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
+          <tbody>
+            ${row('Full Name', contactName)}
+            ${row('Work Email', `<a href="mailto:${workEmail}" style="color: #4C6EF5;">${workEmail}</a>`)}
+            ${row('Job Title', jobTitle)}
+          </tbody>
+        </table>
+
+        <!-- Organization details -->
+        <h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Organization Details</h2>
+        <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
+          <tbody>
+            ${row('Organization', organizationName)}
+            ${row('DB Org (session)', orgName !== organizationName ? orgName : '')}
+            ${row('Facility Type', facilityType)}
+            ${row('No. of Facilities', numberOfFacilities)}
+            ${row('No. of Staff', numberOfStaff)}
+          </tbody>
+        </table>
+
+        <!-- Training context -->
+        <h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Training Context</h2>
+        <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
+          <tbody>
+            ${row('Current Accreditation', currentAccreditation)}
+            ${row('Current Training Method', currentTrainingMethod)}
+          </tbody>
+        </table>
+
+        <!-- Pain point -->
+        ${
+          primaryPainPoint
+            ? `<h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Primary Pain Point</h2>
+               <div style="background: #f8fafc; border-left: 4px solid #4C6EF5; border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 24px;">
+                 <p style="margin: 0; color: #2d3748; line-height: 1.6;">${primaryPainPoint}</p>
+               </div>`
+            : ''
+        }
+
+        <!-- CTA -->
+        <div style="text-align: center; margin-top: 8px;">
+          <a href="mailto:${replyToEmail}"
+             style="display: inline-block; background: #4C6EF5; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">
+            Reply to ${contactName}
+          </a>
+        </div>
       </div>
-      <p style="color: #718096; font-size: 12px; margin-top: 32px;">
-        This inquiry was submitted via the ${appName} billing page.
+
+      <p style="color: #94a3b8; font-size: 12px; margin-top: 16px; text-align: center;">
+        This is an automated notification from ${appName}.
       </p>
     </div>
   `;
@@ -326,14 +411,135 @@ export async function sendEnterpriseInquiryEmail({
     const info = await transporter.sendMail({
       from: `"${appName}" <${user}>`,
       to,
-      replyTo: contactEmail,
-      subject: `Enterprise Plan Inquiry — ${orgName}`,
+      replyTo: replyToEmail,
+      subject: `Enterprise Plan Inquiry — ${organizationName}`,
       html,
     });
-    console.info('[Email] Enterprise inquiry sent: %s', info.messageId);
+    logger.info({ msg: '[Email] Enterprise inquiry sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
-    console.error('[Email] Error sending enterprise inquiry:', error);
+    logger.error({ msg: '[Email] Error sending enterprise inquiry:', err: error });
+    return { success: false, error };
+  }
+}
+
+export async function sendStaffRemovedEmail(email: string, orgName: string) {
+  const appName = 'Theraptly';
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+      <h2 style="color: #4C6EF5;">Account Update</h2>
+      <p style="color: #333; font-size: 16px; line-height: 1.6;">
+        This is to inform you that your account has been disconnected from <strong>${orgName}</strong> on ${appName}.
+      </p>
+      <p style="color: #333; font-size: 16px; line-height: 1.6;">
+        You will no longer be able to access the courses or dashboard associated with this organization.
+      </p>
+      <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+        If you believe this was a mistake, please contact your administrator at ${orgName}.
+      </p>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to: email,
+      subject: `Account disconnected from ${orgName} - ${appName}`,
+      html,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({ msg: 'Error sending staff removed email:', err: error });
+    return { success: false, error };
+  }
+}
+
+export async function sendStaffRemovalConfirmationEmail(
+  adminEmail: string,
+  staffName: string,
+  orgName: string,
+) {
+  const appName = 'Theraptly';
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+      <h2 style="color: #4C6EF5;">Staff Removal Confirmed</h2>
+      <p style="color: #333; font-size: 16px; line-height: 1.6;">
+        This email confirms that <strong>${staffName}</strong> has been successfully removed from your organization, <strong>${orgName}</strong>.
+      </p>
+      <p style="color: #718096; font-size: 12px; margin-top: 32px;">
+        This is an automated confirmation from ${appName}.
+      </p>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to: adminEmail,
+      subject: `Staff Removal Confirmed: ${staffName} - ${appName}`,
+      html,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({ msg: 'Error sending staff removal confirmation email:', err: error });
+    return { success: false, error };
+  }
+}
+
+export async function sendDemoRequestEmail(data: {
+  fullName: string;
+  email: string;
+  organizationName: string;
+  role: string;
+  helpUs: string;
+  demoTime: string;
+}) {
+  const appName = 'Theraptly';
+  const to =
+    process.env.ENTERPRISE_CONTACT_EMAIL || process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
+
+  if (!to) {
+    logger.error({
+      msg: 'No ENTERPRISE_CONTACT_EMAIL or SMTP_USER configured to receive demo requests.',
+    });
+    return { success: false, error: 'Misconfigured email environment variables.' };
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+      <div style="background: #4C6EF5; padding: 24px;">
+        <h2 style="color: #ffffff; margin: 0;">New Demo Request</h2>
+      </div>
+      <div style="padding: 32px 24px;">
+        <p style="color: #333; font-size: 16px; margin-top: 0;">
+          A new demo request has been submitted for <strong>${appName}</strong>:
+        </p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 24px;">
+          <tbody>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568; width: 35%;">Name</td><td style="padding: 8px 0; color: #2d3748;">${data.fullName}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Email</td><td style="padding: 8px 0;"><a href="mailto:${data.email}" style="color: #4C6EF5;">${data.email}</a></td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Organization</td><td style="padding: 8px 0; color: #2d3748;">${data.organizationName}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Role</td><td style="padding: 8px 0; color: #2d3748;">${data.role}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568; vertical-align: top;">Challenges</td><td style="padding: 8px 0; color: #2d3748;">${data.helpUs}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Preferred Time</td><td style="padding: 8px 0; color: #2d3748;">${data.demoTime}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      replyTo: data.email,
+      subject: `New Demo Request: ${data.organizationName} - ${appName}`,
+      html,
+    });
+    logger.info({ msg: 'Demo request email sent', messageId: info.messageId });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({ msg: 'Error sending demo request email', error });
     return { success: false, error };
   }
 }

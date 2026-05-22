@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import stripe from '@/lib/stripe';
+import { logger } from '@/lib/logger';
 
 // GET /api/billing/payment-methods — list all payment methods attached to the org's Stripe customer
+// Force dynamic rendering to prevent Next.js from caching this response
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const session = await auth();
@@ -64,9 +68,14 @@ export async function GET() {
       isDefault: pm.id === defaultPaymentMethodId,
     }));
 
-    return NextResponse.json({ paymentMethods, defaultPaymentMethodId });
+    return NextResponse.json(
+      { paymentMethods, defaultPaymentMethodId },
+      {
+        headers: { 'Cache-Control': 'no-store, max-age=0' },
+      },
+    );
   } catch (error) {
-    console.error('[GET /api/billing/payment-methods]', error);
+    logger.error({ msg: '[GET /api/billing/payment-methods]', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -6,6 +6,7 @@ import { generateSingleQuestion } from '@/app/actions/quiz-ai';
 import { Button } from '@/components/ui';
 import { QuizQuestion } from '@/types/quiz';
 import { CourseWizardData } from '@/types/course';
+import { logger } from '@/lib/logger';
 
 // QuizQuestion is now imported from '@/types/quiz'
 
@@ -16,14 +17,6 @@ interface Step6QuizReviewProps {
   rawContext?: string;
   onQuizUpdate: (quiz: QuizQuestion[]) => void;
 }
-
-const ARCHETYPE_COLORS: Record<string, { bg: string; color: string }> = {
-  'best-next-action': { bg: '#EBF8FF', color: '#2B6CB0' },
-  'identify-noncompliance': { bg: '#FED7D7', color: '#C53030' },
-  sequence: { bg: '#FEFCBF', color: '#975A16' },
-  escalation: { bg: '#FED7E2', color: '#97266D' },
-  'modality-check': { bg: '#E9D8FD', color: '#6B46C1' },
-};
 
 export default function Step6QuizReview({
   data,
@@ -88,7 +81,7 @@ export default function Step6QuizReview({
         alert(res.error || 'Failed to generate question with AI.');
       }
     } catch (error) {
-      console.error('Failed to call AI generation:', error);
+      logger.error({ msg: 'Failed to call AI generation:', err: error });
       alert('An unexpected error occurred.');
     } finally {
       setIsGenerating(false);

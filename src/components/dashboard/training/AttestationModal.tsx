@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import styles from './AttestationModal.module.css';
 import { attestCourse } from '@/app/actions/course';
-import { useRouter } from 'next/navigation';
+import { issueCertificate } from '@/app/actions/certificate';
+
 import { Modal, Button } from '@/components/ui';
 
 interface AttestationModalProps {
@@ -11,37 +12,31 @@ interface AttestationModalProps {
   onClose: () => void;
   enrollmentId: string;
   courseName: string;
-  userName: string;
   userEmail: string;
-  jobTitle: string;
-  onSuccess: () => void;
+  onSuccess: (certificateId?: string) => void;
 }
 
 export default function AttestationModal({
   isOpen,
   onClose,
   enrollmentId,
-  courseName,
-  userName,
   userEmail,
-  jobTitle,
   onSuccess,
 }: AttestationModalProps) {
-  const [signature, setSignature] = useState(userName);
-  const [editedJobTitle, setEditedJobTitle] = useState(jobTitle);
+  const [signature, setSignature] = useState('');
   const [confirmed1, setConfirmed1] = useState(false);
   const [confirmed2, setConfirmed2] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
 
   const handleSubmit = async () => {
     setError('');
     setIsSubmitting(true);
 
     try {
-      await attestCourse(enrollmentId, signature, editedJobTitle);
-      onSuccess();
+      await attestCourse(enrollmentId, signature, '');
+      const certificate = await issueCertificate(enrollmentId);
+      onSuccess(certificate.id);
     } catch (err: unknown) {
       const error = err as Error;
       setError(error.message || 'Failed to attest. Please try again.');
@@ -50,7 +45,7 @@ export default function AttestationModal({
     }
   };
 
-  const isFormValid = signature.trim() !== '' && editedJobTitle.trim() !== '' && confirmed1 && confirmed2;
+  const isFormValid = signature.trim() !== '' && confirmed1 && confirmed2;
   const effectiveDate = new Date().toLocaleDateString('en-US', {
     day: '2-digit',
     month: '2-digit',
@@ -78,17 +73,9 @@ export default function AttestationModal({
             value={signature}
             onChange={(e) => setSignature(e.target.value)}
           />
-          {userEmail && <div style={{ fontSize: 12, color: '#A0AEC0', marginTop: 4 }}>{userEmail}</div>}
-        </div>
-
-        <div className={styles.fieldGroup}>
-          <label className={styles.label}>Job Title</label>
-          <input
-            className={styles.input}
-            value={editedJobTitle}
-            onChange={(e) => setEditedJobTitle(e.target.value)}
-            placeholder="e.g. Direct Support Professional"
-          />
+          {userEmail && (
+            <div style={{ fontSize: 12, color: '#A0AEC0', marginTop: 4 }}>{userEmail}</div>
+          )}
         </div>
 
         <div className={styles.legalBox}>
@@ -100,25 +87,32 @@ export default function AttestationModal({
               onChange={(e) => setConfirmed1(e.target.checked)}
             />
             <div className={styles.checkboxLabel}>
-              I confirm that I personally completed the training titled {courseName} and that I
-              passed the required knowledge check.
+              I hereby certify that I have successfully completed the training module referenced
+              above, including all associated learning materials and the required knowledge
+              assessment.
               <br />
-              By signing below, I attest that:
+              By submitting this electronic signature, I solemnly attest to the following:
               <ol style={{ paddingLeft: 20, marginTop: 8 }}>
                 <li>
-                  I have read, understood, and can follow the requirements taught in this training.
+                  1. Competency: I have read and fully comprehended the training content. I
+                  acknowledge my responsibility to perform my duties in strict accordance with these
+                  requirements.
                 </li>
                 <li>
-                  I will apply this training to my work and follow our organization&apos;s policies
-                  and procedures related to this topic.
+                  2. Application & Policy: I will integrate these principles into my daily practice
+                  and consistently adhere to all related organizational policies, procedures, and
+                  applicable state/federal regulatory standards.
                 </li>
                 <li>
-                  I understand that if I am unsure about any part of this training, I am responsible
-                  for asking my supervisor or the compliance team for clarification before acting.
+                  3. Proactive Clarification: If I encounter a situation where I am uncertain of the
+                  correct protocol, I agree to seek immediate guidance from my supervisor or the
+                  Compliance Department before proceeding.
                 </li>
                 <li>
-                  I understand that failure to follow these requirements may lead to corrective
-                  action, up to and including termination, in line with organizational policy.
+                  4. Professional Accountability: I understand that maintaining this competency is a
+                  condition of my employment/engagement. I acknowledge that failure to comply with
+                  these standards may result in disciplinary action, up to and including termination
+                  of my contract or employment.
                 </li>
               </ol>
             </div>
@@ -132,7 +126,8 @@ export default function AttestationModal({
               onChange={(e) => setConfirmed2(e.target.checked)}
             />
             <div className={styles.checkboxLabel}>
-              I confirm that this attestation is true and accurate.
+              I confirm that I have read the above statements and that this attestation is true,
+              accurate, and provided of my own free will.
             </div>
           </div>
         </div>

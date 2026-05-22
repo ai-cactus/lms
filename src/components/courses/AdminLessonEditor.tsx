@@ -4,11 +4,11 @@ import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
 import CourseArticle from '@/components/courses/CourseArticle';
 import styles from '@/components/courses/CoursePlayer.module.css';
-import DOMPurify from 'isomorphic-dompurify';
 import { updateLessonContent } from '@/app/actions/course';
 import 'react-quill-new/dist/quill.snow.css';
 import { Button } from '@/components/ui';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { logger } from '@/lib/logger';
 
 // Import React Quill dynamically
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
@@ -60,7 +60,7 @@ export default function AdminLessonEditor({
       await updateLessonContent(lesson.id, content, title);
       setIsEditing(false);
     } catch (error) {
-      console.error('Failed to save lesson:', error);
+      logger.error({ msg: 'Failed to save lesson:', err: error });
       alert('Failed to save changes');
     } finally {
       setIsSaving(false);
@@ -163,7 +163,7 @@ export default function AdminLessonEditor({
               (content || '')
                 .replace(/&nbsp;/g, ' ')
                 .replace(/<br\s*\/?>/gi, ' ')
-                .replace(/\s+/g, ' ')
+                .replace(/\s+/g, ' '),
             ),
           }}
         />

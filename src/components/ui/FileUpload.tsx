@@ -7,7 +7,7 @@ interface FileUploadProps {
   onFilesSelected: (files: File[]) => void;
   accept?: string;
   multiple?: boolean;
-  maxSizeInMB?: number;
+
   error?: string;
   description?: string;
 }
@@ -16,7 +16,7 @@ export default function FileUpload({
   onFilesSelected,
   accept = '*/*',
   multiple = true,
-  maxSizeInMB = 10,
+
   error,
   description,
 }: FileUploadProps) {

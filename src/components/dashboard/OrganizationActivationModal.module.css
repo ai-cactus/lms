@@ -4,24 +4,31 @@
   overflow: hidden;
 }
 
+/* Remove base Modal .content padding so this modal controls its own spacing */
+.modalContentParams {
+  padding: 0 !important;
+}
+
 .container {
   display: flex;
-  flex-direction: row;
-  height: 500px;
-  /* Fixed height for consistency */
+  flex-direction: column;
+  height: auto;
   width: 100%;
+  overflow-y: auto;
 }
 
 @media (min-width: 768px) {
-  .card {
+  .container {
     flex-direction: row;
+    height: 500px;
+    overflow-y: visible;
   }
 }
 
 /* Content Section */
 .content {
   flex: 1;
-  padding: 32px;
+  padding: 24px 20px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -34,36 +41,58 @@
 }
 
 .logoWrapper {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+}
+
+@media (min-width: 768px) {
+  .logoWrapper {
+    margin-bottom: 24px;
+  }
 }
 
 .title {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   color: #111827;
-  margin-bottom: 16px;
-  line-height: 1.25;
+  margin-bottom: 12px;
+  line-height: 1.3;
 }
 
 @media (min-width: 768px) {
   .title {
     font-size: 30px;
+    margin-bottom: 16px;
+    line-height: 1.25;
   }
 }
 
 .description {
   color: #4b5563;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.6;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
+}
+
+@media (min-width: 768px) {
+  .description {
+    font-size: 16px;
+    margin-bottom: 32px;
+  }
 }
 
 .actions {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  align-items: flex-start;
+  gap: 12px;
+  align-items: stretch;
   width: 100%;
+}
+
+@media (min-width: 768px) {
+  .actions {
+    gap: 16px;
+    align-items: flex-start;
+  }
 }
 
 .primaryButton {
@@ -102,13 +131,13 @@
   cursor: pointer;
   font-size: 14px;
   width: 100%;
-  text-align: left;
+  text-align: center;
 }
 
 @media (min-width: 768px) {
   .secondaryButton {
     width: auto;
-    text-align: center;
+    text-align: left;
   }
 }
 
@@ -120,14 +149,16 @@
 /* Image Section */
 .imageSection {
   display: none;
-  width: 50%;
+  width: 100%;
   position: relative;
-  min-height: 400px;
+  min-height: 200px;
 }
 
 @media (min-width: 768px) {
   .imageSection {
     display: block;
+    width: 50%;
+    min-height: 400px;
   }
 }
 

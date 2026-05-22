@@ -34,6 +34,7 @@ const ArticleSectionV46Schema = z
     sectionId: z.string(),
     title: z.string(),
     anchorHint: z.string().optional().default(''),
+    riskLevel: z.enum(['high-risk', 'administrative']).optional().default('administrative'),
     keyPoints: z.array(z.string()).min(1),
     normIds: z.array(z.string()).default([]),
     snippetIds: z.array(z.string()).default([]),
@@ -86,6 +87,18 @@ const SlideV46Schema = z
   .object({
     slideId: z.string(),
     title: z.string(),
+    slideType: z.enum(['TELL', 'SHOW', 'DO']).optional().default('TELL'),
+    layoutHint: z
+      .enum([
+        'default',
+        'tiled-text-icons',
+        'image-right-text-left',
+        'highlighted-numbers',
+        'table',
+        'checklist',
+      ])
+      .optional()
+      .default('default'),
     bullets: z.array(z.string()).min(1),
     sourceSections: z.array(z.string()).default([]),
   })

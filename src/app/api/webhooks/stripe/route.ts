@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import stripe from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
 import Stripe from 'stripe';
+import { logger } from '@/lib/logger';
+import type {
+  SubscriptionPlan,
+  SubscriptionBillingCycle,
+  SubscriptionStatus,
+} from '@prisma/client';
 
 // Stripe webhook secret — required to verify event authenticity
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 export async function POST(request: NextRequest) {
   if (!webhookSecret) {
-    console.error('[Stripe Webhook] STRIPE_WEBHOOK_SECRET is not configured');
+    logger.error({ msg: '[Stripe Webhook] STRIPE_WEBHOOK_SECRET is not configured' });
     return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
   }
 
@@ -24,7 +30,7 @@ export async function POST(request: NextRequest) {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[Stripe Webhook] Signature verification failed: ${message}`);
+    logger.error({ msg: `[Stripe Webhook] Signature verification failed: ${message}` });
     return NextResponse.json({ error: `Webhook error: ${message}` }, { status: 400 });
   }
 
@@ -42,6 +48,8 @@ export async function POST(request: NextRequest) {
           where: { stripeSubscriptionId: sub.id },
           data: { status: 'canceled' },
         });
+        // Revoke auditor access when subscription is fully canceled
+        await handleAuditorAccessRevoke(sub);
         break;
       }
       case 'invoice.paid': {
@@ -59,7 +67,7 @@ export async function POST(request: NextRequest) {
         break;
     }
   } catch (error) {
-    console.error(`[Stripe Webhook] Error handling event ${event.type}:`, error);
+    logger.error({ msg: `[Stripe Webhook] Error handling event ${event.type}:`, err: error });
     // Return 200 to prevent Stripe retrying non-recoverable errors
     return NextResponse.json({ received: true, error: 'Event processing failed' });
   }
@@ -76,12 +84,13 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   });
 
   if (!organization) {
-    console.warn(`[Stripe Webhook] No organization found for customer: ${customerId}`);
+    logger.warn({ msg: `[Stripe Webhook] No organization found for customer: ${customerId}` });
     return;
   }
 
-  const planKey = (sub.metadata?.planKey as string) ?? 'starter';
-  const billingCycle = (sub.metadata?.billingCycle as string) ?? 'monthly';
+  const planKey = ((sub.metadata?.planKey as string) ?? 'starter') as SubscriptionPlan;
+  const billingCycle = ((sub.metadata?.billingCycle as string) ??
+    'monthly') as SubscriptionBillingCycle;
   const priceItem = sub.items.data[0];
   const stripePriceId = priceItem?.price.id ?? '';
 
@@ -89,30 +98,43 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const periodStart = priceItem?.current_period_start ?? sub.billing_cycle_anchor;
   const periodEnd = priceItem?.current_period_end ?? sub.billing_cycle_anchor;
 
-  await prisma.subscription.upsert({
-    where: { organizationId: organization.id },
-    create: {
-      organizationId: organization.id,
-      stripeSubscriptionId: sub.id,
-      stripePriceId,
-      plan: planKey,
-      billingCycle,
-      status: sub.status,
-      currentPeriodStart: new Date(periodStart * 1000),
-      currentPeriodEnd: new Date(periodEnd * 1000),
-      cancelAtPeriodEnd: sub.cancel_at_period_end,
-    },
-    update: {
-      stripeSubscriptionId: sub.id,
-      stripePriceId,
-      plan: planKey,
-      billingCycle,
-      status: sub.status,
-      currentPeriodStart: new Date(periodStart * 1000),
-      currentPeriodEnd: new Date(periodEnd * 1000),
-      cancelAtPeriodEnd: sub.cancel_at_period_end,
-    },
-  });
+  const hasAuditorAccess = sub.status === 'active' || sub.status === 'trialing';
+
+  // Upsert subscription record and grant/revoke auditor access atomically
+  await Promise.all([
+    prisma.subscription.upsert({
+      where: { organizationId: organization.id },
+      create: {
+        organizationId: organization.id,
+        stripeSubscriptionId: sub.id,
+        stripePriceId,
+        plan: planKey,
+        billingCycle,
+        status: sub.status as SubscriptionStatus,
+        currentPeriodStart: new Date(periodStart * 1000),
+        currentPeriodEnd: new Date(periodEnd * 1000),
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      },
+      update: {
+        stripeSubscriptionId: sub.id,
+        stripePriceId,
+        plan: planKey,
+        billingCycle,
+        status: sub.status as SubscriptionStatus,
+        currentPeriodStart: new Date(periodStart * 1000),
+        currentPeriodEnd: new Date(periodEnd * 1000),
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      },
+    }),
+    prisma.organization.update({
+      where: { id: organization.id },
+      data: { hasAuditorAccess },
+    }),
+  ]);
+
+  console.info(
+    `[Stripe Webhook] Organization ${organization.id} — subscription ${sub.id} status: ${sub.status}, hasAuditorAccess: ${hasAuditorAccess}`,
+  );
 }
 
 async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string) {
@@ -125,7 +147,7 @@ async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string)
   });
 
   if (!organization) {
-    console.warn(`[Stripe Webhook] No organization found for customer: ${customerId}`);
+    logger.warn({ msg: `[Stripe Webhook] No organization found for customer: ${customerId}` });
     return;
   }
 
@@ -153,5 +175,27 @@ async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string)
       invoiceUrl: inv.hosted_invoice_url ?? null,
       pdfUrl: inv.invoice_pdf ?? null,
     },
+  });
+}
+
+async function handleAuditorAccessRevoke(sub: Stripe.Subscription) {
+  const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
+  const organization = await prisma.organization.findUnique({
+    where: { stripeCustomerId: customerId },
+    select: { id: true },
+  });
+
+  if (!organization) {
+    logger.warn({ msg: `[Stripe Webhook] No organization found for customer: ${customerId}` });
+    return;
+  }
+
+  await prisma.organization.update({
+    where: { id: organization.id },
+    data: { hasAuditorAccess: false },
+  });
+
+  logger.info({
+    msg: `[Stripe Webhook] Organization ${organization.id} — auditor access revoked (subscription deleted)`,
   });
 }

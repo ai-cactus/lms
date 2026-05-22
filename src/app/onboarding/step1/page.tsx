@@ -2,11 +2,11 @@
 
 import React from 'react';
 import { useForm, Controller } from 'react-hook-form';
-import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button, Input, Select, PhoneInput } from '@/components/ui';
 import styles from '@/app/onboarding/onboarding.module.css';
 import Stepper from '@/components/onboarding/Stepper';
+import { logger } from '@/lib/logger';
 
 interface Step1FormData {
   legalName: string;
@@ -31,12 +31,12 @@ export default function OnboardingStep1() {
     control,
     setError,
     formState: { errors },
-  } = useForm<Step1FormData>();
-
-  const { data: session } = useSession();
+  } = useForm<Step1FormData>({
+    defaultValues: { country: 'US' },
+  });
 
   const onSubmit = async (data: Step1FormData) => {
-    console.log('Step 1 Data Saved Locally:', data);
+    logger.info({ msg: 'Step 1 Data Saved Locally:', data: data });
     try {
       // Check availability
       const { checkOrganizationNameAvailable } = await import('@/app/actions/organization');
@@ -59,7 +59,7 @@ export default function OnboardingStep1() {
       }
       router.push('/onboarding/step2');
     } catch (error) {
-      console.error('Local save error:', error);
+      logger.error({ msg: 'Local save error:', err: error });
     }
   };
 
@@ -106,7 +106,7 @@ export default function OnboardingStep1() {
               Employer Identification Number (EIN){' '}
               <span className={styles.helperText}>(optional)</span>
             </label>
-            <Input {...register('ein')} placeholder="Enter your EIN (if applicable)" />
+            <Input {...register('ein')} placeholder="XX-XXXXXXX" />
           </div>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
@@ -166,27 +166,9 @@ export default function OnboardingStep1() {
 
         <div className={styles.row}>
           <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Country <span className={styles.required}>*</span>
-            </label>
-            <Controller
-              name="country"
-              control={control}
-              rules={{ required: 'Country is required' }}
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onChange={field.onChange}
-                  options={[
-                    { label: 'United States', value: 'US' },
-                    { label: 'Canada', value: 'CA' },
-                    { label: 'United Kingdom', value: 'UK' },
-                  ]}
-                  placeholder="Select an option"
-                  error={getError('country')}
-                />
-              )}
-            />
+            <label className={styles.label}>Country</label>
+            <input type="hidden" {...register('country')} />
+            <Input value="United States" readOnly tabIndex={-1} />
           </div>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
@@ -207,8 +189,9 @@ export default function OnboardingStep1() {
                 <PhoneInput
                   value={field.value}
                   onChange={field.onChange}
-                  placeholder="Enter the phone number of the main contact"
+                  placeholder="(XXX) XXX-XXXX"
                   error={getError('phone')}
+                  allowedCountries={['US']}
                 />
               )}
             />
@@ -218,66 +201,111 @@ export default function OnboardingStep1() {
         <div className={styles.row}>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
-              Street Address <span className={styles.helperText}>(optional)</span>
+              Street Address <span className={styles.required}>*</span>
             </label>
-            <Input {...register('streetAddress')} placeholder="Enter business street address" />
+            <Input
+              {...register('streetAddress', { required: 'Street Address is required' })}
+              placeholder="Enter business street address"
+              error={getError('streetAddress')}
+            />
           </div>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
-              Zip Code <span className={styles.helperText}>(optional)</span>
+              Zip Code <span className={styles.required}>*</span>
             </label>
-            <Input {...register('zipCode')} placeholder="e.g. 27601" />
+            <Input
+              {...register('zipCode', { required: 'Zip Code is required' })}
+              placeholder="e.g. 27601"
+              error={getError('zipCode')}
+            />
           </div>
         </div>
 
         <div className={styles.row}>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
-              City <span className={styles.helperText}>(optional)</span>
+              City <span className={styles.required}>*</span>
             </label>
-            <Input {...register('city')} placeholder="Enter city" />
+            <Input
+              {...register('city', { required: 'City is required' })}
+              placeholder="Enter city"
+              error={getError('city')}
+            />
           </div>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
-              State/Province <span className={styles.helperText}>(optional)</span>
+              State <span className={styles.required}>*</span>
             </label>
             <Controller
               name="state"
               control={control}
+              rules={{ required: 'State is required' }}
               render={({ field }) => (
                 <Select
                   value={field.value}
                   onChange={field.onChange}
                   options={[
-                    { label: 'Alabama', value: 'AL' }, { label: 'Alaska', value: 'AK' }, { label: 'Arizona', value: 'AZ' }, { label: 'Arkansas', value: 'AR' },
-                    { label: 'California', value: 'CA' }, { label: 'Colorado', value: 'CO' }, { label: 'Connecticut', value: 'CT' }, { label: 'Delaware', value: 'DE' },
-                    { label: 'Florida', value: 'FL' }, { label: 'Georgia', value: 'GA' }, { label: 'Hawaii', value: 'HI' }, { label: 'Idaho', value: 'ID' },
-                    { label: 'Illinois', value: 'IL' }, { label: 'Indiana', value: 'IN' }, { label: 'Iowa', value: 'IA' }, { label: 'Kansas', value: 'KS' },
-                    { label: 'Kentucky', value: 'KY' }, { label: 'Louisiana', value: 'LA' }, { label: 'Maine', value: 'ME' }, { label: 'Maryland', value: 'MD' },
-                    { label: 'Massachusetts', value: 'MA' }, { label: 'Michigan', value: 'MI' }, { label: 'Minnesota', value: 'MN' }, { label: 'Mississippi', value: 'MS' },
-                    { label: 'Missouri', value: 'MO' }, { label: 'Montana', value: 'MT' }, { label: 'Nebraska', value: 'NE' }, { label: 'Nevada', value: 'NV' },
-                    { label: 'New Hampshire', value: 'NH' }, { label: 'New Jersey', value: 'NJ' }, { label: 'New Mexico', value: 'NM' }, { label: 'New York', value: 'NY' },
-                    { label: 'North Carolina', value: 'NC' }, { label: 'North Dakota', value: 'ND' }, { label: 'Ohio', value: 'OH' }, { label: 'Oklahoma', value: 'OK' },
-                    { label: 'Oregon', value: 'OR' }, { label: 'Pennsylvania', value: 'PA' }, { label: 'Rhode Island', value: 'RI' }, { label: 'South Carolina', value: 'SC' },
-                    { label: 'South Dakota', value: 'SD' }, { label: 'Tennessee', value: 'TN' }, { label: 'Texas', value: 'TX' }, { label: 'Utah', value: 'UT' },
-                    { label: 'Vermont', value: 'VT' }, { label: 'Virginia', value: 'VA' }, { label: 'Washington', value: 'WA' }, { label: 'West Virginia', value: 'WV' },
-                    { label: 'Wisconsin', value: 'WI' }, { label: 'Wyoming', value: 'WY' }, { label: 'District of Columbia', value: 'DC' },
-                    { label: 'Alberta', value: 'AB' }, { label: 'British Columbia', value: 'BC' }, { label: 'Manitoba', value: 'MB' }, { label: 'New Brunswick', value: 'NB' },
-                    { label: 'Newfoundland and Labrador', value: 'NL' }, { label: 'Nova Scotia', value: 'NS' }, { label: 'Ontario', value: 'ON' }, { label: 'Prince Edward Island', value: 'PE' },
-                    { label: 'Quebec', value: 'QC' }, { label: 'Saskatchewan', value: 'SK' }, { label: 'Northwest Territories', value: 'NT' }, { label: 'Nunavut', value: 'NU' },
-                    { label: 'Yukon', value: 'YT' }
+                    { label: 'Alabama', value: 'AL' },
+                    { label: 'Alaska', value: 'AK' },
+                    { label: 'Arizona', value: 'AZ' },
+                    { label: 'Arkansas', value: 'AR' },
+                    { label: 'California', value: 'CA' },
+                    { label: 'Colorado', value: 'CO' },
+                    { label: 'Connecticut', value: 'CT' },
+                    { label: 'Delaware', value: 'DE' },
+                    { label: 'District of Columbia', value: 'DC' },
+                    { label: 'Florida', value: 'FL' },
+                    { label: 'Georgia', value: 'GA' },
+                    { label: 'Hawaii', value: 'HI' },
+                    { label: 'Idaho', value: 'ID' },
+                    { label: 'Illinois', value: 'IL' },
+                    { label: 'Indiana', value: 'IN' },
+                    { label: 'Iowa', value: 'IA' },
+                    { label: 'Kansas', value: 'KS' },
+                    { label: 'Kentucky', value: 'KY' },
+                    { label: 'Louisiana', value: 'LA' },
+                    { label: 'Maine', value: 'ME' },
+                    { label: 'Maryland', value: 'MD' },
+                    { label: 'Massachusetts', value: 'MA' },
+                    { label: 'Michigan', value: 'MI' },
+                    { label: 'Minnesota', value: 'MN' },
+                    { label: 'Mississippi', value: 'MS' },
+                    { label: 'Missouri', value: 'MO' },
+                    { label: 'Montana', value: 'MT' },
+                    { label: 'Nebraska', value: 'NE' },
+                    { label: 'Nevada', value: 'NV' },
+                    { label: 'New Hampshire', value: 'NH' },
+                    { label: 'New Jersey', value: 'NJ' },
+                    { label: 'New Mexico', value: 'NM' },
+                    { label: 'New York', value: 'NY' },
+                    { label: 'North Carolina', value: 'NC' },
+                    { label: 'North Dakota', value: 'ND' },
+                    { label: 'Ohio', value: 'OH' },
+                    { label: 'Oklahoma', value: 'OK' },
+                    { label: 'Oregon', value: 'OR' },
+                    { label: 'Pennsylvania', value: 'PA' },
+                    { label: 'Rhode Island', value: 'RI' },
+                    { label: 'South Carolina', value: 'SC' },
+                    { label: 'South Dakota', value: 'SD' },
+                    { label: 'Tennessee', value: 'TN' },
+                    { label: 'Texas', value: 'TX' },
+                    { label: 'Utah', value: 'UT' },
+                    { label: 'Vermont', value: 'VT' },
+                    { label: 'Virginia', value: 'VA' },
+                    { label: 'Washington', value: 'WA' },
+                    { label: 'West Virginia', value: 'WV' },
+                    { label: 'Wisconsin', value: 'WI' },
+                    { label: 'Wyoming', value: 'WY' },
                   ]}
                   placeholder="Select an option"
+                  error={getError('state')}
                 />
               )}
             />
           </div>
         </div>
 
-        <div className={styles.actions}>
-          <Button variant="outline" type="button" onClick={() => router.push('/dashboard')}>
-            Skip for now
-          </Button>
+        <div className={styles.actions} style={{ justifyContent: 'flex-end' }}>
           <Button variant="primary" type="submit">
             Next
           </Button>

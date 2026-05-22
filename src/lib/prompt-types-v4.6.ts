@@ -1,6 +1,12 @@
 /**
- * TypeScript types for the v4.6 LMS Prompt Pipeline
+ * TypeScript types for the v4.7 LMS Prompt Pipeline
  * Matches the JSON output schemas defined in prompts-v4.6.ts
+ *
+ * v4.7 merges pedagogical strengths from docs/new-prompt-07-05.md:
+ * - T6 (distinction) and T7 (sequential-reasoning) question templates
+ * - D6 distractor type (concept confusion)
+ * - Slide types (TELL/SHOW/DO) and layout hints
+ * - Section risk levels (high-risk/administrative)
  */
 
 // ─── Shared Types ────────────────────────────────
@@ -9,16 +15,33 @@ export type QuizDifficulty = 'easy' | 'medium' | 'hard';
 
 export type NormModality = 'must' | 'should' | 'may' | 'prohibited' | 'conditional';
 
-export type TemplateId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5';
+export type TemplateId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7';
 
-export type DistractorType = 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
+export type DistractorType = 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6';
 
 export type TemplateSkill =
   | 'modality-check'
   | 'apply-rule'
   | 'identify-error'
   | 'best-justification'
-  | 'classification';
+  | 'classification'
+  | 'distinction'
+  | 'sequential-reasoning';
+
+/** Slide type classification from 07-05 pedagogical framework */
+export type SlideType = 'TELL' | 'SHOW' | 'DO';
+
+/** Visual layout hint for slide rendering */
+export type LayoutHint =
+  | 'default'
+  | 'tiled-text-icons'
+  | 'image-right-text-left'
+  | 'highlighted-numbers'
+  | 'table'
+  | 'checklist';
+
+/** Section risk level for 80/20 quiz weighting */
+export type SectionRiskLevel = 'high-risk' | 'administrative';
 
 // ─── Prompt A: articleMeta Types ─────────────────
 
@@ -43,6 +66,7 @@ export interface ArticleSectionV46 {
   sectionId: string;
   title: string;
   anchorHint: string;
+  riskLevel?: SectionRiskLevel;
   keyPoints: string[];
   normIds: string[];
   snippetIds: string[];
@@ -85,6 +109,8 @@ export interface SlidesMeta {
 export interface SlideV46 {
   slideId: string;
   title: string;
+  slideType?: SlideType;
+  layoutHint?: LayoutHint;
   bullets: string[];
   sourceSections: string[];
 }

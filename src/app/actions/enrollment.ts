@@ -6,6 +6,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
+import { logger } from '@/lib/logger';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -124,11 +125,11 @@ export async function enrollUsers(courseId: string, emails: string[]) {
           );
           results.newInvited.push(email);
         } catch (emailErr) {
-          console.error(`Failed to send invite email to ${email}:`, emailErr);
+          logger.error({ msg: `Failed to send invite email to ${email}:`, err: emailErr });
           results.newInvited.push(email);
         }
       } catch (createErr) {
-        console.error(`Failed to create user for ${email}:`, createErr);
+        logger.error({ msg: `Failed to create user for ${email}:`, err: createErr });
         results.failed.push(email);
         continue;
       }
@@ -172,16 +173,19 @@ export async function enrollUsers(courseId: string, emails: string[]) {
       metadata: { courseId },
     });
 
-    // Send enrollment notification email to existing user
-    try {
-      await sendCourseEnrollmentEmail(
-        normalizedEmail,
-        user.profile?.fullName || 'there',
-        course.title,
-        currentUser?.organization?.name || 'Your Organization',
-      );
-    } catch (emailErr) {
-      console.error(`Failed to send enrollment email to ${email}:`, emailErr);
+    // Send enrollment notification only to existing users — new users already received
+    // the invite email (with credentials) from sendCourseInviteEmail above.
+    if (!results.newInvited.includes(email)) {
+      try {
+        await sendCourseEnrollmentEmail(
+          normalizedEmail,
+          user.profile?.fullName || 'there',
+          course.title,
+          currentUser?.organization?.name || 'Your Organization',
+        );
+      } catch (emailErr) {
+        logger.error({ msg: `Failed to send enrollment email to ${email}:`, err: emailErr });
+      }
     }
 
     if (!results.newInvited.includes(email)) {
@@ -414,5 +418,43 @@ export async function requestCourseRetry(enrollmentId: string) {
   }
 
   revalidatePath(`/worker/trainings`);
+  return { success: true };
+}
+
+/**
+ * Remove a worker's assignment (enrollment) from a course.
+ */
+export async function removeWorkerAssignment(enrollmentId: string) {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  // Find the enrollment
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+    include: {
+      course: true,
+      user: { include: { profile: true } },
+    },
+  });
+
+  if (!enrollment) {
+    throw new Error('Enrollment not found');
+  }
+
+  // Ensure the user trying to remove the assignment is the course creator
+  if (enrollment.course.createdBy !== session.user.id) {
+    throw new Error('Access denied. Only the course creator can remove assignments.');
+  }
+
+  // Prevent removing if completed (optional, depending on business logic, but usually we allow removal or maybe block it)
+  // Let's just delete the enrollment
+  await prisma.enrollment.delete({
+    where: { id: enrollmentId },
+  });
+
+  revalidatePath(`/dashboard/training/courses/${enrollment.courseId}`);
+
   return { success: true };
 }

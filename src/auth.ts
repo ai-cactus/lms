@@ -1,7 +1,10 @@
 import { createAuthInstance } from '@/lib/create-auth-instance';
 
-export const { handlers, auth, signIn, signOut } = createAuthInstance({
+const adminAuth = createAuthInstance({
   cookiePrefix: 'admin',
   allowedRole: 'admin',
   basePath: '/api/auth',
 });
+
+export const { handlers, auth, signIn, signOut } = adminAuth;
+export const adminConfig = adminAuth.options;

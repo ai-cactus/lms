@@ -2,12 +2,15 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import styles from './page.module.css'; // We'll need to create this
+import styles from './page.module.css';
 import PdfViewer from '@/components/dashboard/documents/PdfViewer';
+import { getDocumentSignedUrl } from '@/app/actions/storage';
+import { logger } from '@/lib/logger';
 
 export default async function DocumentViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   const { id } = await params;
+
   const doc = await prisma.document.findUnique({
     where: { id },
     include: {
@@ -28,6 +31,21 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
   const latest = doc.versions[0];
   const courseLinks = latest.courseVersions || [];
 
+  // The signed URL is embedded in the page at render time — valid for 15 min.
+  // For legacy local paths this returns the path as-is (backward compat).
+  let downloadUrl: string | null = null;
+  const previewUrl = `/api/documents/${latest.id}/preview`;
+
+  if (doc.mimeType === 'application/pdf') {
+    const { url, error } = await getDocumentSignedUrl(latest.id);
+    if (url) {
+      downloadUrl = url;
+    } else {
+      // Non-fatal: viewer will show an error state if downloadUrl is null
+      logger.error({ msg: 'Could not resolve signed URL for document:', err: error });
+    }
+  }
+
   return (
     <div className={styles.container}>
       <header className={styles.header}>
@@ -42,6 +60,17 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
           <span>Uploaded: {doc.updatedAt.toLocaleDateString()}</span>
           <span>Size: {(doc.size / 1024).toFixed(1)} KB</span>
           {latest.phiReport?.hasPHI && <span className={styles.badgeWarning}>PHI Detected</span>}
+          {downloadUrl && (
+            <a
+              href={downloadUrl}
+              download={doc.filename}
+              className={styles.downloadLink}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ↓ Download
+            </a>
+          )}
         </div>
       </header>
 
@@ -64,7 +93,14 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
 
         <div className={styles.mainContent}>
           {doc.mimeType === 'application/pdf' ? (
-            <PdfViewer fileUrl={latest.storagePath} />
+            previewUrl ? (
+              <PdfViewer fileUrl={previewUrl} />
+            ) : (
+              <div className={styles.noContent}>
+                <p>Could not load PDF preview.</p>
+                <p className={styles.subtext}>The file may have been moved or the link expired.</p>
+              </div>
+            )
           ) : latest.content ? (
             <div className={styles.textContent}>
               <pre>{latest.content}</pre>

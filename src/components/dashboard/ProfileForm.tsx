@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import styles from './ProfileForm.module.css';
-import { Button, Input, Modal, Select } from '@/components/ui';
-import { updateProfile } from '@/app/actions/user';
+import { Button, Input, Modal } from '@/components/ui';
+import { updateProfile, uploadAvatar } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import OrganizationForm from './OrganizationForm';
+import { ChangePasswordTab } from './ChangePasswordTab';
+import { TwoFactorAuthTab } from './TwoFactorAuthTab';
 
 interface ProfileData {
   id: string;
@@ -16,6 +18,9 @@ interface ProfileData {
   role: 'admin' | 'worker';
   jobTitle?: string;
   company_name?: string;
+  avatarUrl?: string | null;
+  avatarDisplayUrl?: string | null;
+  authProvider?: string;
 }
 
 interface OrganizationData {
@@ -34,6 +39,9 @@ interface OrganizationData {
   city?: string | null;
   licenseNumber?: string | null;
   isHipaaCompliant?: boolean;
+  complianceDocumentUrl?: string | null;
+  complianceDocumentName?: string | null;
+  complianceDocumentDisplayUrl?: string | null;
 }
 
 interface ProfileFormProps {
@@ -42,13 +50,21 @@ interface ProfileFormProps {
 }
 
 export default function ProfileForm({ initialData, organizationData }: ProfileFormProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'organization'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'organization' | 'password' | '2fa'>(
+    'profile',
+  );
   const [baseData, setBaseData] = useState(initialData);
   const [formData, setFormData] = useState(initialData);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialData.avatarUrl || null);
+  const [avatarDisplayUrl, setAvatarDisplayUrl] = useState<string | null>(
+    initialData.avatarDisplayUrl || null,
+  );
+  const [baseAvatarUrl, setBaseAvatarUrl] = useState<string | null>(initialData.avatarUrl || null);
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -58,6 +74,9 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
   React.useEffect(() => {
     setFormData(initialData);
     setBaseData(initialData);
+    setAvatarUrl(initialData.avatarUrl || null);
+    setAvatarDisplayUrl(initialData.avatarDisplayUrl || null);
+    setBaseAvatarUrl(initialData.avatarUrl || null);
   }, [initialData]);
 
   React.useEffect(() => {
@@ -73,7 +92,39 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
     formData.first_name !== baseData.first_name ||
     formData.last_name !== baseData.last_name ||
     formData.role !== baseData.role ||
-    (formData.company_name || '') !== (baseData.company_name || '');
+    formData.jobTitle !== baseData.jobTitle ||
+    (formData.company_name || '') !== (baseData.company_name || '') ||
+    avatarUrl !== baseAvatarUrl;
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Instant local preview
+    const localPreviewUrl = URL.createObjectURL(file);
+    setAvatarDisplayUrl(localPreviewUrl);
+
+    setIsLoading(true);
+    const data = new FormData();
+    data.append('file', file);
+
+    try {
+      const result = await uploadAvatar(data);
+      if (result.success && result.url) {
+        setAvatarUrl(result.url);
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Failed to upload avatar' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Upload failed' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,12 +141,15 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
         first_name: formData.first_name,
         last_name: formData.last_name,
         company_name: formData.company_name,
+        jobTitle: formData.jobTitle || undefined,
+        avatarUrl: avatarUrl || undefined,
       });
 
       if (!result.success) throw new Error(result.error);
 
       setMessage({ type: 'success', text: 'Profile updated successfully' });
       setBaseData(formData);
+      setBaseAvatarUrl(avatarUrl);
       router.refresh();
     } catch (error: unknown) {
       const err = error as Error;
@@ -105,19 +159,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
     }
   };
 
-  const validateEmail = (email: string) => {
-    return String(email)
-      .toLowerCase()
-      .match(
-        /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
-      );
-  };
-
-  const isValid =
-    formData.first_name?.trim() !== '' &&
-    formData.last_name?.trim() !== '' &&
-    formData.first_name?.trim() !== '' &&
-    formData.last_name?.trim() !== '';
+  const isValid = formData.first_name?.trim() !== '' && formData.last_name?.trim() !== '';
   // Email is read-only, so we won't block saving if it's missing/invalid from the DB side,
   // though it ideally should be there.
 
@@ -145,27 +187,63 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
       </div>
 
       <div className={styles.card}>
-        <div className={styles.tabs}>
-          <div
-            className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
-            onClick={() => setActiveTab('profile')}
-          >
-            EDIT PROFILE
-          </div>
-          <div
-            className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
-            onClick={() => setActiveTab('organization')}
-          >
-            YOUR ORGANIZATION
+        <div style={{ padding: '0 40px' }}>
+          <div className={styles.tabs}>
+            <div
+              className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('profile')}
+            >
+              EDIT PROFILE
+            </div>
+            <div
+              className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('organization')}
+            >
+              YOUR ORGANIZATION
+            </div>
+            <div
+              className={`${styles.tab} ${activeTab === 'password' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('password')}
+            >
+              CHANGE PASSWORD
+            </div>
+            <div
+              className={`${styles.tab} ${activeTab === '2fa' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('2fa')}
+            >
+              TWO FACTOR AUTH (2FA)
+            </div>
           </div>
         </div>
 
-        {activeTab === 'profile' ? (
+        {activeTab === 'profile' && (
           <div className={styles.profileWrapper}>
             <div className={styles.avatarSection}>
               <div className={styles.avatarLarge}>
-                {formData.first_name ? formData.first_name[0] : 'U'}
-                <Button variant="primary" size="icon-sm" className={styles.editAvatarButton}>
+                {avatarDisplayUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={avatarDisplayUrl}
+                    alt="Profile Avatar"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      borderRadius: '50%',
+                    }}
+                  />
+                ) : formData.first_name ? (
+                  formData.first_name[0].toUpperCase()
+                ) : (
+                  'U'
+                )}
+                <Button
+                  variant="primary"
+                  size="icon-sm"
+                  className={styles.editAvatarButton}
+                  type="button"
+                  onClick={handleAvatarClick}
+                >
                   <svg
                     width="14"
                     height="14"
@@ -180,6 +258,13 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                   </svg>
                 </Button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                />
               </div>
             </div>
 
@@ -239,8 +324,50 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                 />
               </div>
 
-              {/* State & Zip Code */}
+              {/* Country & Phone */}
               <div className={styles.formGrid}>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>Country</label>
+                  <Input
+                    value={organizationData?.country || ''}
+                    disabled
+                    className={styles.readOnlyInput}
+                    placeholder="Your country"
+                  />
+                </div>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>Phone</label>
+                  <Input
+                    value={organizationData?.phone || ''}
+                    disabled
+                    className={styles.readOnlyInput}
+                    placeholder="Your phone number"
+                  />
+                </div>
+              </div>
+
+              {/* Business Address */}
+              <div className={styles.fieldGroup}>
+                <label className={styles.label}>Business Address</label>
+                <Input
+                  value={organizationData?.address || ''}
+                  disabled
+                  className={styles.readOnlyInput}
+                  placeholder="Your business address"
+                />
+              </div>
+
+              {/* City, State & Zip Code */}
+              <div className={styles.formGrid}>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.label}>City</label>
+                  <Input
+                    value={organizationData?.city || ''}
+                    disabled
+                    className={styles.readOnlyInput}
+                    placeholder="Your city"
+                  />
+                </div>
                 <div className={styles.fieldGroup}>
                   <label className={styles.label}>State</label>
                   <Input
@@ -261,17 +388,6 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                 </div>
               </div>
 
-              {/* Business Address */}
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Business Address</label>
-                <Input
-                  value={organizationData?.address || ''}
-                  disabled
-                  className={styles.readOnlyInput}
-                  placeholder="Your business address"
-                />
-              </div>
-
               {message && (
                 <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>
               )}
@@ -284,8 +400,11 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                     onClick={(e) => {
                       e.preventDefault();
                       setFormData({ ...baseData });
+                      setAvatarUrl(baseAvatarUrl);
+                      setAvatarDisplayUrl(initialData.avatarDisplayUrl || null);
                     }}
                     className={styles.discardButton}
+                    disabled={isLoading}
                   >
                     Discard
                   </Button>
@@ -301,9 +420,15 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
               )}
             </form>
           </div>
-        ) : (
+        )}
+
+        {activeTab === 'organization' && (
           <OrganizationForm initialData={organizationData || null} isAdmin={isAdmin} />
         )}
+
+        {activeTab === 'password' && <ChangePasswordTab authProvider={initialData.authProvider} />}
+
+        {activeTab === '2fa' && <TwoFactorAuthTab userEmail={initialData.email} />}
       </div>
 
       {/* Confirmation Modal */}

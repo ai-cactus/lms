@@ -7,11 +7,14 @@ import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Logo, Input, Button } from '@/components/ui';
 import { signup, SignupResult } from '@/app/actions/auth';
+import { validatePassword } from '@/lib/password-policy';
+import PasswordStrengthIndicator from '@/components/ui/PasswordStrengthIndicator';
 import styles from './page.module.css';
+import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 
 export default function SignupPage() {
   const router = useRouter();
-  const [result, _, isPending] = useActionState<SignupResult | undefined, FormData>(
+  const [result, , isPending] = useActionState<SignupResult | undefined, FormData>(
     signup,
     undefined,
   );
@@ -32,7 +35,9 @@ export default function SignupPage() {
     setIsMicrosoftLoading(true);
     // Calling signIn will route through create-auth-instance.ts logic
     // which creates new users if they don't exist
-    signIn('microsoft-entra-id', { callbackUrl: '/signup/role-selection' });
+    signIn('microsoft-entra-id', {
+      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/signup/role-selection`,
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,8 +70,11 @@ export default function SignupPage() {
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
+    } else {
+      const pwCheck = validatePassword(formData.password);
+      if (!pwCheck.valid) {
+        newErrors.password = pwCheck.errors[0]; // Show first error
+      }
     }
 
     if (!formData.confirmPassword) {
@@ -125,8 +133,8 @@ export default function SignupPage() {
           <Logo size="md" />
 
           <div className={styles.formHeader}>
-            <h1 className={styles.title}>Create an account</h1>
-            <p className={styles.subtitle}>Start your learning journey with Theraptly</p>
+            <h1 className={styles.title}>Create a new account</h1>
+            <p className={styles.subtitle}>Create a new account to get started.</p>
           </div>
 
           <div className={styles.socialLogin}>
@@ -157,7 +165,7 @@ export default function SignupPage() {
                 label="First Name"
                 type="text"
                 name="firstName"
-                placeholder="First Name"
+                placeholder="Enter your first name"
                 value={formData.firstName}
                 onChange={handleChange}
                 error={errors.firstName}
@@ -167,7 +175,7 @@ export default function SignupPage() {
                 label="Last Name"
                 type="text"
                 name="lastName"
-                placeholder="Last Name"
+                placeholder="Enter your last name"
                 value={formData.lastName}
                 onChange={handleChange}
                 error={errors.lastName}
@@ -179,7 +187,7 @@ export default function SignupPage() {
               label="Email"
               type="email"
               name="email"
-              placeholder="Enter your email"
+              placeholder="Enter your email address"
               value={formData.email}
               onChange={handleChange}
               error={errors.email}
@@ -190,12 +198,13 @@ export default function SignupPage() {
               label="Password"
               type="password"
               name="password"
-              placeholder="Create a password"
+              placeholder="Create a password (min. 12 characters)"
               value={formData.password}
               onChange={handleChange}
               error={errors.password}
               autoComplete="new-password"
             />
+            <PasswordStrengthIndicator password={formData.password} />
 
             <Input
               label="Confirm Password"
@@ -218,7 +227,7 @@ export default function SignupPage() {
                   className={styles.checkbox}
                 />
                 <span className={styles.checkboxText}>
-                  I agree to the{' '}
+                  I agree to the Theraptly{' '}
                   <Link href="/terms" className={styles.link}>
                     Terms of Service
                   </Link>{' '}
@@ -231,7 +240,13 @@ export default function SignupPage() {
               {errors.agreeTerms && <span className={styles.error}>{errors.agreeTerms}</span>}
             </div>
 
-            <Button type="submit" size="lg" fullWidth loading={isFormLoading || isPending}>
+            <Button
+              type="submit"
+              size="lg"
+              fullWidth
+              loading={isFormLoading || isPending}
+              disabled={isFormLoading || isPending}
+            >
               Create Account
             </Button>
           </form>
@@ -245,35 +260,8 @@ export default function SignupPage() {
         </div>
       </div>
 
-      {/* Right Side - Hero Image (Same as Login) */}
-      <div className={styles.heroSection}>
-        <Image
-          src="/images/login-bg.png"
-          alt="Theraptly Training"
-          fill
-          className={styles.heroImage}
-          priority
-          quality={100}
-        />
-
-        {/* Overlay Content */}
-        <div className={styles.heroOverlay}>
-          <div className={styles.heroTextContent}>
-            <h2 className={styles.heroTitle}>Audit-ready training, built from your policies</h2>
-            <p className={styles.heroSubtitle}>
-              Turn compliance policies into structured training, track completion automatically, and
-              keep clear records that stand up during audits.
-            </p>
-          </div>
-
-          <div className={styles.progressBarContainer}>
-            <div className={`${styles.progressSegment} ${styles.active}`}></div>
-            <div className={styles.progressSegment}></div>
-            <div className={styles.progressSegment}></div>
-            <div className={styles.progressSegment}></div>
-          </div>
-        </div>
-      </div>
+      {/* Right Side - Hero Slider */}
+      <AuthHeroSlider />
     </div>
   );
 }

@@ -3,10 +3,10 @@
 import React, { useState, useMemo } from 'react';
 import styles from './StaffList.module.css';
 import { Button, Input, Select } from '@/components/ui';
-import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 
-interface User {
+interface StaffEntry {
   id: string;
   name: string;
   email: string;
@@ -14,31 +14,52 @@ interface User {
   role: string;
   jobTitle: string;
   dateInvited: Date;
+  isPending: boolean;
 }
 
 import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
 import InviteStaffModal from './InviteStaffModal';
+import RevokeInviteModal from './RevokeInviteModal';
+import RemoveStaffModal from './RemoveStaffModal';
+import WorkerLimitModal from './WorkerLimitModal';
 
 interface StaffListClientProps {
-  users: User[];
+  users: StaffEntry[];
   hasOrganization: boolean;
   organizationId: string;
+  planLimit: number | null;
+  planName: string;
+  currentWorkerCount: number;
+  pendingInviteCount: number;
 }
 
 export default function StaffListClient({
   users: initialUsers,
   hasOrganization,
   organizationId,
+  planLimit,
+  planName,
+  currentWorkerCount,
+  pendingInviteCount,
 }: StaffListClientProps) {
+  // Total seats consumed = active workers + pending invites
+  const totalUsed = currentWorkerCount + pendingInviteCount;
+  const isAtLimit = planLimit !== null && totalUsed >= planLimit;
   const [showFeatureGate, setShowFeatureGate] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showWorkerLimitModal, setShowWorkerLimitModal] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; email: string } | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<{
+    id: string;
+    name: string;
+    email: string;
+  } | null>(null);
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Filter Logic
-  // ⚡ Bolt: Memoize filtered users to avoid re-evaluating on every re-render (e.g. pagination or modal state changes).
   const filteredUsers = useMemo(() => {
     return initialUsers.filter(
       (user) =>
@@ -87,12 +108,44 @@ export default function StaffListClient({
         <div className={styles.titleSection}>
           <h1 className={styles.title}>Staff Details</h1>
           <p className={styles.subtitle}>Here is an overview of your staff details</p>
+          {/* Plan seat usage badge — only shown when the org has a capped plan */}
+          {planLimit !== null && (
+            <p
+              style={{
+                marginTop: '4px',
+                fontSize: '13px',
+                color: isAtLimit ? '#C53030' : '#718096',
+                fontWeight: isAtLimit ? 600 : 400,
+              }}
+            >
+              {isAtLimit ? (
+                <>
+                  ⚠️ Worker limit reached &mdash; {totalUsed}/{planLimit} seats used ({planName}{' '}
+                  plan).{' '}
+                  <a
+                    href="/dashboard/billing"
+                    style={{ color: '#3182CE', textDecoration: 'underline' }}
+                  >
+                    Upgrade
+                  </a>{' '}
+                  to add more.
+                </>
+              ) : (
+                <>
+                  {totalUsed}/{planLimit} workers used &bull; {planLimit - totalUsed} seat
+                  {planLimit - totalUsed !== 1 ? 's' : ''} remaining ({planName})
+                </>
+              )}
+            </p>
+          )}
         </div>
         <Button
           variant="outline"
           size="sm"
           onClick={() => {
-            if (!hasOrganization) {
+            if (isAtLimit) {
+              setShowWorkerLimitModal(true);
+            } else if (!hasOrganization) {
               setShowFeatureGate(true);
             } else {
               setShowInviteModal(true);
@@ -162,31 +215,109 @@ export default function StaffListClient({
               currentUsers.map((user) => (
                 <tr
                   key={user.id}
-                  onClick={() => router.push(`/dashboard/staff/${user.id}`)}
-                  className={styles.clickableRow}
+                  onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
+                  className={user.isPending ? undefined : styles.clickableRow}
+                  style={user.isPending ? { cursor: 'default', opacity: 0.85 } : undefined}
                 >
                   <td style={{ paddingLeft: '24px' }}>
                     <div className={styles.userInfo}>
                       <div className={styles.avatar}>
                         {user.avatarUrl ? (
-                          <img
+                          <Image
                             src={user.avatarUrl}
                             alt={user.name}
+                            width={32}
+                            height={32}
                             className={styles.avatarImage}
                           />
                         ) : (
-                          (user.name.charAt(0) || user.email.charAt(0)).toUpperCase()
+                          <div className={styles.avatarFallback}>
+                            {(user.name.charAt(0) || user.email.charAt(0)).toUpperCase()}
+                          </div>
                         )}
-                        <div className={styles.statusDot}></div>
+                        {!user.isPending && <div className={styles.statusDot}></div>}
                       </div>
                       <div className={styles.userDetails}>
-                        <div className={styles.userName}>{user.name}</div>
+                        <div
+                          className={styles.userName}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                        >
+                          {user.email}
+                          {user.isPending && (
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                background: '#EBF4FF',
+                                color: '#3182CE',
+                                letterSpacing: '0.3px',
+                              }}
+                            >
+                              Pending
+                            </span>
+                          )}
+                        </div>
                         <div className={styles.userRole}>{user.jobTitle}</div>
                       </div>
                     </div>
                   </td>
-                  <td style={{ textAlign: 'right', color: '#718096', paddingRight: '24px' }}>
-                    {getRelativeTime(user.dateInvited)}
+                  <td
+                    style={{
+                      textAlign: 'right',
+                      color: '#718096',
+                      paddingRight: '24px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {user.isPending ? (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+                        <span>{getRelativeTime(user.dateInvited)}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRevokeTarget({ id: user.id, email: user.email });
+                          }}
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#E53E3E',
+                            background: 'transparent',
+                            border: '1px solid #E53E3E',
+                            borderRadius: '6px',
+                            padding: '3px 10px',
+                            cursor: 'pointer',
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+                        <span>{getRelativeTime(user.dateInvited)}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRemoveTarget({ id: user.id, name: user.name, email: user.email });
+                          }}
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#E53E3E',
+                            background: 'transparent',
+                            border: '1px solid #E53E3E',
+                            borderRadius: '6px',
+                            padding: '3px 10px',
+                            cursor: 'pointer',
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))
@@ -325,6 +456,36 @@ export default function StaffListClient({
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
         organizationId={organizationId}
+        remainingSeats={planLimit !== null ? Math.max(0, planLimit - totalUsed) : null}
+        planName={planName}
+      />
+      {/* Revoke Invite Modal */}
+      {revokeTarget && (
+        <RevokeInviteModal
+          isOpen={!!revokeTarget}
+          onClose={() => setRevokeTarget(null)}
+          inviteId={revokeTarget.id}
+          inviteEmail={revokeTarget.email}
+        />
+      )}
+
+      {/* Remove Staff Modal */}
+      {removeTarget && (
+        <RemoveStaffModal
+          isOpen={!!removeTarget}
+          onClose={() => setRemoveTarget(null)}
+          staffId={removeTarget.id}
+          staffName={removeTarget.name}
+          staffEmail={removeTarget.email}
+        />
+      )}
+
+      {/* Worker Limit Modal */}
+      <WorkerLimitModal
+        isOpen={showWorkerLimitModal}
+        onClose={() => setShowWorkerLimitModal(false)}
+        planName={planName}
+        planLimit={planLimit || 0}
       />
     </div>
   );

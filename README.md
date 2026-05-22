@@ -55,7 +55,7 @@ Copy the template and fill in your credentials:
 cp .env.example .env
 ```
 
-Refer to [.env.example](.env.example) for detailed descriptions of each required variable.
+Refer to [.env.example](.env.example) for detailed descriptions of each required variable for the project
 
 ### 🗄 Database Setup
 
@@ -84,9 +84,9 @@ node scripts/seed-courses.js
 
 ---
 
-## 🤝 Contribution
+## 🤝 Contributing
 
-We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to get started.
+As a team member, you can find detailed instructions on how to contribute and the current status of the project in the [CONTRIBUTING.md](CONTRIBUTING.md) file. We welcome contributions and appreciate your effort to improve our codebase. Please ensure you adhere to our guidelines when making changes.
 
 ---
 
@@ -96,5 +96,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-_Built with ❤️ by the Theraptly Team._
+_Built with much ❤️ by the Theraptly Team._
 

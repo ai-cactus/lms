@@ -4,9 +4,19 @@ import { signIn } from '@/auth';
 import { signIn as signInWorker } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { validatePassword } from '@/lib/password-policy';
 import { AuthError } from 'next-auth';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
+import { isRedirectError } from 'next/dist/client/components/redirect-error';
+import { headers } from 'next/headers';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { logger } from '@/lib/logger';
+
+// Pre-computed dummy hash for constant-time response when a user email doesn't exist.
+// bcrypt runs its full ~100ms computation and returns false, preventing timing-based
+// username enumeration attacks.
+const DUMMY_BCRYPT_HASH = '$2b$10$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
 // Define return type
 export type AuthState = {
@@ -19,37 +29,70 @@ export async function authenticate(
   prevState: AuthState | undefined,
   formData: FormData,
 ): Promise<AuthState> {
+  // Rate limiting — 10 attempts per IP per 15 minutes
+  const headersList = await headers();
+  const ip =
+    headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    headersList.get('x-real-ip') ??
+    'unknown';
+
+  const { allowed } = await checkRateLimit(`login:${ip}`, 10, 900);
+  if (!allowed) {
+    logger.warn({ msg: 'Auth rate limit exceeded', ip });
+    return { error: 'Too many login attempts. Please try again in 15 minutes.' };
+  }
+
   try {
     const email = formData.get('email') as string;
-    let role = 'admin';
-    if (email) {
-      const user = await prisma.user.findUnique({ where: { email }, select: { role: true } });
-      if (user && user.role === 'worker') {
-        role = 'worker';
-      }
+    let role: 'admin' | 'worker' = 'admin';
+
+    // Role lookup with timing equalization — prevents username enumeration via response time.
+    // If no user is found, bcrypt still runs on a dummy hash so timing is indistinguishable
+    // from a valid login attempt with a wrong password.
+    const lookupUser = email
+      ? await prisma.user.findUnique({
+          where: { email },
+          select: { role: true, mfaEnabled: true, id: true },
+        })
+      : null;
+
+    if (!lookupUser) {
+      await bcrypt.compare('dummy', DUMMY_BCRYPT_HASH);
+      return { error: 'Invalid credentials.' };
     }
 
-    console.log('[Auth Action] authenticate server action called for role:', role);
+    if (lookupUser.role === 'worker') {
+      role = 'worker';
+    }
+
+    logger.info({ msg: 'Auth action: routing login', role, mfaEnabled: lookupUser.mfaEnabled });
+
+    // Determine redirect target — if MFA is enabled, go to MFA verify page first
+    const mfaRedirect = lookupUser.mfaEnabled
+      ? `/mfa/verify?userId=${lookupUser.id}&role=${role}`
+      : null;
 
     if (role === 'worker') {
       await signInWorker('credentials', {
         ...Object.fromEntries(formData),
-        redirectTo: '/worker',
+        redirectTo: mfaRedirect || '/worker',
       });
     } else {
       await signIn('credentials', {
         ...Object.fromEntries(formData),
-        redirectTo: '/dashboard',
+        redirectTo: mfaRedirect || '/dashboard',
       });
     }
 
-    console.log('[Auth Action] signIn completed (usually means redirection if successful)');
     return { success: true };
-  } catch (error) {
-    console.error('[Auth Action Admin] Intercepted Error in authenticate action:', error);
+  } catch (error: unknown) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    logger.error({ msg: 'Auth action error', error: String(error) });
     if (error instanceof AuthError) {
-      console.error('[Auth Action Admin] AuthError Type:', error.type);
-      switch (error.type) {
+      switch ((error as AuthError).type) {
         case 'CredentialsSignin':
           return { error: 'Invalid credentials.' };
         default:
@@ -97,6 +140,15 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
     return { success: false, error: 'All fields are required' };
   }
 
+  // Server-side password policy enforcement
+  const pwCheck = validatePassword(password);
+  if (!pwCheck.valid) {
+    return {
+      success: false,
+      error: `Password does not meet requirements: ${pwCheck.errors.join(', ')}`,
+    };
+  }
+
   try {
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -113,7 +165,7 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
 
     // Create verification token with pending user data including role (5 minute expiry)
     const token = crypto.randomUUID();
-    const expires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
     await prisma.verificationToken.create({
       data: {
@@ -128,14 +180,29 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
       },
     });
 
-    // Send verification email
+    // Send verification email — explicitly check the result so a send failure
+    // is surfaced back to the UI rather than silently treated as success.
     const { sendEmailVerification } = await import('@/lib/email');
-    await sendEmailVerification(email, token);
+    const emailResult = await sendEmailVerification(email, token);
+
+    if (!emailResult.success) {
+      // Clean up the token we created — user will need to retry and a fresh token
+      // will be generated, preventing stale-token confusion.
+      await prisma.verificationToken.deleteMany({
+        where: { identifier: email, type: 'email_verification' },
+      });
+      logger.error({ msg: 'Verification email failed to send', identifier: email });
+      return {
+        success: false,
+        error:
+          'We could not send a verification email. Please check your email address and try again.',
+      };
+    }
 
     return { success: true };
   } catch (error: unknown) {
-    console.error('Signup error:', error);
-    return { success: false, error: 'Failed to create account.' };
+    logger.error({ msg: 'Signup error', err: String(error) });
+    return { success: false, error: 'Failed to create account. Please try again.' };
   }
 }
 
@@ -174,6 +241,12 @@ export async function resetPasswordWithToken(
   token: string,
   newPassword: string,
 ): Promise<AuthState> {
+  // Server-side password policy enforcement
+  const pwCheck = validatePassword(newPassword);
+  if (!pwCheck.valid) {
+    return { error: `Password does not meet requirements: ${pwCheck.errors.join(', ')}` };
+  }
+
   const verificationToken = await prisma.verificationToken.findFirst({
     where: {
       token, // Token is unique enough, but we should verify against user email if we had it in context,
@@ -201,6 +274,36 @@ export async function resetPasswordWithToken(
         token: verificationToken.token,
       },
     },
+  });
+
+  return { success: true };
+}
+
+export async function forceResetPassword(
+  email: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<AuthState> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || !user.password) {
+    return { error: 'Invalid credentials.' };
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.password);
+  if (!valid) {
+    return { error: 'Invalid current password.' };
+  }
+
+  const pwCheck = validatePassword(newPassword);
+  if (!pwCheck.valid) {
+    return { error: `Password does not meet requirements: ${pwCheck.errors.join(', ')}` };
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await prisma.user.update({
+    where: { email },
+    data: { password: hashedPassword, passwordResetRequired: false },
   });
 
   return { success: true };

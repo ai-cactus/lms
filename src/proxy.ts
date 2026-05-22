@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
+// @ts-ignore - NextAuth does not reliably export decode type in this scope
 import { decode, JWT } from 'next-auth/jwt';
+import { logger } from '@/lib/logger';
 
 // ✅ All route rules live in one config object — easy to audit and extend
 const ROUTE_CONFIG = {
@@ -50,8 +53,8 @@ export async function proxy(req: NextRequest) {
     req.cookies.get(cookieName)?.value ||
     req.cookies.get(`${cfg.cookiePrefix}.session-token`)?.value;
 
-  console.log(`[Proxy] Target Auth: ${context}`);
-  console.log(`[Proxy] Searching for cookie: ${cookieName}. Found token? ${!!rawToken}`);
+  logger.info({ msg: `[Proxy] Target Auth: ${context}` });
+  logger.info({ msg: `[Proxy] Searching for cookie: ${cookieName}. Found token? ${!!rawToken}` });
 
   // Not logged in — send to the correct login page
   if (!rawToken) {
@@ -64,9 +67,11 @@ export async function proxy(req: NextRequest) {
   try {
     const salt = cookieName;
     token = await decode({ token: rawToken, secret, salt });
-    console.log(`[Proxy] Decoded token successfully for ${context}:`, token?.email);
+    /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
+    // @ts-ignore - JWT email is injected natively but omitted from standard JWT definition
+    logger.info({ msg: `[Proxy] Decoded token successfully for ${context}`, email: token?.email });
   } catch (err) {
-    console.error(`[Proxy] Token decode failed for ${context}:`, err);
+    logger.error({ msg: `[Proxy] Token decode failed for ${context}`, err });
     // Malformed/expired token — clear it and redirect
     const res = NextResponse.redirect(new URL(cfg.loginPath, req.url));
     res.cookies.delete(cookieName);
@@ -74,7 +79,7 @@ export async function proxy(req: NextRequest) {
   }
 
   if (!token) {
-    console.log(`[Proxy] Token is null after decode.`);
+    logger.info({ msg: `[Proxy] Token is null after decode.` });
     return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
@@ -83,6 +88,30 @@ export async function proxy(req: NextRequest) {
     const res = NextResponse.redirect(new URL(cfg.loginPath, req.url));
     res.cookies.delete(cookieName);
     return res;
+  }
+
+  // ✅ Password Reset required check
+  if (
+    (token as unknown as Record<string, unknown>).passwordResetRequired &&
+    pathname !== '/reset-password'
+  ) {
+    const url = new URL('/reset-password', req.url);
+    url.searchParams.set('force', 'true');
+    /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
+    // @ts-ignore - JWT email is injected natively but omitted from standard JWT definition
+    url.searchParams.set('email', token.email as string);
+    return NextResponse.redirect(url);
+  }
+
+  // ✅ MFA Step-up check
+  if (
+    (token as unknown as Record<string, unknown>).mfaEnabled === true &&
+    (token as unknown as Record<string, unknown>).mfaVerified !== true &&
+    pathname !== '/verify-2fa'
+  ) {
+    const mfaUrl = new URL('/verify-2fa', req.url);
+    mfaUrl.searchParams.set('callbackUrl', pathname);
+    return NextResponse.redirect(mfaUrl);
   }
 
   // Worker-specific: force onboarding if no org

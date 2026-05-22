@@ -8,13 +8,14 @@ import styles from '@/app/onboarding/onboarding.module.css';
 import Stepper from '@/components/onboarding/Stepper';
 import * as XLSX from 'xlsx';
 import type { OnboardingData } from '@/app/actions/onboarding-complete';
+import { logger } from '@/lib/logger';
 
 export default function OnboardingStep4() {
   const router = useRouter();
   const [emails, setEmails] = useState<string[]>([]);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [attemptedSkip, setAttemptedSkip] = useState(false);
+
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [csvEmails, setCsvEmails] = useState<string[]>([]);
@@ -29,7 +30,6 @@ export default function OnboardingStep4() {
 
     // Combine manual emails and CSV emails
     const allEmails = [...emails, ...csvEmails];
-    // If empty, but attempted skip or explicit skip logic matches original, handle usage:
 
     setIsLoading(true);
 
@@ -46,7 +46,7 @@ export default function OnboardingStep4() {
       // Add Step 4 data
       allData.step4 = { workerEmails: allEmails };
 
-      console.log('Submitting Full Onboarding Data:', allData);
+      logger.info({ msg: 'Submitting Full Onboarding Data:', data: allData });
 
       // 2. Call Server Action
       const { completeOnboarding } = await import('@/app/actions/onboarding-complete');
@@ -67,7 +67,7 @@ export default function OnboardingStep4() {
 
       router.push('/onboarding/complete');
     } catch (e) {
-      console.error('Error completing onboarding', e);
+      logger.error({ msg: 'Error completing onboarding', err: e });
       setError('System error completing onboarding');
       setIsLoading(false);
       return;
@@ -118,9 +118,8 @@ export default function OnboardingStep4() {
       setCsvEmails(uniqueEmails);
       setIsModalOpen(false);
       setEmails([]); // Clear manual input if CSV is used
-      setAttemptedSkip(false);
     } catch (err) {
-      console.error('Error parsing file:', err);
+      logger.error({ msg: 'Error parsing file:', err: err });
       setError('Failed to parse file. Please check the format.');
     }
 
@@ -134,7 +133,7 @@ export default function OnboardingStep4() {
 
   return (
     <div className={styles.stepContainer}>
-      <Stepper currentStep={4} />
+      <Stepper currentStep={5} />
 
       <h1 className={styles.stepTitle}>Invite your Workers/Staffs</h1>
       <p className={styles.stepDescription}>
@@ -150,7 +149,6 @@ export default function OnboardingStep4() {
                 onChange={(newEmails) => {
                   setEmails(newEmails);
                   if (newEmails.length > 0) {
-                    setAttemptedSkip(false);
                     setError('');
                   }
                 }}
@@ -262,8 +260,8 @@ export default function OnboardingStep4() {
         )}
 
         <div className={styles.actions}>
-          <Button variant="outline" type="button" onClick={() => router.push('/dashboard')}>
-            Skip for now
+          <Button variant="outline" type="button" onClick={() => router.push('/onboarding/step3')}>
+            Back
           </Button>
           <Button variant="primary" type="submit" disabled={isLoading}>
             Complete Onboarding

@@ -1,0 +1,72 @@
+'use server';
+
+import { prisma } from '@/lib/prisma';
+import { auth as adminAuth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
+import { headers } from 'next/headers';
+import { verifyUserMfaCode } from './mfa';
+import { logger } from '@/lib/logger';
+
+async function resolveSession() {
+  const headersList = await headers();
+  const referer = headersList.get('referer');
+  const isWorkerRoute = referer?.includes('/worker') || referer?.includes('/verify-2fa');
+
+  if (isWorkerRoute) {
+    const worker = await workerAuth();
+    if (worker?.user?.id) return { session: worker, instance: 'worker' as const };
+  } else {
+    const admin = await adminAuth();
+    if (admin?.user?.id) return { session: admin, instance: 'admin' as const };
+  }
+
+  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+  if (admin?.user?.id) return { session: admin, instance: 'admin' as const };
+  if (worker?.user?.id) return { session: worker, instance: 'worker' as const };
+  return null;
+}
+
+/**
+ * Verifies the MFA code during the login step-up flow.
+ * On success, we need to mark the session as mfaVerified=true.
+ * Since JWT tokens are stateless, we do this by updating the DB and
+ * letting the next jwt() callback pick it up. However, NextAuth JWT
+ * tokens are signed — we can't mutate them server-side.
+ *
+ * Approach: We store an mfaVerifiedAt timestamp in the user record.
+ * The jwt callback reads this and sets mfaVerified=true in the token
+ * IF the token was issued after the mfaVerifiedAt timestamp (within the session window).
+ */
+export async function verifyMfaChallenge(
+  code: string,
+): Promise<{ success: true; redirectTo: string } | { success: false; error: string }> {
+  const resolved = await resolveSession();
+  if (!resolved?.session?.user?.id) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const { session, instance } = resolved;
+  const userId = session.user.id;
+
+  if (!code || (code.length !== 6 && code.length < 8)) {
+    return { success: false, error: 'Please enter a valid code' };
+  }
+
+  const result = await verifyUserMfaCode(userId, code);
+  if (!result.valid) {
+    logger.warn({ msg: 'MFA challenge verification failed', userId });
+    return { success: false, error: 'Invalid code. Please try again.' };
+  }
+
+  // Mark the session as MFA verified by stamping a DB field.
+  // The JWT callback will see `mfaVerifiedAt` is recent and flip `mfaVerified` to true.
+  await prisma.user.update({
+    where: { id: userId },
+    data: { mfaVerifiedAt: new Date() },
+  });
+
+  logger.info({ msg: 'MFA challenge passed', userId, usedRecoveryCode: result.usedRecoveryCode });
+
+  const redirectTo = instance === 'worker' ? '/worker' : '/dashboard';
+  return { success: true, redirectTo };
+}

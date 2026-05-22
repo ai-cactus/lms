@@ -1,7 +1,6 @@
 import { auth } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
 import styles from '@/components/worker/WorkerDashboard.module.css';
-import Link from 'next/link';
 import WorkerWelcomeModal from '@/components/dashboard/learner/WorkerWelcomeModal';
 import WorkerDashboardMetrics from '@/components/worker/WorkerDashboardMetrics';
 import WorkerCourseList from '@/components/worker/WorkerCourseList';
@@ -81,7 +80,12 @@ export default async function LearnerDashboard() {
 
       <WorkerCourseList courses={courses} />
 
-      <WorkerAchievements badgeCount={badgeCount} />
+      <WorkerAchievements
+        badgeCount={badgeCount}
+        completedCourses={allEnrollments
+          .filter((e) => e.status === 'attested' || e.status === 'completed')
+          .map((e) => ({ id: e.courseId, title: e.course.title }))}
+      />
 
       {showWelcomeModal && <WorkerEmptyState />}
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import styles from '../staff/StaffProfile.module.css';
+
 import { Button } from '@/components/ui';
 import { assignRetake } from '@/app/actions/course';
 import { useRouter } from 'next/navigation';

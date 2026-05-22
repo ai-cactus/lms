@@ -5,6 +5,7 @@ import { Modal, Button } from '@/components/ui';
 import { getCourses } from '@/app/actions/course';
 import { enrollUsers } from '@/app/actions/enrollment';
 import styles from './AssignUserCourseModal.module.css';
+import { logger } from '@/lib/logger';
 
 interface AssignUserCourseModalProps {
   isOpen: boolean;
@@ -35,6 +36,20 @@ export default function AssignUserCourseModal({
     failed: string[];
   } | null>(null);
 
+  const fetchCourses = React.useCallback(async () => {
+    setIsFetching(true);
+    try {
+      const data = await getCourses();
+      // Filter out courses the user is already enrolled in
+      const availableCourses = data.filter((course) => !enrolledCourseIds.includes(course.id));
+      setCourses(availableCourses);
+    } catch (error) {
+      logger.error({ msg: 'Failed to fetch courses:', err: error });
+    } finally {
+      setIsFetching(false);
+    }
+  }, [enrolledCourseIds]);
+
   useEffect(() => {
     if (isOpen) {
       fetchCourses();
@@ -47,7 +62,7 @@ export default function AssignUserCourseModal({
       }
       setInputValue('');
     }
-  }, [isOpen, userEmail]);
+  }, [isOpen, userEmail, fetchCourses]);
 
   const isValidEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -70,20 +85,6 @@ export default function AssignUserCourseModal({
 
   const removeEmail = (emailToRemove: string) => {
     setEmails(emails.filter((email) => email !== emailToRemove));
-  };
-
-  const fetchCourses = async () => {
-    setIsFetching(true);
-    try {
-      const data = await getCourses();
-      // Filter out courses the user is already enrolled in
-      const availableCourses = data.filter((course) => !enrolledCourseIds.includes(course.id));
-      setCourses(availableCourses);
-    } catch (error) {
-      console.error('Failed to fetch courses:', error);
-    } finally {
-      setIsFetching(false);
-    }
   };
 
   const handleAssign = async () => {
@@ -114,7 +115,7 @@ export default function AssignUserCourseModal({
         }, 1500);
       }
     } catch (error) {
-      console.error('Failed to assign course:', error);
+      logger.error({ msg: 'Failed to assign course:', err: error });
       setResult({ success: [], alreadyEnrolled: [], failed: finalEmails });
     } finally {
       setIsLoading(false);
@@ -126,7 +127,7 @@ export default function AssignUserCourseModal({
       isOpen={isOpen}
       onClose={onClose}
       size="md"
-      title={userName ? `Assign Course to ${userName}` : "Assign Course"}
+      title={userName ? `Assign Course to ${userName}` : 'Assign Course'}
       description={`Select a course to assign.`}
     >
       <div className={styles.inputGroup}>
@@ -269,7 +270,12 @@ export default function AssignUserCourseModal({
 
         <Button
           onClick={handleAssign}
-          disabled={!selectedCourseId || isLoading || isFetching || (emails.length === 0 && !inputValue.trim())}
+          disabled={
+            !selectedCourseId ||
+            isLoading ||
+            isFetching ||
+            (emails.length === 0 && !inputValue.trim())
+          }
           loading={isLoading}
           className={styles.assignButton}
         >

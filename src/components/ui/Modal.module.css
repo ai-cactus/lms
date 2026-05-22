@@ -42,6 +42,13 @@
   /* Prevent overflow */
 }
 
+@media (max-width: 600px) {
+  .modal {
+    margin: 16px;
+    max-height: 95vh;
+  }
+}
+
 /* Sizes */
 .modal[data-size='sm'] {
   max-width: 400px;
@@ -85,7 +92,9 @@
 .content {
   padding: 24px;
   overflow-y: auto;
+  min-height: 0;
   /* Allow scrolling within content if needed */
+  /* min-height: 0 required for flex child to shrink below content size */
 }
 
 .closeButton {

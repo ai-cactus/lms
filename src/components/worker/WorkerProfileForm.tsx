@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import styles from './WorkerProfile.module.css';
-import { Button, Input, Modal } from '@/components/ui';
+import { Button, Modal } from '@/components/ui';
 import { updateProfile, uploadAvatar } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -16,6 +16,7 @@ interface WorkerProfileProps {
     role: string;
     jobTitle?: string | null;
     avatarUrl?: string | null;
+    avatarDisplayUrl?: string | null;
   };
   organization?: {
     name: string;
@@ -40,32 +41,66 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   });
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // DEBUG: Client-side mount check
   React.useEffect(() => {
-    setFormData({ first_name: user.first_name, last_name: user.last_name, jobTitle: user.jobTitle || '' });
-    setBaseData({ first_name: user.first_name, last_name: user.last_name, jobTitle: user.jobTitle || '' });
+    setFormData({
+      first_name: user.first_name,
+      last_name: user.last_name,
+      jobTitle: user.jobTitle || '',
+    });
+    setBaseData({
+      first_name: user.first_name,
+      last_name: user.last_name,
+      jobTitle: user.jobTitle || '',
+    });
     setAvatarUrl(user.avatarUrl || null);
+    setAvatarDisplayUrl(user.avatarDisplayUrl || null);
     setBaseAvatarUrl(user.avatarUrl || null);
   }, [user]);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatarUrl || null);
+  const [avatarDisplayUrl, setAvatarDisplayUrl] = useState<string | null>(
+    user.avatarDisplayUrl || null,
+  );
   const [baseAvatarUrl, setBaseAvatarUrl] = useState<string | null>(user.avatarUrl || null);
 
   const isDirty =
     formData.first_name !== baseData.first_name ||
     formData.last_name !== baseData.last_name ||
+    formData.jobTitle !== baseData.jobTitle ||
     avatarUrl !== baseAvatarUrl;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    // Clear field error when user types
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.first_name.trim()) {
+      newErrors.first_name = 'First name is required';
+    }
+
+    if (!formData.last_name.trim()) {
+      newErrors.last_name = 'Last name is required';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) return;
     setShowConfirm(true);
   };
 
@@ -76,6 +111,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Instant local preview
+    const localPreviewUrl = URL.createObjectURL(file);
+    setAvatarDisplayUrl(localPreviewUrl);
 
     setIsLoading(true);
     const data = new FormData();
@@ -90,7 +129,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to upload avatar' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Upload failed' });
     } finally {
       setIsLoading(false);
@@ -106,6 +145,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       const result = await updateProfile({
         first_name: formData.first_name,
         last_name: formData.last_name,
+        jobTitle: formData.jobTitle || undefined,
         avatarUrl: avatarUrl || undefined,
         // Worker cannot update company name, so we don't send it or send empty
       });
@@ -118,7 +158,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to update profile' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An unexpected error occurred' });
     } finally {
       setIsLoading(false);
@@ -154,8 +194,13 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
         <div className={styles.profileWrapper}>
           <div className={styles.avatarSection}>
             <div className={styles.avatarLarge}>
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="Profile" />
+              {avatarDisplayUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarDisplayUrl}
+                  alt="Profile"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                />
               ) : (
                 <span>{formData.first_name?.[0] || user.email[0].toUpperCase()}</span>
               )}
@@ -202,6 +247,18 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                   onChange={handleChange}
                   placeholder="First Name"
                 />
+                {errors.first_name && (
+                  <span
+                    style={{
+                      color: '#E53E3E',
+                      fontSize: '13px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
+                    {errors.first_name}
+                  </span>
+                )}
               </div>
               <div className={styles.fieldGroup}>
                 <label className={styles.label}>Last Name</label>
@@ -212,6 +269,18 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                   onChange={handleChange}
                   placeholder="Last Name"
                 />
+                {errors.last_name && (
+                  <span
+                    style={{
+                      color: '#E53E3E',
+                      fontSize: '13px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
+                    {errors.last_name}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -285,24 +354,9 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
             )}
 
             <div className={styles.actions}>
-              <button
-                type="button"
-                className={styles.discardBtn}
-                onClick={() => {
-                  setFormData({ ...baseData });
-                  setAvatarUrl(baseAvatarUrl);
-                }}
-                disabled={!isDirty}
-              >
-                Discard
-              </button>
-              <button
-                type="submit"
-                className={`${styles.saveBtn} ${isDirty ? styles.active : ''}`}
-                disabled={!isDirty || isLoading}
-              >
-                {isLoading ? 'Saving...' : 'Save Changes'}
-              </button>
+              <Button type="submit" variant="primary" loading={isLoading} disabled={!isDirty}>
+                Save Changes
+              </Button>
             </div>
           </form>
         </div>
@@ -317,10 +371,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
             Are you sure you want to update your profile?
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
-            <Button variant="secondary" onClick={() => setShowConfirm(false)}>
+            <Button variant="secondary" onClick={() => setShowConfirm(false)} disabled={isLoading}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleConfirmSave}>
+            <Button variant="primary" onClick={handleConfirmSave} loading={isLoading}>
               Confirm
             </Button>
           </div>

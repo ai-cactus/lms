@@ -1,0 +1,145 @@
+.inspectorsSection {
+  padding: 80px 24px;
+  background-color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.inspectorsHeader {
+  text-align: center;
+  margin-bottom: 64px;
+}
+
+.inspectorsTitle {
+  font-size: 40px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #0b1a38;
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+
+.inspectorsSubtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.inspectorsGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 24px;
+  max-width: 1200px;
+  width: 100%;
+}
+
+.cardSpan2 {
+  grid-column: span 2;
+}
+
+.cardSpan3 {
+  grid-column: span 3;
+}
+
+.inspectorCard {
+  background-color: #fafafa;
+  border-radius: 20px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+  border: 1px solid var(--border-light);
+  height: 100%;
+}
+
+.inspectorCard:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-sm);
+}
+
+.inspectorCardTitle {
+  font-size: 24px;
+  font-weight: 600;
+  color: #0b1a38;
+  margin-bottom: 16px;
+  line-height: 1.3;
+}
+
+.inspectorCardDescription {
+  font-size: 15px;
+  color: #6b7280;
+  line-height: 1.6;
+  margin-bottom: 40px;
+}
+
+.inspectorCardImageWrapper {
+  flex: 1;
+  display: flex;
+  align-items: flex-end; /* Images align to bottom of card */
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  margin-top: auto;
+}
+
+.inspectorImage {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+@media (max-width: 1024px) {
+  .cardSpan2 {
+    grid-column: span 3;
+  }
+  .cardSpan3 {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 768px) {
+  .inspectorsSection {
+    padding: 56px 16px;
+  }
+  .inspectorsHeader {
+    margin-bottom: 40px;
+  }
+  .cardSpan2,
+  .cardSpan3 {
+    grid-column: span 6;
+  }
+  .inspectorsTitle {
+    font-size: 28px;
+  }
+  .inspectorCard {
+    padding: 24px;
+  }
+  .inspectorCardTitle {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .inspectorsSection {
+    padding: 48px 16px;
+  }
+  .inspectorsTitle {
+    font-size: 24px;
+  }
+  .inspectorsSubtitle {
+    font-size: 15px;
+  }
+  .inspectorCard {
+    padding: 20px;
+  }
+  .inspectorCardTitle {
+    font-size: 18px;
+  }
+  .inspectorCardDescription {
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+}
