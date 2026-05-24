@@ -1,13 +1,13 @@
 import React from 'react';
 import styles from './page.module.css';
-import { Button } from '@/components/ui';
 import { auth } from '@/auth';
+import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import DashboardCharts from '@/components/dashboard/DashboardCharts';
 import MyCoursesTable from '@/components/dashboard/MyCoursesTable';
-import Link from 'next/link';
 import { getDashboardData } from '@/app/actions/course';
 import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
+import DashboardCreateCourseButton from '@/components/dashboard/DashboardCreateCourseButton';
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -16,8 +16,22 @@ export default async function DashboardPage() {
   const role = session.user.role;
   if (role === 'worker') redirect('/worker');
 
-  // ⚡ Bolt: Fetch dashboard data in a single query to prevent redundant DB calls
-  const { courses, stats } = await getDashboardData();
+  // Fetch billing status alongside dashboard data so the Create Course button
+  // can apply the same billing gate as the Courses list page.
+  const [{ courses, stats }, user] = await Promise.all([
+    getDashboardData(),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        organization: {
+          select: { subscription: { select: { status: true } } },
+        },
+      },
+    }),
+  ]);
+
+  const subStatus = user?.organization?.subscription?.status;
+  const hasBilling = subStatus === 'active' || subStatus === 'trialing';
 
   // Calculate real metrics from courses data
   const totalCourses = stats?.totalCourses || 0;
@@ -32,25 +46,7 @@ export default async function DashboardPage() {
           <h1 className={styles.title}>Dashboard</h1>
           <p className={styles.subtitle}>Here is an overview of your courses</p>
         </div>
-        <Link href="/dashboard/courses/create">
-          <Button variant="primary">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ marginRight: 8 }}
-            >
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Create Course
-          </Button>
-        </Link>
+        <DashboardCreateCourseButton hasBilling={hasBilling} />
       </div>
 
       {/* Metrics Options */}
