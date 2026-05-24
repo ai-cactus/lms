@@ -10,8 +10,8 @@ export default function UploadSection() {
 
   return (
     <>
-      <Button onClick={() => setIsOpen(true)} className={styles.uploadBtn}>
-        + Upload Document
+      <Button variant="primary" onClick={() => setIsOpen(true)} className={styles.uploadBtn}>
+        + Upload New
       </Button>
       {isOpen && <UploadModal onClose={() => setIsOpen(false)} />}
     </>

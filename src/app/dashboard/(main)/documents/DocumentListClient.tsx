@@ -1,36 +1,250 @@
 'use client';
 
-import { useState, useTransition, useEffect } from 'react';
+import { useState, useTransition, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { deleteDocument } from '@/app/actions/documents';
+import { deleteDocument, renameDocument } from '@/app/actions/documents';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import CoursesBillingGate from '@/components/dashboard/courses/CoursesBillingGate';
 import styles from './page.module.css';
 
-interface DocumentListClientProps {
-  initialDocs: {
-    id: string;
-    filename: string;
-    mimeType: string;
-    size: number;
-    updatedAt: Date | string;
-    versions: {
-      version: number;
-      courseVersions: { courseId: string }[];
-    }[];
-  }[];
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+interface CourseVersionEntry {
+  courseId: string;
+  course: {
+    title: string;
+    status: string; // 'draft' | 'published'
+  };
 }
 
-export default function DocumentListClient({ initialDocs }: DocumentListClientProps) {
+interface DocumentVersionEntry {
+  version: number;
+  courseVersions: CourseVersionEntry[];
+}
+
+interface DocumentRow {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  updatedAt: Date | string;
+  versions: DocumentVersionEntry[];
+}
+
+interface DocumentListClientProps {
+  initialDocs: DocumentRow[];
+  hasBilling: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function deriveStatus(
+  courseVersions: CourseVersionEntry[],
+): 'completed' | 'in-progress' | 'not-started' {
+  if (courseVersions.length === 0) return 'not-started';
+  // If any linked course is published, consider it completed
+  if (courseVersions.some((cv) => cv.course.status === 'published')) return 'completed';
+  return 'in-progress';
+}
+
+function getFileIcon(mimeType: string, filename: string) {
+  const isPdf = mimeType === 'application/pdf' || filename.endsWith('.pdf');
+  const isDoc =
+    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    mimeType === 'application/msword' ||
+    filename.endsWith('.docx') ||
+    filename.endsWith('.doc');
+
+  const color = isPdf ? '#EF4444' : isDoc ? '#3B82F6' : '#94A3B8';
+
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 2V8H20"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function StatusBadge({ status }: { status: 'completed' | 'in-progress' | 'not-started' }) {
+  if (status === 'completed') {
+    return (
+      <span className={`${styles.badge} ${styles.badgeCompleted}`}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" stroke="#166534" strokeWidth="2.5" />
+          <path
+            d="M8 12l3 3 5-5"
+            stroke="#166534"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Completed
+      </span>
+    );
+  }
+  if (status === 'in-progress') {
+    return (
+      <span className={`${styles.badge} ${styles.badgeInProgress}`}>
+        <span className={styles.badgeDot} aria-hidden="true" />
+        In Progress
+      </span>
+    );
+  }
+  return <span className={`${styles.badge} ${styles.badgeNotStarted}`}>Not Started</span>;
+}
+
+// ---------------------------------------------------------------------------
+// Rename modal (inline lightweight implementation)
+// ---------------------------------------------------------------------------
+function RenameModal({
+  docId,
+  currentName,
+  onClose,
+  onRenamed,
+}: {
+  docId: string;
+  currentName: string;
+  onClose: () => void;
+  onRenamed: (newName: string) => void;
+}) {
+  const [name, setName] = useState(currentName);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Filename cannot be empty.');
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const result = await renameDocument(docId, trimmed);
+      if (result.success) {
+        onRenamed(trimmed);
+        onClose();
+      } else {
+        setError(result.error ?? 'Failed to rename document.');
+      }
+    });
+  };
+
+  return (
+    <div
+      className={styles.renameOverlay}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Rename document"
+    >
+      <div className={styles.renameDialog}>
+        <h2 className={styles.renameTitle}>Rename Document</h2>
+        <form onSubmit={handleSubmit}>
+          <input
+            className={styles.renameInput}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            disabled={isPending}
+            aria-label="New document name"
+          />
+          {error && <p className={styles.renameError}>{error}</p>}
+          <div className={styles.renameActions}>
+            <button
+              type="button"
+              className={styles.renameCancelBtn}
+              onClick={onClose}
+              disabled={isPending}
+            >
+              Cancel
+            </button>
+            <button type="submit" className={styles.renameSaveBtn} disabled={isPending}>
+              {isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+export default function DocumentListClient({ initialDocs, hasBilling }: DocumentListClientProps) {
   const router = useRouter();
   const [docs, setDocs] = useState(initialDocs);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  // Sync state with props when a new document is uploaded and revalidatePath runs
+  // Three-dot dropdown
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  // Rename modal
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+
+  // Billing gate
+  const [showBillingGate, setShowBillingGate] = useState(false);
+
+  // Search
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Sync with server props after revalidatePath
   useEffect(() => {
     setDocs(initialDocs);
   }, [initialDocs]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = () => setActiveDropdown(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, []);
+
+  const filteredDocs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return docs;
+    return docs.filter((d) => d.filename.toLowerCase().includes(q));
+  }, [docs, searchQuery]);
+
+  const totalPages = Math.ceil(filteredDocs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const pagedDocs = filteredDocs.slice(startIndex, startIndex + itemsPerPage);
+  const totalEntries = filteredDocs.length;
+
+  const handlePageChange = useCallback(
+    (page: number) => {
+      if (page >= 1 && page <= totalPages) setCurrentPage(page);
+    },
+    [totalPages],
+  );
 
   const handleRowClick = (docId: string) => {
     router.push(`/dashboard/documents/${docId}`);
@@ -38,11 +252,21 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
 
   const handleViewCourse = (e: React.MouseEvent, courseId: string) => {
     e.stopPropagation();
-    router.push(`/dashboard/courses/${courseId}`);
+    router.push(`/dashboard/training/courses/${courseId}`);
+  };
+
+  const handleCreateCourse = (e: React.MouseEvent, docId: string) => {
+    e.stopPropagation();
+    if (!hasBilling) {
+      setShowBillingGate(true);
+      return;
+    }
+    router.push(`/dashboard/courses/create?documentId=${docId}`);
   };
 
   const handleDelete = (e: React.MouseEvent, docId: string, filename: string) => {
     e.stopPropagation();
+    setActiveDropdown(null);
     if (
       !confirm(
         `Delete "${filename}"?\n\nThis will permanently remove the file from storage and cannot be undone.`,
@@ -57,7 +281,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
     startTransition(async () => {
       const result = await deleteDocument(docId);
       if (result.success) {
-        // Optimistic removal — no full page reload needed
         setDocs((prev) => prev.filter((d) => d.id !== docId));
       } else {
         setDeleteError(result.error ?? 'Failed to delete document.');
@@ -66,265 +289,341 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
     });
   };
 
-  const getFileIcon = (mimeType: string, filename: string) => {
-    if (mimeType === 'application/pdf' || filename.endsWith('.pdf')) {
-      return (
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z"
-            stroke="#EF4444"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M14 2V8H20"
-            stroke="#EF4444"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M12 18V12"
-            stroke="#EF4444"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M9 15H15"
-            stroke="#EF4444"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      );
-    }
-    if (
-      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      mimeType === 'application/msword' ||
-      filename.endsWith('.docx') ||
-      filename.endsWith('.doc')
-    ) {
-      return (
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z"
-            stroke="#3B82F6"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M14 2V8H20"
-            stroke="#3B82F6"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M10 12H8V18H10C11.1 18 12 17.1 12 16V14C12 12.9 11.1 12 10 12Z"
-            stroke="#3B82F6"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      );
-    }
-    return (
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z"
-          stroke="#94A3B8"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M14 2V8H20"
-          stroke="#94A3B8"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
+  const handleRenameClick = (e: React.MouseEvent, doc: DocumentRow) => {
+    e.stopPropagation();
+    setActiveDropdown(null);
+    setRenameTarget({ id: doc.id, name: doc.filename });
   };
+
+  const handleRenamed = (docId: string, newName: string) => {
+    setDocs((prev) => prev.map((d) => (d.id === docId ? { ...d, filename: newName } : d)));
+  };
+
+  // Pagination page numbers to render (show max 5 page numbers with ellipsis)
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (currentPage <= 3) return [1, 2, 3, '…', totalPages];
+    if (currentPage >= totalPages - 2) return [1, '…', totalPages - 2, totalPages - 1, totalPages];
+    return [1, '…', currentPage, '…', totalPages];
+  }, [totalPages, currentPage]);
 
   return (
     <>
-      {deleteError && (
-        <p style={{ color: '#EF4444', marginBottom: '12px', fontSize: '14px' }}>⚠️ {deleteError}</p>
+      {/* Billing gate modal */}
+      {showBillingGate && <CoursesBillingGate onClose={() => setShowBillingGate(false)} />}
+
+      {/* Rename modal */}
+      {renameTarget && (
+        <RenameModal
+          docId={renameTarget.id}
+          currentName={renameTarget.name}
+          onClose={() => setRenameTarget(null)}
+          onRenamed={(newName) => handleRenamed(renameTarget.id, newName)}
+        />
       )}
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Document Name</th>
-            <th>Uploaded</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {docs.length > 0 ? (
-            docs.map((doc) => {
-              const latest = doc.versions[0];
-              const courseLinks = latest?.courseVersions || [];
-              const hasCourse = courseLinks.length > 0;
-              const isDeleting = deletingId === doc.id;
 
-              return (
-                <tr
-                  key={doc.id}
-                  onClick={() => handleRowClick(doc.id)}
-                  className={styles.clickableRow}
-                >
-                  <td>
-                    <div className={styles.docName}>
-                      <div className={styles.icon}>{getFileIcon(doc.mimeType, doc.filename)}</div>
-                      <div>
-                        <div className={styles.filename}>{doc.filename}</div>
-                        <div className={styles.meta}>
-                          {(doc.size / 1024 / 1024).toFixed(2)} MB • v{latest.version}
+      {deleteError && (
+        <p className={styles.globalError} role="alert">
+          ⚠️ {deleteError}
+        </p>
+      )}
+
+      {/* Card */}
+      <div className={styles.card}>
+        {/* Search */}
+        <div className={styles.searchWrapper}>
+          <svg
+            className={styles.searchIcon}
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            className={styles.searchInput}
+            type="search"
+            placeholder="Search for document..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+            aria-label="Search documents"
+          />
+        </div>
+
+        {/* Table */}
+        <div className={styles.tableWrapper}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.thName}>Document Name</th>
+                <th className={styles.thDate}>Date Uploaded</th>
+                <th className={styles.thStatus}>Status</th>
+                <th className={styles.thAction}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedDocs.length > 0 ? (
+                pagedDocs.map((doc) => {
+                  const latest = doc.versions[0];
+                  const courseVersions = latest?.courseVersions || [];
+                  const status = deriveStatus(courseVersions);
+                  const hasCourse = courseVersions.length > 0;
+                  const courseId = hasCourse ? courseVersions[0].courseId : null;
+                  const isDeleting = deletingId === doc.id;
+
+                  return (
+                    <tr key={doc.id} onClick={() => handleRowClick(doc.id)} className={styles.row}>
+                      {/* Document name */}
+                      <td className={styles.tdName}>
+                        <div className={styles.docNameCell}>
+                          <div className={styles.fileIcon}>
+                            {getFileIcon(doc.mimeType, doc.filename)}
+                          </div>
+                          <div>
+                            <div className={styles.filename}>{doc.filename}</div>
+                            <div className={styles.fileMeta}>
+                              {(doc.size / 1024 / 1024).toFixed(1)} MB
+                              {latest?.version && ` • v${latest.version}`}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>{new Date(doc.updatedAt).toLocaleDateString()}</td>
-                  <td>
-                    {hasCourse ? (
-                      <span className={styles.badgeSuccess}>Completed</span>
-                    ) : (
-                      <span
-                        style={{
-                          backgroundColor: '#F3F4F6',
-                          color: '#374151',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                        }}
-                      >
-                        Not Started
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <div className={styles.actions}>
-                      {hasCourse ? (
-                        <button
-                          onClick={(e) => handleViewCourse(e, courseLinks[0].courseId)}
-                          className={styles.actionBtn}
-                        >
-                          View Course
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/dashboard/courses/create?documentId=${doc.id}`);
-                          }}
-                          className={styles.actionBtn}
-                        >
-                          Create Course
-                        </button>
-                      )}
+                      </td>
 
-                      {/* Delete — disabled if document has an associated course */}
-                      <button
-                        onClick={(e) => handleDelete(e, doc.id, doc.filename)}
-                        disabled={isDeleting || hasCourse}
-                        title={
-                          hasCourse
-                            ? 'Cannot delete — this document has a linked course'
-                            : 'Delete document'
-                        }
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: isDeleting || hasCourse ? 'not-allowed' : 'pointer',
-                          opacity: hasCourse ? 0.35 : isDeleting ? 0.6 : 1,
-                          padding: '4px',
-                          color: '#EF4444',
-                          display: 'flex',
-                          alignItems: 'center',
-                          marginLeft: '4px',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {isDeleting ? (
-                          /* Spinner */
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            style={{ animation: 'spin 1s linear infinite' }}
-                          >
-                            <circle
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              strokeDasharray="40"
-                              strokeDashoffset="10"
-                            />
-                          </svg>
-                        ) : (
-                          /* Trash icon */
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                            <path d="M10 11v6" />
-                            <path d="M14 11v6" />
-                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })
-          ) : (
-            <EmptyTableState
-              message="No documents found."
-              subMessage="Upload a document to get started."
-              colSpan={4}
-              asTableRow
-            />
-          )}
-        </tbody>
-      </table>
+                      {/* Date */}
+                      <td className={styles.tdDate}>
+                        {new Date(doc.updatedAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </td>
+
+                      {/* Status */}
+                      <td className={styles.tdStatus}>
+                        <StatusBadge status={status} />
+                      </td>
+
+                      {/* Action */}
+                      <td className={styles.tdAction} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.actionCell}>
+                          {/* Primary action link */}
+                          {hasCourse && courseId ? (
+                            <button
+                              className={styles.actionLink}
+                              onClick={(e) => handleViewCourse(e, courseId)}
+                            >
+                              View Course
+                            </button>
+                          ) : (
+                            <button
+                              className={`${styles.actionLink} ${styles.actionLinkMuted}`}
+                              onClick={(e) => handleCreateCourse(e, doc.id)}
+                            >
+                              Create Course
+                            </button>
+                          )}
+
+                          {/* Three-dot menu */}
+                          <div className={styles.dropdownWrap}>
+                            <button
+                              className={styles.dotsBtn}
+                              title="More actions"
+                              aria-label="More actions"
+                              aria-expanded={activeDropdown === doc.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveDropdown(activeDropdown === doc.id ? null : doc.id);
+                              }}
+                            >
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                aria-hidden="true"
+                              >
+                                <circle cx="12" cy="5" r="1.5" />
+                                <circle cx="12" cy="12" r="1.5" />
+                                <circle cx="12" cy="19" r="1.5" />
+                              </svg>
+                            </button>
+
+                            {activeDropdown === doc.id && (
+                              <div className={styles.dropdown} role="menu">
+                                <button
+                                  className={styles.dropdownItem}
+                                  role="menuitem"
+                                  onClick={(e) => handleRenameClick(e, doc)}
+                                >
+                                  <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                                  </svg>
+                                  Rename
+                                </button>
+                                <button
+                                  className={`${styles.dropdownItem} ${styles.dropdownItemDanger} ${hasCourse || isDeleting ? styles.dropdownItemDisabled : ''}`}
+                                  role="menuitem"
+                                  disabled={hasCourse || isDeleting}
+                                  title={
+                                    hasCourse
+                                      ? 'Cannot delete — this document has a linked course'
+                                      : isDeleting
+                                        ? 'Deleting…'
+                                        : 'Delete document'
+                                  }
+                                  onClick={(e) => handleDelete(e, doc.id, doc.filename)}
+                                >
+                                  <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    <line x1="10" y1="11" x2="10" y2="17" />
+                                    <line x1="14" y1="11" x2="14" y2="17" />
+                                  </svg>
+                                  {isDeleting ? 'Deleting…' : 'Delete'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <EmptyTableState
+                  message={searchQuery ? 'No documents match your search.' : 'No documents found.'}
+                  subMessage={
+                    searchQuery
+                      ? 'Try a different search term.'
+                      : 'Upload a document to get started.'
+                  }
+                  colSpan={4}
+                  asTableRow
+                />
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalEntries > 0 && (
+          <div className={styles.pagination}>
+            <span className={styles.paginationInfo}>
+              Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, totalEntries)} of{' '}
+              {totalEntries} entries
+            </span>
+
+            <div className={styles.paginationPages}>
+              <button
+                className={styles.pageBtn}
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                aria-label="Previous page"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+
+              {pageNumbers.map((n, i) =>
+                n === '…' ? (
+                  <span key={`ellipsis-${i}`} className={styles.pageDots}>
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={n}
+                    className={`${styles.pageBtn} ${n === currentPage ? styles.pageBtnActive : ''}`}
+                    onClick={() => handlePageChange(n as number)}
+                    aria-current={n === currentPage ? 'page' : undefined}
+                  >
+                    {n}
+                  </button>
+                ),
+              )}
+
+              <button
+                className={styles.pageBtn}
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages || totalPages === 0}
+                aria-label="Next page"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+            </div>
+
+            <div className={styles.paginationShow}>
+              Show
+              <select
+                className={styles.paginationSelect}
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                aria-label="Entries per page"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+              entries
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 }

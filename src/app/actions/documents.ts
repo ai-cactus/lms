@@ -208,3 +208,43 @@ export async function deleteDocument(
   revalidatePath('/dashboard/documents');
   return { success: true };
 }
+
+/**
+ * Rename a document by updating its filename field.
+ * Only the owning user may rename their document.
+ */
+export async function renameDocument(
+  documentId: string,
+  newFilename: string,
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Not authenticated' };
+  }
+
+  const trimmed = newFilename.trim();
+  if (!trimmed) {
+    return { error: 'Filename cannot be empty.' };
+  }
+  if (trimmed.length > 255) {
+    return { error: 'Filename is too long (max 255 characters).' };
+  }
+
+  // Verify ownership
+  const doc = await prisma.document.findUnique({
+    where: { id: documentId },
+    select: { userId: true },
+  });
+
+  if (!doc || doc.userId !== session.user.id) {
+    return { error: 'Document not found' };
+  }
+
+  await prisma.document.update({
+    where: { id: documentId },
+    data: { filename: trimmed, updatedAt: new Date() },
+  });
+
+  revalidatePath('/dashboard/documents');
+  return { success: true };
+}
