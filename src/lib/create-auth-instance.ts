@@ -128,9 +128,6 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
               clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
               issuer: `https://login.microsoftonline.com/${process.env.AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}/v2.0`,
-              // allowDangerousEmailAccountLinking removed — prevents silent account takeover
-              // via Microsoft OAuth for users with existing credentials accounts.
-              // New users signing up via Microsoft OAuth are still created normally.
             }),
           ]
         : []),
