@@ -21,7 +21,7 @@ LMS2 is a modern, enterprise-grade Learning Management System designed for healt
 - **Runtime:** Node.js (via Next.js Server Actions & API Routes).
 - **Database ORM:** [Prisma ORM](https://www.prisma.io/).
 - **Authentication:** [NextAuth.js v5 (Beta 30)](https://authjs.dev/) - Credential-based provider with JWT sessions.
-- **AI Engine:** Google Cloud Vertex AI (`@google-cloud/vertexai`) for content generation.
+- **AI Engine:** Google Cloud Vertex AI via REST API with `google-auth-library` (Application Default Credentials).
 - **Document Processing:** `pdf-parse`, `mammoth` (for DOCX), `xlsx`.
 
 ### Infrastructure
@@ -117,11 +117,9 @@ erDiagram
 ## 5. Key System Modules
 
 ### A. Authentication & Authorization
-- **Implementation:** `src/auth.config.ts`, `src/check-permissions.ts`.
-- **Strategy:** credentials-based login.
-- **RBAC:** Middleware protects routes based on `session.user.role`.
-    - `admin`: Full access to organization settings, course creation, user management.
-    - `worker`: Access to assigned courses ("My Learning") and profile.
+- **Implementation:** `src/auth.ts` (admin), `src/auth.worker.ts` (worker), `src/lib/create-auth-instance.ts` (shared factory).
+- **Strategy:** Credentials-based login with optional Microsoft Entra ID (Azure AD) OAuth. Dual auth instances for role isolation.
+- **RBAC:** Role-based access via `session.user.role` checked in page components and server actions.
 
 ### B. AI Course Generator (The "Wizard")
 - **Workflow:**
@@ -169,6 +167,6 @@ erDiagram
   /lib
     /documents      # File handling logic
     /prisma.ts      # DB Client Singleton
-  auth.ts           # Auth Library Initialization
-  middleware.ts     # Route Protection Logic
+  auth.ts           # Admin Auth (NextAuth)
+  auth.worker.ts    # Worker Auth (NextAuth, separate cookie)
 ```

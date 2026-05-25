@@ -7,6 +7,7 @@ import { Modal, Button } from '@/components/ui';
 import styles from './ConfirmPublishModal.module.css';
 import { getCourses } from '@/app/actions/course';
 import { CourseWithStats } from '@/types/course';
+import { logger } from '@/lib/logger';
 
 interface ConfirmPublishModalProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ export default function ConfirmPublishModal({
         .then((courses) => {
           setRecentCourses(courses.slice(0, 2));
         })
-        .catch(console.error);
+        .catch((err) => logger.error({ msg: 'Failed to load courses for publish preview', err }));
     }
   }, [isOpen]);
 

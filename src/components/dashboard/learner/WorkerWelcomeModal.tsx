@@ -68,10 +68,6 @@ export default function WorkerWelcomeModal({
   ]);
 
   const handleClose = () => {
-    // Snooze for 4 hours (simulating the "4 refreshes" or just a time duration)
-    // The user asked for it to be intelligent. Sticking to time-based is cleaner.
-    // Let's say 24 hours snooze if they close it without acting? Or maybe shorter.
-    // The previous code had "4" which implied refreshes. Let's do 12 hours.
     dismissModal(modalId, SNOOZE_DURATION_MS);
   };
 
@@ -94,8 +90,6 @@ export default function WorkerWelcomeModal({
       size="lg"
       className={styles.modalParams}
       showCloseButton={false} // We have a custom close button in design or we can use the default.
-      // The original had a custom close button. Let's use the default one for consistency or keep custom if it needed specific styling.
-      // effectively, the design has a close button top right. The new Modal has one too.
     >
       <div className={styles.container}>
         {/* Left Panel */}

@@ -17,7 +17,8 @@ const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 // Separate lightweight client — does NOT share with BullMQ's blocking connection pool.
 // BullMQ requires maxRetriesPerRequest: null for blocking commands (BRPOP, etc.).
 // This client uses standard retry behavior safe for request/response patterns.
-const limiterRedis = new Redis(redisUrl, {
+// Exported for health check usage
+export const rateLimiterRedis = new Redis(redisUrl, {
   maxRetriesPerRequest: 3,
   enableReadyCheck: false,
   lazyConnect: true,
@@ -48,7 +49,7 @@ export async function checkRateLimit(
   const windowStart = now - windowSec * 1000;
 
   try {
-    const pipeline = limiterRedis.pipeline();
+    const pipeline = rateLimiterRedis.pipeline();
     // 1. Remove expired entries from outside the window
     pipeline.zremrangebyscore(key, '-inf', windowStart);
     // 2. Record this attempt with current timestamp as score
