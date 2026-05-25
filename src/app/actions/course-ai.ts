@@ -24,6 +24,8 @@ export type AnalyzedMetadata = z.infer<typeof CourseMetadataSchema> & { error?: 
 /**
  * Analyze a freshly-uploaded file to extract course metadata.
  * Used by CourseWizard when a new file is uploaded in-session.
+ *
+ * @deprecated Use course-ai-v4.6.ts instead. This is the original AI pipeline.
  */
 export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetadata> {
   const file = formData.get('file') as File | null;
@@ -117,6 +119,8 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
 /**
  * Analyze a previously-uploaded document stored in the database.
  * Used by CourseWizard when the user selects an existing document.
+ *
+ * @deprecated Use course-ai-v4.6.ts instead. This is the original AI pipeline.
  */
 export async function analyzeStoredDocument(documentId: string): Promise<AnalyzedMetadata> {
   const session = await auth();

@@ -132,9 +132,10 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
     }),
   ]);
 
-  console.info(
-    `[Stripe Webhook] Organization ${organization.id} — subscription ${sub.id} status: ${sub.status}, hasAuditorAccess: ${hasAuditorAccess}`,
-  );
+  logger.info({
+    msg: `[Stripe Webhook] Organization ${organization.id} — subscription ${sub.id} status: ${sub.status}`,
+    hasAuditorAccess,
+  });
 }
 
 async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string) {

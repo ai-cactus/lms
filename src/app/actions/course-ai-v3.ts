@@ -131,6 +131,9 @@ async function generateQuizJsonV3(
 
 // ─── Orchestrator (Prompt A → Prompt B) ──────────
 
+/**
+ * @deprecated Use course-ai-v4.6.ts instead. This is the v3.1 AI pipeline.
+ */
 export async function generateCourseAndQuizV3(
   formData: FormData,
 ): Promise<{ jobId?: string; error?: string }> {
@@ -352,6 +355,9 @@ async function processBackgroundV3(
   }
 }
 
+/**
+ * @deprecated Use course-ai-v4.6.ts instead. This is the v3.1 AI pipeline.
+ */
 export async function checkCourseGenerationJob(jobId: string) {
   try {
     const job = await prisma.job.findUnique({ where: { id: jobId } });
