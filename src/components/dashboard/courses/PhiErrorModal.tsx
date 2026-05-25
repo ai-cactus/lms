@@ -19,81 +19,46 @@ export default function PhiErrorModal({ isOpen, onClose, onRetry, reason }: PhiE
           flexDirection: 'column',
           alignItems: 'center',
           textAlign: 'center',
-          padding: '24px 0',
+          padding: '24px 16px',
         }}
       >
-        {/* Icon Layer */}
         <div
-          style={{ position: 'relative', width: '120px', height: '120px', marginBottom: '24px' }}
+          style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '50%',
+            background: '#FEE2E2',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '24px',
+          }}
         >
-          {/* Document Icon */}
           <svg
-            width="100"
-            height="100"
-            viewBox="0 0 100 100"
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
             fill="none"
-            xmlns="http://www.w3.org/2000/svg"
+            stroke="#DC2626"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <rect x="20" y="15" width="60" height="70" rx="4" fill="#F1F5F9" />
-            <rect x="20" y="15" width="60" height="70" rx="4" stroke="#E2E8F0" strokeWidth="2" />
-            <line
-              x1="30"
-              y1="30"
-              x2="70"
-              y2="30"
-              stroke="#CBD5E0"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <line
-              x1="30"
-              y1="40"
-              x2="70"
-              y2="40"
-              stroke="#CBD5E0"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <line
-              x1="30"
-              y1="50"
-              x2="70"
-              y2="50"
-              stroke="#CBD5E0"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
-
-          {/* Magnifying Glass with Badge */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '0',
-              left: '-10px',
-              filter: 'drop-shadow(0px 10px 15px rgba(0,0,0,0.1))',
-            }}
-          >
-            <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
-              <circle cx="25" cy="25" r="20" fill="white" stroke="#4C6EF5" strokeWidth="4" />
-              <path d="M40 40L55 55" stroke="#4C6EF5" strokeWidth="6" strokeLinecap="round" />
-              {/* Inner Details */}
-              <path d="M18 25H32" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
-              <path d="M18 18H28" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
-              <path d="M18 32H24" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
-            </svg>
-          </div>
         </div>
 
-        <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#1A202C', marginBottom: '12px' }}>
-          PHI Detected!
+        <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', marginBottom: '12px' }}>
+          PHI Detected
         </h2>
 
         <p
           style={{
-            fontSize: '16px',
-            color: '#4A5568',
-            maxWidth: '400px',
+            fontSize: '15px',
+            color: '#4B5563',
+            maxWidth: '360px',
             lineHeight: '1.5',
             marginBottom: '32px',
           }}
@@ -102,9 +67,17 @@ export default function PhiErrorModal({ isOpen, onClose, onRetry, reason }: PhiE
           valid document for analysis.
           {reason && (
             <span
-              style={{ display: 'block', marginTop: '8px', fontSize: '14px', color: '#E53E3E' }}
+              style={{
+                display: 'block',
+                marginTop: '12px',
+                fontSize: '14px',
+                color: '#DC2626',
+                background: '#FEF2F2',
+                padding: '8px 12px',
+                borderRadius: '6px',
+              }}
             >
-              Reason: {reason}
+              <strong>Reason:</strong> {reason}
             </span>
           )}
         </p>

@@ -1,20 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import styles from './CoursesList.module.css';
+import styles from './BillingGateModal.module.css';
 
-interface CoursesBillingGateProps {
+interface BillingGateModalProps {
+  title: string;
+  description: string;
   onClose: () => void;
 }
 
-export default function CoursesBillingGate({ onClose }: CoursesBillingGateProps) {
+export default function BillingGateModal({ title, description, onClose }: BillingGateModalProps) {
   return (
     /* Backdrop — clicking outside closes the dialog */
     <div
       className={styles.billingGateOverlay}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="courses-billing-gate-title"
+      aria-labelledby="billing-gate-title"
       onClick={onClose}
     >
       <div
@@ -67,12 +69,10 @@ export default function CoursesBillingGate({ onClose }: CoursesBillingGateProps)
           </svg>
         </button>
 
-        <h2 id="courses-billing-gate-title" className={styles.billingGateTitle}>
-          Billing required to create courses
+        <h2 id="billing-gate-title" className={styles.billingGateTitle}>
+          {title}
         </h2>
-        <p className={styles.billingGateDesc}>
-          Subscribe to a plan to start creating and managing training courses for your organization.
-        </p>
+        <p className={styles.billingGateDesc}>{description}</p>
 
         <div className={styles.billingGateActions}>
           <Link href="/dashboard/billing" className={styles.billingGateCta}>
