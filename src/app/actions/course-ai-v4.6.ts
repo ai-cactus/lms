@@ -482,12 +482,15 @@ export async function generateCourseAndQuizV46(
   }
 
   const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized' };
+  }
 
   const job = await prisma.job.create({
     data: {
       type: 'GENERATE_V46_COURSE',
       status: 'processing',
-      userId: session?.user?.id,
+      userId: session.user.id,
     },
   });
 
