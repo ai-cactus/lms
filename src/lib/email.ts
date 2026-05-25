@@ -95,6 +95,37 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
   }
 };
 
+export const sendMfaOtpEmail = async (email: string, code: string) => {
+  const appName = 'Theraptly LMS';
+
+  const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #4C6EF5;">Your Authentication Code</h2>
+            <p>You are trying to sign in or enable Two-Factor Authentication on your <strong>${appName}</strong> account.</p>
+            <p>Your 6-digit verification code is:</p>
+            <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #1a202c; padding: 16px; background: #f7fafc; border-radius: 8px; text-align: center; margin: 24px 0;">
+              ${code}
+            </div>
+            <p style="margin-top: 24px; font-size: 12px; color: #718096;">Code expires in 15 minutes.</p>
+            <p style="font-size: 12px; color: #718096;">If you didn't request this, you can safely ignore this email.</p>
+        </div>
+    `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"Theraptly Security" <${user}>`,
+      to: email,
+      subject: `Your ${appName} verification code`,
+      html,
+    });
+    logger.info({ msg: 'MFA OTP email sent', messageId: info.messageId });
+    return { success: true };
+  } catch (error) {
+    logger.error({ msg: 'Error sending MFA OTP email:', err: error });
+    return { success: false, error };
+  }
+};
+
 export const sendEmailVerification = async (email: string, token: string) => {
   // Use APP_URL for server-side, fallback to NEXT_PUBLIC_APP_URL
   const baseUrl =

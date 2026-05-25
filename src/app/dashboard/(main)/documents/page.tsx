@@ -12,34 +12,21 @@ export const metadata = {
 export default async function DocumentsPage() {
   const session = await auth();
 
-  const [docs, user] = await Promise.all([
-    prisma.document.findMany({
-      where: { userId: session?.user?.id },
-      include: {
-        versions: {
-          include: {
-            phiReport: true,
-            courseVersions: {
-              include: { course: { select: { id: true, title: true, status: true } } },
-            },
+  const docs = await prisma.document.findMany({
+    where: { userId: session?.user?.id },
+    include: {
+      versions: {
+        include: {
+          phiReport: true,
+          courseVersions: {
+            include: { course: { select: { id: true, title: true, status: true } } },
           },
-          orderBy: { version: 'desc' },
         },
+        orderBy: { version: 'desc' },
       },
-      orderBy: { updatedAt: 'desc' },
-    }),
-    prisma.user.findUnique({
-      where: { id: session?.user?.id },
-      select: {
-        organization: {
-          select: { subscription: { select: { status: true } } },
-        },
-      },
-    }),
-  ]);
-
-  const subStatus = user?.organization?.subscription?.status;
-  const hasBilling = subStatus === 'active' || subStatus === 'trialing';
+    },
+    orderBy: { updatedAt: 'desc' },
+  });
 
   return (
     <div className={styles.container}>
@@ -53,7 +40,7 @@ export default async function DocumentsPage() {
         <UploadSection />
       </header>
 
-      <DocumentListClient initialDocs={docs} hasBilling={hasBilling} />
+      <DocumentListClient initialDocs={docs} />
     </div>
   );
 }
