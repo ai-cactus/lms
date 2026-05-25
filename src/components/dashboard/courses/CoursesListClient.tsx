@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
-import CoursesBillingGate from './CoursesBillingGate';
+import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
 
 const PENDING_KEY = 'lms_pending_generation';
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -227,7 +227,13 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
 
       {/* Content Card */}
       {/* Billing gate — rendered when admin lacks an active subscription */}
-      {showBillingGate && <CoursesBillingGate onClose={() => setShowBillingGate(false)} />}
+      {showBillingGate && (
+        <BillingGateModal
+          title="Billing required to create courses"
+          description="Subscribe to a plan to start creating and managing training courses for your organization."
+          onClose={() => setShowBillingGate(false)}
+        />
+      )}
       <PendingGenerationBanner />
       <div className={styles.card}>
         {/* Search */}

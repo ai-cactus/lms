@@ -202,7 +202,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                   style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
                 />
               ) : (
-                <span>{formData.first_name?.[0] || user.email[0].toUpperCase()}</span>
+                <span>
+                  {`${formData.first_name?.[0] || ''}${formData.last_name?.[0] || ''}`.toUpperCase() ||
+                    user.email[0].toUpperCase()}
+                </span>
               )}
               <Button
                 variant="ghost"

@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation';
 import { deleteDocument, renameDocument } from '@/app/actions/documents';
 import EmptyTableState from '@/components/ui/EmptyTableState';
-import CoursesBillingGate from '@/components/dashboard/courses/CoursesBillingGate';
+import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
 import styles from './page.module.css';
 
 // ---------------------------------------------------------------------------
@@ -310,7 +310,13 @@ export default function DocumentListClient({ initialDocs, hasBilling }: Document
   return (
     <>
       {/* Billing gate modal */}
-      {showBillingGate && <CoursesBillingGate onClose={() => setShowBillingGate(false)} />}
+      {showBillingGate && (
+        <BillingGateModal
+          title="A plan is required to create courses"
+          description="Subscribe to a plan to start creating and managing training courses for your organization."
+          onClose={() => setShowBillingGate(false)}
+        />
+      )}
 
       {/* Rename modal */}
       {renameTarget && (

@@ -390,14 +390,34 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
                   Contact sales
                 </button>
               ) : (
-                <button
-                  id={`plan-btn-${plan.key}`}
-                  className={`${styles.planCardBtn} ${styles.planCardBtnSecondary}`}
-                  disabled={!allowed || checkoutLoading === plan.key}
-                  onClick={() => void handleSelectPlan(plan.key)}
-                >
-                  {checkoutLoading === plan.key ? 'Redirecting...' : 'Choose plan'}
-                </button>
+                <>
+                  <button
+                    id={`plan-btn-${plan.key}`}
+                    className={`${styles.planCardBtn} ${
+                      currentPlan === plan.key
+                        ? styles.planCardBtnCurrent
+                        : styles.planCardBtnSecondary
+                    }`}
+                    disabled={currentPlan === plan.key || !allowed || checkoutLoading === plan.key}
+                    onClick={() => void handleSelectPlan(plan.key)}
+                    style={{ marginBottom: currentPlan === plan.key ? '12px' : '24px' }}
+                  >
+                    {checkoutLoading === plan.key
+                      ? 'Redirecting...'
+                      : currentPlan === plan.key
+                        ? 'Current Plan'
+                        : 'Choose plan'}
+                  </button>
+                  {currentPlan === plan.key && (
+                    <button
+                      className={styles.cancelLink}
+                      onClick={() => setCancelModal({ open: true, loading: false, error: null })}
+                      style={{ marginTop: 0, marginBottom: '24px' }}
+                    >
+                      ⊗ Cancel subscription
+                    </button>
+                  )}
+                </>
               )}
 
               <p className={styles.featuresLabel}>{plan.featuresLabel}</p>
@@ -423,14 +443,6 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
           );
         })}
       </div>
-
-      {/* Cancel subscription link */}
-      <button
-        className={styles.cancelLink}
-        onClick={() => setCancelModal({ open: true, loading: false, error: null })}
-      >
-        ⊗ Cancel subscription
-      </button>
 
       {/* ===== Enterprise Contact Modal ===== */}
       {enterpriseModal.open && (
