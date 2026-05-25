@@ -573,7 +573,7 @@ export default function Step5Review({
         </div>
 
         {/* Warning banner for content shortfall */}
-        {/* {(generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
+        {(generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
           ?.coverageNote && (
           <div
             style={{
@@ -590,7 +590,7 @@ export default function Step5Review({
                 ?.coverageNote
             }
           </div>
-        )} */}
+        )}
 
         {/* Warning banner for partial failures */}
         {generatedContent?.warning && (
