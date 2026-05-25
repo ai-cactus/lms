@@ -20,7 +20,15 @@ function MfaVerifyForm() {
   useEffect(() => {
     if (!userId) {
       router.push('/login');
+      return;
     }
+
+    // Send the OTP when the page loads
+    fetch('/api/auth/mfa/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    }).catch((err) => console.error('Failed to send OTP:', err));
   }, [userId, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -67,7 +75,7 @@ function MfaVerifyForm() {
           <div className={styles.formHeader}>
             <h1 className={styles.title}>Two-Factor Authentication</h1>
             <p className={styles.subtitle}>
-              Enter the 6-digit code from your authenticator app to continue.
+              We&apos;ve sent a 6-digit code to your email. Enter it below to continue.
             </p>
           </div>
 

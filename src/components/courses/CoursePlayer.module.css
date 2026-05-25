@@ -309,9 +309,8 @@
   min-height: 0;
 }
 
-/* Left thumbnail sidebar */
 .slideThumbnails {
-  width: 180px;
+  width: 240px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
