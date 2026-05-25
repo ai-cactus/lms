@@ -4,7 +4,6 @@ import { useState, useTransition, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation';
 import { deleteDocument, renameDocument } from '@/app/actions/documents';
 import EmptyTableState from '@/components/ui/EmptyTableState';
-import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
 import styles from './page.module.css';
 
 // ---------------------------------------------------------------------------
@@ -34,7 +33,6 @@ interface DocumentRow {
 
 interface DocumentListClientProps {
   initialDocs: DocumentRow[];
-  hasBilling: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +191,7 @@ function RenameModal({
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-export default function DocumentListClient({ initialDocs, hasBilling }: DocumentListClientProps) {
+export default function DocumentListClient({ initialDocs }: DocumentListClientProps) {
   const router = useRouter();
   const [docs, setDocs] = useState(initialDocs);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -205,9 +203,6 @@ export default function DocumentListClient({ initialDocs, hasBilling }: Document
 
   // Rename modal
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
-
-  // Billing gate
-  const [showBillingGate, setShowBillingGate] = useState(false);
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -248,20 +243,6 @@ export default function DocumentListClient({ initialDocs, hasBilling }: Document
 
   const handleRowClick = (docId: string) => {
     router.push(`/dashboard/documents/${docId}`);
-  };
-
-  const handleViewCourse = (e: React.MouseEvent, courseId: string) => {
-    e.stopPropagation();
-    router.push(`/dashboard/training/courses/${courseId}`);
-  };
-
-  const handleCreateCourse = (e: React.MouseEvent, docId: string) => {
-    e.stopPropagation();
-    if (!hasBilling) {
-      setShowBillingGate(true);
-      return;
-    }
-    router.push(`/dashboard/courses/create?documentId=${docId}`);
   };
 
   const handleDelete = (e: React.MouseEvent, docId: string, filename: string) => {
@@ -309,15 +290,6 @@ export default function DocumentListClient({ initialDocs, hasBilling }: Document
 
   return (
     <>
-      {/* Billing gate modal */}
-      {showBillingGate && (
-        <BillingGateModal
-          title="A plan is required to create courses"
-          description="Subscribe to a plan to start creating and managing training courses for your organization."
-          onClose={() => setShowBillingGate(false)}
-        />
-      )}
-
       {/* Rename modal */}
       {renameTarget && (
         <RenameModal
@@ -384,7 +356,7 @@ export default function DocumentListClient({ initialDocs, hasBilling }: Document
                   const courseVersions = latest?.courseVersions || [];
                   const status = deriveStatus(courseVersions);
                   const hasCourse = courseVersions.length > 0;
-                  const courseId = hasCourse ? courseVersions[0].courseId : null;
+
                   const isDeleting = deletingId === doc.id;
 
                   return (
@@ -422,23 +394,6 @@ export default function DocumentListClient({ initialDocs, hasBilling }: Document
                       {/* Action */}
                       <td className={styles.tdAction} onClick={(e) => e.stopPropagation()}>
                         <div className={styles.actionCell}>
-                          {/* Primary action link */}
-                          {hasCourse && courseId ? (
-                            <button
-                              className={styles.actionLink}
-                              onClick={(e) => handleViewCourse(e, courseId)}
-                            >
-                              View Course
-                            </button>
-                          ) : (
-                            <button
-                              className={`${styles.actionLink} ${styles.actionLinkMuted}`}
-                              onClick={(e) => handleCreateCourse(e, doc.id)}
-                            >
-                              Create Course
-                            </button>
-                          )}
-
                           {/* Three-dot menu */}
                           <div className={styles.dropdownWrap}>
                             <button
@@ -469,6 +424,30 @@ export default function DocumentListClient({ initialDocs, hasBilling }: Document
                                 <button
                                   className={styles.dropdownItem}
                                   role="menuitem"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRowClick(doc.id);
+                                  }}
+                                >
+                                  <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    style={{ marginRight: 8 }}
+                                  >
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                  </svg>
+                                  View
+                                </button>
+                                <button
+                                  className={styles.dropdownItem}
+                                  role="menuitem"
                                   onClick={(e) => handleRenameClick(e, doc)}
                                 >
                                   <svg
@@ -481,10 +460,11 @@ export default function DocumentListClient({ initialDocs, hasBilling }: Document
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
                                     aria-hidden="true"
+                                    style={{ marginRight: 8 }}
                                   >
                                     <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
                                   </svg>
-                                  Rename
+                                  Edit
                                 </button>
                                 <button
                                   className={`${styles.dropdownItem} ${styles.dropdownItemDanger} ${hasCourse || isDeleting ? styles.dropdownItemDisabled : ''}`}

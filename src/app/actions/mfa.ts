@@ -5,7 +5,6 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { headers } from 'next/headers';
 import {
-  generateTotpSecret,
   verifyTotpCode,
   encryptSecret,
   decryptSecret,
@@ -72,24 +71,26 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
     where: { userId: session.user.id, verified: false },
   });
 
-  const { secret, uri } = generateTotpSecret(user.email);
-  const encryptedSecret = encryptSecret(secret);
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const encryptedSecret = encryptSecret(code);
 
   await prisma.mfaFactor.create({
     data: {
       userId: session.user.id,
-      type: 'totp',
+      type: 'email',
       secret: encryptedSecret,
-      name: 'Authenticator App',
+      name: 'Email OTP',
       verified: false,
     },
   });
 
-  logger.info({ msg: 'MFA setup initiated', userId: session.user.id });
+  const { sendMfaOtpEmail } = await import('@/lib/email');
+  await sendMfaOtpEmail(user.email, code);
+
+  logger.info({ msg: 'MFA setup initiated via email', userId: session.user.id });
 
   return {
     success: true,
-    data: { uri, secret },
   };
 }
 
@@ -109,7 +110,7 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
 
   // Find the unverified factor
   const factor = await prisma.mfaFactor.findFirst({
-    where: { userId: session.user.id, type: 'totp', verified: false },
+    where: { userId: session.user.id, verified: false },
   });
 
   if (!factor?.secret) {
@@ -117,7 +118,13 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
   }
 
   const decryptedSecret = decryptSecret(factor.secret);
-  const valid = verifyTotpCode(decryptedSecret, code);
+
+  let valid = false;
+  if (factor.type === 'totp') {
+    valid = verifyTotpCode(decryptedSecret, code);
+  } else if (factor.type === 'email') {
+    valid = decryptedSecret === code;
+  }
 
   if (!valid) {
     logger.warn({ msg: 'MFA setup verification failed: invalid code', userId: session.user.id });
@@ -219,9 +226,9 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
     return { success: false, error: 'Verification code is required' };
   }
 
-  // Verify TOTP code only (not recovery code — security measure)
+  // Verify code only against primary factor (not recovery code — security measure)
   const factor = await prisma.mfaFactor.findFirst({
-    where: { userId: session.user.id, type: 'totp', verified: true },
+    where: { userId: session.user.id, verified: true },
   });
 
   if (!factor?.secret) {
@@ -229,7 +236,21 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
   }
 
   const decryptedSecret = decryptSecret(factor.secret);
-  if (!verifyTotpCode(decryptedSecret, code)) {
+
+  let valid = false;
+  if (factor.type === 'totp') {
+    valid = verifyTotpCode(decryptedSecret, code);
+  } else if (factor.type === 'email') {
+    valid = decryptedSecret === code;
+    if (valid) {
+      await prisma.mfaFactor.update({
+        where: { id: factor.id },
+        data: { secret: encryptSecret('USED') },
+      });
+    }
+  }
+
+  if (!valid) {
     return { success: false, error: 'Invalid verification code' };
   }
 
@@ -274,15 +295,26 @@ export async function verifyUserMfaCode(
     return { valid: false };
   }
 
-  // Try TOTP first
+  // Try primary factors (email or totp)
   const factor = await prisma.mfaFactor.findFirst({
-    where: { userId, type: 'totp', verified: true },
+    where: { userId, verified: true },
   });
 
   if (factor?.secret) {
     const decryptedSecret = decryptSecret(factor.secret);
-    if (verifyTotpCode(decryptedSecret, code)) {
-      return { valid: true };
+    if (factor.type === 'totp') {
+      if (verifyTotpCode(decryptedSecret, code)) {
+        return { valid: true };
+      }
+    } else if (factor.type === 'email') {
+      if (decryptedSecret === code) {
+        // Invalidate code after use by updating secret to something invalid
+        await prisma.mfaFactor.update({
+          where: { id: factor.id },
+          data: { secret: encryptSecret('USED') },
+        });
+        return { valid: true };
+      }
     }
   }
 
@@ -335,4 +367,33 @@ export async function getMfaStatus(): Promise<
     enabled: user.mfaEnabled,
     factors: user.mfaFactors,
   };
+}
+
+/**
+ * Send an email OTP code for login.
+ */
+export async function sendLoginMfaCode(userId: string): Promise<MfaActionResult> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, mfaFactors: { where: { verified: true, type: 'email' } } },
+  });
+
+  if (!user) return { success: false, error: 'User not found' };
+
+  const factor = user.mfaFactors[0];
+  if (!factor) return { success: false, error: 'No email MFA factor found' };
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const encryptedSecret = encryptSecret(code);
+
+  await prisma.mfaFactor.update({
+    where: { id: factor.id },
+    data: { secret: encryptedSecret },
+  });
+
+  const { sendMfaOtpEmail } = await import('@/lib/email');
+  await sendMfaOtpEmail(user.email, code);
+
+  logger.info({ msg: 'MFA login code sent via email', userId });
+  return { success: true };
 }

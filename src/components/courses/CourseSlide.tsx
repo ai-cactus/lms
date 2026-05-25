@@ -18,7 +18,7 @@ interface CourseSlideProps {
   isFirst: boolean;
   isLast: boolean;
   onToggleView?: () => void;
-  courseTitle?: string;
+
   className?: string;
 }
 
@@ -29,7 +29,7 @@ export default function CourseSlide({
   isFirst,
   isLast,
   onToggleView,
-  courseTitle,
+
   className = '',
 }: CourseSlideProps) {
   const slideRef = useRef<HTMLDivElement>(null);

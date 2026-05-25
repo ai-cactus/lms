@@ -8,7 +8,6 @@ import {
 import styles from '@/components/courses/CoursePlayer.module.css';
 
 // Reusable Components
-import CourseRail from '@/components/courses/CourseRail';
 import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui';
@@ -512,41 +511,8 @@ export default function Step5Review({
 
   return (
     <div className={styles.playerContainer}>
-      {/* Reusable Rail */}
-      <CourseRail
-        lessons={editedModules}
-        activeIndex={activeModuleIndex}
-        onSelect={handleModuleChange}
-      />
-
       {/* Main Area */}
-      <div className={styles.main}>
-        {/* Topbar */}
-        <header className={styles.topbar}>
-          <div className={styles.topbarLeft}>
-            <span className={styles.breadcrumb}>Course</span>
-            <span className={styles.breadcrumbSep}>›</span>
-            <span className={styles.breadcrumbActive}>
-              {currentModule?.title || 'Untitled Module'}
-            </span>
-            <span className={styles.durationPill}>{currentModule?.duration || '10 min'}</span>
-          </div>
-          <div className={styles.toggle}>
-            <button
-              className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
-              onClick={() => handleSwitchView('article')}
-            >
-              ARTICLE
-            </button>
-            <button
-              className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
-              onClick={() => handleSwitchView('slides')}
-            >
-              SLIDE
-            </button>
-          </div>
-        </header>
-
+      <div className={styles.main} style={{ width: '100%' }}>
         {/* Content Stage */}
         <div className={styles.contentArea}>
           {viewMode === 'slides' ? (
@@ -561,9 +527,20 @@ export default function Step5Review({
               onPrev={() => handleModuleChange(activeModuleIndex - 1)}
               isFirst={activeModuleIndex === 0}
               isLast={activeModuleIndex === editedModules.length - 1}
+              onToggleView={() => handleSwitchView('article')}
             />
           ) : (
-            <CourseArticle title={currentModule?.title || 'Untitled Module'}>
+            <CourseArticle
+              title={currentModule?.title || 'Untitled Module'}
+              lessons={editedModules}
+              activeIndex={activeModuleIndex}
+              onSelectModule={handleModuleChange}
+              onToggleView={() => handleSwitchView('slides')}
+              onNext={() => handleModuleChange(activeModuleIndex + 1)}
+              onPrev={() => handleModuleChange(activeModuleIndex - 1)}
+              isFirst={activeModuleIndex === 0}
+              isLast={activeModuleIndex === editedModules.length - 1}
+            >
               <div
                 className={styles.articleBody}
                 dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }}
@@ -578,17 +555,31 @@ export default function Step5Review({
           <div
             style={{
               padding: '12px 16px',
-              background: '#EFF6FF',
-              borderTop: '1px solid #60A5FA',
-              color: '#1E3A8A',
+              background: '#FEF2F2',
+              borderTop: '1px solid #DC2626',
+              color: '#DC2626',
               fontSize: 13,
             }}
           >
-            ℹ <strong>Less content generated:</strong>{' '}
-            {
-              (generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
-                ?.coverageNote
-            }
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <strong>Less content generated due to the uploaded document content:</strong>{' '}
+              {
+                (generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
+                  ?.coverageNote
+              }
+            </div>
           </div>
         )}
 

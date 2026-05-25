@@ -843,7 +843,6 @@ export default function LearnPage() {
               isFirst={activeIndex === 0}
               isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
               onToggleView={() => setViewMode('article')}
-              courseTitle={course.title}
             />
           ) : (
             <CourseArticle
