@@ -25,7 +25,53 @@ LMS is an AI-powered Learning Management System built with Next.js 16 (App Route
 - **TypeScript**: Strict typing required; avoid `any`.
 - **UI & Styling**: Vanila CSS for responsive design.
 - **State Management**: React Hook Form for data-heavy forms.
-- **Logging**: Use the centralized structured logger in `src/lib/logger.ts`. ALWAYS use `logger.info({ msg, data })`, `logger.error({ msg, err })`, etc., instead of `console.log` or `console.error`. Do not use native console methods anywhere in the codebase.
+- **Logging**: Use the centralized structured logger in `src/lib/logger.ts`.
+
+### ⛔ MANDATORY: No `console.*` in the codebase
+**`console.log`, `console.error`, `console.warn`, `console.info`, and `console.debug` are FORBIDDEN** everywhere except inside `src/lib/logger.ts` itself (which uses them as the underlying transport). Any use of native console methods in any other file is a blocking violation.
+
+### ✅ Use `logger` from `src/lib/logger.ts`
+Import and call the structured logger:
+```ts
+import { logger, maskEmail } from '@/lib/logger';
+
+// Information — normal operation events
+logger.info({ msg: '[module] Action description', entityId: id, userId });
+
+// Warnings — recoverable problems or policy violations
+logger.warn({ msg: '[module] Unauthorized attempt', userId, role });
+
+// Errors — failures with an Error object
+logger.error({ msg: '[module] Operation failed', err, entityId: id });
+
+// Debug — verbose trace data (dev-only)
+logger.debug({ msg: '[module] Intermediate state', data: someValue });
+```
+
+### When to add log entries
+| Event type | Level |
+|---|---|
+| Entity created / updated / deleted | `info` |
+| Course published / attested / retake assigned | `info` |
+| Document uploaded / renamed / deleted | `info` |
+| Quiz submitted (with score + pass/fail) | `info` |
+| Auth: login attempt, success, password reset | `info` |
+| AI pipeline stage entry/exit | `info` |
+| Rate limit exceeded, role mismatch, unauthorized | `warn` |
+| External API error (Vertex AI, storage, email) | `error` |
+| DB transaction failure | `error` |
+| Background job failed / CRITICAL | `error` |
+
+### PII Safety Rules
+- **Never log raw email addresses.** Use `maskEmail(email)` from `@/lib/logger` before passing email to any log field.
+- **Never log raw session objects, full user objects, or request bodies** — always destructure and log only the specific fields needed (e.g., `userId`, `role`, `orgId`).
+- **Never log passwords, tokens, or cryptographic material** in any form.
+
+### Log field conventions
+- Always include `msg` as the first field (short, human-readable description).
+- Use `err` (not `error`) when passing an `Error` object so the logger serialises it correctly.
+- Use `userId`, `orgId`, `courseId`, `enrollmentId`, `documentId` etc. as context fields.
+- Prefix `msg` values with the module in brackets: `[course]`, `[enrollment]`, `[doc]`, `[auth]`, `[org]`, `[v4.6]`, `[proxy]`.
 - **Naming**: Use descriptive names for components and utility functions.
 - **Enforced Hooks**: Pre-commit hooks via Husky/lint-staged (ESLint + Prettier).
 
