@@ -4,12 +4,28 @@
   max-width: 900px !important;
 }
 
+@media (max-width: 768px) {
+  .modalParams {
+    max-width: 95vw !important;
+  }
+}
+
 .container {
   display: flex;
-  flex-direction: row;
-  min-height: 500px;
+  flex-direction: column;
   height: auto;
+  max-height: 85vh;
+  overflow-y: auto;
   width: 100%;
+}
+
+@media (min-width: 768px) {
+  .container {
+    flex-direction: row;
+    min-height: 500px;
+    max-height: none;
+    overflow-y: visible;
+  }
 }
 
 .closeButton {
@@ -38,7 +54,7 @@
   flex: 1;
   background: #e6fffa;
   /* Light teal/green background */
-  padding: 40px;
+  padding: 32px 24px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -46,13 +62,20 @@
   text-align: center;
   position: relative;
   overflow: hidden;
+  min-height: auto;
+}
+
+@media (min-width: 768px) {
+  .leftPanel {
+    padding: 40px;
+  }
 }
 
 /* Green decoration blob */
 .blob {
   position: absolute;
-  width: 300px;
-  height: 300px;
+  width: 200px;
+  height: 200px;
   background: #38b2ac;
   opacity: 0.1;
   border-radius: 50%;
@@ -61,33 +84,61 @@
   z-index: 0;
 }
 
+@media (min-width: 768px) {
+  .blob {
+    width: 300px;
+    height: 300px;
+  }
+}
+
 .illustration {
   position: relative;
   z-index: 1;
-  width: 280px;
+  width: 180px;
   height: auto;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
   object-fit: contain;
 }
 
+@media (min-width: 768px) {
+  .illustration {
+    width: 280px;
+    margin-bottom: 30px;
+  }
+}
+
 .welcomeTitle {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 800;
   color: #065f46;
   /* Dark Green */
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   font-family: var(--font-heading, sans-serif);
   line-height: 1.2;
   z-index: 1;
 }
 
+@media (min-width: 768px) {
+  .welcomeTitle {
+    font-size: 28px;
+    margin-bottom: 16px;
+  }
+}
+
 .welcomeText {
-  font-size: 16px;
+  font-size: 14px;
   color: #2c7a7b;
-  margin-bottom: 32px;
+  margin-bottom: 20px;
   max-width: 320px;
   line-height: 1.5;
   z-index: 1;
+}
+
+@media (min-width: 768px) {
+  .welcomeText {
+    font-size: 16px;
+    margin-bottom: 32px;
+  }
 }
 
 .startButton {
@@ -113,25 +164,44 @@
 
 .rightPanel {
   flex: 1;
-  padding: 48px 40px;
+  padding: 32px 24px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   position: relative;
 }
 
+@media (min-width: 768px) {
+  .rightPanel {
+    padding: 48px 40px;
+  }
+}
+
 .stepsTitle {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   color: #1a202c;
-  margin-bottom: 40px;
+  margin-bottom: 24px;
   font-family: var(--font-heading, sans-serif);
+}
+
+@media (min-width: 768px) {
+  .stepsTitle {
+    font-size: 24px;
+    margin-bottom: 40px;
+  }
 }
 
 .stepsList {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 20px;
+}
+
+@media (min-width: 768px) {
+  .stepsList {
+    gap: 32px;
+  }
 }
 
 .stepItem {
@@ -152,105 +222,26 @@
 }
 
 .stepHeading {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #1a202c;
   margin-bottom: 6px;
 }
 
+@media (min-width: 768px) {
+  .stepHeading {
+    font-size: 16px;
+  }
+}
+
 .stepDesc {
-  font-size: 14px;
+  font-size: 13px;
   color: #718096;
   line-height: 1.5;
 }
 
-@media (max-width: 768px) {
-  .modalParams {
-    max-width: 95vw !important;
-  }
-
-  .container {
-    flex-direction: column;
-    height: auto;
-    max-height: 85vh;
-    overflow-y: auto;
-  }
-
-  .leftPanel {
-    padding: 32px 24px;
-    min-height: auto;
-  }
-
-  .rightPanel {
-    padding: 32px 24px;
-  }
-
-  .illustration {
-    width: 180px;
-    margin-bottom: 20px;
-  }
-
-  .welcomeTitle {
-    font-size: 22px;
-    margin-bottom: 12px;
-  }
-
-  .welcomeText {
-    font-size: 14px;
-    margin-bottom: 20px;
-  }
-
-  .stepsTitle {
-    font-size: 20px;
-    margin-bottom: 24px;
-  }
-
-  .stepsList {
-    gap: 20px;
-  }
-
-  .stepHeading {
-    font-size: 15px;
-  }
-
+@media (min-width: 768px) {
   .stepDesc {
-    font-size: 13px;
-  }
-
-  .blob {
-    width: 200px;
-    height: 200px;
-  }
-}
-
-@media (max-width: 480px) {
-  .container {
-    max-height: 90vh;
-  }
-
-  .leftPanel {
-    padding: 24px 16px;
-  }
-
-  .rightPanel {
-    padding: 24px 16px;
-  }
-
-  .illustration {
-    width: 140px;
-    margin-bottom: 16px;
-  }
-
-  .welcomeTitle {
-    font-size: 20px;
-  }
-
-  .stepsTitle {
-    font-size: 18px;
-    margin-bottom: 20px;
-  }
-
-  .stepsList {
-    gap: 16px;
+    font-size: 14px;
   }
 }

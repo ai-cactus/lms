@@ -3,7 +3,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { getAuditorOverviewStats, getAuditorCourses } from '@/app/actions/auditor';
 import AuditorPackClient from '@/components/dashboard/auditor/AuditorPackClient';
-import AuditorBillingGate from '@/components/dashboard/auditor/AuditorBillingGate';
+import AuditorBillingGateWrapper from './AuditorBillingGateWrapper';
 import styles from '@/components/dashboard/auditor/auditor-pack.module.css';
 import { logger } from '@/lib/logger';
 
@@ -94,7 +94,7 @@ export default async function AuditorPackPage() {
           <AuditorPackClient initialStats={initialStats} initialCourses={initialCourses} />
         </>
       ) : (
-        <AuditorBillingGate />
+        <AuditorBillingGateWrapper />
       )}
     </div>
   );

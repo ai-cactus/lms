@@ -78,6 +78,18 @@ export default function OrganizationActivationModal({
 
   const isOpen = isWelcomeMode ? isModalOpen(modalId) : controlledIsOpen;
 
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isWelcomeMode && !hasOrganization && isOpen) {
+      timer = setTimeout(() => {
+        router.push('/onboarding');
+      }, 8000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOpen, isWelcomeMode, hasOrganization, router]);
+
   if (!isOpen) return null;
 
   const defaultTitle = isWelcomeMode

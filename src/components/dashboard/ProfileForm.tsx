@@ -232,8 +232,8 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                       borderRadius: '50%',
                     }}
                   />
-                ) : formData.first_name ? (
-                  formData.first_name[0].toUpperCase()
+                ) : formData.first_name || formData.last_name ? (
+                  `${formData.first_name?.[0] || ''}${formData.last_name?.[0] || ''}`.toUpperCase()
                 ) : (
                   'U'
                 )}
