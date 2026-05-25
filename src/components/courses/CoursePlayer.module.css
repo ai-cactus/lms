@@ -357,7 +357,7 @@
 }
 
 .slideThumbBar {
-  height: 4px;
+  height: 10px;
   width: 100%;
   background: var(--border);
   flex-shrink: 0;
