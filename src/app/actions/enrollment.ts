@@ -362,6 +362,16 @@ export async function submitQuizAttempt(
     },
   });
 
+  logger.info({
+    msg: '[enrollment] Quiz attempt submitted',
+    enrollmentId,
+    quizId,
+    score,
+    passed,
+    correctCount,
+    totalQuestions,
+  });
+
   revalidatePath(`/dashboard/training`);
 
   return {
@@ -405,6 +415,13 @@ export async function requestCourseRetry(enrollmentId: string) {
       status: 'enrolled',
       score: null,
     },
+  });
+
+  logger.info({
+    msg: '[enrollment] Course retry requested',
+    enrollmentId,
+    courseId: enrollment.courseId,
+    userId: enrollment.userId,
   });
 
   if (enrollment.user.organizationId) {
@@ -454,6 +471,12 @@ export async function removeWorkerAssignment(enrollmentId: string) {
     where: { id: enrollmentId },
   });
 
+  logger.info({
+    msg: '[enrollment] Worker assignment removed',
+    enrollmentId,
+    courseId: enrollment.courseId,
+    removedBy: session.user.id,
+  });
   revalidatePath(`/dashboard/training/courses/${enrollment.courseId}`);
 
   return { success: true };

@@ -31,8 +31,6 @@ interface OrganizationUpdateData {
 export async function updateOrganization(data: OrganizationUpdateData) {
   try {
     const session = await auth();
-    logger.info({ msg: '[updateOrganization] Session:', data: session?.user });
-
     if (!session?.user?.id) {
       return { success: false, error: 'Not authenticated' };
     }
@@ -42,15 +40,19 @@ export async function updateOrganization(data: OrganizationUpdateData) {
       where: { id: session.user.id },
       select: { organizationId: true, role: true },
     });
-    logger.info({ msg: '[updateOrganization] Fetched User:', data: user });
 
     if (!user?.organizationId) {
-      logger.error({ msg: '[updateOrganization] No org ID found for user', err: session.user.id });
+      logger.error({ msg: '[org] updateOrganization: no org for user', userId: session.user.id });
       return { success: false, error: 'No organization found' };
     }
 
     // Only admins can update organization
     if (user.role !== 'admin') {
+      logger.warn({
+        msg: '[org] updateOrganization: non-admin attempt',
+        userId: session.user.id,
+        role: user.role,
+      });
       return { success: false, error: 'Only admins can update organization' };
     }
 
@@ -80,6 +82,11 @@ export async function updateOrganization(data: OrganizationUpdateData) {
       },
     });
 
+    logger.info({
+      msg: '[org] Organization updated',
+      orgId: user.organizationId,
+      userId: session.user.id,
+    });
     return { success: true };
   } catch (error) {
     logger.error({ msg: 'Error updating organization:', err: error });
@@ -126,20 +133,18 @@ interface OrganizationCreationData {
 
 // Create a new organization (used during onboarding Step 1)
 export async function createOrganization(data: OrganizationCreationData) {
-  logger.info({ msg: '[createOrganization] Start', data: data });
+  logger.info({ msg: '[org] createOrganization start' });
   try {
     const session = await auth();
-    logger.info({ msg: '[createOrganization] Session User:', data: session?.user });
-
     if (!session?.user?.id) {
-      logger.error({ msg: '[createOrganization] No authenticated user' });
+      logger.error({ msg: '[org] createOrganization: no authenticated user' });
       return { success: false, error: 'Not authenticated' };
     }
     const userId = session.user.id;
 
     // Basic validation
     if (!data.legalName || !data.primaryContactEmail) {
-      logger.error({ msg: '[createOrganization] Missing fields' });
+      logger.warn({ msg: '[org] createOrganization: missing required fields', userId });
       return { success: false, error: 'Missing required fields' };
     }
 
@@ -154,10 +159,7 @@ export async function createOrganization(data: OrganizationCreationData) {
     });
 
     if (existingOrg) {
-      logger.info({
-        msg: '[createOrganization] Duplicate organization found:',
-        data: data.legalName,
-      });
+      logger.info({ msg: '[org] createOrganization: duplicate name rejected', userId });
       return {
         success: false,
         error: 'Organization with this name already exists. Please contact your admin for access.',
@@ -181,20 +183,17 @@ export async function createOrganization(data: OrganizationCreationData) {
         isHipaaCompliant: false,
       },
     });
-    logger.info({ msg: '[createOrganization] Organization created:', data: org.id });
+    logger.info({ msg: '[org] Organization created', orgId: org.id, userId });
 
     // Link user to this new org as Admin
-    const updatedUser = await prisma.user.update({
+    await prisma.user.update({
       where: { id: userId },
       data: {
         organizationId: org.id,
         role: 'admin',
       },
     });
-    logger.info({
-      msg: '[createOrganization] User updated with Org ID:',
-      data: { userId: updatedUser.id, orgId: updatedUser.organizationId },
-    });
+    logger.info({ msg: '[org] User linked to new org as admin', userId, orgId: org.id });
 
     return { success: true, organizationId: org.id };
   } catch (error) {
@@ -254,6 +253,12 @@ export async function uploadComplianceDocument(formData: FormData) {
     const key = `organizations/${user.organizationId}/compliance/${timestamp}-${safeName}`;
     const { storageUri } = await uploadFile(key, buffer, file.type || 'application/pdf');
 
+    logger.info({
+      msg: '[org] Compliance document uploaded',
+      orgId: user.organizationId,
+      userId: session.user.id,
+      filename: file.name,
+    });
     return { success: true, url: storageUri, filename: file.name };
   } catch (error) {
     logger.error({ msg: 'Failed to upload compliance document:', err: error });

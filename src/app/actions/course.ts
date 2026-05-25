@@ -117,6 +117,7 @@ export async function createCourse(data: { title: string; description?: string }
     },
   });
 
+  logger.info({ msg: '[course] Course created', courseId: course.id, userId: session.user.id });
   revalidatePath('/dashboard/training');
   return course;
 }
@@ -139,6 +140,11 @@ export async function updateCourse(
   // Verify ownership
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
   if (!existing || existing.createdBy !== session.user.id) {
+    logger.warn({
+      msg: '[course] updateCourse: not found or unauthorized',
+      courseId,
+      userId: session.user.id,
+    });
     throw new Error('Course not found');
   }
 
@@ -147,6 +153,12 @@ export async function updateCourse(
     data,
   });
 
+  logger.info({
+    msg: '[course] Course updated',
+    courseId,
+    userId: session.user.id,
+    fields: Object.keys(data),
+  });
   revalidatePath('/dashboard/training');
   revalidatePath(`/dashboard/training/${courseId}`);
   return course;
@@ -161,6 +173,11 @@ export async function publishCourse(courseId: string) {
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
   if (!existing || existing.createdBy !== session.user.id) {
+    logger.warn({
+      msg: '[course] publishCourse: not found or unauthorized',
+      courseId,
+      userId: session.user.id,
+    });
     throw new Error('Course not found');
   }
 
@@ -169,6 +186,7 @@ export async function publishCourse(courseId: string) {
     data: { status: 'published' },
   });
 
+  logger.info({ msg: '[course] Course published', courseId, userId: session.user.id });
   revalidatePath('/dashboard/training');
   return course;
 }
@@ -182,11 +200,17 @@ export async function deleteCourse(courseId: string) {
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
   if (!existing || existing.createdBy !== session.user.id) {
+    logger.warn({
+      msg: '[course] deleteCourse: not found or unauthorized',
+      courseId,
+      userId: session.user.id,
+    });
     throw new Error('Course not found');
   }
 
   await prisma.course.delete({ where: { id: courseId } });
 
+  logger.info({ msg: '[course] Course deleted', courseId, userId: session.user.id });
   revalidatePath('/dashboard/training');
   return { success: true };
 }
@@ -429,6 +453,11 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   });
 
   if (!course || course.createdBy !== session.user.id) {
+    logger.warn({
+      msg: '[course] assignCourseToUsers: not found or unauthorized',
+      courseId,
+      userId: session.user.id,
+    });
     throw new Error('Course not found or unauthorized');
   }
 
@@ -452,6 +481,11 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   });
 
   if (usersToAssign.length === 0) {
+    logger.warn({
+      msg: '[course] assignCourseToUsers: no valid users found',
+      courseId,
+      emailCount: emails.length,
+    });
     return { success: false, message: 'No valid users found to assign.' };
   }
 
@@ -469,6 +503,12 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
     skipDuplicates: true,
   });
 
+  logger.info({
+    msg: '[course] Users assigned to course',
+    courseId,
+    userId: session.user.id,
+    enrolled: results.count,
+  });
   revalidatePath('/dashboard/training');
   return { success: true, count: results.count };
 }
@@ -751,6 +791,16 @@ export async function createFullCourse(data: {
     }
   }
 
+  logger.info({
+    msg: '[course] Full course created',
+    courseId: course.id,
+    userId: session.user.id,
+    promptVersion,
+    enrolled: inviteResults.existingEnrolled,
+    invited: inviteResults.newInvited,
+    failed: inviteResults.failed.length,
+    skipped: inviteResults.skipped.length,
+  });
   revalidatePath('/dashboard/training');
   return {
     success: true,
@@ -803,6 +853,13 @@ export async function attestCourse(enrollmentId: string, signature: string, role
       attestationSignature: signature,
       attestationRole: role, // Now acts as job description
     },
+  });
+
+  logger.info({
+    msg: '[course] Course attested',
+    enrollmentId,
+    courseId: enrollment.courseId,
+    userId: enrollment.userId,
   });
 
   // Notify Admins of course completion
@@ -859,6 +916,11 @@ export async function startCourse(courseId: string) {
       },
     });
 
+    logger.info({
+      msg: '[course] Course started (status → in_progress)',
+      courseId,
+      enrollmentId: enrollment.id,
+    });
     revalidatePath('/dashboard/worker');
     revalidatePath(`/worker/courses/${courseId}`);
   }
@@ -914,6 +976,12 @@ export async function updateQuizQuestions(
     }
   });
 
+  logger.info({
+    msg: '[course] Quiz questions updated',
+    courseId,
+    userId: session.user.id,
+    questionCount: questions.length,
+  });
   revalidatePath(`/learn/${courseId}`);
   return { success: true };
 }
@@ -942,6 +1010,12 @@ export async function updateLessonContent(lessonId: string, content: string, tit
     },
   });
 
+  logger.info({
+    msg: '[course] Lesson content updated',
+    lessonId,
+    courseId: lesson.courseId,
+    userId: session.user.id,
+  });
   revalidatePath(`/learn/${lesson.courseId}`);
   return { success: true };
 }
@@ -1001,6 +1075,11 @@ export async function retakeQuiz(enrollmentId: string) {
     },
   });
 
+  logger.info({
+    msg: '[course] Quiz retake initiated',
+    enrollmentId,
+    courseId: enrollment.courseId,
+  });
   revalidatePath(`/learn/${enrollment.courseId}`);
   return { success: true };
 }
@@ -1083,6 +1162,14 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     },
   });
 
+  logger.info({
+    msg: '[course] Retake assigned by admin',
+    retakeEnrollmentId: retakeEnrollment.id,
+    parentEnrollmentId: enrollmentId,
+    courseId: lockedEnrollment.courseId,
+    assignedBy: session.user.id,
+    targetUserId: lockedEnrollment.userId,
+  });
   revalidatePath('/dashboard/staff');
   revalidatePath('/worker/trainings');
   revalidatePath(`/learn/${lockedEnrollment.courseId}`);
