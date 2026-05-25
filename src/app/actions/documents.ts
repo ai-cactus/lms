@@ -122,6 +122,13 @@ export async function uploadDocument(
       });
     });
 
+    logger.info({
+      msg: '[doc] Document uploaded successfully',
+      userId,
+      filename: file.name,
+      size: file.size,
+      hasPHI: phiResult.hasPHI,
+    });
     revalidatePath('/dashboard/documents');
     return { success: true, phiDetected: phiResult.hasPHI };
   } catch (err: unknown) {
@@ -205,6 +212,12 @@ export async function deleteDocument(
   // Remove DB record (cascade deletes versions + PHI reports)
   await prisma.document.delete({ where: { id: documentId } });
 
+  logger.info({
+    msg: '[doc] Document deleted',
+    documentId,
+    userId: session.user.id,
+    versionCount: doc.versions.length,
+  });
   revalidatePath('/dashboard/documents');
   return { success: true };
 }
@@ -245,6 +258,12 @@ export async function renameDocument(
     data: { filename: trimmed, updatedAt: new Date() },
   });
 
+  logger.info({
+    msg: '[doc] Document renamed',
+    documentId,
+    userId: session.user.id,
+    newFilename: trimmed,
+  });
   revalidatePath('/dashboard/documents');
   return { success: true };
 }
