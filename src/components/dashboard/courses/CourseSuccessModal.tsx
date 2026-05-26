@@ -41,7 +41,7 @@ export default function CourseSuccessModal({
         {/* 3D Illustration */}
         <div className={styles.illustrationContainer}>
           <Image
-            src="/images/course_success.png"
+            src="/images/course-success.png"
             alt="Success Checkmark"
             width={200}
             height={200}
@@ -79,8 +79,8 @@ export default function CourseSuccessModal({
         )}
 
         <p className={styles.description}>
-          Your training material is ready. You can assign it to your team now, or manage it later
-          from the training dashboard.
+          You have successfully created a new course. You can assign it to your team now, or manage
+          it later from the training dashboard.
         </p>
 
         <div className={styles.actions}>
