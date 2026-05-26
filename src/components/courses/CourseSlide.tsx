@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import styles from './CoursePlayer.module.css';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { splitSlideContent, SlidePage } from '@/lib/slide-splitter';
+import { Button } from '@/components/ui';
 
 interface CourseSlideProps {
   lesson: {
@@ -16,6 +17,8 @@ interface CourseSlideProps {
   onPrev: () => void;
   isFirst: boolean;
   isLast: boolean;
+  onToggleView?: () => void;
+
   className?: string;
 }
 
@@ -25,11 +28,12 @@ export default function CourseSlide({
   onPrev,
   isFirst,
   isLast,
+  onToggleView,
+
   className = '',
 }: CourseSlideProps) {
   const slideRef = useRef<HTMLDivElement>(null);
 
-  // Split the lesson content into bite-sized pages once per lesson change
   const pages = useMemo<SlidePage[]>(() => {
     const cleaned = (lesson.content || '')
       .replace(/&nbsp;/g, ' ')
@@ -40,7 +44,6 @@ export default function CourseSlide({
 
   const [pageIndex, setPageIndex] = useState(0);
 
-  // Reset pageIndex during render when the lesson changes
   const [prevLessonContent, setPrevLessonContent] = useState(lesson.content);
   if (lesson.content !== prevLessonContent) {
     setPrevLessonContent(lesson.content);
@@ -55,7 +58,7 @@ export default function CourseSlide({
     if (!isLastPage) {
       setPageIndex((p) => p + 1);
     } else {
-      onNext(); // advance to next module
+      onNext();
     }
   }, [isLastPage, onNext]);
 
@@ -63,11 +66,10 @@ export default function CourseSlide({
     if (!isFirstPage) {
       setPageIndex((p) => p - 1);
     } else {
-      onPrev(); // go back to previous module
+      onPrev();
     }
   }, [isFirstPage, onPrev]);
 
-  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') goNext();
@@ -79,116 +81,101 @@ export default function CourseSlide({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goNext, goPrev, isFirstPage, isFirst]);
 
-  // Focus management for accessibility
   useEffect(() => {
     if (slideRef.current) slideRef.current.focus();
   }, [lesson.moduleIndex, pageIndex]);
 
   const currentPage = pages[pageIndex] ?? { heading: '', html: '' };
 
-  // Whether the prev/next nav buttons should be visibly disabled
-  const prevDisabled = isFirstPage && isFirst;
-  const nextDisabled = isLastPage && isLast;
+  const cleanTitle = lesson.title?.replace(/^Module\s+\d+[:.]?\s*/i, '');
 
   return (
     <div
-      className={`${styles.slideStage} ${styles.fadeEnter} ${className}`}
+      className={`${styles.slideContainer} ${className}`}
       ref={slideRef}
       tabIndex={-1}
       style={{ outline: 'none' }}
     >
-      {/* ── Left nav ─────────────────────────────── */}
-      <button
-        className={`${styles.navBtn} ${styles.navPrev}`}
-        onClick={goPrev}
-        disabled={prevDisabled}
-        aria-label="Previous"
-      >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-      </button>
-
-      {/* ── Slide card ───────────────────────────── */}
-      <div className={styles.slideCard}>
-        <div className={styles.slideAccent} />
-        <div className={styles.slideInner}>
-          {/* Module & page meta */}
-          <div className={styles.slideMeta}>
-            <span className={styles.slideModuleLabel}>Module {lesson.moduleIndex + 1}</span>
-            <span className={styles.slideCounter}>
-              {lesson.moduleIndex + 1} / {lesson.totalModules}
-            </span>
-          </div>
-
-          {/* Module title (always shown) */}
-          <h2 className={styles.slideTitle}>
-            {lesson.title?.replace(/^Module\s+\d+[:.]?\s*/i, '')}
-          </h2>
-
-          {/* Section heading from the split content, when present */}
-          {currentPage.heading && (
-            <h3 className={styles.slideSectionHeading}>{currentPage.heading}</h3>
-          )}
-
-          <div className={styles.slideDivider} />
-
-          {/* Page body */}
-          <div
-            className={styles.slideBody}
-            dangerouslySetInnerHTML={{
-              __html: sanitizeHtml(currentPage.html),
-            }}
-          />
+      {/* Topbar */}
+      <div className={styles.slideTopbar}>
+        <div className={styles.slideTopbarLeft}>
+          <span className={styles.slideTopbarTitle}>
+            Module {lesson.moduleIndex + 1}: {cleanTitle}
+          </span>
+          <span className={styles.slideStepIndicator}>
+            Slide {pageIndex + 1} of {totalPages}
+          </span>
         </div>
-
-        {/* ── Pagination dots ───────────────────── */}
-        {totalPages > 1 && (
-          <div
-            className={styles.slidePagination}
-            aria-label={`Page ${pageIndex + 1} of ${totalPages}`}
-          >
-            {pages.map((_, i) => (
-              <button
-                key={i}
-                className={`${styles.slideDot} ${i === pageIndex ? styles.slideDotActive : ''}`}
-                onClick={() => setPageIndex(i)}
-                aria-label={`Go to page ${i + 1}`}
-              />
-            ))}
-          </div>
-        )}
+        <div className={styles.slideTopbarRight}>
+          {onToggleView && (
+            <Button variant="ghost" size="sm" onClick={onToggleView}>
+              View as Notes
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* ── Right nav ────────────────────────────── */}
-      <button
-        className={`${styles.navBtn} ${styles.navNext}`}
-        onClick={goNext}
-        disabled={nextDisabled}
-        aria-label="Next"
-      >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </button>
+      {/* Body: thumbnails + main slide card */}
+      <div className={styles.slideBody}>
+        {/* Left thumbnail sidebar */}
+        <div className={styles.slideThumbnails}>
+          {pages.map((page, i) => (
+            <button
+              key={i}
+              className={`${styles.slideThumb} ${i === pageIndex ? styles.slideThumbActive : ''}`}
+              onClick={() => setPageIndex(i)}
+              aria-label={`Go to slide ${i + 1}`}
+            >
+              <div className={styles.slideThumbBar} />
+              <span className={styles.slideThumbLabel}>{page.heading || `Slide ${i + 1}`}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Main area */}
+        <div className={styles.slideMainArea}>
+          {/* Slide card */}
+          <div className={styles.slideCard}>
+            <div className={styles.slideCardAccent} />
+            <div className={styles.slideInner}>
+              <div className={styles.slideMeta}>
+                <span className={styles.slideModuleLabel}>Module {lesson.moduleIndex + 1}</span>
+                <span className={styles.slideCounter}>
+                  {lesson.moduleIndex + 1} / {lesson.totalModules}
+                </span>
+              </div>
+
+              <h2 className={styles.slideTitle}>{cleanTitle}</h2>
+
+              {currentPage.heading && (
+                <h3 className={styles.slideSectionHeading}>{currentPage.heading}</h3>
+              )}
+
+              <div className={styles.slideDivider} />
+
+              <div
+                className={styles.slideContent}
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeHtml(currentPage.html),
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Bottom navigation */}
+          <div className={styles.slideBottomNav}>
+            <Button variant="outline" size="sm" onClick={goPrev} disabled={isFirstPage && isFirst}>
+              Back
+            </Button>
+            <span className={styles.slidePageCount}>
+              {pageIndex + 1} / {totalPages}
+            </span>
+            <Button variant="primary" size="sm" onClick={goNext} disabled={isLastPage && isLast}>
+              Next
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

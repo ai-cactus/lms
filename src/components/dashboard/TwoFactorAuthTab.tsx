@@ -13,8 +13,6 @@ interface TwoFactorAuthTabProps {
 export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isSetupMode, setIsSetupMode] = useState(false);
-  const [setupUri, setSetupUri] = useState('');
-  const [setupSecret, setSetupSecret] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
@@ -45,9 +43,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
     setMessage(null);
     try {
       const res = await requestMfaSetup();
-      if (res.success && res.data) {
-        setSetupUri(res.data.uri as string);
-        setSetupSecret(res.data.secret as string);
+      if (res.success) {
         setIsSetupMode(true);
       } else {
         setMessage({
@@ -90,7 +86,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
 
   const handleDisable = async () => {
     const code = prompt(
-      'Please enter your 6-digit authenticator code or a recovery code to disable 2FA:',
+      'Please enter your 6-digit email code or a recovery code to disable 2FA. (If you need a new code, you can log out and log back in):',
     );
     if (!code) return;
 
@@ -172,87 +168,19 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
 
   // --- SETUP WIZARD VIEW ---
   if (isSetupMode) {
-    // We use a public QR code generation API to avoid dependency issues with react-qr-code
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(setupUri)}`;
-
     return (
       <div style={{ padding: '0 40px 40px', maxWidth: '600px', width: '100%' }}>
         <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '24px' }}>
-          Instructions for setup
+          Check your email
         </h3>
         {message && (
           <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>
         )}
 
         <div style={{ marginBottom: '32px' }}>
-          <h4 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px' }}>
-            1. Download an authentication app
-          </h4>
-          <p style={{ color: '#64748b', fontSize: '14px', lineHeight: 1.5 }}>
-            We recommend downloading Google Authenticator if you don&apos;t have one installed.
-          </p>
-        </div>
-
-        <div style={{ marginBottom: '32px' }}>
-          <h4 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px' }}>
-            2. Scan this barcode/QR code or copy the key
-          </h4>
           <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '16px', lineHeight: 1.5 }}>
-            Scan this barcode/QR code in the authentication app or copy the key and paste it in the
-            authentication app.
-          </p>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '24px', flexWrap: 'wrap' }}>
-            <div
-              style={{
-                width: '160px',
-                height: '160px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '8px',
-                background: 'white',
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrCodeUrl} alt="QR Code" style={{ width: '100%', height: '100%' }} />
-            </div>
-            <div>
-              <div
-                style={{
-                  fontSize: '18px',
-                  fontWeight: 700,
-                  letterSpacing: '2px',
-                  color: '#1e293b',
-                  marginBottom: '8px',
-                  fontFamily: 'monospace',
-                }}
-              >
-                {setupSecret.match(/.{1,4}/g)?.join(' ')}
-              </div>
-              <button
-                onClick={() => navigator.clipboard.writeText(setupSecret)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#4f46e5',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                Copy key
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '32px' }}>
-          <h4 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px' }}>
-            3. Copy and enter 6-digit code
-          </h4>
-          <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '16px', lineHeight: 1.5 }}>
-            After the barcode/QR code is scanned or the key is entered, your authentication app will
-            generate a 6-digit code. Copy the code and then come back to Theraptly to enter it.
+            We&apos;ve sent a 6-digit verification code to your email address. Please enter the code
+            below to enable Two-Factor Authentication.
           </p>
           <Input
             value={verificationCode}
@@ -274,8 +202,6 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
             variant="outline"
             onClick={() => {
               setIsSetupMode(false);
-              setSetupUri('');
-              setSetupSecret('');
               setVerificationCode('');
             }}
             disabled={isActionLoading}

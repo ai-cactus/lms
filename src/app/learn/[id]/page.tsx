@@ -499,85 +499,94 @@ export default function LearnPage() {
       ? course?.lessons.length || 9999
       : highestUnlockedIndex;
 
+  // Whether to show the shared rail + topbar (quiz views only)
+  const showSharedLayout = isQuizIndex || (quizStep === 'review' && quizResults);
+
   return (
     <div className={styles.playerContainer}>
-      <CourseRail
-        lessons={course.lessons}
-        activeIndex={activeIndex}
-        onSelect={handleRailSelect}
-        unlockedIndex={railUnlockedIndex}
-        quiz={course.quiz}
-        onExitClick={() => {
-          if (!isQuizLocked) {
-            router.push(userData?.role === 'admin' ? '/dashboard/courses' : '/worker');
-          }
-        }}
-        disableNav={isQuizLocked}
-        isOpen={railOpen}
-        onClose={() => setRailOpen(false)}
-      />
+      {showSharedLayout && (
+        <CourseRail
+          lessons={course.lessons}
+          activeIndex={activeIndex}
+          onSelect={handleRailSelect}
+          unlockedIndex={railUnlockedIndex}
+          quiz={course.quiz}
+          onExitClick={() => {
+            if (!isQuizLocked) {
+              router.push(userData?.role === 'admin' ? '/dashboard/courses' : '/worker');
+            }
+          }}
+          disableNav={isQuizLocked}
+          isOpen={railOpen}
+          onClose={() => setRailOpen(false)}
+        />
+      )}
 
       {/* Mobile Rail Toggle Button */}
-      <button
-        className={styles.railToggle}
-        onClick={() => setRailOpen(true)}
-        aria-label="Open module list"
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      {showSharedLayout && (
+        <button
+          className={styles.railToggle}
+          onClick={() => setRailOpen(true)}
+          aria-label="Open module list"
         >
-          <line x1="8" y1="6" x2="21" y2="6" />
-          <line x1="8" y1="12" x2="21" y2="12" />
-          <line x1="8" y1="18" x2="21" y2="18" />
-          <line x1="3" y1="6" x2="3.01" y2="6" />
-          <line x1="3" y1="12" x2="3.01" y2="12" />
-          <line x1="3" y1="18" x2="3.01" y2="18" />
-        </svg>
-      </button>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="8" y1="6" x2="21" y2="6" />
+            <line x1="8" y1="12" x2="21" y2="12" />
+            <line x1="8" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="6" x2="3.01" y2="6" />
+            <line x1="3" y1="12" x2="3.01" y2="12" />
+            <line x1="3" y1="18" x2="3.01" y2="18" />
+          </svg>
+        </button>
+      )}
 
-      <div className={styles.main}>
-        <header className={styles.topbar}>
-          <div className={styles.topbarLeft}>
-            <span className={styles.breadcrumb}>Course</span>
-            <span className={styles.breadcrumbSep}>›</span>
-            <span className={styles.breadcrumbActive}>
-              {isQuizIndex ? course.quiz?.title || 'Quiz' : currentLesson?.title}
-            </span>
-            {!isQuizIndex && (
-              <span className={styles.durationPill}>
-                {course.duration || currentLesson?.duration || 5} min
+      <div className={styles.main} style={showSharedLayout ? {} : { width: '100%' }}>
+        {showSharedLayout && (
+          <header className={styles.topbar}>
+            <div className={styles.topbarLeft}>
+              <span className={styles.breadcrumb}>Course</span>
+              <span className={styles.breadcrumbSep}>›</span>
+              <span className={styles.breadcrumbActive}>
+                {isQuizIndex ? course.quiz?.title || 'Quiz' : currentLesson?.title}
               </span>
-            )}
-          </div>
+              {!isQuizIndex && (
+                <span className={styles.durationPill}>
+                  {course.duration || currentLesson?.duration || 5} min
+                </span>
+              )}
+            </div>
 
-          <div className={styles.topbarRight}>
-            {!isQuizIndex && (
-              <div className={styles.toggle}>
-                <Button
-                  variant="ghost"
-                  className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
-                  onClick={() => setViewMode('article')}
-                >
-                  ARTICLE
-                </Button>
-                <Button
-                  variant="ghost"
-                  className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
-                  onClick={() => setViewMode('slides')}
-                >
-                  SLIDE
-                </Button>
-              </div>
-            )}
-          </div>
-        </header>
+            <div className={styles.topbarRight}>
+              {!isQuizIndex && (
+                <div className={styles.toggle}>
+                  <Button
+                    variant="ghost"
+                    className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
+                    onClick={() => setViewMode('article')}
+                  >
+                    ARTICLE
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
+                    onClick={() => setViewMode('slides')}
+                  >
+                    SLIDE
+                  </Button>
+                </div>
+              )}
+            </div>
+          </header>
+        )}
 
         <div className={styles.contentArea}>
           {quizStep === 'review' && quizResults ? (
@@ -833,10 +842,22 @@ export default function LearnPage() {
               onPrev={handlePrev}
               isFirst={activeIndex === 0}
               isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
+              onToggleView={() => setViewMode('article')}
             />
           ) : (
             <CourseArticle
               title={course.title}
+              lessons={course.lessons}
+              activeIndex={activeIndex}
+              onSelectModule={(index) => {
+                if (index === course.lessons.length) {
+                  handleRailSelect(index);
+                } else if (index <= highestUnlockedIndex || userData?.role === 'admin') {
+                  setIsQuizActive(false);
+                  setActiveIndex(index);
+                }
+              }}
+              onToggleView={() => setViewMode('slides')}
               onProceedToQuiz={() => {
                 const endIdx = course.lessons.length - 1;
                 setHighestUnlockedIndex(endIdx);
@@ -847,6 +868,10 @@ export default function LearnPage() {
                 setActiveIndex(course.lessons.length);
               }}
               hasQuiz={!!course.quiz}
+              onNext={handleNext}
+              onPrev={handlePrev}
+              isFirst={activeIndex === 0}
+              isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
             >
               {course.lessons.map((lesson, idx) => (
                 <div

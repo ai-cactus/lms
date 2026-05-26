@@ -8,11 +8,11 @@ import {
 import styles from '@/components/courses/CoursePlayer.module.css';
 
 // Reusable Components
-import CourseRail from '@/components/courses/CourseRail';
 import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui';
 import { sanitizeHtml } from '@/lib/sanitize';
+import wizardStyles from '../CourseWizard.module.css';
 
 import {
   CourseWizardData,
@@ -512,41 +512,8 @@ export default function Step5Review({
 
   return (
     <div className={styles.playerContainer}>
-      {/* Reusable Rail */}
-      <CourseRail
-        lessons={editedModules}
-        activeIndex={activeModuleIndex}
-        onSelect={handleModuleChange}
-      />
-
       {/* Main Area */}
-      <div className={styles.main}>
-        {/* Topbar */}
-        <header className={styles.topbar}>
-          <div className={styles.topbarLeft}>
-            <span className={styles.breadcrumb}>Course</span>
-            <span className={styles.breadcrumbSep}>›</span>
-            <span className={styles.breadcrumbActive}>
-              {currentModule?.title || 'Untitled Module'}
-            </span>
-            <span className={styles.durationPill}>{currentModule?.duration || '10 min'}</span>
-          </div>
-          <div className={styles.toggle}>
-            <button
-              className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
-              onClick={() => handleSwitchView('article')}
-            >
-              ARTICLE
-            </button>
-            <button
-              className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
-              onClick={() => handleSwitchView('slides')}
-            >
-              SLIDE
-            </button>
-          </div>
-        </header>
-
+      <div className={styles.main} style={{ width: '100%' }}>
         {/* Content Stage */}
         <div className={styles.contentArea}>
           {viewMode === 'slides' ? (
@@ -561,36 +528,67 @@ export default function Step5Review({
               onPrev={() => handleModuleChange(activeModuleIndex - 1)}
               isFirst={activeModuleIndex === 0}
               isLast={activeModuleIndex === editedModules.length - 1}
+              onToggleView={() => handleSwitchView('article')}
             />
           ) : (
-            <CourseArticle title={currentModule?.title || 'Untitled Module'}>
-              <div
-                className={styles.articleBody}
-                dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }}
-              />
+            <CourseArticle
+              title={currentModule?.title || 'Untitled Module'}
+              lessons={editedModules}
+              activeIndex={activeModuleIndex}
+              onSelectModule={handleModuleChange}
+              onToggleView={() => handleSwitchView('slides')}
+              onNext={() => handleModuleChange(activeModuleIndex + 1)}
+              onPrev={() => handleModuleChange(activeModuleIndex - 1)}
+              isFirst={activeModuleIndex === 0}
+              isLast={activeModuleIndex === editedModules.length - 1}
+            >
+              <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }} />
             </CourseArticle>
           )}
         </div>
 
         {/* Warning banner for content shortfall */}
-        {(generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
-          ?.coverageNote && (
-          <div
-            style={{
-              padding: '12px 16px',
-              background: '#EFF6FF',
-              borderTop: '1px solid #60A5FA',
-              color: '#1E3A8A',
-              fontSize: 13,
-            }}
-          >
-            ℹ <strong>Less content generated:</strong>{' '}
-            {
-              (generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
-                ?.coverageNote
-            }
-          </div>
-        )}
+        {(() => {
+          const coverageNote = (
+            generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } }
+          )?.meta?.coverageNote;
+          if (!coverageNote) return null;
+
+          const noteLower = coverageNote.toLowerCase();
+          const hasShortfall =
+            !noteLower.includes('no gaps') && !noteLower.includes('all requested questions');
+
+          if (!hasShortfall) return null;
+
+          return (
+            <div style={{ padding: '0 32px 24px' }}>
+              <div className={wizardStyles.qualityWarningCard}>
+                <div className={wizardStyles.qualityWarningHeader}>CONTENT SHORTFALL</div>
+                <div className={wizardStyles.qualityWarningBody}>
+                  <svg
+                    className={wizardStyles.qualityWarningIcon}
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <div className={wizardStyles.qualityWarningText}>
+                    <strong>Less content generated due to the uploaded document content:</strong>{' '}
+                    {coverageNote}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Warning banner for partial failures */}
         {generatedContent?.warning && (

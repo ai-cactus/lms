@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
-import CoursesBillingGate from './CoursesBillingGate';
+import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
 
 const PENDING_KEY = 'lms_pending_generation';
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -227,7 +227,13 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
 
       {/* Content Card */}
       {/* Billing gate — rendered when admin lacks an active subscription */}
-      {showBillingGate && <CoursesBillingGate onClose={() => setShowBillingGate(false)} />}
+      {showBillingGate && (
+        <BillingGateModal
+          title="Billing required to create courses"
+          description="Subscribe to a plan to start creating and managing training courses for your organization."
+          onClose={() => setShowBillingGate(false)}
+        />
+      )}
       <PendingGenerationBanner />
       <div className={styles.card}>
         {/* Search */}
@@ -306,74 +312,86 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                   </td>
                   <td>
                     <div className={styles.actionCell} onClick={(e) => e.stopPropagation()}>
-                      <span
-                        className={styles.viewAction}
-                        onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                      <button
+                        className={styles.moreActionBtn}
+                        onClick={() =>
+                          setActiveDropdown(activeDropdown === course.id ? null : course.id)
+                        }
                       >
-                        View
-                      </span>
-                      <div className={styles.dropdownContainer}>
-                        <button
-                          className={styles.moreActionBtn}
-                          onClick={() =>
-                            setActiveDropdown(activeDropdown === course.id ? null : course.id)
-                          }
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                         >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
+                          <circle cx="12" cy="12" r="1"></circle>
+                          <circle cx="12" cy="5" r="1"></circle>
+                          <circle cx="12" cy="19" r="1"></circle>
+                        </svg>
+                      </button>
+                      {activeDropdown === course.id && (
+                        <div className={styles.dropdownMenu}>
+                          <button
+                            className={styles.dropdownItem}
+                            onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
                           >
-                            <circle cx="12" cy="12" r="1"></circle>
-                            <circle cx="12" cy="5" r="1"></circle>
-                            <circle cx="12" cy="19" r="1"></circle>
-                          </svg>
-                        </button>
-                        {activeDropdown === course.id && (
-                          <div className={styles.dropdownMenu}>
-                            <button className={styles.dropdownItem}>
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                style={{ marginRight: 8 }}
-                              >
-                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                              </svg>
-                              Rename
-                            </button>
-                            <button className={`${styles.dropdownItem} ${styles.deleteItem}`}>
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                style={{ marginRight: 8 }}
-                              >
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                <line x1="10" y1="11" x2="10" y2="17"></line>
-                                <line x1="14" y1="11" x2="14" y2="17"></line>
-                              </svg>
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              style={{ marginRight: 8 }}
+                            >
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            View
+                          </button>
+                          <button className={styles.dropdownItem}>
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              style={{ marginRight: 8 }}
+                            >
+                              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                            </svg>
+                            Rename
+                          </button>
+                          <button className={`${styles.dropdownItem} ${styles.deleteItem}`}>
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              style={{ marginRight: 8 }}
+                            >
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>

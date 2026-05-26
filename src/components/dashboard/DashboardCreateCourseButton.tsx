@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui';
-import CoursesBillingGate from '@/components/dashboard/courses/CoursesBillingGate';
+import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
 
 interface DashboardCreateCourseButtonProps {
   hasBilling: boolean;
@@ -51,7 +51,13 @@ export default function DashboardCreateCourseButton({
         Create Course
       </Button>
 
-      {showBillingGate && <CoursesBillingGate onClose={() => setShowBillingGate(false)} />}
+      {showBillingGate && (
+        <BillingGateModal
+          title="A plan is required to create courses"
+          description="Subscribe to a plan to start creating and managing training courses for your organization."
+          onClose={() => setShowBillingGate(false)}
+        />
+      )}
     </>
   );
 }

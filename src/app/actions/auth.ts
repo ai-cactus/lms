@@ -11,7 +11,7 @@ import crypto from 'crypto';
 import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 
 // Pre-computed dummy hash for constant-time response when a user email doesn't exist.
 // bcrypt runs its full ~100ms computation and returns false, preventing timing-based
@@ -65,7 +65,12 @@ export async function authenticate(
       role = 'worker';
     }
 
-    logger.info({ msg: 'Auth action: routing login', role, mfaEnabled: lookupUser.mfaEnabled });
+    logger.info({
+      msg: 'Auth action: routing login',
+      role,
+      mfaEnabled: lookupUser.mfaEnabled,
+      email: maskEmail(email),
+    });
 
     // Determine redirect target — if MFA is enabled, go to MFA verify page first
     const mfaRedirect = lookupUser.mfaEnabled
@@ -209,6 +214,10 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
 export async function sendPasswordResetLink(email: string) {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
+    logger.info({
+      msg: '[auth] Password reset requested: email not found (no-op for security)',
+      email: maskEmail(email),
+    });
     return { success: true }; // Security: Don't reveal user existence
   }
 
@@ -231,9 +240,11 @@ export async function sendPasswordResetLink(email: string) {
 
   const emailResult = await sendPasswordResetEmail(email, token);
   if (!emailResult.success) {
+    logger.error({ msg: '[auth] Password reset email failed to send', email: maskEmail(email) });
     return { success: false, error: 'Failed to send email.' };
   }
 
+  logger.info({ msg: '[auth] Password reset email sent', email: maskEmail(email) });
   return { success: true };
 }
 
@@ -276,6 +287,10 @@ export async function resetPasswordWithToken(
     },
   });
 
+  logger.info({
+    msg: '[auth] Password reset completed',
+    email: maskEmail(verificationToken.identifier),
+  });
   return { success: true };
 }
 
@@ -306,5 +321,6 @@ export async function forceResetPassword(
     data: { password: hashedPassword, passwordResetRequired: false },
   });
 
+  logger.info({ msg: '[auth] Forced password reset completed', email: maskEmail(email) });
   return { success: true };
 }

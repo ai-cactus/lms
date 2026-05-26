@@ -78,14 +78,26 @@ export default function OrganizationActivationModal({
 
   const isOpen = isWelcomeMode ? isModalOpen(modalId) : controlledIsOpen;
 
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isWelcomeMode && !hasOrganization && isOpen) {
+      timer = setTimeout(() => {
+        router.push('/onboarding');
+      }, 8000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOpen, isWelcomeMode, hasOrganization, router]);
+
   if (!isOpen) return null;
 
   const defaultTitle = isWelcomeMode
-    ? 'Welcome to Theraptly Learning Management Section'
+    ? 'Welcome to the Compliance and Training Management portal'
     : 'Organization Required';
 
   const defaultDesc = isWelcomeMode
-    ? 'We turn all your long & tedious compliance work into a much shorter and delightful process. Let’s get you started by creating a profile for your organization.'
+    ? 'Manage facility-wide credentials, assign mandatory MBHF regulatory courses, and track real-time audit readiness to ensure your workforce stays fully compliant.'
     : "You haven't activated and created an organization yet. Click here to start activating your account to access this feature.";
 
   const defaultAction = 'Activate your account';
@@ -121,9 +133,9 @@ export default function OrganizationActivationModal({
             >
               {actionLabel || defaultAction}
             </Button>
-            <Button variant="ghost" size="md" onClick={handleClose}>
+            {/* <Button variant="ghost" size="md" onClick={handleClose}>
               Skip for now
-            </Button>
+            </Button> */}
           </div>
         </div>
 

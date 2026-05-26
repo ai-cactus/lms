@@ -20,16 +20,10 @@ export default async function LearnerDashboard() {
     },
   });
 
-  // In the new design, we list ALL courses in the course list table, including attested/completed ones.
-  // The "Courses Completed" section is just a summary card (Achievements).
-
   const totalCourses = allEnrollments.length;
-  // Count 'attested' or 'completed' as completed for metrics
   const completedCourses = allEnrollments.filter(
     (e) => e.status === 'attested' || e.status === 'completed',
   ).length;
-  // Badge count represents fully attested courses (or just completed if that's the metric, but typically badges = attested)
-  // For now, let's say badges = completed count as shown in the card "You have earned ... badges"
   const badgeCount = completedCourses;
 
   // Calculate Average Grade

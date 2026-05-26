@@ -181,12 +181,10 @@ export async function updateProfile(data: {
   jobTitle?: string;
   avatarUrl?: string; // New field
 }) {
-  logger.info({ msg: '[UpdateProfile Action] Called with data:', data: data });
   const session = await resolveSession();
-  logger.info({ msg: '[UpdateProfile Action] Session:', data: session?.user?.id });
 
   if (!session?.user?.email) {
-    logger.info({ msg: '[UpdateProfile Action] Failed: Not authenticated' });
+    logger.warn({ msg: '[user] updateProfile: not authenticated' });
     return { success: false, error: 'Not authenticated' };
   }
 
@@ -194,11 +192,11 @@ export async function updateProfile(data: {
     const fullName = `${data.first_name} ${data.last_name}`.trim();
 
     if (!session.user.id) {
-      logger.info({ msg: '[UpdateProfile Action] Failed: User ID missing' });
+      logger.warn({ msg: '[user] updateProfile: user ID missing', email: session.user.email });
       return { success: false, error: 'User ID missing' };
     }
 
-    logger.info({ msg: `[UpdateProfile Action] Upserting profile for user ${session.user.id}...` });
+    logger.info({ msg: '[user] Upserting profile', userId: session.user.id });
     const result = await prisma.profile.upsert({
       where: {
         id: session.user.id,
@@ -224,17 +222,20 @@ export async function updateProfile(data: {
       },
     });
 
-    logger.info({ msg: '[UpdateProfile Action] Upsert successful:', data: result });
+    logger.info({
+      msg: '[user] Profile updated successfully',
+      userId: session.user.id,
+      profileId: result.id,
+    });
 
     revalidatePath('/dashboard/profile');
     revalidatePath('/worker/profile');
     revalidatePath('/dashboard');
     revalidatePath('/worker');
-    logger.info({ msg: '[UpdateProfile Action] Paths revalidated' });
     return { success: true };
   } catch (error: unknown) {
     const err = error as Error;
-    logger.error({ msg: '[UpdateProfile Action] Failed to update profile:', err });
+    logger.error({ msg: '[user] Failed to update profile', userId: session.user.id, err });
     return { success: false, error: 'Failed to update profile' };
   }
 }

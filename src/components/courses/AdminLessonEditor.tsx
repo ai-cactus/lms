@@ -111,7 +111,6 @@ export default function AdminLessonEditor({
           <h1 className={styles.articleTitle}>{title}</h1>
         )
       }
-      moduleLabel={`Module ${lesson.moduleIndex + 1}`}
       onNext={onNext}
       onPrev={onPrev}
       isFirst={isFirst}
