@@ -12,6 +12,7 @@ import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui';
 import { sanitizeHtml } from '@/lib/sanitize';
+import wizardStyles from '../CourseWizard.module.css';
 
 import {
   CourseWizardData,
@@ -541,47 +542,53 @@ export default function Step5Review({
               isFirst={activeModuleIndex === 0}
               isLast={activeModuleIndex === editedModules.length - 1}
             >
-              <div
-                className={styles.articleBody}
-                dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }}
-              />
+              <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }} />
             </CourseArticle>
           )}
         </div>
 
         {/* Warning banner for content shortfall */}
-        {(generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
-          ?.coverageNote && (
-          <div
-            style={{
-              padding: '12px 16px',
-              background: '#FEF2F2',
-              borderTop: '1px solid #DC2626',
-              color: '#DC2626',
-              fontSize: 13,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-              <strong>Less content generated due to the uploaded document content:</strong>{' '}
-              {
-                (generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
-                  ?.coverageNote
-              }
+        {(() => {
+          const coverageNote = (
+            generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } }
+          )?.meta?.coverageNote;
+          if (!coverageNote) return null;
+
+          const noteLower = coverageNote.toLowerCase();
+          const hasShortfall =
+            !noteLower.includes('no gaps') && !noteLower.includes('all requested questions');
+
+          if (!hasShortfall) return null;
+
+          return (
+            <div style={{ padding: '0 32px 24px' }}>
+              <div className={wizardStyles.qualityWarningCard}>
+                <div className={wizardStyles.qualityWarningHeader}>CONTENT SHORTFALL</div>
+                <div className={wizardStyles.qualityWarningBody}>
+                  <svg
+                    className={wizardStyles.qualityWarningIcon}
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <div className={wizardStyles.qualityWarningText}>
+                    <strong>Less content generated due to the uploaded document content:</strong>{' '}
+                    {coverageNote}
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Warning banner for partial failures */}
         {generatedContent?.warning && (
