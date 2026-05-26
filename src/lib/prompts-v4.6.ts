@@ -54,6 +54,19 @@ HARD RULES:
 - CRITICAL RULE TO PREVENT RECITATION: For the generated markdown article, DO NOT copy large blocks of text verbatim from the DOCUMENT_TEXT or STANDARD MANUAL CONTEXT. You MUST synthesize and paraphrase all concepts in your own words in plain language. If you copy verbatim, the system will reject your output.
 - NO REVIEWER NOTES IN ARTICLE: Any contradictions/gaps go ONLY in articleMeta.meta.gaps or articleMeta.meta.reviewerNotes.
 
+INSTRUCTIONAL DESIGN REQUIREMENTS:
+1. NARRATIVE STRUCTURE: Do not just output bulleted mandates. Structure each section as Why (the purpose of the policy) → What (the rule/concept) → How (the procedure/workflow). This "Why → What → How" progression must be visible in every section.
+2. PROCESS IDENTIFICATION: When the source outlines a process (e.g., reporting abuse, orientation, performance appraisal, grievance filing), extract:
+   - What the process is
+   - Why the organization mandates it
+   - How the worker actively participates in or executes it
+   - What happens if the process is ignored or fails (consequences from source text)
+3. SEQUENCE MAPPING: When a sequence of events is implied or stated (e.g., suspecting abuse → reporting to supervisor → writing grievance), outline these steps in chronological order with the reasoning behind the sequence as stated in the policy.
+4. TERMINOLOGY IN PRACTICE: Identify all operational and clinical terms the worker will encounter. Explain each with practical workplace context — "How will the worker encounter this concept on a Tuesday afternoon with a client?" Relate terms to daily operational reality.
+5. ACTION-ORIENTED CONTENT: Transform "Staff must..." statements into numbered procedural steps under dedicated "What to do" subsections. Turn policy mandates into actionable workflows the worker can follow.
+6. SCENARIO EMBEDDING: Include [SCENARIO] callout boxes at key points where If/Then situations test understanding. The scenario AND the correct action must be entirely derived from the rules stated in the source text.
+7. PRESERVE CRITICAL DETAILS: Never group specific compliance mandates into vague categories. If the text lists 5 specific items (e.g., durable power of attorney, advance directives, medication side effects), those items must be explicitly listed in the article.
+
 LENGTH RULE (no padding):
 - If DOCUMENT_TEXT is under ~300 words or clearly fragmentary: set articleMeta.meta.status = "needs_sources".
   - Then the Markdown article must be a short note titled "Insufficient Source Content" (<= 120 words).
@@ -140,10 +153,13 @@ OUTPUT 2: Markdown article (must be grounded in articleMeta):
   ## Learning Objectives (5–10 bullets; align to articleMeta.learningObjectives)
   Then for each section in articleMeta.sections:
     ## <Section Title>
-    - 2–4 short paragraphs
+    - 2–4 short paragraphs following Why → What → How narrative
     - ### Key points (4–7 bullets; expand from articleMeta.keyPoints)
+    - ### Terms in Practice (define operational/clinical terms with workplace context; ONLY if terms are introduced)
+    - ### Step-by-Step Procedure (numbered workflow when a process is described in the source)
     - ### What to do (ONLY if supported by norms with must/should/prohibited/conditional)
     - ### Common mistakes to avoid (ONLY if supported by norms or explicit cautions)
+    - ### What happens if you don't (consequences from source text; ONLY if stated or clearly implied)
     - ### Grey Areas & Complexities (ONLY where the policy may feel vague to staff; provide practical clarity on handling ambiguous situations)
 
   Use these call-out boxes for emphasis where appropriate:
@@ -169,11 +185,11 @@ OPTIONAL METADATA JSON:
 
 const PROMPT_B_TEMPLATE = `
 ROLE:
-You are a course editor converting a long-form course article into slide format.
+You are an expert instructional designer converting a long-form course article into an engaging slide deck for behavioral health and community support workers.
 
 INPUTS:
 1) Course Article Markdown (authoritative)
-2) articleMeta JSON (authoritative contract; promptVersion v4.6-article)
+2) articleMeta JSON (authoritative contract; promptVersion v4.7-article)
 3) desiredSlideCount (integer)
 
 GOAL:
@@ -185,6 +201,8 @@ HARD RULES:
 - Use ONLY the article + articleMeta. No external knowledge.
 - Do not add new facts or strengthen modality.
 - Slides must cite sourceSections (sectionIds from articleMeta.sections).
+- NO REPETITIVE OUTLINES: Do not use the same introductory or "competency" slide format for every module. Each slide must advance the learner's knowledge.
+- PRESERVE CRITICAL DETAILS: Never group specific compliance mandates into vague categories. If the text lists 5 specific items, teach all 5 explicitly in the slide content.
 
 BREVITY RULES (strict):
 - Max 4 bullets per slide.
@@ -195,9 +213,33 @@ BREVITY RULES (strict):
 
 SLIDE TYPE CLASSIFICATION:
 Every slide must have a slideType field:
-- "TELL" (The Rule): States the requirement and explains the "Why" through patient safety or legal compliance lens. Use clean, bold layout.
-- "SHOW" (The Application): Presents a real-world scenario or case study. Use scenario format with a workplace situation.
-- "DO" (The Action): Provides a procedural checklist or decision tree — the worker's reference for their shift.
+- "TELL" (The Concept): States the requirement and explains the "Why" through patient safety or legal compliance lens. Provide a clear coreConcept and supporting bullets.
+- "SHOW" (The Scenario): Presents a real-world If/Then scenario or case study drawn from the source text. The scenario must test whether the worker can apply the rule, not just recall it.
+- "DO" (The Action): Provides a procedural checklist, decision tree, or numbered action steps — the worker's reference for their shift.
+
+SLIDE CONTENT STRUCTURE BY TYPE:
+
+For "TELL" slides, populate:
+- coreConcept: 1-2 sentences explaining the rule/policy and WHY it exists (the "Why" → "What").
+- bullets: 3-4 key supporting points (max 12 words each).
+- criticalDetails: List any specific forms, timelines, thresholds, or named entities mentioned in the source for this topic.
+- terminology: Define any operational or clinical terms this slide introduces, with practical workplace context ("How will the worker encounter this term?").
+
+For "SHOW" slides, populate:
+- coreConcept: 1-2 sentence setup of the scenario context.
+- scenario: An If/Then workplace situation where:
+  - situation: A realistic workplace scenario derived from the source text (the "If").
+  - correctAction: What the worker should do, grounded in the source (the "Then").
+  - wrongAction: A common mistake someone might make (derived from the source or common misinterpretations).
+  - rationale: Why the correct action follows from the policy, using source text reasoning.
+- bullets: Optional supporting context points.
+
+For "DO" slides, populate:
+- coreConcept: 1-2 sentence summary of what the worker will execute.
+- actionSteps: Numbered procedural steps (max 10 words each) — the step-by-step "How".
+- processSequence: When a multi-step process is described, output each step with its rationale in order.
+- criticalDetails: Any forms, contacts, timelines, or materials required for execution.
+- bullets: Fallback checklist items if actionSteps are not applicable.
 
 MANDATORY FIRST SLIDE:
 - Slide 1 must always be a "Learning Competency" slide with slideType "TELL".
@@ -246,14 +288,31 @@ OUTPUT SCHEMA:
     {
       "slideId": "sl01",
       "title": "",
-      "slideType": "TELL|SHOW|DO",
-      "layoutHint": "default|tiled-text-icons|image-right-text-left|highlighted-numbers|table|checklist",
+      "slideType": "TELL",
+      "layoutHint": "default",
       "bullets": ["", "", ""],
+      "coreConcept": "1-2 sentence explanation of the concept and why it matters",
+      "actionSteps": ["Step 1...", "Step 2..."],
+      "criticalDetails": ["Form X", "Within 24 hours", "Contact Y"],
+      "scenario": {
+        "situation": "A workplace scenario grounded in source text",
+        "correctAction": "What the worker should do",
+        "wrongAction": "A common mistake",
+        "rationale": "Why, grounded in source text"
+      },
+      "terminology": [
+        { "term": "Term Name", "definition": "Practical workplace definition" }
+      ],
+      "processSequence": [
+        { "stepNumber": 1, "action": "First step", "rationale": "Why this step matters" }
+      ],
       "sourceSections": ["s1"]
     }
   ]
 }
 \`\`\`
+
+Note: All fields except slideId, title, bullets, and sourceSections are optional. Only populate fields that are relevant to the slide type and supported by the source content. Do NOT fabricate content to fill fields.
 
 desiredSlideCount:
 {{DESIRED_SLIDE_COUNT}}

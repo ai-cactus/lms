@@ -56,23 +56,129 @@ function articleMarkdownToHtml(markdown: string): string {
   );
 }
 
+interface RichSlide {
+  title?: string;
+  bullets?: string[];
+  slideType?: string;
+  layoutHint?: string;
+  coreConcept?: string;
+  actionSteps?: string[];
+  criticalDetails?: string[];
+  scenario?: { situation: string; correctAction: string; wrongAction?: string; rationale: string };
+  terminology?: { term: string; definition: string }[];
+  processSequence?: { stepNumber: number; action: string; rationale: string }[];
+  sourceSections?: string[];
+}
+
 /**
- * Converts v4.6 slides into a single HTML string for the Slide view.
+ * Converts v4.6 slides into type-differentiated HTML for the Slide view.
+ * Generates structurally different HTML per slide type (TELL/SHOW/DO)
+ * with CSS classes for visual styling.
  */
-function slidesV46ToHtml(slides: { title?: string; bullets?: string[] }[]): string {
+function slidesV46ToHtml(slides: RichSlide[]): string {
   if (!slides || slides.length === 0) return '';
 
   return slides
     .map((slide) => {
-      let html = '';
+      const type = slide.slideType || 'TELL';
+      const typeClass = `slide-type-${type.toLowerCase()}`;
+
+      let html = `<div class="rich-slide ${typeClass}">`;
+
+      // Type badge
+      const typeLabel = type === 'TELL' ? 'CONCEPT' : type === 'SHOW' ? 'SCENARIO' : 'ACTION';
+      html += `<span class="slide-type-badge slide-type-badge-${type.toLowerCase()}">${typeLabel}</span>`;
+
+      // Title
       if (slide.title) {
-        html += `<h3>${slide.title}</h3>`;
+        html += `<h3 class="slide-heading">${slide.title}</h3>`;
       }
-      if (slide.bullets && slide.bullets.length > 0) {
-        html += '<ul>';
-        html += slide.bullets.map((b: string) => `<li>${b}</li>`).join('');
-        html += '</ul>';
+
+      // Core Concept (all types)
+      if (slide.coreConcept) {
+        html += `<div class="slide-core-concept"><p>${slide.coreConcept}</p></div>`;
       }
+
+      // Type-specific content
+      if (type === 'TELL') {
+        // Key points bullets
+        if (slide.bullets && slide.bullets.length > 0) {
+          html += '<ul class="slide-key-points">';
+          html += slide.bullets.map((b: string) => `<li>${b}</li>`).join('');
+          html += '</ul>';
+        }
+        // Terminology box
+        if (slide.terminology && slide.terminology.length > 0) {
+          html += '<div class="slide-terms-box">';
+          html += '<h4 class="slide-box-title">Key Terms</h4>';
+          slide.terminology.forEach((t) => {
+            html += `<div class="slide-term-item"><strong>${t.term}</strong>: ${t.definition}</div>`;
+          });
+          html += '</div>';
+        }
+        // Critical Details
+        if (slide.criticalDetails && slide.criticalDetails.length > 0) {
+          html += '<div class="slide-details-box">';
+          html += '<h4 class="slide-box-title">Critical Details</h4>';
+          html += '<ul>';
+          html += slide.criticalDetails.map((d: string) => `<li>${d}</li>`).join('');
+          html += '</ul></div>';
+        }
+      }
+
+      if (type === 'SHOW') {
+        // Scenario block
+        if (slide.scenario) {
+          html += '<div class="slide-scenario">';
+          html += `<div class="scenario-label">Workplace Scenario</div>`;
+          html += `<div class="scenario-situation"><span class="scenario-tag">Situation</span> ${slide.scenario.situation}</div>`;
+          html += `<div class="scenario-correct"><span class="scenario-tag">Correct Action</span> ${slide.scenario.correctAction}</div>`;
+          if (slide.scenario.wrongAction) {
+            html += `<div class="scenario-wrong"><span class="scenario-tag">Common Mistake</span> ${slide.scenario.wrongAction}</div>`;
+          }
+          html += `<div class="scenario-rationale"><span class="scenario-tag">Why</span> ${slide.scenario.rationale}</div>`;
+          html += '</div>';
+        }
+        // Supporting bullets
+        if (slide.bullets && slide.bullets.length > 0) {
+          html += '<ul class="slide-key-points">';
+          html += slide.bullets.map((b: string) => `<li>${b}</li>`).join('');
+          html += '</ul>';
+        }
+      }
+
+      if (type === 'DO') {
+        // Action Steps (numbered)
+        if (slide.actionSteps && slide.actionSteps.length > 0) {
+          html += '<ol class="slide-action-steps">';
+          html += slide.actionSteps.map((s: string) => `<li>${s}</li>`).join('');
+          html += '</ol>';
+        }
+        // Process Sequence
+        if (slide.processSequence && slide.processSequence.length > 0) {
+          html += '<div class="slide-process-flow">';
+          slide.processSequence.forEach((s) => {
+            html += `<div class="process-step"><span class="step-number">Step ${s.stepNumber}</span><span class="step-action">${s.action}</span><span class="step-why">${s.rationale}</span></div>`;
+          });
+          html += '</div>';
+        }
+        // Critical Details (forms, timelines)
+        if (slide.criticalDetails && slide.criticalDetails.length > 0) {
+          html += '<div class="slide-details-box">';
+          html += '<h4 class="slide-box-title">What You Need</h4>';
+          html += '<ul>';
+          html += slide.criticalDetails.map((d: string) => `<li>${d}</li>`).join('');
+          html += '</ul></div>';
+        }
+        // Checklist bullets fallback
+        if (!slide.actionSteps?.length && !slide.processSequence?.length && slide.bullets?.length) {
+          html += '<ul class="slide-checklist">';
+          html += slide.bullets.map((b: string) => `<li>${b}</li>`).join('');
+          html += '</ul>';
+        }
+      }
+
+      html += '</div>'; // close rich-slide
       return html;
     })
     .join('');
@@ -128,10 +234,7 @@ const adaptModulesForRenderingV46 = (
     | null
     | undefined,
   articleMarkdown: string,
-  slidesJson:
-    | { slides: { title?: string; bullets?: string[]; sourceSections?: string[] }[] }
-    | null
-    | undefined,
+  slidesJson: { slides: RichSlide[] } | null | undefined,
   estimatedDurationMinutes?: number,
 ): RenderableModule[] => {
   const markdownSections = splitMarkdownSections(articleMarkdown);
@@ -150,7 +253,7 @@ const adaptModulesForRenderingV46 = (
         ) || markdownSections[idx];
 
       // Find slides that reference this section
-      const sectionSlides = slides.filter((sl: { sourceSections?: string[] }) =>
+      const sectionSlides = slides.filter((sl: RichSlide) =>
         sl.sourceSections?.includes(section.sectionId),
       );
 

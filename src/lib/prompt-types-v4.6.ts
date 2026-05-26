@@ -106,12 +106,36 @@ export interface SlidesMeta {
   reviewerNotes: string[];
 }
 
+export interface SlideScenario {
+  situation: string;
+  correctAction: string;
+  wrongAction?: string;
+  rationale: string;
+}
+
+export interface SlideTerm {
+  term: string;
+  definition: string;
+}
+
+export interface SlideProcessStep {
+  stepNumber: number;
+  action: string;
+  rationale: string;
+}
+
 export interface SlideV46 {
   slideId: string;
   title: string;
   slideType?: SlideType;
   layoutHint?: LayoutHint;
   bullets: string[];
+  coreConcept?: string;
+  actionSteps?: string[];
+  criticalDetails?: string[];
+  scenario?: SlideScenario;
+  terminology?: SlideTerm[];
+  processSequence?: SlideProcessStep[];
   sourceSections: string[];
 }
 
