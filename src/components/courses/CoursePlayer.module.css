@@ -542,6 +542,374 @@
   margin: 12px 0;
 }
 
+/* =========================================
+   RICH SLIDE LAYOUTS
+   Scoped via :global() for dangerouslySetInnerHTML content
+   ========================================= */
+
+/* Slide wrapper */
+.slideContent :global(.rich-slide) {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e5e7eb;
+  animation: fadeSlideIn 0.3s ease-out;
+}
+
+.slideContent :global(.rich-slide:last-child) {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Type Badge ─── */
+.slideContent :global(.slide-type-badge) {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+
+.slideContent :global(.slide-type-badge-tell) {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.slideContent :global(.slide-type-badge-show) {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.slideContent :global(.slide-type-badge-do) {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+/* ─── Heading ─── */
+.slideContent :global(.slide-heading) {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0 0 14px 0;
+  line-height: 1.3;
+}
+
+.slideContent :global(.slide-type-tell .slide-heading) {
+  border-left: 3px solid #6366f1;
+  padding-left: 12px;
+}
+
+.slideContent :global(.slide-type-show .slide-heading) {
+  border-left: 3px solid #f59e0b;
+  padding-left: 12px;
+}
+
+.slideContent :global(.slide-type-do .slide-heading) {
+  border-left: 3px solid #10b981;
+  padding-left: 12px;
+}
+
+/* ─── Core Concept ─── */
+.slideContent :global(.slide-core-concept) {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-left: 3px solid var(--primary);
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  border-radius: 0 8px 8px 0;
+}
+
+.slideContent :global(.slide-core-concept p) {
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+/* ─── Key Points ─── */
+.slideContent :global(.slide-key-points) {
+  padding-left: 20px;
+  margin: 8px 0 16px;
+}
+
+.slideContent :global(.slide-key-points li) {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+  position: relative;
+}
+
+.slideContent :global(.slide-key-points li::marker) {
+  color: var(--primary);
+}
+
+/* ─── Box Titles ─── */
+.slideContent :global(.slide-box-title) {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px 0;
+}
+
+/* ─── Terminology Box ─── */
+.slideContent :global(.slide-terms-box) {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+}
+
+.slideContent :global(.slide-terms-box .slide-box-title) {
+  color: #166534;
+}
+
+.slideContent :global(.slide-term-item) {
+  font-size: 13px;
+  margin-bottom: 6px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.slideContent :global(.slide-term-item strong) {
+  color: #166534;
+  font-weight: 600;
+}
+
+/* ─── Critical Details / What You Need Box ─── */
+.slideContent :global(.slide-details-box) {
+  background: #fefce8;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+}
+
+.slideContent :global(.slide-details-box .slide-box-title) {
+  color: #854d0e;
+}
+
+.slideContent :global(.slide-details-box ul) {
+  padding-left: 18px;
+  margin: 4px 0 0;
+}
+
+.slideContent :global(.slide-details-box li) {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+
+/* ─── Scenario Block (SHOW type) ─── */
+.slideContent :global(.slide-scenario) {
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin: 12px 0;
+}
+
+.slideContent :global(.scenario-label) {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #92400e;
+  margin-bottom: 10px;
+}
+
+.slideContent :global(.scenario-tag) {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: baseline;
+}
+
+.slideContent :global(.scenario-situation) {
+  font-size: 14px;
+  margin-bottom: 12px;
+  color: #78350f;
+  line-height: 1.6;
+}
+
+.slideContent :global(.scenario-situation .scenario-tag) {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.slideContent :global(.scenario-correct) {
+  background: #ecfdf5;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #065f46;
+  line-height: 1.5;
+}
+
+.slideContent :global(.scenario-correct .scenario-tag) {
+  background: #bbf7d0;
+  color: #166534;
+}
+
+.slideContent :global(.scenario-wrong) {
+  background: #fef2f2;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #991b1b;
+  line-height: 1.5;
+}
+
+.slideContent :global(.scenario-wrong .scenario-tag) {
+  background: #fecaca;
+  color: #991b1b;
+}
+
+.slideContent :global(.scenario-rationale) {
+  font-size: 13px;
+  color: #6b7280;
+  font-style: italic;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.slideContent :global(.scenario-rationale .scenario-tag) {
+  background: #f3f4f6;
+  color: #6b7280;
+  font-style: normal;
+}
+
+/* ─── Action Steps (DO type) ─── */
+.slideContent :global(.slide-action-steps) {
+  counter-reset: action-step;
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+
+.slideContent :global(.slide-action-steps li) {
+  counter-increment: action-step;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.slideContent :global(.slide-action-steps li:last-child) {
+  border-bottom: none;
+}
+
+.slideContent :global(.slide-action-steps li::before) {
+  content: counter(action-step);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #10b981;
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ─── Process Flow (DO type) ─── */
+.slideContent :global(.slide-process-flow) {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 12px 0;
+}
+
+.slideContent :global(.process-step) {
+  display: grid;
+  grid-template-columns: 70px 1fr 1fr;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 13px;
+  align-items: start;
+}
+
+.slideContent :global(.process-step:last-child) {
+  border-bottom: none;
+}
+
+.slideContent :global(.step-number) {
+  font-weight: 700;
+  color: #10b981;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.slideContent :global(.step-action) {
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.slideContent :global(.step-why) {
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+/* ─── Checklist Fallback (DO type without actionSteps) ─── */
+.slideContent :global(.slide-checklist) {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.slideContent :global(.slide-checklist li) {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 6px;
+  padding-left: 28px;
+  position: relative;
+  color: var(--text-secondary);
+}
+
+.slideContent :global(.slide-checklist li::before) {
+  content: '\2610';
+  position: absolute;
+  left: 0;
+  color: #10b981;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* =========================================
+   END RICH SLIDE LAYOUTS
+   ========================================= */
+
 /* Bottom navigation for slide view */
 .slideBottomNav {
   display: flex;
@@ -1545,6 +1913,28 @@
     width: 64px;
     height: 64px;
     font-size: 36px;
+  }
+
+  /* Rich slide responsive adjustments */
+  .slideContent :global(.slide-core-concept) {
+    padding: 10px 14px;
+  }
+
+  .slideContent :global(.slide-heading) {
+    font-size: 15px;
+  }
+
+  .slideContent :global(.slide-scenario) {
+    padding: 12px 14px;
+  }
+
+  .slideContent :global(.process-step) {
+    grid-template-columns: 50px 1fr;
+  }
+
+  .slideContent :global(.step-why) {
+    grid-column: 1 / -1;
+    padding-left: 50px;
   }
 }
 
