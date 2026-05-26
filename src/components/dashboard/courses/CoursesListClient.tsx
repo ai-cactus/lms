@@ -229,7 +229,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
       {/* Billing gate — rendered when admin lacks an active subscription */}
       {showBillingGate && (
         <BillingGateModal
-          title="Billing required to create courses"
+          title="A plan is required to create courses"
           description="Subscribe to a plan to start creating and managing training courses for your organization."
           onClose={() => setShowBillingGate(false)}
         />
