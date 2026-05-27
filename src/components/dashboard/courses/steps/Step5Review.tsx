@@ -50,6 +50,8 @@ function articleMarkdownToHtml(markdown: string): string {
         return `<p>${trimmed}</p>`;
       })
       .join('\n')
+      // Parse bold markdown
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       // Wrap consecutive <li> tags in <ul>
       .replace(/(<li>[\s\S]*?<\/li>)(\n?)(?!<li>)/g, (match) => `<ul>${match}</ul>`)
       .replace(/<\/ul>\n?<ul>/g, '\n')

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useTransition } from 'react';
 import styles from './CoursesList.module.css';
 import { Button, Input, Select } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
+import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
 
 const PENDING_KEY = 'lms_pending_generation';
@@ -144,6 +145,147 @@ function PendingGenerationBanner() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Lightweight inline rename modal for courses
+// ---------------------------------------------------------------------------
+function CourseRenameModal({
+  courseId,
+  currentTitle,
+  onClose,
+  onRenamed,
+}: {
+  courseId: string;
+  currentTitle: string;
+  onClose: () => void;
+  onRenamed: (newTitle: string) => void;
+}) {
+  const [title, setTitle] = useState(currentTitle);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = title.trim();
+    if (!trimmed) {
+      setError('Course title cannot be empty.');
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      try {
+        await updateCourse(courseId, { title: trimmed });
+        onRenamed(trimmed);
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to rename course.');
+      }
+    });
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: '1rem',
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Rename course"
+    >
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 12,
+          padding: '1.5rem',
+          width: '100%',
+          maxWidth: 420,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+        }}
+      >
+        <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#111827', margin: '0 0 1rem' }}>
+          Rename Course
+        </h2>
+        <form onSubmit={handleSubmit}>
+          <input
+            style={{
+              width: '100%',
+              padding: '0.625rem 0.875rem',
+              border: '1px solid #d1d5db',
+              borderRadius: 8,
+              fontSize: '0.875rem',
+              fontFamily: 'inherit',
+              color: '#111827',
+              boxSizing: 'border-box',
+            }}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            autoFocus
+            disabled={isPending}
+            aria-label="New course title"
+          />
+          {error && (
+            <p style={{ color: '#dc2626', fontSize: '0.8125rem', marginTop: '0.375rem' }}>
+              {error}
+            </p>
+          )}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '0.75rem',
+              marginTop: '1.25rem',
+            }}
+          >
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              style={{
+                padding: '0.5rem 1rem',
+                border: '1px solid #d1d5db',
+                borderRadius: 8,
+                background: '#fff',
+                color: '#374151',
+                fontSize: '0.875rem',
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              style={{
+                padding: '0.5rem 1.25rem',
+                border: 'none',
+                borderRadius: 8,
+                background: '#4731f7',
+                color: '#fff',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                opacity: isPending ? 0.6 : 1,
+              }}
+            >
+              {isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 interface CoursesListClientProps {
   courses: CourseWithStats[];
   /** Whether the organization has an active or trialing billing subscription. */
@@ -152,11 +294,21 @@ interface CoursesListClientProps {
 
 export default function CoursesListClient({ courses, hasBilling }: CoursesListClientProps) {
   const router = useRouter();
+  const [courseList, setCourseList] = useState<CourseWithStats[]>(courses);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showBillingGate, setShowBillingGate] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [courseToRename, setCourseToRename] = useState<{ id: string; title: string } | null>(null);
+  const [, startTransition] = useTransition();
+
+  // Sync when server props change after revalidatePath
+  useEffect(() => {
+    setCourseList(courses);
+  }, [courses]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -165,14 +317,42 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
+  const handleDelete = useCallback(
+    (e: React.MouseEvent, course: CourseWithStats) => {
+      e.stopPropagation();
+      setActiveDropdown(null);
+      if (
+        !confirm(
+          `Delete "${course.title}"?\n\nThis will permanently remove the course and cannot be undone.`,
+        )
+      ) {
+        return;
+      }
+      setDeletingId(course.id);
+      setDeleteError(null);
+      startTransition(async () => {
+        try {
+          await deleteCourse(course.id);
+          setCourseList((prev) => prev.filter((c) => c.id !== course.id));
+        } catch (err) {
+          setDeleteError(err instanceof Error ? err.message : 'Failed to delete course.');
+        }
+        setDeletingId(null);
+      });
+    },
+    [startTransition],
+  );
+
+  const handleRenamed = useCallback((courseId: string, newTitle: string) => {
+    setCourseList((prev) => prev.map((c) => (c.id === courseId ? { ...c, title: newTitle } : c)));
+  }, []);
+
   // Filter Logic
-  // ⚡ Bolt: Memoize filtered courses to prevent re-calculating on every render,
-  // especially when pagination changes. This reduces O(N) operations.
   const filteredCourses = useMemo(() => {
-    return courses.filter((course) =>
+    return courseList.filter((course) =>
       course.title.toLowerCase().includes(searchQuery.toLowerCase()),
     );
-  }, [courses, searchQuery]);
+  }, [courseList, searchQuery]);
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
@@ -189,6 +369,19 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
 
   return (
     <div className={styles.container}>
+      {/* Rename modal */}
+      {courseToRename && (
+        <CourseRenameModal
+          courseId={courseToRename.id}
+          currentTitle={courseToRename.title}
+          onClose={() => setCourseToRename(null)}
+          onRenamed={(newTitle) => {
+            handleRenamed(courseToRename.id, newTitle);
+            setCourseToRename(null);
+          }}
+        />
+      )}
+
       {/* Header */}
       <div className={styles.header}>
         <div>
@@ -200,7 +393,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
           className={styles.createButton}
           onClick={() => {
             if (!hasBilling) {
-              // Gate course creation behind an active subscription
               setShowBillingGate(true);
               return;
             }
@@ -225,8 +417,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         </Button>
       </div>
 
-      {/* Content Card */}
-      {/* Billing gate — rendered when admin lacks an active subscription */}
+      {/* Billing gate */}
       {showBillingGate && (
         <BillingGateModal
           title="A plan is required to create courses"
@@ -234,6 +425,24 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
           onClose={() => setShowBillingGate(false)}
         />
       )}
+
+      {/* Delete error banner */}
+      {deleteError && (
+        <p
+          role="alert"
+          style={{
+            color: '#dc2626',
+            fontSize: '0.875rem',
+            marginBottom: '0.75rem',
+            padding: '0.5rem 0.75rem',
+            background: '#fef2f2',
+            borderRadius: 6,
+          }}
+        >
+          ⚠️ {deleteError}
+        </p>
+      )}
+
       <PendingGenerationBanner />
       <div className={styles.card}>
         {/* Search */}
@@ -312,86 +521,118 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                   </td>
                   <td>
                     <div className={styles.actionCell} onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className={styles.moreActionBtn}
-                        onClick={() =>
-                          setActiveDropdown(activeDropdown === course.id ? null : course.id)
-                        }
-                      >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                      <div className={styles.dropdownContainer}>
+                        <button
+                          className={styles.moreActionBtn}
+                          aria-label="More actions"
+                          aria-expanded={activeDropdown === course.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveDropdown(activeDropdown === course.id ? null : course.id);
+                          }}
                         >
-                          <circle cx="12" cy="12" r="1"></circle>
-                          <circle cx="12" cy="5" r="1"></circle>
-                          <circle cx="12" cy="19" r="1"></circle>
-                        </svg>
-                      </button>
-                      {activeDropdown === course.id && (
-                        <div className={styles.dropdownMenu}>
-                          <button
-                            className={styles.dropdownItem}
-                            onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
                           >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              style={{ marginRight: 8 }}
+                            <circle cx="12" cy="5" r="1.5" />
+                            <circle cx="12" cy="12" r="1.5" />
+                            <circle cx="12" cy="19" r="1.5" />
+                          </svg>
+                        </button>
+
+                        {activeDropdown === course.id && (
+                          <div className={styles.dropdownMenu} role="menu">
+                            {/* View */}
+                            <button
+                              className={styles.dropdownItem}
+                              role="menuitem"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveDropdown(null);
+                                router.push(`/dashboard/training/courses/${course.id}`);
+                              }}
                             >
-                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                              <circle cx="12" cy="12" r="3" />
-                            </svg>
-                            View
-                          </button>
-                          <button className={styles.dropdownItem}>
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              style={{ marginRight: 8 }}
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: 8 }}
+                                aria-hidden="true"
+                              >
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                              View
+                            </button>
+
+                            {/* Rename */}
+                            <button
+                              className={styles.dropdownItem}
+                              role="menuitem"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveDropdown(null);
+                                setCourseToRename({ id: course.id, title: course.title });
+                              }}
                             >
-                              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                            </svg>
-                            Rename
-                          </button>
-                          <button className={`${styles.dropdownItem} ${styles.deleteItem}`}>
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              style={{ marginRight: 8 }}
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: 8 }}
+                                aria-hidden="true"
+                              >
+                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                              </svg>
+                              Rename
+                            </button>
+
+                            {/* Delete */}
+                            <button
+                              className={`${styles.dropdownItem} ${styles.deleteItem} ${
+                                deletingId === course.id ? (styles.dropdownItemDisabled ?? '') : ''
+                              }`}
+                              role="menuitem"
+                              disabled={deletingId === course.id}
+                              title={deletingId === course.id ? 'Deleting…' : 'Delete course'}
+                              onClick={(e) => handleDelete(e, course)}
                             >
-                              <polyline points="3 6 5 6 21 6"></polyline>
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                              <line x1="10" y1="11" x2="10" y2="17"></line>
-                              <line x1="14" y1="11" x2="14" y2="17"></line>
-                            </svg>
-                            Delete
-                          </button>
-                        </div>
-                      )}
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: 8 }}
+                                aria-hidden="true"
+                              >
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                <line x1="10" y1="11" x2="10" y2="17" />
+                                <line x1="14" y1="11" x2="14" y2="17" />
+                              </svg>
+                              {deletingId === course.id ? 'Deleting…' : 'Delete'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
