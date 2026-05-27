@@ -83,6 +83,30 @@ const SlidesMetaSchema = z
   })
   .passthrough();
 
+const SlideScenarioSchema = z
+  .object({
+    situation: z.string(),
+    correctAction: z.string(),
+    wrongAction: z.string().optional(),
+    rationale: z.string(),
+  })
+  .passthrough();
+
+const SlideTermSchema = z
+  .object({
+    term: z.string(),
+    definition: z.string(),
+  })
+  .passthrough();
+
+const SlideProcessStepSchema = z
+  .object({
+    stepNumber: z.number(),
+    action: z.string(),
+    rationale: z.string(),
+  })
+  .passthrough();
+
 const SlideV46Schema = z
   .object({
     slideId: z.string(),
@@ -99,7 +123,13 @@ const SlideV46Schema = z
       ])
       .optional()
       .default('default'),
-    bullets: z.array(z.string()).min(1),
+    bullets: z.array(z.string()).default([]),
+    coreConcept: z.string().optional(),
+    actionSteps: z.array(z.string()).optional(),
+    criticalDetails: z.array(z.string()).optional(),
+    scenario: SlideScenarioSchema.optional(),
+    terminology: z.array(SlideTermSchema).optional(),
+    processSequence: z.array(SlideProcessStepSchema).optional(),
     sourceSections: z.array(z.string()).default([]),
   })
   .passthrough();
