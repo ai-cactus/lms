@@ -123,7 +123,7 @@ const SlideV46Schema = z
       ])
       .optional()
       .default('default'),
-    bullets: z.array(z.string()).min(1),
+    bullets: z.array(z.string()).default([]),
     coreConcept: z.string().optional(),
     actionSteps: z.array(z.string()).optional(),
     criticalDetails: z.array(z.string()).optional(),
