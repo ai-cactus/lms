@@ -52,13 +52,23 @@ export default function InactivityTimer({
       resetActivity();
       lastUpdateRef.current = Date.now();
     } catch {
-      // Network error or session already expired
-      window.location.href = '/login?reason=inactive';
+      // Network error or session already expired — sign out cleanly
+      try {
+        sessionStorage.setItem('logout_reason', 'inactive');
+      } catch {
+        /* ignore */
+      }
+      window.location.href = '/login';
     }
   }, [update, resetActivity]);
 
   const handleLogout = useCallback(() => {
-    signOut({ callbackUrl: '/login?reason=inactive' });
+    try {
+      sessionStorage.setItem('logout_reason', 'inactive');
+    } catch {
+      /* ignore */
+    }
+    signOut({ callbackUrl: '/login' });
   }, []);
 
   // Track user activity

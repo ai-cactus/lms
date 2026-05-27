@@ -17,7 +17,23 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const joined = searchParams.get('joined');
   const oauthError = searchParams.get('error');
-  const inactiveReason = searchParams.get('reason');
+
+  const [inactiveReason] = React.useState<string | null>(
+    typeof window !== 'undefined'
+      ? (sessionStorage.getItem('logout_reason') ?? searchParams.get('reason'))
+      : searchParams.get('reason'),
+  );
+
+  // Clear the sessionStorage flag immediately so it doesn't persist on refresh
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('logout_reason')) {
+        sessionStorage.removeItem('logout_reason');
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const [state, dispatch, isPending] = useActionState(authenticate, undefined);
 
