@@ -41,7 +41,22 @@ function serializeError(err: unknown): Record<string, unknown> {
   return { errRaw: String(err) };
 }
 
+const LOG_LEVELS: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
 function emit(level: LogLevel, payload: LogPayload): void {
+  const configuredLevel = (process.env.LOG_LEVEL?.toLowerCase() || 'info') as LogLevel;
+  const configuredScore = LOG_LEVELS[configuredLevel] ?? LOG_LEVELS.info;
+  const messageScore = LOG_LEVELS[level] ?? 0;
+
+  if (messageScore < configuredScore) {
+    return;
+  }
+
   const { err, ...rest } = payload;
 
   const entry: Record<string, unknown> = {
