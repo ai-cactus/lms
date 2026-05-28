@@ -84,9 +84,7 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
           {courseLinks.length > 0 && (
             <div className={styles.metaItem}>
               <label>Linked Course</label>
-              <Link href={`/dashboard/courses/${courseLinks[0].courseId}`} className={styles.link}>
-                {courseLinks[0].course.title}
-              </Link>
+              <span>{courseLinks[0].course.title}</span>
             </div>
           )}
         </div>

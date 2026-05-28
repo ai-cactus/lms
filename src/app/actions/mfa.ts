@@ -43,8 +43,8 @@ async function resolveSession() {
 // ── MFA Setup ─────────────────────────────────────────────────────────────────
 
 /**
- * Step 1: Generate a TOTP secret and return the otpauth:// URI for QR display.
- * The factor is stored as unverified — the user must verify with a code to activate.
+ * Step 1: Generate a one-time email OTP and send it to the user.
+ * The factor is stored as unverified — the user must verify with the code to activate.
  */
 export async function requestMfaSetup(): Promise<MfaActionResult> {
   const session = await resolveSession();
@@ -95,7 +95,7 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
 }
 
 /**
- * Step 2: Verify the first TOTP code from the authenticator app.
+ * Step 2: Verify the email OTP entered by the user.
  * On success, enables MFA and generates recovery codes.
  */
 export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
@@ -143,7 +143,13 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
 
     await tx.user.update({
       where: { id: session.user.id },
-      data: { mfaEnabled: true },
+      data: {
+        mfaEnabled: true,
+        // Stamp mfaVerifiedAt so the JWT callback sees this session as already
+        // MFA-verified — prevents the middleware from redirecting the user to
+        // /verify-2fa immediately after they just completed setup.
+        mfaVerifiedAt: new Date(),
+      },
     });
 
     // Remove any old recovery codes
@@ -172,7 +178,7 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
 }
 
 /**
- * Disable MFA for the current user. Requires a valid TOTP code or recovery code.
+ * Disable MFA for the current user. Requires a valid email OTP or recovery code.
  */
 export async function disableMfa(code: string): Promise<MfaActionResult> {
   const session = await resolveSession();
@@ -214,7 +220,7 @@ export async function disableMfa(code: string): Promise<MfaActionResult> {
 }
 
 /**
- * Regenerate recovery codes. Requires a valid TOTP code.
+ * Regenerate recovery codes. Requires a valid email OTP.
  */
 export async function regenerateRecoveryCodes(code: string): Promise<MfaActionResult> {
   const session = await resolveSession();
@@ -279,7 +285,7 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
 // ── MFA Verification (used during login) ──────────────────────────────────────
 
 /**
- * Verify a TOTP code or recovery code for a user.
+ * Verify an email OTP or recovery code for a user.
  * Used by both the login MFA challenge and disable MFA flows.
  *
  * If a recovery code is used, it is consumed (marked as used).
@@ -395,5 +401,46 @@ export async function sendLoginMfaCode(userId: string): Promise<MfaActionResult>
   await sendMfaOtpEmail(user.email, code);
 
   logger.info({ msg: 'MFA login code sent via email', userId });
+  return { success: true };
+}
+
+/**
+ * Send a fresh email OTP for the currently authenticated user.
+ * Used by the settings panel when the user wants to disable MFA —
+ * they need a valid OTP to confirm the action.
+ */
+export async function sendDisableMfaCode(): Promise<MfaActionResult> {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      email: true,
+      mfaEnabled: true,
+      mfaFactors: { where: { verified: true, type: 'email' } },
+    },
+  });
+
+  if (!user) return { success: false, error: 'User not found' };
+  if (!user.mfaEnabled) return { success: false, error: 'MFA is not enabled' };
+
+  const factor = user.mfaFactors[0];
+  if (!factor) return { success: false, error: 'No email MFA factor found' };
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const encryptedSecret = encryptSecret(code);
+
+  await prisma.mfaFactor.update({
+    where: { id: factor.id },
+    data: { secret: encryptedSecret },
+  });
+
+  const { sendMfaOtpEmail } = await import('@/lib/email');
+  await sendMfaOtpEmail(user.email, code);
+
+  logger.info({ msg: 'MFA disable code sent via email', userId: session.user.id });
   return { success: true };
 }

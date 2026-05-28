@@ -76,7 +76,7 @@ export default function BillingGateModal({ title, description, onClose }: Billin
 
         <div className={styles.billingGateActions}>
           <Link href="/dashboard/billing" className={styles.billingGateCta}>
-            Enable Billing
+            Go to Billing
             <svg
               width="16"
               height="16"
