@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useRef, useEffect, Suspense } from 'react';
+import React, { useState, useRef, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { verifyMfaChallenge } from '@/app/actions/verify-mfa';
+import { verifyMfaChallenge, sendCurrentSessionMfaCode } from '@/app/actions/verify-mfa';
 
 function Verify2FAContent() {
   const searchParams = useSearchParams();
@@ -10,10 +10,47 @@ function Verify2FAContent() {
 
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0); // seconds remaining
   const [useRecovery, setUseRecovery] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState('');
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startCooldown = useCallback(() => {
+    setResendCooldown(60);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(cooldownRef.current!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  const sendOtp = useCallback(async () => {
+    setIsSending(true);
+    setError('');
+    try {
+      await sendCurrentSessionMfaCode();
+      startCooldown();
+    } finally {
+      setIsSending(false);
+    }
+  }, [startCooldown]);
+
+  // Send the initial OTP when the page first loads
+  useEffect(() => {
+    sendOtp();
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!useRecovery) {
@@ -123,7 +160,7 @@ function Verify2FAContent() {
         <p style={subtitleStyle}>
           {useRecovery
             ? 'Enter one of your saved recovery codes to access your account.'
-            : 'Open your authenticator app and enter the 6-digit code.'}
+            : "We've sent a 6-digit code to your email address. Enter it below to continue."}
         </p>
 
         {error && (
@@ -155,7 +192,7 @@ function Verify2FAContent() {
                 display: 'flex',
                 gap: '12px',
                 justifyContent: 'center',
-                marginBottom: '32px',
+                marginBottom: '24px',
               }}
             >
               {code.map((digit, index) => (
@@ -226,6 +263,32 @@ function Verify2FAContent() {
                 'Verify'
               )}
             </button>
+
+            {/* Resend code */}
+            <div style={{ textAlign: 'center', marginTop: '16px' }}>
+              {resendCooldown > 0 ? (
+                <span style={{ fontSize: '13px', color: '#94a3b8' }}>
+                  Resend code in {resendCooldown}s
+                </span>
+              ) : (
+                <button
+                  onClick={sendOtp}
+                  disabled={isSending}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#4f46e5',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: isSending ? 'not-allowed' : 'pointer',
+                    opacity: isSending ? 0.6 : 1,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {isSending ? 'Sending...' : "Didn't receive a code? Resend"}
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div>
@@ -236,7 +299,7 @@ function Verify2FAContent() {
                 setRecoveryCode(e.target.value);
                 setError('');
               }}
-              placeholder="e.g. XXXX-XXXX-XXXX"
+              placeholder="e.g. XXXXX-XXXXX"
               disabled={isLoading}
               style={recoveryInputStyle}
               autoFocus
@@ -268,8 +331,8 @@ function Verify2FAContent() {
           disabled={isLoading}
         >
           {useRecovery
-            ? '← Use authenticator app instead'
-            : "Can't access your app? Use a recovery code"}
+            ? '← Use email code instead'
+            : "Can't access your email? Use a recovery code"}
         </button>
 
         <a href="/login" style={logoutLinkStyle}>

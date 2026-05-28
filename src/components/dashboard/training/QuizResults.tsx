@@ -251,8 +251,7 @@ export default function QuizResults({
               </div>
               <div className={styles.optionList}>
                 {q.options.map((opt, i) => {
-                  // Only highlight the option the worker selected AND got wrong.
-                  // We intentionally do NOT reveal which option is correct (Option B behaviour).
+                  const isCorrectAnswer = opt.id === q.correctAnswer;
                   const isSelectedWrong =
                     opt.id === q.selectedAnswer && q.selectedAnswer !== q.correctAnswer;
                   const isSelectedCorrect =
@@ -262,7 +261,7 @@ export default function QuizResults({
                   let icon = null;
 
                   if (isSelectedCorrect) {
-                    // Worker got it right — subtle positive indicator on their selection only
+                    // Worker selected the correct answer — highlight green
                     optionClass = `${styles.option} ${styles.optionCorrect}`;
                     icon = (
                       <svg
@@ -278,7 +277,7 @@ export default function QuizResults({
                       </svg>
                     );
                   } else if (isSelectedWrong) {
-                    // Worker got it wrong — show their selection in red; correct answer stays neutral
+                    // Worker selected the wrong answer — highlight red
                     optionClass = `${styles.option} ${styles.optionWrong}`;
                     icon = (
                       <svg
@@ -292,6 +291,23 @@ export default function QuizResults({
                       >
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    );
+                  } else if (isCorrectAnswer) {
+                    // This is the correct answer and the worker did NOT select it —
+                    // highlight it green so they know the right answer during review.
+                    optionClass = `${styles.option} ${styles.optionCorrect}`;
+                    icon = (
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        style={{ marginLeft: 'auto' }}
+                      >
+                        <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
                     );
                   }

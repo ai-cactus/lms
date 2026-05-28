@@ -7,6 +7,7 @@ import {
   verifyMfaSetup,
   disableMfa,
   regenerateRecoveryCodes,
+  sendDisableMfaCode,
   getMfaStatus,
 } from '@/app/actions/mfa';
 
@@ -14,13 +15,13 @@ type MfaState = 'loading' | 'idle' | 'setup' | 'verify' | 'recovery-codes' | 'en
 
 export default function MfaSettings() {
   const [state, setState] = useState<MfaState>('loading');
-  const [qrUri, setQrUri] = useState('');
-  const [secret, setSecret] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [disableCode, setDisableCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [disableCooldown, setDisableCooldown] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,21 +38,37 @@ export default function MfaSettings() {
     };
   }, []);
 
+  // Cooldown timer for resend
+  useEffect(() => {
+    if (disableCooldown <= 0) return;
+    const t = setInterval(() => {
+      setDisableCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(t);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [disableCooldown]);
+
+  // Step 1 of setup: send OTP to email
   const handleSetup = async () => {
     setLoading(true);
     setError('');
+    setInfo('');
     const result = await requestMfaSetup();
     if (!result.success) {
       setError(result.error);
       setLoading(false);
       return;
     }
-    setQrUri(result.data?.uri as string);
-    setSecret(result.data?.secret as string);
     setState('setup');
     setLoading(false);
   };
 
+  // Step 2: verify the emailed OTP to activate 2FA
   const handleVerify = async () => {
     if (!verifyCode || verifyCode.length !== 6) {
       setError('Please enter a valid 6-digit code');
@@ -70,9 +87,25 @@ export default function MfaSettings() {
     setLoading(false);
   };
 
+  // Send a fresh OTP before disabling
+  const handleSendDisableCode = async () => {
+    setLoading(true);
+    setError('');
+    setInfo('');
+    const result = await sendDisableMfaCode();
+    if (!result.success) {
+      setError(!result.success ? result.error : 'Failed to send code');
+      setLoading(false);
+      return;
+    }
+    setInfo('A verification code has been sent to your email.');
+    setDisableCooldown(60);
+    setLoading(false);
+  };
+
   const handleDisable = async () => {
     if (!disableCode) {
-      setError('Please enter a verification code');
+      setError('Please enter the verification code sent to your email');
       return;
     }
     setLoading(true);
@@ -90,7 +123,7 @@ export default function MfaSettings() {
 
   const handleRegenerateCodes = async () => {
     if (!disableCode) {
-      setError('Please enter your authenticator code to regenerate recovery codes');
+      setError('Please enter your email verification code to regenerate recovery codes');
       return;
     }
     setLoading(true);
@@ -157,12 +190,28 @@ export default function MfaSettings() {
         </div>
       )}
 
+      {info && (
+        <div
+          style={{
+            backgroundColor: '#F0FDF4',
+            color: '#166534',
+            padding: '10px 14px',
+            borderRadius: '6px',
+            marginBottom: '16px',
+            fontSize: '14px',
+            border: '1px solid #BBF7D0',
+          }}
+        >
+          {info}
+        </div>
+      )}
+
       {/* ── Idle: MFA not enabled ──────────────────────────────────────────── */}
       {state === 'idle' && (
         <div>
           <p style={{ fontSize: '14px', color: '#6B7280', marginBottom: '16px' }}>
-            Add an extra layer of security to your account by enabling two-factor authentication.
-            You&apos;ll need an authenticator app like Google Authenticator or Authy.
+            Add an extra layer of security to your account by enabling two-factor authentication. A
+            verification code will be sent to your email address each time you log in.
           </p>
           <Button onClick={handleSetup} loading={loading}>
             Enable Two-Factor Authentication
@@ -170,55 +219,18 @@ export default function MfaSettings() {
         </div>
       )}
 
-      {/* ── Setup: Show QR code ────────────────────────────────────────────── */}
+      {/* ── Setup: code sent to email, enter to verify ─────────────────────── */}
       {state === 'setup' && (
         <div>
           <p style={{ fontSize: '14px', color: '#6B7280', marginBottom: '16px' }}>
-            Scan the QR code below with your authenticator app, then enter the 6-digit code to
-            verify setup.
+            We&apos;ve sent a 6-digit code to your email. Enter it below to activate two-factor
+            authentication.
           </p>
 
-          {/* QR Code */}
-          <div
-            style={{
-              textAlign: 'center',
-              marginBottom: '16px',
-              padding: '16px',
-              backgroundColor: '#F9FAFB',
-              borderRadius: '8px',
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUri)}`}
-              alt="MFA QR Code"
-              width={200}
-              height={200}
-              style={{ margin: '0 auto', display: 'block' }}
-            />
-          </div>
-
-          {/* Manual entry */}
-          <details style={{ marginBottom: '16px', fontSize: '13px', color: '#6B7280' }}>
-            <summary style={{ cursor: 'pointer', marginBottom: '4px' }}>
-              Can&apos;t scan? Enter manually
-            </summary>
-            <code
-              style={{
-                display: 'block',
-                padding: '8px',
-                backgroundColor: '#F3F4F6',
-                borderRadius: '4px',
-                fontSize: '12px',
-                wordBreak: 'break-all',
-              }}
-            >
-              {secret}
-            </code>
-          </details>
-
           {/* Verification code input */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+          <div
+            style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '12px' }}
+          >
             <input
               type="text"
               value={verifyCode}
@@ -238,18 +250,18 @@ export default function MfaSettings() {
               }}
               inputMode="numeric"
               pattern="[0-9]*"
+              autoFocus
             />
             <Button onClick={handleVerify} loading={loading}>
-              Verify & Enable
+              Verify &amp; Enable
             </Button>
           </div>
 
           <button
             onClick={() => {
               setState('idle');
-              setQrUri('');
-              setSecret('');
               setVerifyCode('');
+              setError('');
             }}
             style={{
               background: 'none',
@@ -257,7 +269,6 @@ export default function MfaSettings() {
               color: '#6B7280',
               cursor: 'pointer',
               fontSize: '13px',
-              marginTop: '12px',
             }}
           >
             Cancel
@@ -349,7 +360,7 @@ export default function MfaSettings() {
             Two-factor authentication is enabled
           </div>
 
-          {/* Disable section */}
+          {/* Disable / regenerate section */}
           <div
             style={{
               borderTop: '1px solid #E5E7EB',
@@ -358,9 +369,35 @@ export default function MfaSettings() {
             }}
           >
             <p style={{ fontSize: '14px', color: '#6B7280', marginBottom: '12px' }}>
-              To disable two-factor authentication or regenerate recovery codes, enter your
-              authenticator code:
+              To disable two-factor authentication or regenerate recovery codes, first request a
+              verification code sent to your email:
             </p>
+
+            {/* Send code button with cooldown */}
+            <div style={{ marginBottom: '12px' }}>
+              {disableCooldown > 0 ? (
+                <span style={{ fontSize: '13px', color: '#94A3B8' }}>
+                  Resend in {disableCooldown}s
+                </span>
+              ) : (
+                <button
+                  onClick={handleSendDisableCode}
+                  disabled={loading}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#4F46E5',
+                    fontSize: '13px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    padding: 0,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {loading ? 'Sending...' : 'Send verification code to my email'}
+                </button>
+              )}
+            </div>
+
             <div
               style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flexWrap: 'wrap' }}
             >

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { headers } from 'next/headers';
-import { verifyUserMfaCode } from './mfa';
+import { verifyUserMfaCode, sendLoginMfaCode } from './mfa';
 import { logger } from '@/lib/logger';
 
 async function resolveSession() {
@@ -69,4 +69,24 @@ export async function verifyMfaChallenge(
 
   const redirectTo = instance === 'worker' ? '/worker' : '/dashboard';
   return { success: true, redirectTo };
+}
+
+/**
+ * Send an email OTP to the currently-authenticated (but MFA-pending) user.
+ * Called on mount by the /verify-2fa page, which is reached via a middleware
+ * redirect — the userId is not available in the URL, so we resolve it here
+ * from the session JWT.
+ */
+export async function sendCurrentSessionMfaCode(): Promise<{ success: boolean; error?: string }> {
+  const resolved = await resolveSession();
+  if (!resolved?.session?.user?.id) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const result = await sendLoginMfaCode(resolved.session.user.id);
+  if (!result.success) {
+    return { success: false, error: !result.success ? result.error : 'Failed to send code' };
+  }
+
+  return { success: true };
 }
