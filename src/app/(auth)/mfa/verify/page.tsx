@@ -23,12 +23,14 @@ function MfaVerifyForm() {
       return;
     }
 
-    // Send the OTP when the page loads
+    // Send the OTP when the page loads (error is non-critical — page still usable)
     fetch('/api/auth/mfa/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId }),
-    }).catch((err) => console.error('Failed to send OTP:', err));
+    }).catch(() => {
+      // Silently ignore — user can still enter a code if they already have one
+    });
   }, [userId, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
