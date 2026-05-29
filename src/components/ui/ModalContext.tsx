@@ -36,47 +36,29 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const unregisterModal = useCallback(
-    (id: ModalId) => {
-      setRegisteredModals((prev) => prev.filter((m) => m.id !== id));
-      setOpenRequests((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      if (activeModal === id) {
-        setActiveModal(null);
-      }
-    },
-    [activeModal],
-  );
+  const unregisterModal = useCallback((id: ModalId) => {
+    setRegisteredModals((prev) => prev.filter((m) => m.id !== id));
+    setOpenRequests((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setActiveModal((prev) => (prev === id ? null : prev));
+  }, []);
 
-  const requestOpen = useCallback(
-    (id: ModalId) => {
-      // If this modal is already active, yes
-      if (activeModal === id) return true;
+  const requestOpen = useCallback((id: ModalId) => {
+    setOpenRequests((prev) => new Set(prev).add(id));
+    return false; // Will be handled by effect
+  }, []);
 
-      // Add to requests
-      setOpenRequests((prev) => new Set(prev).add(id));
-
-      return false; // Will be handled by effect
-    },
-    [activeModal],
-  );
-
-  const closeModal = useCallback(
-    (id: ModalId) => {
-      if (activeModal === id) {
-        setActiveModal(null);
-      }
-      setOpenRequests((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    },
-    [activeModal],
-  );
+  const closeModal = useCallback((id: ModalId) => {
+    setActiveModal((prev) => (prev === id ? null : prev));
+    setOpenRequests((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
 
   const dismissModal = useCallback(
     (id: ModalId, snoozeDuration: number = 0) => {

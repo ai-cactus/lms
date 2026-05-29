@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { notifyOrganizationAdmins } from './notifications';
 import { CourseWithStats, CourseWithRelations } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
@@ -242,18 +241,21 @@ export async function getDashboardData() {
   ]);
 
   if (!currentUser?.organizationId) {
-    // User authenticated but has no organization — they skipped or failed onboarding.
-    // Redirect them back to complete onboarding rather than crashing the page.
-    redirect('/onboarding');
+    // User authenticated but has no organization. We no longer force redirect here.
+    // The client-side OrganizationActivationModal will show a welcome message for 60 seconds
+    // and then auto-redirect if they don't click anything.
   }
 
   // Get total staff (workers) in organization to ensure accurate coverage base
-  const totalOrgStaff = await prisma.user.count({
-    where: {
-      organizationId: currentUser.organizationId,
-      role: 'worker',
-    },
-  });
+  let totalOrgStaff = 0;
+  if (currentUser?.organizationId) {
+    totalOrgStaff = await prisma.user.count({
+      where: {
+        organizationId: currentUser.organizationId,
+        role: 'worker',
+      },
+    });
+  }
 
   const courses: CourseWithStats[] = coursesRaw.map((course) => ({
     id: course.id,
