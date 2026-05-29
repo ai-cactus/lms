@@ -5,7 +5,7 @@ import styles from './ProfileForm.module.css';
 import { updateOrganization, uploadComplianceDocument } from '@/app/actions/organization';
 import { generateOrganizationCode, getOrganizationCode } from '@/app/actions/organization-code';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Select, Checkbox } from '@/components/ui';
+import { Button, Input, Select, Checkbox, PhoneInput } from '@/components/ui';
 import { logger } from '@/lib/logger';
 
 interface OrganizationData {
@@ -355,6 +355,17 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       JSON.stringify(baseData.programServices || []) ||
     formData.complianceDocumentUrl !== baseData.complianceDocumentUrl;
 
+  /** Format a raw value into EIN format: XX-XXXXXXX */
+  const handleEinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Strip everything except digits
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 9);
+    let formatted = digits;
+    if (digits.length > 2) {
+      formatted = `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    }
+    setFormData((prev) => ({ ...prev, ein: formatted }));
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -566,9 +577,10 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             <Input
               name="ein"
               value={formData.ein || ''}
-              onChange={handleChange}
-              placeholder="Enter your EIN (if applicable)"
+              onChange={handleEinChange}
+              placeholder="XX-XXXXXXX"
               disabled={!isAdmin}
+              maxLength={10}
             />
           </div>
           <div className={styles.fieldGroup}>
@@ -634,13 +646,12 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             <label className={styles.label}>
               Phone Number <span className={styles.required}>*</span>
             </label>
-            <Input
-              name="phone"
+            <PhoneInput
               value={formData.phone || ''}
-              onChange={handleChange}
-              placeholder="Enter the phone number"
-              disabled={!isAdmin}
+              onChange={(val) => setFormData((prev) => ({ ...prev, phone: val }))}
+              placeholder="(XXX) XXX-XXXX"
               error={errors.phone}
+              allowedCountries={['US']}
             />
           </div>
         </div>

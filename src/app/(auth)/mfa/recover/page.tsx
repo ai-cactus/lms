@@ -120,7 +120,7 @@ function MfaRecoverForm() {
                 textDecoration: 'underline',
               }}
             >
-              Use authenticator code instead
+              Use email code instead
             </button>
           </div>
 
@@ -172,7 +172,7 @@ function MfaRecoverForm() {
               Account Recovery
             </h2>
             <p style={{ fontSize: '14px', opacity: 0.8 }}>
-              Use a recovery code if you&apos;ve lost access to your authenticator app.
+              Use a recovery code if you can&apos;t receive your email verification code.
             </p>
           </div>
         </div>

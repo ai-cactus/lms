@@ -37,35 +37,24 @@ export default function WorkerWelcomeModal({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Hydration guard
     setHasMounted(true);
-    // Priority 5 (Medium)
     registerModal(modalId, 5);
+    return () => unregisterModal(modalId);
+  }, [registerModal, unregisterModal, modalId]);
 
-    // Debug logging
+  // Effect 2: Request open after registration has been committed.
+  useEffect(() => {
+    if (!hasMounted) return;
+
     logger.info({
-      msg: '[WorkerWelcomeModal] Effect run.',
+      msg: '[WorkerWelcomeModal] Checking whether to open.',
       data: { courseCount, hasProgress },
     });
 
-    if (typeof window !== 'undefined') {
-      const shouldShow = shouldShowModal(modalId);
-      logger.info({ msg: '[WorkerWelcomeModal] Should show?', data: shouldShow });
-
-      if (courseCount > 0 && !hasProgress && shouldShow) {
-        logger.info({ msg: '[WorkerWelcomeModal] Requesting Open' });
-        requestOpen(modalId);
-      }
+    if (courseCount > 0 && !hasProgress && shouldShowModal(modalId)) {
+      logger.info({ msg: '[WorkerWelcomeModal] Requesting Open' });
+      requestOpen(modalId);
     }
-
-    return () => unregisterModal(modalId);
-  }, [
-    courseCount,
-    hasProgress,
-    registerModal,
-    unregisterModal,
-    requestOpen,
-    shouldShowModal,
-    modalId,
-  ]);
+  }, [hasMounted, courseCount, hasProgress, shouldShowModal, requestOpen, modalId]);
 
   const handleClose = () => {
     dismissModal(modalId, SNOOZE_DURATION_MS);

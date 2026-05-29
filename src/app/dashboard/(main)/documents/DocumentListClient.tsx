@@ -42,7 +42,6 @@ function deriveStatus(
   courseVersions: CourseVersionEntry[],
 ): 'completed' | 'in-progress' | 'not-started' {
   if (courseVersions.length === 0) return 'not-started';
-  // If any linked course is published, consider it completed
   if (courseVersions.some((cv) => cv.course.status === 'published')) return 'completed';
   return 'in-progress';
 }

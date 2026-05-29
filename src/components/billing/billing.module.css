@@ -4,6 +4,15 @@
    Primary: #335CFF, Background: #F8F9FC
    =================================================== */
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ---------- Page Shell ---------- */
 .billingPage {
   padding: 32px 40px;
@@ -524,8 +533,8 @@
 }
 
 .planCardBtnPrimary {
-  background: #335cff;
-  color: #ffffff;
+  color: #335cff;
+  background: #ffffff;
 }
 
 .planCardBtnPrimary:hover {
