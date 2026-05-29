@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import styles from './OrganizationActivationModal.module.css';
@@ -67,15 +67,33 @@ export default function OrganizationActivationModal({
     modalId,
   ]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (isWelcomeMode) {
       dismissModal(modalId, 24 * 60 * 60 * 1000);
     } else {
       onClose?.();
     }
-  };
+  }, [isWelcomeMode, dismissModal, modalId, onClose]);
 
   const isOpen = isWelcomeMode ? isModalOpen(modalId) : controlledIsOpen;
+
+  // Auto redirect logic
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    if (isOpen && !hasOrganization && isWelcomeMode) {
+      timeoutId = setTimeout(() => {
+        handleClose();
+        router.push('/onboarding');
+      }, 10000); // 10 seconds
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [isOpen, hasOrganization, isWelcomeMode, router, handleClose]);
 
   if (!isOpen) return null;
 
