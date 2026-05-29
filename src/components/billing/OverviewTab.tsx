@@ -195,7 +195,7 @@ export default function OverviewTab({ onChangeTab }: Props) {
             <h3>No active plan</h3>
             <p>Choose a plan to get started.</p>
             <button
-              className={`${styles.planLink} ${styles.planCardBtnPrimary}`}
+              className={`${styles.planLink}`}
               style={{ marginTop: 12 }}
               onClick={() => onChangeTab('subscription')}
             >

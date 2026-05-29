@@ -357,12 +357,23 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
   /** Format a raw value into EIN format: XX-XXXXXXX */
   const handleEinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Strip everything except digits
-    const digits = e.target.value.replace(/\D/g, '').slice(0, 9);
-    let formatted = digits;
+    const rawValue = e.target.value;
+    const digits = rawValue.replace(/\D/g, '').slice(0, 9);
+
+    let formatted = '';
     if (digits.length > 2) {
-      formatted = `${digits.slice(0, 2)}-${digits.slice(2)}`;
+      formatted = `${digits.substring(0, 2)}-${digits.substring(2)}`;
+    } else if (digits.length === 2) {
+      // Handle backspace over hyphen
+      if (formData.ein === `${digits}-` && rawValue === digits) {
+        formatted = digits.substring(0, 1);
+      } else {
+        formatted = `${digits}-`;
+      }
+    } else {
+      formatted = digits;
     }
+
     setFormData((prev) => ({ ...prev, ein: formatted }));
   };
 
@@ -649,7 +660,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             <PhoneInput
               value={formData.phone || ''}
               onChange={(val) => setFormData((prev) => ({ ...prev, phone: val }))}
-              placeholder="(XXX) XXX-XXXX"
+              placeholder="(XXX)-XXX-XXXX"
               error={errors.phone}
               allowedCountries={['US']}
             />
