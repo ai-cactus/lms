@@ -360,21 +360,22 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     const rawValue = e.target.value;
     const digits = rawValue.replace(/\D/g, '').slice(0, 9);
 
-    let formatted = '';
-    if (digits.length > 2) {
-      formatted = `${digits.substring(0, 2)}-${digits.substring(2)}`;
-    } else if (digits.length === 2) {
-      // Handle backspace over hyphen
-      if (formData.ein === `${digits}-` && rawValue === digits) {
-        formatted = digits.substring(0, 1);
+    setFormData((prev) => {
+      let formatted = '';
+      if (digits.length > 2) {
+        formatted = `${digits.substring(0, 2)}-${digits.substring(2)}`;
+      } else if (digits.length === 2) {
+        // Handle backspace over hyphen using latest state
+        if (prev.ein === `${digits}-` && rawValue === digits) {
+          formatted = digits.substring(0, 1);
+        } else {
+          formatted = `${digits}-`;
+        }
       } else {
-        formatted = `${digits}-`;
+        formatted = digits;
       }
-    } else {
-      formatted = digits;
-    }
-
-    setFormData((prev) => ({ ...prev, ein: formatted }));
+      return { ...prev, ein: formatted };
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

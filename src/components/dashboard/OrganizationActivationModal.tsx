@@ -85,7 +85,7 @@ export default function OrganizationActivationModal({
       timeoutId = setTimeout(() => {
         handleClose();
         router.push('/onboarding');
-      }, 10000); // 10 seconds
+      }, 60000); // 60 seconds
     }
 
     return () => {
