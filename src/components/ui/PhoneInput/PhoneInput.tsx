@@ -118,6 +118,11 @@ export default function PhoneInput({
   const [phoneNumber, setPhoneNumber] = useState(value);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
+    setPhoneNumber(value);
+  }
 
   // When only one country is allowed, keep the dropdown closed
   const isSingleCountry = visibleCountries.length <= 1;
@@ -161,16 +166,70 @@ export default function PhoneInput({
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Strip non-digits
-    const rawValue = e.target.value.replace(/\D/g, '');
+    const rawValue = e.target.value;
 
-    // Restrict length based on country metadata (default to 15 if not specified)
-    const maxLength = selectedCountry.expectedLength || 15;
-    const newPhone = rawValue.slice(0, maxLength);
+    if (selectedCountry.code === 'US') {
+      let digits = rawValue.replace(/\D/g, '');
 
-    setPhoneNumber(newPhone);
-    if (onChange) {
-      onChange(`${selectedCountry.dialCode} ${newPhone}`);
+      // Since US numbers are formatted with +1, the first digit is usually '1' from the prefix.
+      // If the digits start with '1', strip it so we only deal with the 10-digit local number.
+      if (digits.startsWith('1')) {
+        digits = digits.substring(1);
+      }
+
+      digits = digits.substring(0, 10);
+
+      // Handle backspace over formatting characters
+      const oldPhone = phoneNumber || '';
+      if (rawValue.length < oldPhone.length) {
+        if (oldPhone.endsWith('-') && rawValue === oldPhone.slice(0, -1)) {
+          digits = digits.slice(0, -1);
+        } else if (oldPhone.endsWith(')') && rawValue === oldPhone.slice(0, -1)) {
+          digits = digits.slice(0, -1);
+        }
+      }
+
+      let newPhone = '';
+      if (digits.length === 0) {
+        newPhone = rawValue.includes('+') ? '+1' : ''; // Allow clearing completely
+      } else if (digits.length < 3) {
+        newPhone = `+1(${digits}`;
+      } else if (digits.length === 3) {
+        // If they just typed the 3rd digit, append closing paren and hyphen,
+        // unless they just backspaced the hyphen
+        if (oldPhone === `+1(${digits})-` && rawValue === `+1(${digits}`) {
+          newPhone = `+1(${digits.slice(0, 2)}`;
+        } else {
+          newPhone = `+1(${digits})-`;
+        }
+      } else if (digits.length < 6) {
+        newPhone = `+1(${digits.substring(0, 3)})-${digits.substring(3)}`;
+      } else if (digits.length === 6) {
+        // Same backspace logic for the second hyphen
+        if (
+          oldPhone === `+1(${digits.substring(0, 3)})-${digits.substring(3)}-` &&
+          rawValue === `+1(${digits.substring(0, 3)})-${digits.substring(3)}`
+        ) {
+          newPhone = `+1(${digits.substring(0, 3)})-${digits.substring(3, 5)}`;
+        } else {
+          newPhone = `+1(${digits.substring(0, 3)})-${digits.substring(3)}-`;
+        }
+      } else {
+        newPhone = `+1(${digits.substring(0, 3)})-${digits.substring(3, 6)}-${digits.substring(6, 10)}`;
+      }
+
+      setPhoneNumber(newPhone);
+      if (onChange) {
+        onChange(newPhone);
+      }
+    } else {
+      const digits = rawValue.replace(/\D/g, '');
+      const maxLength = selectedCountry.expectedLength || 15;
+      const newPhone = digits.slice(0, maxLength);
+      setPhoneNumber(newPhone);
+      if (onChange) {
+        onChange(`${selectedCountry.dialCode} ${newPhone}`);
+      }
     }
   };
 
@@ -201,12 +260,18 @@ export default function PhoneInput({
         {/* Divider */}
         <div className={styles.divider} />
 
-        {/* Phone Input */}
         <input
           type="tel"
           className={styles.phoneInput}
           value={phoneNumber}
           onChange={handlePhoneChange}
+          onFocus={() => {
+            if (selectedCountry.code === 'US' && (!phoneNumber || phoneNumber === '+1')) {
+              const newPhone = '+1(';
+              setPhoneNumber(newPhone);
+              if (onChange) onChange(newPhone);
+            }
+          }}
           placeholder={placeholder}
         />
       </div>
