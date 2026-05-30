@@ -61,8 +61,8 @@ async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
       lastError = error;
 
       const isRetryable =
-        error.message?.includes('429') ||
-        error.message?.includes('5') ||
+        /\b429\b/.test(error.message || '') ||
+        /\b5\d{2}\b/.test(error.message || '') ||
         error.name === 'AbortError' ||
         error.message?.includes('fetch failed');
 
