@@ -57,7 +57,8 @@ export async function uploadDocument(
   }
 
   const rejectOnPHI = formData.get('rejectOnPHI') === 'true';
-  if (phiResult.hasPHI && rejectOnPHI) {
+  const failClosed = process.env.PHI_FAIL_CLOSED === 'true';
+  if (phiResult.hasPHI && (rejectOnPHI || failClosed)) {
     return { error: 'PHI Detected in document.', phiDetected: true };
   }
 

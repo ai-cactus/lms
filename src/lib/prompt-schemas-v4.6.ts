@@ -56,15 +56,15 @@ const NormV46Schema = z
     sectionId: z.string(),
     modality: z.enum(['must', 'should', 'may', 'prohibited', 'conditional']),
     statement: z.string(),
-    snippetId: z.string().optional().default(''),
+    snippetId: z.string().nullable().default(''),
   })
   .passthrough();
 
 export const ArticleMetaV46Schema = z
   .object({
     meta: ArticleMetaMetaSchema,
-    learningObjectives: z.array(LearningObjectiveV46Schema).min(1),
-    sections: z.array(ArticleSectionV46Schema).min(1),
+    learningObjectives: z.array(LearningObjectiveV46Schema).min(0),
+    sections: z.array(ArticleSectionV46Schema).min(0),
     snippets: z.array(SnippetV46Schema).default([]),
     norms: z.array(NormV46Schema).default([]),
   })
