@@ -16,18 +16,43 @@ export default async function WorkerTrainingsPage() {
     },
   });
 
-  const courses = allEnrollments.map((e) => ({
-    id: e.courseId,
-    enrollmentId: e.id,
-    title: e.course.title,
-    status: e.status,
-    progress: e.progress,
-    deadline: null,
-    duration: e.course.duration || undefined,
-    category: e.course.category,
-    retakeOf: e.retakeOf,
-    quizAttempts: e.quizAttempts,
-  }));
+  // Deduplicate: one entry per course, preferring completed/attested, then latest enrollment
+  const latestByCourse = new Map<string, (typeof allEnrollments)[number]>();
+  const completedByCourse = new Map<string, (typeof allEnrollments)[number]>();
+
+  for (const e of allEnrollments) {
+    const existing = latestByCourse.get(e.courseId);
+    if (
+      !existing ||
+      (e.startedAt && existing.startedAt && e.startedAt > existing.startedAt) ||
+      (!existing.startedAt && e.startedAt)
+    ) {
+      latestByCourse.set(e.courseId, e);
+    }
+    if (e.status === 'completed' || e.status === 'attested') {
+      const existingCompleted = completedByCourse.get(e.courseId);
+      if (!existingCompleted || e.status === 'attested') {
+        completedByCourse.set(e.courseId, e);
+      }
+    }
+  }
+
+  const courses = [...latestByCourse.entries()].map(([courseId, e]) => {
+    const completed = completedByCourse.get(courseId);
+    const picked = completed ?? e;
+    return {
+      id: courseId,
+      enrollmentId: picked.id,
+      title: picked.course.title,
+      status: picked.status,
+      progress: picked.progress,
+      deadline: null,
+      duration: picked.course.duration || undefined,
+      category: picked.course.category,
+      retakeOf: picked.retakeOf,
+      quizAttempts: picked.quizAttempts,
+    };
+  });
 
   return (
     <div className={styles.container}>

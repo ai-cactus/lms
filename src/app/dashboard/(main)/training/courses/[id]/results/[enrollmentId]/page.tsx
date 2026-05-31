@@ -59,14 +59,29 @@ export default async function QuizResultsPage({
       time: latestAttempt.timeTaken ? Math.round(latestAttempt.timeTaken / 60) : 5,
       questions: allQuestions.map((q) => {
         const userAnswer = answers.find((a) => a.questionId === q.id);
-        const options = (q.options as { id: string; text: string }[]) || [];
+        const rawOptions = Array.isArray(q.options) ? (q.options as string[]) : [];
+
+        // Convert string[] to {id, text}[] and resolve selectedAnswer/correctAnswer to letter IDs
+        const optionTexts = rawOptions.map((opt) => (typeof opt === 'string' ? opt : String(opt)));
+
+        const selectedText = userAnswer?.selectedAnswer || '';
+        const selectedIdx = optionTexts.findIndex((t) => t === selectedText);
+        const selectedLetter = selectedIdx >= 0 ? String.fromCharCode(65 + selectedIdx) : '';
+
+        const correctText = q.correctAnswer || '';
+        const correctIdx = optionTexts.findIndex((t) => t === correctText);
+        const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
+
         return {
           id: q.id,
           text: q.text,
-          options: options,
-          selectedAnswer: userAnswer?.selectedAnswer || '',
-          correctAnswer: q.correctAnswer,
-          explanation: `The correct answer is ${q.correctAnswer}.`,
+          options: optionTexts.map((text, idx) => ({
+            id: String.fromCharCode(65 + idx),
+            text,
+          })),
+          selectedAnswer: selectedLetter,
+          correctAnswer: correctLetter,
+          explanation: `The correct answer is ${correctLetter}. ${q.correctAnswer}`,
         };
       }),
       userName: enrollment.user.profile?.fullName || enrollment.user.email,
