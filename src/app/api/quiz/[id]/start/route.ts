@@ -81,7 +81,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
         // It is completed. Check if we can retake.
         const quiz = await tx.quiz.findUnique({ where: { id: quizId } });
-        const allowedAttempts = quiz?.allowedAttempts || 1;
+        const allowedAttempts = quiz?.allowedAttempts ?? 1;
 
         if (existingAttempt.attemptCount >= allowedAttempts) {
           return { status: 'blocked' };

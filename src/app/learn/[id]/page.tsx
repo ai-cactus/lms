@@ -736,7 +736,10 @@ export default function LearnPage() {
                                     fontWeight: 600,
                                   }}
                                 >
-                                  Attempt {(enrollment?.quizAttempts?.[0]?.attemptCount || 0) + 1}{' '}
+                                  Attempt{' '}
+                                  {enrollment?.quizAttempts?.[0]?.attemptCount
+                                    ? enrollment.quizAttempts[0].attemptCount + 1
+                                    : 1}{' '}
                                   of {course.quiz.allowedAttempts}
                                 </span>
                               )}
@@ -766,7 +769,7 @@ export default function LearnPage() {
                             <span className={styles.slideModuleLabel}>
                               Question {currentQuestionIndex + 1} of {course.quiz.questions.length}
                               {course.quiz.allowedAttempts &&
-                                ` | Attempt ${enrollment?.quizAttempts?.[0]?.attemptCount || 1} of ${course.quiz.allowedAttempts}`}
+                                ` | Attempt ${enrollment?.quizAttempts?.[0]?.attemptCount ?? 1} of ${course.quiz.allowedAttempts}`}
                             </span>
                             <span className={styles.slideCounter}>
                               {Math.floor(timeLeft / 60)}:
@@ -855,6 +858,13 @@ export default function LearnPage() {
                 } else if (index <= highestUnlockedIndex || userData?.role === 'admin') {
                   setIsQuizActive(false);
                   setActiveIndex(index);
+                  // Scroll to the module in article view
+                  requestAnimationFrame(() => {
+                    const el = document.getElementById(`module-${index}`);
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  });
                 }
               }}
               onToggleView={() => setViewMode('slides')}

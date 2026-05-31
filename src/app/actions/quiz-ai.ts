@@ -83,7 +83,7 @@ export async function generateSingleQuestion(options: {
 
     // 2. Build Prompt
     const prompt = `
-You are an expert instructional designer and subject matter expert. 
+You are an expert instructional designer and subject matter expert.
 Based on the following course content, generate a single, high-quality multiple-choice quiz question.
 
 The question must test comprehension of the material, not just generic knowledge.
@@ -96,6 +96,7 @@ Instructions:
 2. Indicate the correct answer using a 0-based index (0, 1, 2, or 3).
 3. Ensure the question string is clear and grammatically correct.
 4. Keep the options concise.
+5. IMPORTANT: The correct answer MUST NOT always be at index 0. Randomly distribute the correct answer across ALL positions (0, 1, 2, 3). Each position should be equally likely to be correct.
 
 Return ONLY a valid JSON object matching this schema:
 {
