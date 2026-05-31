@@ -58,23 +58,53 @@ export async function GET() {
         expand: ['invoice_settings.default_payment_method'],
       });
 
-      if (!customer.deleted && customer.invoice_settings?.default_payment_method) {
-        const pm = customer.invoice_settings.default_payment_method;
-        if (typeof pm !== 'string' && pm.card) {
-          defaultPaymentMethod = {
-            id: pm.id,
-            brand: pm.card.brand,
-            last4: pm.card.last4,
-            expMonth: pm.card.exp_month,
-            expYear: pm.card.exp_year,
-            billingAddress: {
-              name: pm.billing_details?.name,
-              line1: pm.billing_details?.address?.line1,
-              city: pm.billing_details?.address?.city,
-              state: pm.billing_details?.address?.state,
-              country: pm.billing_details?.address?.country,
-            },
-          };
+      const rawDefaultPm = !customer.deleted
+        ? customer.invoice_settings?.default_payment_method
+        : null;
+      const defaultPm = rawDefaultPm && typeof rawDefaultPm !== 'string' ? rawDefaultPm : null;
+      const defaultPmId = typeof rawDefaultPm === 'string' ? rawDefaultPm : (defaultPm?.id ?? null);
+
+      if (defaultPm?.card) {
+        defaultPaymentMethod = {
+          id: defaultPm.id,
+          brand: defaultPm.card.brand,
+          last4: defaultPm.card.last4,
+          expMonth: defaultPm.card.exp_month,
+          expYear: defaultPm.card.exp_year,
+          billingAddress: {
+            name: defaultPm.billing_details?.name,
+            line1: defaultPm.billing_details?.address?.line1,
+            city: defaultPm.billing_details?.address?.city,
+            state: defaultPm.billing_details?.address?.state,
+            country: defaultPm.billing_details?.address?.country,
+          },
+        };
+      } else if (!customer.deleted) {
+        // Fallback: list attached payment methods and pick the default or first one
+        const pmList = await stripe.paymentMethods.list({
+          customer: organization.stripeCustomerId,
+          type: 'card',
+        });
+        if (pmList.data.length > 0) {
+          const pm = defaultPmId
+            ? (pmList.data.find((p) => p.id === defaultPmId) ?? pmList.data[0])
+            : pmList.data[0];
+          if (pm.card) {
+            defaultPaymentMethod = {
+              id: pm.id,
+              brand: pm.card.brand,
+              last4: pm.card.last4,
+              expMonth: pm.card.exp_month,
+              expYear: pm.card.exp_year,
+              billingAddress: {
+                name: pm.billing_details?.name,
+                line1: pm.billing_details?.address?.line1,
+                city: pm.billing_details?.address?.city,
+                state: pm.billing_details?.address?.state,
+                country: pm.billing_details?.address?.country,
+              },
+            };
+          }
         }
       }
     }

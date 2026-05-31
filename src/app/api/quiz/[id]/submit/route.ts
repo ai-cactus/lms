@@ -182,7 +182,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     if (existingAttempt) {
       // Hard-enforce attempt limit on submit
-      if (quiz.allowedAttempts && existingAttempt.attemptCount > quiz.allowedAttempts) {
+      if (quiz.allowedAttempts && existingAttempt.attemptCount >= quiz.allowedAttempts) {
         return NextResponse.json(
           {
             error: 'No attempts remaining',

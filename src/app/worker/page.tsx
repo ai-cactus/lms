@@ -20,41 +20,70 @@ export default async function LearnerDashboard() {
     },
   });
 
-  const totalCourses = allEnrollments.length;
-  const completedCourses = allEnrollments.filter(
-    (e) => e.status === 'attested' || e.status === 'completed',
+  // Deduplicate: one entry per course, preferring completed/attested, then latest enrollment
+  const latestByCourse = new Map<string, (typeof allEnrollments)[number]>();
+  const completedByCourse = new Map<string, (typeof allEnrollments)[number]>();
+
+  for (const e of allEnrollments) {
+    const existing = latestByCourse.get(e.courseId);
+    if (
+      !existing ||
+      (e.startedAt && existing.startedAt && e.startedAt > existing.startedAt) ||
+      (!existing.startedAt && e.startedAt)
+    ) {
+      latestByCourse.set(e.courseId, e);
+    }
+    if (e.status === 'completed' || e.status === 'attested') {
+      const existingCompleted = completedByCourse.get(e.courseId);
+      if (!existingCompleted || e.status === 'attested') {
+        completedByCourse.set(e.courseId, e);
+      }
+    }
+  }
+
+  const courses = [...latestByCourse.entries()].map(([courseId, e]) => {
+    const completed = completedByCourse.get(courseId);
+    const picked = completed ?? e;
+    return {
+      id: courseId,
+      enrollmentId: picked.id,
+      title: picked.course.title,
+      status: picked.status,
+      progress: picked.progress,
+      deadline: null,
+      duration: picked.course.duration || undefined,
+      quizAttempts: picked.quizAttempts,
+      retakeOf: picked.retakeOf,
+    };
+  });
+
+  const totalCourses = courses.length;
+  const completedCourses = courses.filter(
+    (c) => c.status === 'attested' || c.status === 'completed',
   ).length;
   const badgeCount = completedCourses;
 
-  // Calculate Average Grade
-  const enrollmentsWithScores = allEnrollments.filter((e) => e.score !== null);
+  // Calculate Average Grade (from deduplicated courses)
+  const coursesWithScores = courses.filter((c) => {
+    const enrollment = allEnrollments.find((e) => e.id === c.enrollmentId);
+    return enrollment?.score !== null;
+  });
   const averageGrade =
-    enrollmentsWithScores.length > 0
+    coursesWithScores.length > 0
       ? Math.round(
-          enrollmentsWithScores.reduce((sum, e) => sum + (e.score || 0), 0) /
-            enrollmentsWithScores.length,
+          coursesWithScores.reduce((sum, c) => {
+            const enrollment = allEnrollments.find((e) => e.id === c.enrollmentId);
+            return sum + (enrollment?.score || 0);
+          }, 0) / coursesWithScores.length,
         )
       : 0;
 
-  // Map to component props
-  const courses = allEnrollments.map((e) => ({
-    id: e.courseId,
-    enrollmentId: e.id,
-    title: e.course.title,
-    status: e.status,
-    progress: e.progress,
-    deadline: null,
-    duration: e.course.duration || undefined,
-    quizAttempts: e.quizAttempts,
-    retakeOf: e.retakeOf,
-  }));
-
   // Check if completely empty (onboarding state)
-  const showWelcomeModal = allEnrollments.length === 0;
+  const showWelcomeModal = courses.length === 0;
 
   // Check for any progress to intelligently hide welcome modal
-  const hasProgress = allEnrollments.some(
-    (e) => (e.progress || 0) > 0 || e.status === 'completed' || e.status === 'attested',
+  const hasProgress = courses.some(
+    (c) => (c.progress || 0) > 0 || c.status === 'completed' || c.status === 'attested',
   );
 
   return (
@@ -76,16 +105,16 @@ export default async function LearnerDashboard() {
 
       <WorkerAchievements
         badgeCount={badgeCount}
-        completedCourses={allEnrollments
-          .filter((e) => e.status === 'attested' || e.status === 'completed')
-          .map((e) => ({ id: e.courseId, title: e.course.title }))}
+        completedCourses={courses
+          .filter((c) => c.status === 'attested' || c.status === 'completed')
+          .map((c) => ({ id: c.id, title: c.title }))}
       />
 
       {showWelcomeModal && <WorkerEmptyState />}
 
       <WorkerWelcomeModal
-        courseCount={allEnrollments.length}
-        firstCourseId={allEnrollments[0]?.courseId}
+        courseCount={courses.length}
+        firstCourseId={courses[0]?.id}
         hasProgress={hasProgress}
       />
     </div>
