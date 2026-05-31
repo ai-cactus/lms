@@ -15,6 +15,27 @@ export type ScanResult = {
   findings: PHIFinding[];
 };
 
+const failClosedResult: ScanResult = {
+  hasPHI: true,
+  findings: [
+    {
+      type: 'OTHER',
+      value: 'PHI scan failed — document blocked as precaution',
+      index: 0,
+      confidence: 1.0,
+    },
+  ],
+};
+
+function failOpenOrClosed(reason: string): ScanResult {
+  if (PHI_FAIL_CLOSED) {
+    logger.warn({ msg: `PHI scanner fail-closed: ${reason}` });
+    return failClosedResult;
+  }
+  logger.warn({ msg: `PHI scanner fail-open: ${reason}` });
+  return { hasPHI: false, findings: [] };
+}
+
 export async function scanText(text: string): Promise<ScanResult> {
   // Quick heuristic: If text is very short (< 50 chars), skip AI to save cost/time
   if (text.length < 50) return { hasPHI: false, findings: [] };
@@ -26,7 +47,7 @@ export async function scanText(text: string): Promise<ScanResult> {
 
   const prompt = `
         You are an expert compliance officer. Analyze the following text for Protected Health Information (PHI) and Personally Identifiable Information (PII).
-        
+
         Look for:
         - Full Names of patients/clients (ignore public figures or generic names if context isn't medical/records)
         - Social Security Numbers (SSN)
@@ -35,12 +56,12 @@ export async function scanText(text: string): Promise<ScanResult> {
         - Email addresses
         - Full addresses
         - Medical Record Numbers (MRN)
-        
+
         TEXT TO ANALYZE:
         """
         ${contentToScan}
         """
-        
+
         Return a JSON object with a boolean field "hasPHI" and an array "findings".
         Each finding should have: "type" (enum: NAME, SSN, DATE, PHONE, EMAIL, ADDRESS, OTHER), "value" (the exact text string), and "confidence" (0-1).
         Only include findings with high confidence (> 0.8) that appear to be real personal data, not generic placeholders.
@@ -52,13 +73,17 @@ export async function scanText(text: string): Promise<ScanResult> {
     // JSON extraction
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      logger.warn({ msg: 'PHI Scanner: No JSON found in response' });
-      return { hasPHI: false, findings: [] };
+      return failOpenOrClosed('no JSON found in AI response');
     }
 
-    const data = JSON.parse(jsonMatch[0]);
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(jsonMatch[0]);
+    } catch {
+      return failOpenOrClosed('AI returned malformed JSON');
+    }
 
-    // Validate structure vaguely
+    // Validate structure
     if (typeof data.hasPHI === 'boolean' && Array.isArray(data.findings)) {
       return {
         hasPHI: data.hasPHI,
@@ -71,28 +96,9 @@ export async function scanText(text: string): Promise<ScanResult> {
       };
     }
 
-    return { hasPHI: false, findings: [] };
+    return failOpenOrClosed('AI response had unexpected structure');
   } catch (error) {
     logger.error({ msg: 'PHI scan failed', err: String(error) });
-
-    if (PHI_FAIL_CLOSED) {
-      // Fail closed: treat scan failure as potential PHI presence
-      logger.warn({ msg: 'PHI scanner fail-closed: blocking document' });
-      return {
-        hasPHI: true,
-        findings: [
-          {
-            type: 'OTHER',
-            value: 'PHI scan failed — document blocked as precaution',
-            index: 0,
-            confidence: 1.0,
-          },
-        ],
-      };
-    }
-
-    // Fail open (legacy behavior) — log warning for monitoring
-    logger.warn({ msg: 'PHI scanner fail-open: allowing document through' });
-    return { hasPHI: false, findings: [] };
+    return failOpenOrClosed('scan exception — blocking document');
   }
 }
