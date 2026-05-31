@@ -1445,8 +1445,19 @@
 /* =========================================
    QUIZ VIEW
    ========================================= */
+.slideStage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  height: 100%;
+  overflow-y: auto;
+  padding: 32px 16px;
+}
+
 .quizCard {
   width: 100%;
+  margin: 0 auto;
   max-width: 800px;
   background: white;
   border-radius: 16px;
@@ -1852,10 +1863,14 @@
   }
 
   /* Quiz */
+  .slideStage {
+    padding: 16px 8px;
+  }
+
   .quizCard {
     max-width: 100%;
     border-radius: var(--radius-md, 12px);
-    margin: 0 8px;
+    margin: 0 auto;
   }
 
   .quizInner {

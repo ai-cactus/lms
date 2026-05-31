@@ -258,7 +258,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
             </svg>
           </div>
           <div className={styles.statInfo}>
-            <h4>Average Duration</h4>
+            <h4>Estimated Duration</h4>
             <div className={styles.statValue}>{course.duration || 0} mins</div>
           </div>
         </div>

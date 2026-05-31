@@ -961,19 +961,38 @@ export async function updateQuizQuestions(
   }
   const quizId = lessonWithQuiz.quiz.id;
 
+  // Shuffle options for each question so correct answers are scattered across A-D
+  const shuffleOptions = (
+    options: string[],
+    correctIdx: number,
+  ): { options: string[]; correctIdx: number } => {
+    const tagged = options.map((text, i) => ({ text, isCorrect: i === correctIdx }));
+    for (let i = tagged.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [tagged[i], tagged[j]] = [tagged[j], tagged[i]];
+    }
+    return {
+      options: tagged.map((o) => o.text),
+      correctIdx: tagged.findIndex((o) => o.isCorrect),
+    };
+  };
+
   await prisma.$transaction(async (tx) => {
     await tx.question.deleteMany({ where: { quizId: quizId } });
     if (questions.length > 0) {
       await tx.question.createMany({
-        data: questions.map((q, index) => ({
-          quizId: quizId,
-          text: q.question,
-          type: q.type || 'multiple_choice',
-          options: q.options,
-          correctAnswer: q.options[q.answer],
-          explanation: q.explanation,
-          order: index,
-        })),
+        data: questions.map((q, index) => {
+          const shuffled = shuffleOptions(q.options, q.answer);
+          return {
+            quizId: quizId,
+            text: q.question,
+            type: q.type || 'multiple_choice',
+            options: shuffled.options,
+            correctAnswer: shuffled.options[shuffled.correctIdx],
+            explanation: q.explanation,
+            order: index,
+          };
+        }),
       });
     }
   });
@@ -1064,6 +1083,19 @@ export async function retakeQuiz(enrollmentId: string) {
     if (attemptsUsed >= quiz.allowedAttempts) {
       throw new Error('No attempts remaining');
     }
+  }
+
+  // Reset the quiz attempt so the start endpoint allows a new attempt
+  if (latestAttempt) {
+    await prisma.quizAttempt.update({
+      where: { id: latestAttempt.id },
+      data: {
+        timeTaken: null,
+        answers: [],
+        score: 0,
+        completedAt: new Date(),
+      },
+    });
   }
 
   await prisma.enrollment.update({
