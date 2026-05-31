@@ -39,6 +39,47 @@ export function truncateToContext(text: string, maxTokens: number): string {
   return text.substring(0, cutPoint) + '\n...[truncated]';
 }
 
+// ── Auth ──────────────────────────────────────
+
+const auth = new GoogleAuth({
+  scopes: 'https://www.googleapis.com/auth/cloud-platform',
+});
+
+// ── Shared retry helper ──────────────────────
+
+async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < DEFAULT_MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        logger.info({ msg: `[ai-client] ${label} retry ${attempt}/${DEFAULT_MAX_RETRIES - 1}...` });
+      }
+      return await fn();
+    } catch (err: unknown) {
+      const error = err as Error;
+      lastError = error;
+
+      const isRetryable =
+        /\b429\b/.test(error.message || '') ||
+        /\b5\d{2}\b/.test(error.message || '') ||
+        error.name === 'AbortError' ||
+        error.message?.includes('fetch failed');
+
+      if (!isRetryable) throw err;
+
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
+      logger.warn({
+        msg: `[ai-client] ${label} retryable error (attempt ${attempt + 1}/${DEFAULT_MAX_RETRIES}):`,
+        data: error.message,
+      });
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  throw lastError || new Error(`${label} failed after all retries.`);
+}
+
 // ── Core API caller ──────────────────────────
 
 export interface VertexAIConfig {
@@ -51,10 +92,6 @@ export interface VertexAIConfig {
  * Call Vertex AI with automatic retry + exponential backoff for 429/5xx errors.
  * Returns the raw text output from the model.
  */
-const auth = new GoogleAuth({
-  scopes: 'https://www.googleapis.com/auth/cloud-platform',
-});
-
 export async function callVertexAI(prompt: string, config?: VertexAIConfig): Promise<string> {
   const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
   const location = process.env.GOOGLE_LOCATION || 'us-central1';
@@ -204,36 +241,38 @@ export async function generateBatchEmbeddings(texts: string[]): Promise<number[]
     })),
   });
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body,
-  });
+  return withRetry(async () => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body,
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Vertex AI Batch Embedding ${response.status} ${response.statusText}: ${errorText}`,
-    );
-  }
-
-  const json = await response.json();
-  const predictions: Array<{ embeddings: { values: number[] } }> = json.predictions ?? [];
-
-  if (predictions.length !== texts.length) {
-    throw new Error(
-      `Vertex AI returned ${predictions.length} predictions for ${texts.length} inputs`,
-    );
-  }
-
-  return predictions.map((p, i) => {
-    const values = p?.embeddings?.values;
-    if (!Array.isArray(values)) {
-      throw new Error(`Vertex AI Embedding: no values for input at index ${i}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Vertex AI Batch Embedding ${response.status} ${response.statusText}: ${errorText}`,
+      );
     }
-    return values;
-  });
+
+    const json = await response.json();
+    const predictions: Array<{ embeddings: { values: number[] } }> = json.predictions ?? [];
+
+    if (predictions.length !== texts.length) {
+      throw new Error(
+        `Vertex AI returned ${predictions.length} predictions for ${texts.length} inputs`,
+      );
+    }
+
+    return predictions.map((p, i) => {
+      const values = p?.embeddings?.values;
+      if (!Array.isArray(values)) {
+        throw new Error(`Vertex AI Embedding: no values for input at index ${i}`);
+      }
+      return values;
+    });
+  }, 'Embedding');
 }
