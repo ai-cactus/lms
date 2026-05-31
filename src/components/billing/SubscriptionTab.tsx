@@ -375,7 +375,7 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
               {plan.isEnterprise ? (
                 <button
                   id={`plan-btn-${plan.key}`}
-                  className={`${styles.planCardBtn} ${styles.planCardBtnPrimary}`}
+                  className={`${styles.planCardBtn} ${styles.planCardBtnContactSales}`}
                   onClick={() =>
                     setEnterpriseModal((s) => ({
                       ...s,

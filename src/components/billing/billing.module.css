@@ -541,6 +541,15 @@
   background: #2545d9;
 }
 
+.planCardBtnContactSales {
+  background: #335cff;
+  color: #ffffff;
+}
+
+.planCardBtnContactSales:hover {
+  background: #2545d9;
+}
+
 .planCardBtnSecondary {
   background: #f0f4ff;
   color: #335cff;
