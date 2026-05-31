@@ -22,7 +22,7 @@ interface InactivityTimerProps {
  * is a UX enhancement that gives users a chance to extend their session.
  */
 export default function InactivityTimer({
-  timeoutMinutes = parseInt(process.env.NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES || '15', 10),
+  timeoutMinutes = parseInt(process.env.NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES || '60', 10),
   warningMinutes = 2,
 }: InactivityTimerProps) {
   const { data: session, update } = useSession();

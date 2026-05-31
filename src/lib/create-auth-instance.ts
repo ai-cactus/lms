@@ -294,22 +294,33 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
         // ✅ Re-validate against DB on every decode
         if (token.id) {
-          const freshUser = await prisma.user.findUnique({
-            where: { id: token.id as string },
-            select: {
-              id: true,
-              role: true,
-              organizationId: true,
-              mfaEnabled: true,
-              mfaVerifiedAt: true,
-              passwordResetRequired: true,
-              authProvider: true,
-              profile: { select: { fullName: true } },
-            },
-          });
+          let freshUser;
+          try {
+            freshUser = await prisma.user.findUnique({
+              where: { id: token.id as string },
+              select: {
+                id: true,
+                role: true,
+                organizationId: true,
+                mfaEnabled: true,
+                mfaVerifiedAt: true,
+                passwordResetRequired: true,
+                authProvider: true,
+                profile: { select: { fullName: true } },
+              },
+            });
+          } catch (dbError) {
+            // DB failure (timeout, connection pool exhaustion, etc.) must NOT destroy sessions.
+            // Return the existing token to keep the user logged in.
+            logger.error({
+              msg: '[Auth] JWT callback DB query failed, preserving session',
+              error: String(dbError),
+            });
+            return token;
+          }
 
-          if (!freshUser) return null; // Invalidates session if user deleted
-          if (freshUser.role !== allowedRole) return null; // Invalidates if role changed
+          if (!freshUser) return null; // User was deleted — invalidate
+          if (freshUser.role !== allowedRole) return null; // Role changed — invalidate
 
           token.role = freshUser.role as Role;
           token.organizationId = freshUser.organizationId;
@@ -359,7 +370,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
     session: {
       strategy: 'jwt',
-      maxAge: parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '15', 10) * 60,
+      maxAge: parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '60', 10) * 60,
     },
   };
 
