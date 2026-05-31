@@ -37,6 +37,15 @@ import { JobResponse } from '@/types/job';
 const MAX_SOURCE_TOKENS = 100000;
 const MAX_REGEN_CYCLES = 1;
 
+// ─── Custom error for non-retryable source issues ──
+
+class InsufficientSourceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InsufficientSourceError';
+  }
+}
+
 // ─── Types ───────────────────────────────────────
 
 interface CourseDataV46 {
@@ -175,6 +184,17 @@ export async function generateArticleV46(
 
   const result = ArticleMetaV46Schema.safeParse(parsed);
   if (!result.success) {
+    // Check if this is a legitimate needs_sources response before throwing
+    const meta = (parsed as { meta?: { status?: string; gaps?: string[] } })?.meta;
+    if (meta?.status === 'needs_sources') {
+      const gaps = meta.gaps ?? [];
+      logger.info({
+        msg: '[v4.6] ArticleMeta indicates insufficient source content (needs_sources)',
+        gaps,
+      });
+      throw new InsufficientSourceError(`Insufficient source material: ${gaps.join('; ')}`);
+    }
+
     logger.error({
       msg: '[v4.6] ArticleMeta validation failed:',
       data: JSON.stringify(result.error.format(), null, 2),
@@ -604,11 +624,24 @@ async function processBackgroundV46(
         rawArticleMetaJson = result.rawArticleMetaJson;
 
         if (articleMeta.meta.status === 'needs_sources') {
-          throw new Error(`Insufficient source material: ${articleMeta.meta.gaps.join('; ')}`);
+          errorMsg = `Insufficient source material: ${articleMeta.meta.gaps.join('; ')}`;
+          logger.warn({
+            msg: `[v4.6 Background] Stage A: needs_sources detected, skipping retries for job ${jobId}`,
+          });
+          break;
         }
         break;
       } catch (error: unknown) {
         const err = error as Error;
+        // Don't retry insufficient source errors — the source text won't change
+        if (err instanceof InsufficientSourceError) {
+          errorMsg = err.message;
+          logger.warn({
+            msg: `[v4.6 Background] Stage A: insufficient source, not retrying for job ${jobId}`,
+            err: err.message,
+          });
+          break;
+        }
         logger.error({
           msg: `[v4.6 Background] Stage A attempt ${attempt} failed:`,
           err: err.message,
@@ -618,7 +651,7 @@ async function processBackgroundV46(
       }
     }
 
-    if (!articleMeta || !articleMarkdown) {
+    if (!articleMeta || !articleMarkdown || articleMeta.meta.status === 'needs_sources') {
       await prisma.job.update({
         where: { id: jobId },
         data: { status: 'failed', payload: { error: `Stage A failed: ${errorMsg}` } },
@@ -638,65 +671,60 @@ async function processBackgroundV46(
     let quizJson: QuizV46 | null = null;
     let rawQuizJson = '';
 
-    // Run B and C in parallel
-    const [slidesResult, quizResult] = await Promise.allSettled([
-      // Stage B: Slides
-      (async () => {
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          try {
-            logger.info({
-              msg: `[v4.6 Background] Stage B attempt ${attempt}/${maxAttempts} for job ${jobId}`,
-            });
-            return await generateSlidesV46(articleMarkdown, rawArticleMetaJson, desiredSlideCount);
-          } catch (error: unknown) {
-            const err = error as Error;
-            logger.error({
-              msg: `[v4.6 Background] Stage B attempt ${attempt} failed:`,
-              err: err.message,
-            });
-            if (attempt === maxAttempts) throw err;
-            await new Promise((r) => setTimeout(r, 1000 * attempt));
-          }
+    // Run B and C sequentially to reduce peak API concurrency
+    // Stage B: Slides
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        logger.info({
+          msg: `[v4.6 Background] Stage B attempt ${attempt}/${maxAttempts} for job ${jobId}`,
+        });
+        const slidesResult = await generateSlidesV46(
+          articleMarkdown,
+          rawArticleMetaJson,
+          desiredSlideCount,
+        );
+        slidesJson = slidesResult.slidesJson;
+        break;
+      } catch (error: unknown) {
+        const err = error as Error;
+        logger.error({
+          msg: `[v4.6 Background] Stage B attempt ${attempt} failed:`,
+          err: err.message,
+        });
+        if (attempt === maxAttempts) {
+          logger.error({ msg: '[v4.6 Background] Stage B (Slides) failed completely' });
         }
-      })(),
-      // Stage C: Quiz
-      (async () => {
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          try {
-            logger.info({
-              msg: `[v4.6 Background] Stage C attempt ${attempt}/${maxAttempts} for job ${jobId}`,
-            });
-            return await generateQuizV46(
-              articleMarkdown,
-              rawArticleMetaJson,
-              questionCount,
-              difficulty,
-              sourceText,
-            );
-          } catch (error: unknown) {
-            const err = error as Error;
-            logger.error({
-              msg: `[v4.6 Background] Stage C attempt ${attempt} failed:`,
-              err: err.message,
-            });
-            if (attempt === maxAttempts) throw err;
-            await new Promise((r) => setTimeout(r, 1000 * attempt));
-          }
-        }
-      })(),
-    ]);
-
-    if (slidesResult.status === 'fulfilled' && slidesResult.value) {
-      slidesJson = slidesResult.value.slidesJson;
-    } else {
-      logger.error({ msg: '[v4.6 Background] Stage B (Slides) failed completely' });
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
     }
 
-    if (quizResult.status === 'fulfilled' && quizResult.value) {
-      quizJson = quizResult.value.quizJson;
-      rawQuizJson = quizResult.value.raw;
-    } else {
-      logger.error({ msg: '[v4.6 Background] Stage C (Quiz) failed completely' });
+    // Stage C: Quiz
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        logger.info({
+          msg: `[v4.6 Background] Stage C attempt ${attempt}/${maxAttempts} for job ${jobId}`,
+        });
+        const quizResult = await generateQuizV46(
+          articleMarkdown,
+          rawArticleMetaJson,
+          questionCount,
+          difficulty,
+          sourceText,
+        );
+        quizJson = quizResult.quizJson;
+        rawQuizJson = quizResult.raw;
+        break;
+      } catch (error: unknown) {
+        const err = error as Error;
+        logger.error({
+          msg: `[v4.6 Background] Stage C attempt ${attempt} failed:`,
+          err: err.message,
+        });
+        if (attempt === maxAttempts) {
+          logger.error({ msg: '[v4.6 Background] Stage C (Quiz) failed completely' });
+        }
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
     }
 
     // ── Stage D + E: Judge + Regen (only if quiz succeeded) ──
