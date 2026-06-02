@@ -193,29 +193,26 @@ export default function PhoneInput({
       if (digits.length === 0) {
         newPhone = rawValue.includes('+') ? '+1' : ''; // Allow clearing completely
       } else if (digits.length < 3) {
-        newPhone = `+1(${digits}`;
+        newPhone = `+1 (${digits}`;
       } else if (digits.length === 3) {
-        // If they just typed the 3rd digit, append closing paren and hyphen,
-        // unless they just backspaced the hyphen
-        if (oldPhone === `+1(${digits})-` && rawValue === `+1(${digits}`) {
-          newPhone = `+1(${digits.slice(0, 2)}`;
+        if (oldPhone === `+1 (${digits})-` && rawValue === `+1 (${digits}`) {
+          newPhone = `+1 (${digits.slice(0, 2)}`;
         } else {
-          newPhone = `+1(${digits})-`;
+          newPhone = `+1 (${digits})-`;
         }
       } else if (digits.length < 6) {
-        newPhone = `+1(${digits.substring(0, 3)})-${digits.substring(3)}`;
+        newPhone = `+1 (${digits.substring(0, 3)})-${digits.substring(3)}`;
       } else if (digits.length === 6) {
-        // Same backspace logic for the second hyphen
         if (
-          oldPhone === `+1(${digits.substring(0, 3)})-${digits.substring(3)}-` &&
-          rawValue === `+1(${digits.substring(0, 3)})-${digits.substring(3)}`
+          oldPhone === `+1 (${digits.substring(0, 3)})-${digits.substring(3)}-` &&
+          rawValue === `+1 (${digits.substring(0, 3)})-${digits.substring(3)}`
         ) {
-          newPhone = `+1(${digits.substring(0, 3)})-${digits.substring(3, 5)}`;
+          newPhone = `+1 (${digits.substring(0, 3)})-${digits.substring(3, 5)}`;
         } else {
-          newPhone = `+1(${digits.substring(0, 3)})-${digits.substring(3)}-`;
+          newPhone = `+1 (${digits.substring(0, 3)})-${digits.substring(3)}-`;
         }
       } else {
-        newPhone = `+1(${digits.substring(0, 3)})-${digits.substring(3, 6)}-${digits.substring(6, 10)}`;
+        newPhone = `+1 (${digits.substring(0, 3)})-${digits.substring(3, 6)}-${digits.substring(6, 10)}`;
       }
 
       setPhoneNumber(newPhone);
@@ -267,7 +264,7 @@ export default function PhoneInput({
           onChange={handlePhoneChange}
           onFocus={() => {
             if (selectedCountry.code === 'US' && (!phoneNumber || phoneNumber === '+1')) {
-              const newPhone = '+1(';
+              const newPhone = '+1 (';
               setPhoneNumber(newPhone);
               if (onChange) onChange(newPhone);
             }
