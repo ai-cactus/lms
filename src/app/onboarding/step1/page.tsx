@@ -106,7 +106,34 @@ export default function OnboardingStep1() {
               Employer Identification Number (EIN){' '}
               <span className={styles.helperText}>(optional)</span>
             </label>
-            <Input {...register('ein')} placeholder="XX-XXXXXXX" />
+            <Controller
+              name="ein"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  value={field.value || ''}
+                  onChange={(e) => {
+                    const rawValue = e.target.value;
+                    const digits = rawValue.replace(/\D/g, '').slice(0, 9);
+                    let formatted = '';
+                    if (digits.length > 2) {
+                      formatted = `${digits.substring(0, 2)}-${digits.substring(2)}`;
+                    } else if (digits.length === 2) {
+                      if (field.value === `${digits}-` && rawValue === digits) {
+                        formatted = digits.substring(0, 1);
+                      } else {
+                        formatted = `${digits}-`;
+                      }
+                    } else {
+                      formatted = digits;
+                    }
+                    field.onChange(formatted);
+                  }}
+                  placeholder="XX-XXXXXXX"
+                  maxLength={10}
+                />
+              )}
+            />
           </div>
           <div className={`${styles.formGroup} ${styles.col}`}>
             <label className={styles.label}>
