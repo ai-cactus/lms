@@ -1,28 +1,46 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { sendLoginMfaCode } from '@/app/actions/mfa';
+import { peekMfaChallenge } from '@/lib/mfa-challenge';
+import { checkRateLimitOnly, recordRateLimitAttempt } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 
+/**
+ * POST /api/auth/mfa/send
+ *
+ * Sends an email OTP for login MFA verification.
+ * Expects: { challenge }
+ *
+ * The challenge token is peeked (not consumed) to resolve the userId,
+ * so the user can request resend without invalidating their challenge.
+ */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { userId } = body as { userId?: string };
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+    // IP-based rate limit: 5 per 15 minutes
+    const ip =
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      req.headers.get('x-real-ip') ??
+      'unknown';
+    const { allowed: ipAllowed } = await checkRateLimitOnly(`mfa-send-ip:${ip}`, 5, 900);
+    if (!ipAllowed) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { mfaEnabled: true, mfaFactors: { where: { type: 'email', verified: true } } },
-    });
+    const body = await req.json();
+    const { challenge } = body as { challenge?: string };
 
-    if (!user || !user.mfaEnabled || user.mfaFactors.length === 0) {
-      // Return 200 anyway so we don't leak user existence/MFA status
+    if (!challenge) {
+      return NextResponse.json({ error: 'Challenge token is required' }, { status: 400 });
+    }
+
+    // Peek at the challenge (non-destructive) to resolve userId
+    const challengeData = await peekMfaChallenge(challenge);
+    if (!challengeData) {
+      // Don't reveal whether the challenge is valid or not
       return NextResponse.json({ success: true });
     }
 
-    await sendLoginMfaCode(userId);
+    await sendLoginMfaCode(challengeData.userId);
+    await recordRateLimitAttempt(`mfa-send-ip:${ip}`, 900);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -12,6 +12,7 @@ import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger, maskEmail } from '@/lib/logger';
+import { createMfaChallenge } from '@/lib/mfa-challenge';
 
 // Pre-computed dummy hash for constant-time response when a user email doesn't exist.
 // bcrypt runs its full ~100ms computation and returns false, preventing timing-based
@@ -72,10 +73,13 @@ export async function authenticate(
       email: maskEmail(email),
     });
 
-    // Determine redirect target — if MFA is enabled, go to MFA verify page first
-    const mfaRedirect = lookupUser.mfaEnabled
-      ? `/mfa/verify?userId=${lookupUser.id}&role=${role}`
-      : null;
+    // Determine redirect target — if MFA is enabled, create a challenge token
+    // and redirect to the MFA verify page with the opaque token (no userId in URL)
+    let mfaRedirect: string | null = null;
+    if (lookupUser.mfaEnabled) {
+      const challengeToken = await createMfaChallenge(lookupUser.id, role);
+      mfaRedirect = `/mfa/verify?challenge=${challengeToken}`;
+    }
 
     if (role === 'worker') {
       await signInWorker('credentials', {
