@@ -3,10 +3,11 @@
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { verifyUserMfaCode, sendLoginMfaCode } from './mfa';
 import { logger } from '@/lib/logger';
 import { markSessionMfaVerified } from '@/lib/session-mfa';
+import { decode, encode } from 'next-auth/jwt';
 
 async function resolveSession() {
   const headersList = await headers();
@@ -65,6 +66,49 @@ export async function verifyMfaChallenge(
   const sessionId = (session.user as Record<string, unknown>).sessionId as string | undefined;
   if (sessionId) {
     await markSessionMfaVerified(userId, sessionId);
+
+    // Update the session cookie directly so proxy.ts immediately knows MFA is verified
+    try {
+      const cookieStore = await cookies();
+      const isAdmin = instance === 'admin';
+
+      const cookieName = isAdmin
+        ? process.env.NODE_ENV === 'production'
+          ? '__Secure-admin.session-token'
+          : 'admin.session-token'
+        : process.env.NODE_ENV === 'production'
+          ? '__Secure-worker.session-token'
+          : 'worker.session-token';
+
+      const rawToken = cookieStore.get(cookieName)?.value;
+      if (rawToken) {
+        const decoded = await decode({
+          token: decodeURIComponent(rawToken),
+          secret: process.env.NEXTAUTH_SECRET!,
+          salt: cookieName,
+        });
+
+        if (decoded) {
+          decoded.mfaVerified = true;
+          const newToken = await encode({
+            token: decoded,
+            secret: process.env.NEXTAUTH_SECRET!,
+            salt: cookieName,
+          });
+
+          const maxAge = parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '60', 10) * 60;
+          cookieStore.set(cookieName, newToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge,
+          });
+        }
+      }
+    } catch (e) {
+      logger.error({ msg: 'Failed to update session cookie after step-up MFA', error: String(e) });
+    }
   } else {
     // Fallback: if sessionId isn't available, use the legacy DB stamp
     await prisma.user.update({

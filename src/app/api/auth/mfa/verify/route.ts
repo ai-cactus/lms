@@ -4,7 +4,7 @@ import { verifyUserMfaCode } from '@/app/actions/mfa';
 import { redeemMfaChallenge } from '@/lib/mfa-challenge';
 import { markSessionMfaVerified } from '@/lib/session-mfa';
 import { logger } from '@/lib/logger';
-import { decode } from 'next-auth/jwt';
+import { decode, encode } from 'next-auth/jwt';
 
 /**
  * POST /api/auth/mfa/verify
@@ -59,6 +59,12 @@ export async function POST(req: Request) {
       data: { mfaVerifiedAt: new Date() },
     });
 
+    // Create the response object early so we can attach cookies to it
+    const response = NextResponse.json({
+      success: true,
+      role,
+    });
+
     // Per-session MFA verification: decode the JWT from the session cookie
     // to get the sessionId claim, then mark this specific session as verified in Redis.
     try {
@@ -85,8 +91,38 @@ export async function POST(req: Request) {
           secret: process.env.NEXTAUTH_SECRET!,
           salt,
         });
+
         if (decoded?.sessionId) {
           await markSessionMfaVerified(userId, decoded.sessionId as string);
+
+          // Fix 2FA Loop: The proxy middleware reads `token.mfaVerified` directly
+          // from the cookie payload. We MUST re-encode and update the session cookie
+          // here so that the next request (to /dashboard) knows MFA is verified.
+          decoded.mfaVerified = true;
+
+          const newToken = await encode({
+            token: decoded,
+            secret: process.env.NEXTAUTH_SECRET!,
+            salt,
+          });
+
+          const cookieName = isAdmin
+            ? process.env.NODE_ENV === 'production'
+              ? '__Secure-admin.session-token'
+              : 'admin.session-token'
+            : process.env.NODE_ENV === 'production'
+              ? '__Secure-worker.session-token'
+              : 'worker.session-token';
+
+          const maxAge = parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '60', 10) * 60;
+
+          response.cookies.set(cookieName, newToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge,
+          });
         }
       }
     } catch (decodeError) {
@@ -100,11 +136,7 @@ export async function POST(req: Request) {
 
     logger.info({ msg: 'MFA verification successful during login', userId });
 
-    // Return role for client-side redirect (not from URL params)
-    return NextResponse.json({
-      success: true,
-      role,
-    });
+    return response;
   } catch (error) {
     logger.error({ msg: 'MFA verify error', error: String(error) });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
