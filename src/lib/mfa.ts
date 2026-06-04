@@ -31,6 +31,7 @@ function getEncryptionKey(): Buffer {
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
+const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Encrypt a plaintext string using AES-256-GCM.
@@ -57,6 +58,37 @@ export function decryptSecret(encoded: string): string {
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   decipher.setAuthTag(authTag);
   return decipher.update(ciphertext) + decipher.final('utf8');
+}
+
+// ── OTP Payload with Expiry ───────────────────────────────────────────────────
+
+interface OtpPayload {
+  code: string;
+  createdAt: number;
+}
+
+/**
+ * Encrypt an OTP code with a creation timestamp for expiry enforcement.
+ */
+export function encryptOtpPayload(code: string): string {
+  const payload: OtpPayload = { code, createdAt: Date.now() };
+  return encryptSecret(JSON.stringify(payload));
+}
+
+/**
+ * Decrypt an OTP payload and check if it has expired.
+ * Handles legacy plain-text codes (no JSON) for backward compatibility.
+ */
+export function decryptOtpPayload(encoded: string): { code: string; expired: boolean } | null {
+  try {
+    const raw = decryptSecret(encoded);
+    if (raw === 'USED') return null;
+    const payload: OtpPayload = JSON.parse(raw);
+    const expired = Date.now() - payload.createdAt > OTP_EXPIRY_MS;
+    return { code: payload.code, expired };
+  } catch {
+    return null;
+  }
 }
 
 // ── TOTP ──────────────────────────────────────────────────────────────────────

@@ -10,18 +10,17 @@ import { Suspense } from 'react';
 function MfaRecoverForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const userId = searchParams.get('userId');
-  const role = searchParams.get('role');
+  const challenge = searchParams.get('challenge');
 
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!userId) {
+    if (!challenge) {
       router.push('/login');
     }
-  }, [userId, router]);
+  }, [challenge, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +37,7 @@ function MfaRecoverForm() {
       const res = await fetch('/api/auth/mfa/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, code }),
+        body: JSON.stringify({ challenge, code }),
       });
 
       const data = await res.json();
@@ -49,7 +48,8 @@ function MfaRecoverForm() {
         return;
       }
 
-      const redirectUrl = role === 'worker' ? '/worker' : '/dashboard';
+      // Use role from API response (not from URL params)
+      const redirectUrl = data.role === 'worker' ? '/worker' : '/dashboard';
       router.push(redirectUrl);
     } catch {
       setError('Something went wrong. Please try again.');
@@ -110,7 +110,7 @@ function MfaRecoverForm() {
           <div style={{ marginTop: '16px', textAlign: 'center' }}>
             <button
               type="button"
-              onClick={() => router.push('/mfa/verify?userId=' + userId + '&role=' + role)}
+              onClick={() => router.push('/mfa/verify?challenge=' + challenge)}
               style={{
                 background: 'none',
                 border: 'none',

@@ -6,6 +6,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { headers } from 'next/headers';
 import { verifyUserMfaCode, sendLoginMfaCode } from './mfa';
 import { logger } from '@/lib/logger';
+import { markSessionMfaVerified } from '@/lib/session-mfa';
 
 async function resolveSession() {
   const headersList = await headers();
@@ -58,12 +59,19 @@ export async function verifyMfaChallenge(
     return { success: false, error: 'Invalid code. Please try again.' };
   }
 
-  // Mark the session as MFA verified by stamping a DB field.
-  // The JWT callback will see `mfaVerifiedAt` is recent and flip `mfaVerified` to true.
-  await prisma.user.update({
-    where: { id: userId },
-    data: { mfaVerifiedAt: new Date() },
-  });
+  // Mark the session as MFA verified using per-session Redis state.
+  // The JWT callback checks this Redis key (keyed by userId + sessionId)
+  // instead of the global mfaVerifiedAt timestamp.
+  const sessionId = (session.user as Record<string, unknown>).sessionId as string | undefined;
+  if (sessionId) {
+    await markSessionMfaVerified(userId, sessionId);
+  } else {
+    // Fallback: if sessionId isn't available, use the legacy DB stamp
+    await prisma.user.update({
+      where: { id: userId },
+      data: { mfaVerifiedAt: new Date() },
+    });
+  }
 
   logger.info({ msg: 'MFA challenge passed', userId, usedRecoveryCode: result.usedRecoveryCode });
 
