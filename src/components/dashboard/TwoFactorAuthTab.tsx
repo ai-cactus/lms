@@ -131,8 +131,8 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
 
   // Step 2: confirm disable with the OTP that was emailed
   const handleDisableConfirm = async () => {
-    if (!disableCode) {
-      setMessage({ type: 'error', text: 'Please enter the verification code sent to your email' });
+    if (!disableCode || (disableCode.length !== 6 && disableCode.length < 8)) {
+      setMessage({ type: 'error', text: 'Please enter a valid 6-digit code or recovery code' });
       return;
     }
 
@@ -307,9 +307,9 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
         <Input
           value={disableCode}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+            setDisableCode(e.target.value.toUpperCase())
           }
-          placeholder="Enter 6-digit code"
+          placeholder="Enter code or recovery code"
           style={{
             maxWidth: '240px',
             letterSpacing: disableCode ? '4px' : 'normal',

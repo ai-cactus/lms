@@ -405,10 +405,10 @@ export default function MfaSettings() {
                 type="text"
                 value={disableCode}
                 onChange={(e) => {
-                  setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                  setDisableCode(e.target.value.toUpperCase());
                   if (error) setError('');
                 }}
-                placeholder="000000"
+                placeholder="Code or recovery code"
                 style={{
                   width: '120px',
                   padding: '8px 12px',
@@ -418,8 +418,6 @@ export default function MfaSettings() {
                   textAlign: 'center',
                   letterSpacing: '4px',
                 }}
-                inputMode="numeric"
-                pattern="[0-9]*"
               />
               <Button onClick={handleRegenerateCodes} variant="outline" loading={loading}>
                 New Recovery Codes

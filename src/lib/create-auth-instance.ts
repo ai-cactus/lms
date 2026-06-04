@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { logger, maskEmail } from '@/lib/logger';
+import { isSessionMfaVerified } from '@/lib/session-mfa';
 type Role = 'admin' | 'worker';
 
 interface AuthInstanceConfig {
@@ -287,6 +288,10 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           token.passwordResetRequired = (user as any).passwordResetRequired ?? false;
           token.mfaVerified = (user as User & { mfaVerified?: boolean }).mfaVerified ?? false;
+          // Generate a stable session ID once at sign-in. NextAuth v5 re-encodes the JWT
+          // on every session() call, and .setIssuedAt() in the encoder overwrites `iat`
+          // each time — so `iat` cannot be used as a session identifier.
+          token.sessionId = crypto.randomUUID();
           if (user.name) {
             token.name = user.name;
           }
@@ -329,15 +334,17 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           token.authProvider = freshUser.authProvider;
           token.passwordResetRequired = freshUser.passwordResetRequired;
 
-          // Determine mfaVerified based on step-up timestamp:
-          // The token stores the session start time (iat). If the user completed
-          // an MFA challenge (mfaVerifiedAt) after this token was issued, grant access.
+          // Determine mfaVerified based on per-session Redis state:
+          // Each session is identified by userId + sessionId (a stable UUID set
+          // at sign-in), so completing MFA on one device doesn't mark other
+          // sessions as verified.
           if (freshUser.mfaEnabled) {
-            const sessionStart = ((token.iat as number) ?? 0) * 1000; // iat is in seconds
-            const verifiedAt = freshUser.mfaVerifiedAt?.getTime() ?? 0;
-            // Allow a 30-second clock skew window
-            const verified = verifiedAt > sessionStart - 30_000;
-            token.mfaVerified = verified;
+            const sid = token.sessionId as string | undefined;
+            if (sid) {
+              token.mfaVerified = await isSessionMfaVerified(freshUser.id, sid);
+            } else {
+              token.mfaVerified = false;
+            }
           } else {
             // MFA disabled — always considered verified
             token.mfaVerified = true;
@@ -358,6 +365,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             (token.mfaVerified as boolean) ?? false;
           (session.user as User & { mfaEnabled?: boolean }).mfaEnabled =
             (token.mfaEnabled as boolean) ?? false;
+          (session.user as User & { sessionId?: string }).sessionId =
+            (token.sessionId as string) ?? undefined;
         }
         return session;
       },

@@ -10,15 +10,14 @@ import { Suspense } from 'react';
 function MfaVerifyForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const userId = searchParams.get('userId');
-  const role = searchParams.get('role');
+  const challenge = searchParams.get('challenge');
 
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!userId) {
+    if (!challenge) {
       router.push('/login');
       return;
     }
@@ -27,11 +26,11 @@ function MfaVerifyForm() {
     fetch('/api/auth/mfa/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ challenge }),
     }).catch(() => {
       // Silently ignore — user can still enter a code if they already have one
     });
-  }, [userId, router]);
+  }, [challenge, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +47,7 @@ function MfaVerifyForm() {
       const res = await fetch('/api/auth/mfa/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, code }),
+        body: JSON.stringify({ challenge, code }),
       });
 
       const data = await res.json();
@@ -59,8 +58,8 @@ function MfaVerifyForm() {
         return;
       }
 
-      // MFA verified — redirect to the appropriate dashboard
-      const redirectUrl = role === 'worker' ? '/worker' : '/dashboard';
+      // Use role from API response (not from URL params)
+      const redirectUrl = data.role === 'worker' ? '/worker' : '/dashboard';
       router.push(redirectUrl);
     } catch {
       setError('Something went wrong. Please try again.');
@@ -124,7 +123,7 @@ function MfaVerifyForm() {
           <div style={{ marginTop: '16px', textAlign: 'center' }}>
             <button
               type="button"
-              onClick={() => router.push('/mfa/recover?userId=' + userId + '&role=' + role)}
+              onClick={() => router.push('/mfa/recover?challenge=' + challenge)}
               style={{
                 background: 'none',
                 border: 'none',
