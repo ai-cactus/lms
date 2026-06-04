@@ -8,12 +8,15 @@ import {
   verifyTotpCode,
   encryptSecret,
   decryptSecret,
+  encryptOtpPayload,
+  decryptOtpPayload,
   generateRecoveryCodes,
   hashRecoveryCode,
   verifyRecoveryCode,
 } from '@/lib/mfa';
 import { logger } from '@/lib/logger';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { checkRateLimitOnly, recordRateLimitAttempt } from '@/lib/rate-limit';
+import { markSessionMfaVerified } from '@/lib/session-mfa';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -71,8 +74,14 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
     where: { userId: session.user.id, verified: false },
   });
 
+  // Rate limit OTP sends: 3 per 15 minutes
+  const { allowed: sendAllowed } = await checkRateLimitOnly(`mfa-send:${session.user.id}`, 3, 900);
+  if (!sendAllowed) {
+    return { success: false, error: 'Too many code requests. Please try again later.' };
+  }
+
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const encryptedSecret = encryptSecret(code);
+  const encryptedSecret = encryptOtpPayload(code);
 
   await prisma.mfaFactor.create({
     data: {
@@ -86,6 +95,7 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
 
   const { sendMfaOtpEmail } = await import('@/lib/email');
   await sendMfaOtpEmail(user.email, code);
+  await recordRateLimitAttempt(`mfa-send:${session.user.id}`, 900);
 
   logger.info({ msg: 'MFA setup initiated via email', userId: session.user.id });
 
@@ -117,13 +127,19 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
     return { success: false, error: 'No pending MFA setup found. Start setup again.' };
   }
 
-  const decryptedSecret = decryptSecret(factor.secret);
-
   let valid = false;
   if (factor.type === 'totp') {
+    const decryptedSecret = decryptSecret(factor.secret);
     valid = verifyTotpCode(decryptedSecret, code);
   } else if (factor.type === 'email') {
-    valid = decryptedSecret === code;
+    const otpPayload = decryptOtpPayload(factor.secret);
+    if (!otpPayload) {
+      return { success: false, error: 'Code already used or invalid. Start setup again.' };
+    }
+    if (otpPayload.expired) {
+      return { success: false, error: 'Code has expired. Please request a new one.' };
+    }
+    valid = otpPayload.code === code;
   }
 
   if (!valid) {
@@ -145,9 +161,7 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
       where: { id: session.user.id },
       data: {
         mfaEnabled: true,
-        // Stamp mfaVerifiedAt so the JWT callback sees this session as already
-        // MFA-verified — prevents the middleware from redirecting the user to
-        // /verify-2fa immediately after they just completed setup.
+        // Keep mfaVerifiedAt for backward compat (legacy sessions may still read it)
         mfaVerifiedAt: new Date(),
       },
     });
@@ -167,6 +181,14 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
       })),
     });
   });
+
+  // Mark the current session as MFA-verified via Redis (per-session state).
+  // This prevents the middleware from redirecting the user to /verify-2fa
+  // immediately after they just completed setup.
+  const sessionId = (session.user as Record<string, unknown>).sessionId as string | undefined;
+  if (sessionId) {
+    await markSessionMfaVerified(session.user.id, sessionId);
+  }
 
   logger.info({ msg: 'MFA enabled successfully', userId: session.user.id });
 
@@ -241,13 +263,15 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
     return { success: false, error: 'MFA not configured' };
   }
 
-  const decryptedSecret = decryptSecret(factor.secret);
-
   let valid = false;
   if (factor.type === 'totp') {
+    const decryptedSecret = decryptSecret(factor.secret);
     valid = verifyTotpCode(decryptedSecret, code);
   } else if (factor.type === 'email') {
-    valid = decryptedSecret === code;
+    const otpPayload = decryptOtpPayload(factor.secret);
+    if (otpPayload && !otpPayload.expired) {
+      valid = otpPayload.code === code;
+    }
     if (valid) {
       await prisma.mfaFactor.update({
         where: { id: factor.id },
@@ -293,12 +317,12 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
 export async function verifyUserMfaCode(
   userId: string,
   code: string,
-): Promise<{ valid: boolean; usedRecoveryCode?: boolean }> {
-  // Rate limit: 5 attempts per 15 minutes
-  const { allowed } = await checkRateLimit(`mfa:${userId}`, 5, 900);
+): Promise<{ valid: boolean; usedRecoveryCode?: boolean; error?: string }> {
+  // Pre-check rate limit without recording — only failures are counted
+  const { allowed } = await checkRateLimitOnly(`mfa:${userId}`, 5, 900);
   if (!allowed) {
     logger.warn({ msg: 'MFA rate limit exceeded', userId });
-    return { valid: false };
+    return { valid: false, error: 'Too many attempts. Please try again later.' };
   }
 
   // Try primary factors (email or totp)
@@ -307,14 +331,19 @@ export async function verifyUserMfaCode(
   });
 
   if (factor?.secret) {
-    const decryptedSecret = decryptSecret(factor.secret);
     if (factor.type === 'totp') {
+      const decryptedSecret = decryptSecret(factor.secret);
       if (verifyTotpCode(decryptedSecret, code)) {
         return { valid: true };
       }
     } else if (factor.type === 'email') {
-      if (decryptedSecret === code) {
-        // Invalidate code after use by updating secret to something invalid
+      const otpPayload = decryptOtpPayload(factor.secret);
+      if (!otpPayload) {
+        // Code already used
+      } else if (otpPayload.expired) {
+        return { valid: false, error: 'Code has expired. Please request a new one.' };
+      } else if (otpPayload.code === code) {
+        // Invalidate code after use
         await prisma.mfaFactor.update({
           where: { id: factor.id },
           data: { secret: encryptSecret('USED') },
@@ -341,6 +370,9 @@ export async function verifyUserMfaCode(
       return { valid: true, usedRecoveryCode: true };
     }
   }
+
+  // Record failed attempt only
+  await recordRateLimitAttempt(`mfa:${userId}`, 900);
 
   return { valid: false };
 }
@@ -379,6 +411,12 @@ export async function getMfaStatus(): Promise<
  * Send an email OTP code for login.
  */
 export async function sendLoginMfaCode(userId: string): Promise<MfaActionResult> {
+  // Rate limit OTP sends: 3 per 15 minutes
+  const { allowed } = await checkRateLimitOnly(`mfa-send:${userId}`, 3, 900);
+  if (!allowed) {
+    return { success: false, error: 'Too many code requests. Please try again later.' };
+  }
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { email: true, mfaFactors: { where: { verified: true, type: 'email' } } },
@@ -390,7 +428,7 @@ export async function sendLoginMfaCode(userId: string): Promise<MfaActionResult>
   if (!factor) return { success: false, error: 'No email MFA factor found' };
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const encryptedSecret = encryptSecret(code);
+  const encryptedSecret = encryptOtpPayload(code);
 
   await prisma.mfaFactor.update({
     where: { id: factor.id },
@@ -399,6 +437,7 @@ export async function sendLoginMfaCode(userId: string): Promise<MfaActionResult>
 
   const { sendMfaOtpEmail } = await import('@/lib/email');
   await sendMfaOtpEmail(user.email, code);
+  await recordRateLimitAttempt(`mfa-send:${userId}`, 900);
 
   logger.info({ msg: 'MFA login code sent via email', userId });
   return { success: true };
@@ -413,6 +452,12 @@ export async function sendDisableMfaCode(): Promise<MfaActionResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
+  }
+
+  // Rate limit OTP sends: 3 per 15 minutes
+  const { allowed } = await checkRateLimitOnly(`mfa-send:${session.user.id}`, 3, 900);
+  if (!allowed) {
+    return { success: false, error: 'Too many code requests. Please try again later.' };
   }
 
   const user = await prisma.user.findUnique({
@@ -431,7 +476,7 @@ export async function sendDisableMfaCode(): Promise<MfaActionResult> {
   if (!factor) return { success: false, error: 'No email MFA factor found' };
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const encryptedSecret = encryptSecret(code);
+  const encryptedSecret = encryptOtpPayload(code);
 
   await prisma.mfaFactor.update({
     where: { id: factor.id },
@@ -440,6 +485,7 @@ export async function sendDisableMfaCode(): Promise<MfaActionResult> {
 
   const { sendMfaOtpEmail } = await import('@/lib/email');
   await sendMfaOtpEmail(user.email, code);
+  await recordRateLimitAttempt(`mfa-send:${session.user.id}`, 900);
 
   logger.info({ msg: 'MFA disable code sent via email', userId: session.user.id });
   return { success: true };

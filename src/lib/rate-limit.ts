@@ -90,3 +90,79 @@ export async function checkRateLimit(
     };
   }
 }
+
+/**
+ * Check rate limit without recording an attempt.
+ * Use this for pre-flight checks before performing the actual operation.
+ */
+export async function checkRateLimitOnly(
+  key: string,
+  limit = 10,
+  windowSec = 900,
+): Promise<RateLimitResult> {
+  const now = Date.now();
+  const windowStart = now - windowSec * 1000;
+
+  try {
+    const pipeline = rateLimiterRedis.pipeline();
+    pipeline.zremrangebyscore(key, '-inf', windowStart);
+    pipeline.zcard(key);
+    pipeline.expire(key, windowSec);
+
+    const results = await pipeline.exec();
+    const count = (results?.[1]?.[1] as number) ?? 0;
+
+    return {
+      allowed: count < limit,
+      remaining: Math.max(0, limit - count),
+      resetInSeconds: windowSec,
+    };
+  } catch (error) {
+    logger.error({
+      msg: 'Redis rate limiter failed, falling back to in-memory',
+      error: String(error),
+      key,
+    });
+
+    const windowStartFallback = now - windowSec * 1000;
+    const timestamps = fallbackCache.get(key) || [];
+    const validTimestamps = timestamps.filter((t) => t > windowStartFallback);
+
+    const count = validTimestamps.length;
+
+    return {
+      allowed: count < limit,
+      remaining: Math.max(0, limit - count),
+      resetInSeconds: windowSec,
+    };
+  }
+}
+
+/**
+ * Record a rate limit attempt without checking.
+ * Use this after a failed operation to only count failures.
+ */
+export async function recordRateLimitAttempt(key: string, windowSec = 900): Promise<void> {
+  const now = Date.now();
+  const windowStart = now - windowSec * 1000;
+
+  try {
+    const pipeline = rateLimiterRedis.pipeline();
+    pipeline.zremrangebyscore(key, '-inf', windowStart);
+    pipeline.zadd(key, now, `${now}-${Math.random().toString(36).slice(2)}`);
+    pipeline.expire(key, windowSec);
+    await pipeline.exec();
+  } catch (error) {
+    logger.error({
+      msg: 'Redis rate limiter failed, falling back to in-memory',
+      error: String(error),
+      key,
+    });
+
+    const windowStartFallback = now - windowSec * 1000;
+    const timestamps = fallbackCache.get(key) || [];
+    const validTimestamps = timestamps.filter((t) => t > windowStartFallback);
+    validTimestamps.push(now);
+    fallbackCache.set(key, validTimestamps);
+  }
+}
