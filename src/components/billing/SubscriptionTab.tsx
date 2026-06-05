@@ -10,6 +10,7 @@ import {
   getEffectiveMonthlyPrice,
   canSelectPlan,
 } from '@/lib/billing-plans';
+import { Star, PauseCircle, AlertTriangle } from 'lucide-react';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 
@@ -72,6 +73,12 @@ interface EnterpriseModalState extends EnterpriseFormFields {
 }
 
 interface CancelModalState {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
+interface PauseModalState {
   open: boolean;
   loading: boolean;
   error: string | null;
@@ -172,6 +179,12 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
   });
 
   const [cancelModal, setCancelModal] = useState<CancelModalState>({
+    open: false,
+    loading: false,
+    error: null,
+  });
+
+  const [pauseModal, setPauseModal] = useState<PauseModalState>({
     open: false,
     loading: false,
     error: null,
@@ -303,6 +316,25 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
     }
   }, [onChangeTab]);
 
+  // ── Pause subscription ─────────────────────────────────────────────────────
+
+  const handlePauseSubscription = useCallback(async () => {
+    setPauseModal((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const res = await fetch('/api/billing/subscription/pause', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to pause subscription');
+      setPauseModal({ open: false, loading: false, error: null });
+      onChangeTab('overview');
+    } catch (err) {
+      setPauseModal((s) => ({
+        ...s,
+        loading: false,
+        error: err instanceof Error ? err.message : 'Unexpected error',
+      }));
+    }
+  }, [onChangeTab]);
+
   // ── Billing cycle labels ───────────────────────────────────────────────────
 
   const cycles: BillingCycle[] = ['monthly', 'quarterly', 'yearly'];
@@ -317,8 +349,8 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
   return (
     <div>
       <div className={styles.plansHeader}>
-        <h2>Change plans</h2>
-        <p>Select the best plan for your team size and budget. Upgrade or downgrade at any time.</p>
+        <h2>Select a plan</h2>
+        <p>Select the best plan for your team size and budget — Upgrade or cancel at anytime.</p>
       </div>
 
       {checkoutError && <div className={styles.errorBanner}>{checkoutError}</div>}
@@ -348,12 +380,15 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
               key={plan.key}
               className={[
                 styles.planCard,
+                currentPlan === plan.key ? styles.planCardActive : '',
                 !allowed && !plan.isEnterprise ? styles.planCardDisabled : '',
               ].join(' ')}
               aria-disabled={!allowed && !plan.isEnterprise}
             >
-              {currentPlan && plan.key === currentPlan && (
-                <div className={styles.currentPlanBadge}>CURRENT PLAN</div>
+              {plan.key === 'professional' && (
+                <div className={styles.planCardPopularBadge}>
+                  <Star size={12} fill="currentColor" /> POPULAR
+                </div>
               )}
 
               <p className={styles.planCardName}>{plan.name}</p>
@@ -393,30 +428,20 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
                 <>
                   <button
                     id={`plan-btn-${plan.key}`}
-                    className={`${styles.planCardBtn} ${
+                    className={
                       currentPlan === plan.key
-                        ? styles.planCardBtnCurrent
-                        : styles.planCardBtnSecondary
-                    }`}
+                        ? styles.planCardBtnCurrentDisabled
+                        : styles.planCardBtnOutline
+                    }
                     disabled={currentPlan === plan.key || !allowed || checkoutLoading === plan.key}
                     onClick={() => void handleSelectPlan(plan.key)}
-                    style={{ marginBottom: currentPlan === plan.key ? '12px' : '24px' }}
                   >
                     {checkoutLoading === plan.key
                       ? 'Redirecting...'
                       : currentPlan === plan.key
                         ? 'Current Plan'
-                        : 'Choose plan'}
+                        : 'Subscribe'}
                   </button>
-                  {currentPlan === plan.key && (
-                    <button
-                      className={styles.cancelLink}
-                      onClick={() => setCancelModal({ open: true, loading: false, error: null })}
-                      style={{ marginTop: 0, marginBottom: '24px' }}
-                    >
-                      ⊗ Cancel subscription
-                    </button>
-                  )}
                 </>
               )}
 
@@ -443,6 +468,46 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
           );
         })}
       </div>
+
+      {currentPlan && (
+        <>
+          <div className={styles.manageSubscriptionBox}>
+            <div className={styles.manageSubscriptionBoxRow}>
+              <div>
+                <h3>
+                  Your {BILLING_PLANS.find((p) => p.key === currentPlan)?.name} -{' '}
+                  {cycle.charAt(0).toUpperCase() + cycle.slice(1)} subscription renews
+                  automatically...
+                </h3>
+                <p>If you don&apos;t want to renew, you can freeze or cancel your subscription.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.manageSubscriptionBox}>
+            <div className={styles.manageSubscriptionBoxRow}>
+              <div>
+                <h3>Cancel/Freeze Subscription</h3>
+                <p>You&apos;ll be able to re-activate your plan anytime at the regular price.</p>
+              </div>
+              <div className={styles.manageSubscriptionActions}>
+                <button
+                  className={styles.btnSecondary}
+                  onClick={() => setCancelModal({ open: true, loading: false, error: null })}
+                >
+                  Cancel Subscription
+                </button>
+                <button
+                  className={styles.btnDark}
+                  onClick={() => setPauseModal({ open: true, loading: false, error: null })}
+                >
+                  Pause Subscription
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ===== Enterprise Contact Modal ===== */}
       {enterpriseModal.open && (
@@ -895,18 +960,7 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
             aria-label="Cancel subscription confirmation"
           >
             <div className={`${styles.modalIcon} ${styles.modalIconWarning}`}>
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
+              <AlertTriangle size={28} />
             </div>
             <h2>Cancel subscription?</h2>
             <p>
@@ -931,6 +985,54 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
               <button
                 className={styles.btnSecondary}
                 onClick={() => setCancelModal({ open: false, loading: false, error: null })}
+              >
+                Keep my plan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Pause Subscription Confirmation Modal ===== */}
+      {pauseModal.open && (
+        <div
+          className={styles.modalBackdrop}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPauseModal((s) => ({ ...s, open: false }));
+          }}
+        >
+          <div
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pause subscription confirmation"
+          >
+            <div className={`${styles.modalIcon} ${styles.modalIconWarning}`}>
+              <PauseCircle size={28} />
+            </div>
+            <h2>Taking a Break?</h2>
+            <p>
+              We can pause your subscription for you at a reduced cost of $9.90/mo to keep all your
+              user progress, courses and data intact.
+            </p>
+
+            {pauseModal.error && (
+              <div className={styles.errorBanner} role="alert">
+                {pauseModal.error}
+              </div>
+            )}
+
+            <div className={styles.modalActions}>
+              <button
+                className={styles.btnPrimary}
+                disabled={pauseModal.loading}
+                onClick={() => void handlePauseSubscription()}
+              >
+                {pauseModal.loading ? 'Pausing...' : 'Yes, freeze subscription'}
+              </button>
+              <button
+                className={styles.btnSecondary}
+                onClick={() => setPauseModal({ open: false, loading: false, error: null })}
               >
                 Keep my plan
               </button>

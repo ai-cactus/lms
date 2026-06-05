@@ -37,6 +37,7 @@
     "google-auth-library": "^10.6.2",
     "ioredis": "^5.10.1",
     "isomorphic-dompurify": "^3.5.1",
+    "lucide-react": "^1.17.0",
     "mammoth": "^1.11.0",
     "minio": "^8.0.7",
     "next": "16.2.6",

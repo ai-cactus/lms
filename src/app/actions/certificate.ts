@@ -103,3 +103,56 @@ export async function getWorkerCertificates() {
 
   return certificates;
 }
+
+export async function getAdminWorkerCertificates(workerId: string) {
+  const session = await adminAuth();
+  if (!session?.user?.id || session.user.role !== 'admin') {
+    throw new Error('Unauthorized');
+  }
+
+  const certificates = await prisma.certificate.findMany({
+    where: {
+      userId: workerId,
+      user: {
+        organizationId: session.user.organizationId,
+      },
+    },
+    include: {
+      course: { select: { title: true } },
+    },
+    orderBy: { issuedAt: 'desc' },
+  });
+
+  return certificates;
+}
+
+export async function getCertificateDetails(certificateId: string) {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const certificate = await prisma.certificate.findUnique({
+    where: { id: certificateId },
+    include: {
+      user: { include: { profile: true, organization: true } },
+      course: true,
+    },
+  });
+
+  if (!certificate) {
+    throw new Error('Certificate not found');
+  }
+
+  // Ensure user is authorized
+  const isWorker = certificate.userId === session.user.id;
+  const isAdmin =
+    session.user.role === 'admin' &&
+    certificate.user.organizationId === session.user.organizationId;
+
+  if (!isWorker && !isAdmin) {
+    throw new Error('Unauthorized');
+  }
+
+  return certificate;
+}
