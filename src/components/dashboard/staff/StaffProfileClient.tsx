@@ -14,6 +14,10 @@ import AssignRetakeModal from '../training/AssignRetakeModal';
 import RemoveStaffModal from './RemoveStaffModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentQuizResult } from '@/app/actions/staff';
+import { getAdminWorkerCertificates } from '@/app/actions/certificate';
+import CertificateCardList from '../training/CertificateCardList';
+
+type WorkerCertificate = Awaited<ReturnType<typeof getAdminWorkerCertificates>>[number];
 import { logger } from '@/lib/logger';
 
 interface StaffProfileClientProps {
@@ -81,6 +85,24 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
   } | null>(null);
   const [loadingEnrollmentId, setLoadingEnrollmentId] = useState<string | null>(null);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'courses' | 'certificates'>('courses');
+  const [certificates, setCertificates] = useState<WorkerCertificate[]>([]);
+  const [loadingCerts, setLoadingCerts] = useState(false);
+
+  React.useEffect(() => {
+    if (activeTab === 'certificates' && certificates.length === 0) {
+      setLoadingCerts(true);
+      getAdminWorkerCertificates(user.id)
+        .then((res) => {
+          setCertificates(res);
+          setLoadingCerts(false);
+        })
+        .catch((err) => {
+          logger.error({ msg: 'Failed to fetch certificates', err });
+          setLoadingCerts(false);
+        });
+    }
+  }, [activeTab, user.id, certificates.length]);
 
   const handleViewResult = async (enrollmentId: string) => {
     setLoadingEnrollmentId(enrollmentId);
@@ -286,212 +308,273 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         </div>
       </div>
 
-      {/* Courses Table */}
+      {/* Courses & Certificates */}
       <div className={styles.coursesSection}>
-        <div className={styles.coursesHeader}>
-          <h3 className={styles.coursesTitle}>Courses</h3>
-          <div className={styles.searchWrapper}>
-            <Input
-              className=""
-              style={{ width: '250px' }}
-              placeholder="Search for courses..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              leftIcon={
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#A0AEC0"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-              }
-            />
-          </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: '24px',
+            borderBottom: '1px solid #E2E8F0',
+            marginBottom: '24px',
+          }}
+        >
+          <button
+            onClick={() => setActiveTab('courses')}
+            style={{
+              padding: '12px 0',
+              fontWeight: 600,
+              fontSize: '14px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              borderBottom: activeTab === 'courses' ? '2px solid #3182CE' : '2px solid transparent',
+              color: activeTab === 'courses' ? '#2D3748' : '#718096',
+            }}
+          >
+            Courses
+          </button>
+          <button
+            onClick={() => setActiveTab('certificates')}
+            style={{
+              padding: '12px 0',
+              fontWeight: 600,
+              fontSize: '14px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              borderBottom:
+                activeTab === 'certificates' ? '2px solid #3182CE' : '2px solid transparent',
+              color: activeTab === 'certificates' ? '#2D3748' : '#718096',
+            }}
+          >
+            Certificates Issued
+          </button>
         </div>
 
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ width: '40%' }}>Name</th>
-              <th style={{ width: '30%' }}>Progress</th>
-              <th style={{ width: '15%' }}>Quiz Status</th>
-              <th style={{ width: '15%' }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredEnrollments.map((enrollment) => (
-              <tr key={enrollment.id}>
-                <td>
-                  <div className={styles.courseItem}>
-                    <div className={styles.courseThumb}>
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-                      </svg>
-                    </div>
-                    <div>
-                      <span className={styles.courseName}>{enrollment.courseName}</span>
-                      <span className={styles.courseLvl}>
-                        {enrollment.difficulty || 'Advanced'}
-                      </span>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <div className={styles.progressWrapper}>
-                    <div className={styles.bgBar}>
-                      <div
-                        className={styles.fillBar}
-                        style={{ width: `${enrollment.progress || 0}%` }}
-                      ></div>
-                    </div>
-                    <span className={styles.pctText}>{enrollment.progress || 0}%</span>
-                  </div>
-                </td>
-                <td>
-                  {(enrollment.status === 'completed' || enrollment.progress === 100) &&
-                  enrollment.score >= (enrollment.passingScore || 70) ? (
-                    <span className={`${styles.badge} ${styles.badgePassed}`}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                      Passed
-                    </span>
-                  ) : enrollment.status === 'locked' ? (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                        alignItems: 'flex-start',
-                      }}
+        {activeTab === 'courses' ? (
+          <>
+            <div className={styles.coursesHeader}>
+              <div className={styles.searchWrapper}>
+                <Input
+                  className=""
+                  style={{ width: '250px' }}
+                  placeholder="Search for courses..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  leftIcon={
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#A0AEC0"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     >
-                      <span
-                        className={`${styles.badge} ${styles.badgeFailed}`}
-                        style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
-                      >
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                        </svg>
-                        Locked
-                      </span>
-                      <span style={{ fontSize: '10px', color: '#E53E3E' }}>Limit reached</span>
-                    </div>
-                  ) : enrollment.status === 'completed' || enrollment.progress === 100 ? (
-                    <span className={`${styles.badge} ${styles.badgeFailed}`}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                      Failed
-                    </span>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', color: '#718096' }}>In Progress</span>
-                      {enrollment.quizAttempts && (
-                        <span style={{ fontSize: '10px', color: '#A0AEC0', marginTop: '2px' }}>
-                          Attempt{' '}
-                          {Math.min(
-                            enrollment.quizAttempts[0]
-                              ? enrollment.quizAttempts[0].timeTaken === null
-                                ? enrollment.quizAttempts[0].attemptCount
-                                : enrollment.quizAttempts[0].attemptCount + 1
-                              : 1,
-                            enrollment.allowedAttempts || 99,
-                          )}
-                          {enrollment.allowedAttempts && ` of ${enrollment.allowedAttempts}`}
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                  }
+                />
+              </div>
+            </div>
+
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th style={{ width: '40%' }}>Name</th>
+                  <th style={{ width: '30%' }}>Progress</th>
+                  <th style={{ width: '15%' }}>Quiz Status</th>
+                  <th style={{ width: '15%' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEnrollments.map((enrollment) => (
+                  <tr key={enrollment.id}>
+                    <td>
+                      <div className={styles.courseItem}>
+                        <div className={styles.courseThumb}>
+                          <svg
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="white"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                          </svg>
+                        </div>
+                        <div>
+                          <span className={styles.courseName}>{enrollment.courseName}</span>
+                          <span className={styles.courseLvl}>
+                            {enrollment.difficulty || 'Advanced'}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div className={styles.progressWrapper}>
+                        <div className={styles.bgBar}>
+                          <div
+                            className={styles.fillBar}
+                            style={{ width: `${enrollment.progress || 0}%` }}
+                          ></div>
+                        </div>
+                        <span className={styles.pctText}>{enrollment.progress || 0}%</span>
+                      </div>
+                    </td>
+                    <td>
+                      {(enrollment.status === 'completed' || enrollment.progress === 100) &&
+                      enrollment.score >= (enrollment.passingScore || 70) ? (
+                        <span className={`${styles.badge} ${styles.badgePassed}`}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                          Passed
                         </span>
+                      ) : enrollment.status === 'locked' ? (
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px',
+                            alignItems: 'flex-start',
+                          }}
+                        >
+                          <span
+                            className={`${styles.badge} ${styles.badgeFailed}`}
+                            style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
+                          >
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                            </svg>
+                            Locked
+                          </span>
+                          <span style={{ fontSize: '10px', color: '#E53E3E' }}>Limit reached</span>
+                        </div>
+                      ) : enrollment.status === 'completed' || enrollment.progress === 100 ? (
+                        <span className={`${styles.badge} ${styles.badgeFailed}`}>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                          </svg>
+                          Failed
+                        </span>
+                      ) : (
+                        <div
+                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+                        >
+                          <span style={{ fontSize: '12px', color: '#718096' }}>In Progress</span>
+                          {enrollment.quizAttempts && (
+                            <span style={{ fontSize: '10px', color: '#A0AEC0', marginTop: '2px' }}>
+                              Attempt{' '}
+                              {Math.min(
+                                enrollment.quizAttempts[0]
+                                  ? enrollment.quizAttempts[0].timeTaken === null
+                                    ? enrollment.quizAttempts[0].attemptCount
+                                    : enrollment.quizAttempts[0].attemptCount + 1
+                                  : 1,
+                                enrollment.allowedAttempts || 99,
+                              )}
+                              {enrollment.allowedAttempts && ` of ${enrollment.allowedAttempts}`}
+                            </span>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  )}
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                    {enrollment.status === 'locked' && (
-                      <Button
-                        variant="primary"
-                        size="xs"
-                        onClick={() =>
-                          setRetakeEnrollment({
-                            id: enrollment.id,
-                            courseName: enrollment.courseName,
-                          })
-                        }
-                      >
-                        Retake
-                      </Button>
-                    )}
-                    {(enrollment.status === 'completed' ||
-                      enrollment.progress === 100 ||
-                      (enrollment.quizAttempts && enrollment.quizAttempts.length > 0)) && (
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        onClick={() => handleViewResult(enrollment.id)}
-                        disabled={loadingEnrollmentId === enrollment.id}
-                        loading={loadingEnrollmentId === enrollment.id}
-                      >
-                        View
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filteredEnrollments.length === 0 && (
-              <EmptyTableState
-                message="No courses found."
-                subMessage="This staff member has no enrolled courses."
-                colSpan={4}
-                asTableRow
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        {enrollment.status === 'locked' && (
+                          <Button
+                            variant="primary"
+                            size="xs"
+                            onClick={() =>
+                              setRetakeEnrollment({
+                                id: enrollment.id,
+                                courseName: enrollment.courseName,
+                              })
+                            }
+                          >
+                            Retake
+                          </Button>
+                        )}
+                        {(enrollment.status === 'completed' ||
+                          enrollment.progress === 100 ||
+                          (enrollment.quizAttempts && enrollment.quizAttempts.length > 0)) && (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => handleViewResult(enrollment.id)}
+                            disabled={loadingEnrollmentId === enrollment.id}
+                            loading={loadingEnrollmentId === enrollment.id}
+                          >
+                            View
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredEnrollments.length === 0 && (
+                  <EmptyTableState
+                    message="No courses found."
+                    subMessage="This staff member has no enrolled courses."
+                    colSpan={4}
+                    asTableRow
+                  />
+                )}
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <div>
+            {loadingCerts ? (
+              <div style={{ textAlign: 'center', padding: '48px', color: '#718096' }}>
+                Loading certificates...
+              </div>
+            ) : (
+              <CertificateCardList
+                certificates={certificates}
+                title=""
+                description=""
+                showExport={false}
               />
             )}
-          </tbody>
-        </table>
+          </div>
+        )}
       </div>
 
       {/* Modals */}

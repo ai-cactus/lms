@@ -1,0 +1,300 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.container {
+  background-color: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 1000px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1a202c;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #a0aec0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.closeButton:hover {
+  background-color: #f7fafc;
+  color: #4a5568;
+}
+
+.loading,
+.error {
+  padding: 48px;
+  text-align: center;
+  color: #718096;
+}
+
+.error {
+  color: #e53e3e;
+}
+
+/* Certificate Styles */
+.certificateWrapper {
+  padding: 40px;
+  background-color: #f8f9fa;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.certificate {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  aspect-ratio: 1.414 / 1; /* A4 Landscape aspect ratio */
+  background-color: #fff;
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.05),
+    0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 40px 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 120px;
+  font-weight: 800;
+  color: rgba(0, 0, 0, 0.03);
+  pointer-events: none;
+  z-index: 1;
+  letter-spacing: 10px;
+  text-transform: uppercase;
+}
+
+.topBorder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: linear-gradient(90deg, #1a365d 0%, #2b6cb0 100%);
+}
+
+.logoContainer {
+  position: absolute;
+  top: 40px;
+  right: 60px;
+  z-index: 2;
+}
+
+.logoText {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #2d3748;
+  letter-spacing: 1px;
+}
+
+.content {
+  text-align: center;
+  margin-top: 60px;
+  position: relative;
+  z-index: 2;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #1a365d;
+  margin: 0 0 24px 0;
+  letter-spacing: 2px;
+}
+
+.subtitle {
+  font-size: 1.1rem;
+  color: #4a5568;
+  margin: 0 0 24px 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.studentName {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #2d3748;
+  margin: 0 0 24px 0;
+  font-family: 'Georgia', serif;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 8px;
+  display: inline-block;
+  min-width: 60%;
+}
+
+.description {
+  font-size: 1rem;
+  color: #4a5568;
+  margin: 0 0 16px 0;
+}
+
+.courseName {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1a365d;
+  margin: 0 0 24px 0;
+}
+
+.organizationText {
+  font-size: 0.95rem;
+  color: #718096;
+  max-width: 80%;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  position: relative;
+  z-index: 2;
+  margin-top: 40px;
+}
+
+.footerLeft {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.qrCode {
+  width: 64px;
+  height: 64px;
+  background-color: #fff;
+  border: 1px solid #e2e8f0;
+  padding: 4px;
+}
+
+.issueDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.issueDetails p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #718096;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.footerRight {
+  display: flex;
+  align-items: flex-end;
+  gap: 40px;
+}
+
+.signatureBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.signatureLine {
+  width: 150px;
+  height: 1px;
+  background-color: #2d3748;
+  margin-bottom: 8px;
+}
+
+.signatureText {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #4a5568;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.goldSeal {
+  width: 80px;
+  height: 80px;
+}
+
+@media (max-width: 768px) {
+  .certificate {
+    padding: 20px;
+  }
+  .title {
+    font-size: 1.5rem;
+  }
+  .studentName {
+    font-size: 2rem;
+  }
+  .courseName {
+    font-size: 1.25rem;
+  }
+  .logoContainer {
+    top: 20px;
+    right: 20px;
+  }
+  .footer {
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  .footerRight {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
