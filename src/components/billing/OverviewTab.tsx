@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import styles from './billing.module.css';
 import { BILLING_PLANS } from '@/lib/billing-plans';
+import { Users, RefreshCw, Calendar, FileText, AlertTriangle } from 'lucide-react';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 
@@ -142,53 +143,42 @@ export default function OverviewTab({ onChangeTab }: Props) {
   const isNearLimit = staffMax !== null && activeStaffCount / staffMax >= 0.8;
 
   return (
-    <div className={styles.overviewGrid}>
+    <div className={styles.overviewGridNew}>
       {/* Current Plan */}
       <div className={styles.card}>
-        <p className={styles.cardTitle}>Current Plan</p>
+        <div className={styles.cardHeaderFlex}>
+          <p className={styles.cardTitle}>Current Plan</p>
+          <button className={styles.planLink} onClick={() => onChangeTab('subscription')}>
+            Change plan
+          </button>
+        </div>
         {subscription ? (
           <>
             <p className={styles.planName}>{getPlanDisplayName(subscription.plan)}</p>
-            <p className={styles.planMeta}>
-              {subscription.billingCycle.charAt(0).toUpperCase() +
-                subscription.billingCycle.slice(1)}{' '}
-              billing cycle
-            </p>
-            {!subscription.cancelAtPeriodEnd && (
-              <p className={styles.planMeta}>
-                Next Invoice: <strong>{formatDate(subscription.currentPeriodEnd)}</strong>
-              </p>
-            )}
+            <ul className={styles.currentPlanList}>
+              <li>
+                <Users size={18} />
+                {staffMax ? `1-${staffMax}` : 'Unlimited'} staff members
+              </li>
+              <li>
+                <RefreshCw size={18} />
+                {subscription.billingCycle.charAt(0).toUpperCase() +
+                  subscription.billingCycle.slice(1)}{' '}
+                billing cycle
+              </li>
+              {!subscription.cancelAtPeriodEnd && (
+                <li>
+                  <Calendar size={18} />
+                  Next invoice on {formatDate(subscription.currentPeriodEnd)}
+                </li>
+              )}
+            </ul>
             {subscription.cancelAtPeriodEnd && (
               <div className={styles.cancelScheduled}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
+                <AlertTriangle size={18} />
                 Cancels on {formatDate(subscription.currentPeriodEnd)}
               </div>
             )}
-            <button className={styles.planLink} onClick={() => onChangeTab('subscription')}>
-              Change plan
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </button>
           </>
         ) : (
           <div className={styles.noSubscription}>
@@ -207,7 +197,12 @@ export default function OverviewTab({ onChangeTab }: Props) {
 
       {/* Staff Usage */}
       <div className={styles.card}>
-        <p className={styles.cardTitle}>Staff Usage</p>
+        <div className={styles.cardHeaderFlex}>
+          <p className={styles.cardTitle}>Staff Usage</p>
+          <button className={styles.planLink} onClick={() => onChangeTab('subscription')}>
+            Upgrade plan
+          </button>
+        </div>
         <p className={styles.staffNumbers}>
           <strong>{activeStaffCount}</strong>
           {staffMax !== null ? ` / ${staffMax}` : ''} active
@@ -222,39 +217,22 @@ export default function OverviewTab({ onChangeTab }: Props) {
         )}
         {isNearLimit && (
           <div className={styles.alertBanner}>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
+            <AlertTriangle size={18} />
             Staff limit almost reached. Consider upgrading soon.
           </div>
         )}
-        <button className={styles.planLink} onClick={() => onChangeTab('subscription')}>
-          Upgrade plan
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-          >
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </button>
       </div>
 
       {/* Payment Method */}
       <div className={styles.card}>
-        <p className={styles.cardTitle}>Payment Method</p>
+        <div className={styles.cardHeaderFlex}>
+          <p className={styles.cardTitle} style={{ color: '#94a3b8' }}>
+            Payment Method
+          </p>
+          <button className={styles.planLink} onClick={() => onChangeTab('payment-method')}>
+            Update payment
+          </button>
+        </div>
         {defaultPaymentMethod ? (
           <>
             <div className={styles.paymentRow}>
@@ -290,19 +268,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
                 )}
               </p>
             )}
-            <button className={styles.planLink} onClick={() => onChangeTab('payment-method')}>
-              Update payment
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </button>
           </>
         ) : (
           <>
@@ -328,14 +293,27 @@ export default function OverviewTab({ onChangeTab }: Props) {
 
       {/* Recent Invoices */}
       <div className={styles.card}>
-        <p className={styles.cardTitle}>Recent Invoices</p>
+        <div className={styles.cardHeaderFlex}>
+          <p className={styles.cardTitle} style={{ color: '#94a3b8' }}>
+            Recent Invoices
+          </p>
+          <button className={styles.planLink} onClick={() => onChangeTab('billing-history')}>
+            View all invoices
+          </button>
+        </div>
         {recentInvoices.length === 0 ? (
           <p style={{ fontSize: 14, color: '#64748b' }}>No invoices yet.</p>
         ) : (
           <>
             {recentInvoices.map((inv) => (
               <div key={inv.id} className={styles.invoiceRow}>
-                <span className={styles.invoiceId}>{inv.invoiceNumber}</span>
+                <span className={styles.invoiceId}>
+                  <FileText
+                    size={16}
+                    style={{ color: '#94a3b8', marginRight: '8px', verticalAlign: 'middle' }}
+                  />
+                  {inv.invoiceNumber}
+                </span>
                 <span className={styles.invoiceDate}>{formatDate(inv.createdAt)}</span>
                 <span className={styles.invoiceAmount}>
                   {formatAmount(inv.amountPaid, inv.currency)}
@@ -345,23 +323,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
                 </span>
               </div>
             ))}
-            <button
-              className={styles.planLink}
-              style={{ marginTop: 12 }}
-              onClick={() => onChangeTab('billing-history')}
-            >
-              View all invoices
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </button>
           </>
         )}
       </div>
