@@ -1163,3 +1163,182 @@
     width: 100%;
   }
 }
+
+/* ---------- New Billing Redesign Additions ---------- */
+
+.planCardActive {
+  background: #f0f4ff; /* Light purple/blue background */
+  border-color: #335cff;
+  box-shadow: 0 4px 16px rgba(51, 92, 255, 0.12);
+}
+
+.planCardPopularBadge {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  background: #ffffff;
+  color: #335cff;
+  border: 1px solid #335cff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.overviewHeaderTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.overviewHeaderTop h2 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.overviewHeaderTop p {
+  font-size: 14px;
+  color: #64748b;
+  margin: 4px 0 0 0;
+}
+
+/* Redesigned Overview Grid */
+.overviewGridNew {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 860px) {
+  .overviewGridNew {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cardHeaderFlex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.cardHeaderFlex .cardTitle {
+  margin-bottom: 0;
+  color: #335cff;
+}
+
+.cardHeaderFlex .planLink {
+  margin-top: 0;
+}
+
+.currentPlanList {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.currentPlanList li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.currentPlanList li svg {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.manageSubscriptionBox {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.manageSubscriptionBoxRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.manageSubscriptionBoxRow h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+
+.manageSubscriptionBoxRow p {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
+.manageSubscriptionActions {
+  display: flex;
+  gap: 12px;
+}
+
+.btnDark {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #1e293b;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btnDark:hover {
+  background: #0f172a;
+}
+
+.planCardBtnOutline {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #ffffff;
+  color: #335cff;
+  border: 1.5px solid #335cff;
+  margin-bottom: 24px;
+  transition: background 0.15s;
+}
+
+.planCardBtnOutline:hover {
+  background: #f0f4ff;
+}
+
+.planCardBtnCurrentDisabled {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: default;
+  background: #cbd5e1;
+  color: #ffffff;
+  border: none;
+  margin-bottom: 24px;
+}

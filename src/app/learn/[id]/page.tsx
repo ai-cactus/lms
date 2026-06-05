@@ -403,11 +403,8 @@ export default function LearnPage() {
           setIsQuizActive(false);
           setQuizUnlocked(true);
           setHighestUnlockedIndex(lessonCount - 1);
-        } else if (
-          (data.enrollment?.status === 'locked' || (hasQuizAttempt && !activeAttempt)) &&
-          data.enrollment?.status !== 'in_progress'
-        ) {
-          // Locked or has submitted quiz (not completed): show quiz review
+        } else if (data.enrollment?.status === 'locked' || (hasQuizAttempt && !activeAttempt)) {
+          // Locked or has submitted quiz (not completed/attested yet): show quiz review
           const resultsData: QuizResultsData = data.quizResultsData || {
             passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
             score: data.enrollment.score || 0,

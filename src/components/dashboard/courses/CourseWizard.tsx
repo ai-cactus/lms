@@ -41,6 +41,8 @@ const INITIAL_FORM_DATA: CourseWizardData = {
   dueTime: '',
 };
 
+const DRAFT_KEY = 'lms_course_wizard_draft';
+
 export default function CourseWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -76,6 +78,15 @@ export default function CourseWizard() {
   // Publish confirmation state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  // Draft resume state
+  const [showResumeBanner, setShowResumeBanner] = useState(false);
+  const [draftToRestore, setDraftToRestore] = useState<{
+    step: number;
+    formData: CourseWizardData;
+    generatedContent: GeneratedCourse | null;
+    selectedDocId: string | null;
+  } | null>(null);
+
   useEffect(() => {
     const loadDocs = async () => {
       try {
@@ -106,20 +117,42 @@ export default function CourseWizard() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('lms_pending_generation');
+      // Cleanup legacy draft
+      localStorage.removeItem('lms_pending_generation');
+
+      const raw = sessionStorage.getItem(DRAFT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Date.now() - parsed.timestamp < 60 * 60 * 1000) {
-          setFormData(parsed.formData);
-          setPendingJobId(parsed.jobId);
-          setCurrentStep(5);
+        if (Date.now() - parsed.savedAt < 24 * 60 * 60 * 1000) {
+          setDraftToRestore(parsed);
+          setShowResumeBanner(true);
+        } else {
+          sessionStorage.removeItem(DRAFT_KEY);
         }
-        localStorage.removeItem('lms_pending_generation');
       }
     } catch {
       // Ignored
     }
   }, []);
+
+  // Autosave Draft
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (showResumeBanner) return;
+      if (currentStep === 1 && formData.categoryId === '') return;
+
+      const draft = {
+        step: currentStep,
+        formData,
+        generatedContent,
+        selectedDocId: documents.find((d) => d.selected)?.id || null,
+        savedAt: Date.now(),
+      };
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [currentStep, formData, generatedContent, documents, showResumeBanner]);
 
   const handleAutoAnalyze = async (docId: string) => {
     setIsAnalyzing(true);
@@ -300,6 +333,7 @@ export default function CourseWizard() {
         analyzedDocId.current = null;
         setPendingJobId(null);
         setCreatedCourseId(result.courseId);
+        sessionStorage.removeItem(DRAFT_KEY);
       } else {
         setPublishError('Failed to create course. Please try again.');
       }
@@ -538,6 +572,67 @@ export default function CourseWizard() {
       </header>
 
       <main className={styles.content}>
+        {showResumeBanner && (
+          <div
+            style={{
+              backgroundColor: '#EBF4FF',
+              border: '1px solid #BEE3F8',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '24px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <div>
+              <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#2B6CB0' }}>
+                Resume your draft?
+              </h3>
+              <p style={{ margin: 0, fontSize: '14px', color: '#2C5282' }}>
+                We found an unsaved course creation draft from your current session.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  sessionStorage.removeItem(DRAFT_KEY);
+                  setShowResumeBanner(false);
+                  setDraftToRestore(null);
+                }}
+              >
+                Start Fresh
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  if (draftToRestore) {
+                    setFormData(draftToRestore.formData);
+                    setCurrentStep(draftToRestore.step);
+                    setGeneratedContent(draftToRestore.generatedContent);
+                    if (draftToRestore.selectedDocId) {
+                      setDocuments((docs) =>
+                        docs.map((d) => ({
+                          ...d,
+                          selected: d.id === draftToRestore.selectedDocId,
+                        })),
+                      );
+                      analyzedDocId.current = draftToRestore.selectedDocId;
+                    }
+                  }
+                  setShowResumeBanner(false);
+                  setDraftToRestore(null);
+                }}
+              >
+                Resume Draft
+              </Button>
+            </div>
+          </div>
+        )}
+
         {renderStep()}
 
         {(!isGenerating || currentStep !== 5) && (
@@ -748,7 +843,10 @@ export default function CourseWizard() {
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => router.push('/dashboard/courses')}
+                  onClick={() => {
+                    sessionStorage.removeItem(DRAFT_KEY);
+                    router.push('/dashboard/courses');
+                  }}
                 >
                   Exit
                 </Button>
