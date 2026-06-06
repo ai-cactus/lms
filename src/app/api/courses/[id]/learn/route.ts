@@ -198,6 +198,8 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
           correct: correctCount,
           wrong: attemptAnswers.length - correctCount,
           time: latestAttempt.timeTaken || 0,
+          attemptsUsed: (latestAttempt as { attemptCount?: number }).attemptCount || 1,
+          allowedAttempts: quizData.allowedAttempts,
           questions: quizWithAnswers.questions.map((q) => {
             const userAnswer = attemptAnswers.find((a) => a.questionId === q.id);
             const optionsArray = Array.isArray(q.options)

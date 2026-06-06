@@ -5,6 +5,7 @@ import styles from './TrainingDetails.module.css';
 import { Button, Input } from '@/components/ui';
 import Link from 'next/link';
 import ShareCourseModal from './ShareCourseModal';
+import CertificateModal from './CertificateModal';
 
 import { CourseWithRelations } from '@/types/course';
 
@@ -16,6 +17,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'staff' | 'certificates'>('staff');
+  const [selectedCertId, setSelectedCertId] = useState<string | null>(null);
 
   // Use real enrollments from database only
   const enrollments = course.enrollments || [];
@@ -551,14 +553,9 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() =>
-                              window.open(
-                                `/api/certificates/${enrollment.certificate!.id}`,
-                                '_blank',
-                              )
-                            }
+                            onClick={() => setSelectedCertId(enrollment.certificate!.id)}
                           >
-                            View PDF
+                            View Certificate
                           </Button>
                         </td>
                       </tr>
@@ -574,6 +571,14 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         onClose={() => setIsShareModalOpen(false)}
         courseId={course.id}
       />
+
+      {selectedCertId && (
+        <CertificateModal
+          isOpen={true}
+          onClose={() => setSelectedCertId(null)}
+          certificateId={selectedCertId}
+        />
+      )}
     </div>
   );
 }
