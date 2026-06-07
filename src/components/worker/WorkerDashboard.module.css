@@ -1088,3 +1088,42 @@
     border-radius: 10px;
   }
 }
+
+.profileWarningBanner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background-color: #fffbeb;
+  border: 1px solid #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.profileWarningIcon {
+  color: #d97706;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.profileWarningText {
+  color: #b45309;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.profileWarningText a {
+  color: #b45309;
+  text-decoration: underline;
+  font-weight: 700;
+  transition: color 0.2s;
+}
+
+.profileWarningText a:hover {
+  color: #78350f;
+}
