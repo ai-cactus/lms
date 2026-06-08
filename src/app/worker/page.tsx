@@ -1,5 +1,6 @@
 import { auth } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
+import Link from 'next/link';
 import styles from '@/components/worker/WorkerDashboard.module.css';
 import WorkerWelcomeModal from '@/components/dashboard/learner/WorkerWelcomeModal';
 import WorkerDashboardMetrics from '@/components/worker/WorkerDashboardMetrics';
@@ -9,16 +10,28 @@ import WorkerEmptyState from '@/components/worker/WorkerEmptyState';
 
 export default async function LearnerDashboard() {
   const session = await auth();
-  const allEnrollments = await prisma.enrollment.findMany({
-    where: { userId: session?.user?.id },
-    include: {
-      course: true,
-      quizAttempts: {
-        orderBy: { completedAt: 'desc' },
-        take: 1,
+  const userId = session?.user?.id;
+
+  const [allEnrollments, user] = await Promise.all([
+    prisma.enrollment.findMany({
+      where: { userId },
+      include: {
+        course: true,
+        quizAttempts: {
+          orderBy: { completedAt: 'desc' },
+          take: 1,
+        },
       },
-    },
-  });
+    }),
+    userId
+      ? prisma.user.findUnique({
+          where: { id: userId },
+          include: { profile: true },
+        })
+      : null,
+  ]);
+
+  const profileIncomplete = !user?.profile?.firstName?.trim() || !user?.profile?.lastName?.trim();
 
   // Deduplicate: one entry per course, preferring completed/attested, then latest enrollment
   const latestByCourse = new Map<string, (typeof allEnrollments)[number]>();
@@ -88,6 +101,31 @@ export default async function LearnerDashboard() {
 
   return (
     <div className={styles.container}>
+      {profileIncomplete && (
+        <div className={styles.profileWarningBanner}>
+          <div className={styles.profileWarningIcon}>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+          </div>
+          <div className={styles.profileWarningText}>
+            Please <Link href="/worker/profile">update your profile</Link> with your official first
+            and last name. This is required for your certificates to generate correctly.
+          </div>
+        </div>
+      )}
+
       <header className={styles.header}>
         <div>
           <h1 className={styles.welcome}>Dashboard</h1>

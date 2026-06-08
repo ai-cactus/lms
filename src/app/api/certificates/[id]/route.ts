@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
-import { getSignedUrl } from '@/lib/storage';
+import { downloadFile } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -34,12 +34,18 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Get the signed URL and redirect
+    // Stream the file directly
     if (!certificate.pdfStoragePath) {
       return NextResponse.json({ error: 'Certificate file not generated' }, { status: 404 });
     }
-    const signedUrl = await getSignedUrl(certificate.pdfStoragePath);
-    return NextResponse.redirect(signedUrl);
+
+    const fileBuffer = await downloadFile(certificate.pdfStoragePath);
+    return new NextResponse(new Uint8Array(fileBuffer), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="certificate-${params.id}.pdf"`,
+      },
+    });
   } catch (error) {
     logger.error({ msg: 'Error fetching certificate:', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
