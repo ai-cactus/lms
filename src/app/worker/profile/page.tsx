@@ -45,6 +45,7 @@ export default async function WorkerProfilePage() {
     role: user.role,
     avatarUrl: user.profile?.avatarUrl,
     avatarDisplayUrl,
+    authProvider: user.authProvider,
   };
 
   const organizationData = user.organization
