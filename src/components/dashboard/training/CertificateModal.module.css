@@ -78,11 +78,12 @@
 
 /* Certificate Styles */
 .certificateWrapper {
-  padding: 40px;
+  padding: clamp(16px, 5cqw, 40px);
   background-color: #f8f9fa;
   display: flex;
   justify-content: center;
   align-items: center;
+  container-type: inline-size;
 }
 
 .certificate {
@@ -94,7 +95,7 @@
   box-shadow:
     0 4px 6px rgba(0, 0, 0, 0.05),
     0 1px 3px rgba(0, 0, 0, 0.1);
-  padding: 40px 60px;
+  padding: clamp(16px, 5cqw, 40px) clamp(24px, 7.5cqw, 60px);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -107,12 +108,12 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) rotate(-30deg);
-  font-size: 120px;
+  font-size: clamp(40px, 15cqw, 120px);
   font-weight: 800;
   color: rgba(0, 0, 0, 0.03);
   pointer-events: none;
   z-index: 1;
-  letter-spacing: 10px;
+  letter-spacing: clamp(4px, 1.25cqw, 10px);
   text-transform: uppercase;
 }
 
@@ -121,20 +122,20 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 8px;
+  height: clamp(4px, 1cqw, 8px);
   background: linear-gradient(90deg, #1a365d 0%, #2b6cb0 100%);
 }
 
 .logoContainer {
   position: absolute;
-  top: 40px;
-  right: 60px;
+  top: clamp(16px, 5cqw, 40px);
+  right: clamp(24px, 7.5cqw, 60px);
   z-index: 2;
 }
 
 .logoText {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: clamp(1rem, 3cqw, 1.5rem);
   font-weight: 700;
   color: #2d3748;
   letter-spacing: 1px;
@@ -142,7 +143,7 @@
 
 .content {
   text-align: center;
-  margin-top: 60px;
+  margin-top: clamp(24px, 7.5cqw, 60px);
   position: relative;
   z-index: 2;
   flex-grow: 1;
@@ -153,48 +154,48 @@
 }
 
 .title {
-  font-size: 2.5rem;
+  font-size: clamp(1.25rem, 5cqw, 2.5rem);
   font-weight: 800;
   color: #1a365d;
-  margin: 0 0 24px 0;
-  letter-spacing: 2px;
+  margin: 0 0 clamp(12px, 3cqw, 24px) 0;
+  letter-spacing: clamp(1px, 0.25cqw, 2px);
 }
 
 .subtitle {
-  font-size: 1.1rem;
+  font-size: clamp(0.75rem, 2cqw, 1.1rem);
   color: #4a5568;
-  margin: 0 0 24px 0;
+  margin: 0 0 clamp(12px, 3cqw, 24px) 0;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
 .studentName {
-  font-size: 3rem;
+  font-size: clamp(1.5rem, 6cqw, 3rem);
   font-weight: 700;
   color: #2d3748;
-  margin: 0 0 24px 0;
+  margin: 0 0 clamp(12px, 3cqw, 24px) 0;
   font-family: 'Georgia', serif;
   border-bottom: 2px solid #e2e8f0;
-  padding-bottom: 8px;
+  padding-bottom: clamp(4px, 1cqw, 8px);
   display: inline-block;
   min-width: 60%;
 }
 
 .description {
-  font-size: 1rem;
+  font-size: clamp(0.75rem, 2cqw, 1rem);
   color: #4a5568;
-  margin: 0 0 16px 0;
+  margin: 0 0 clamp(8px, 2cqw, 16px) 0;
 }
 
 .courseName {
-  font-size: 1.75rem;
+  font-size: clamp(1rem, 3.5cqw, 1.75rem);
   font-weight: 700;
   color: #1a365d;
-  margin: 0 0 24px 0;
+  margin: 0 0 clamp(12px, 3cqw, 24px) 0;
 }
 
 .organizationText {
-  font-size: 0.95rem;
+  font-size: clamp(0.65rem, 1.8cqw, 0.95rem);
   color: #718096;
   max-width: 80%;
   line-height: 1.5;
@@ -207,32 +208,32 @@
   align-items: flex-end;
   position: relative;
   z-index: 2;
-  margin-top: 40px;
+  margin-top: clamp(16px, 5cqw, 40px);
 }
 
 .footerLeft {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: clamp(10px, 2.5cqw, 20px);
 }
 
 .qrCode {
-  width: 64px;
-  height: 64px;
+  width: clamp(32px, 8cqw, 64px);
+  height: clamp(32px, 8cqw, 64px);
   background-color: #fff;
   border: 1px solid #e2e8f0;
-  padding: 4px;
+  padding: 2px;
 }
 
 .issueDetails {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .issueDetails p {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: clamp(0.5rem, 1.5cqw, 0.75rem);
   color: #718096;
   font-weight: 600;
   letter-spacing: 0.5px;
@@ -241,60 +242,38 @@
 .footerRight {
   display: flex;
   align-items: flex-end;
-  gap: 40px;
+  gap: clamp(20px, 5cqw, 40px);
 }
 
 .signatureBox {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: clamp(5px, 1.25cqw, 10px);
 }
 
 .signatureLine {
-  width: 150px;
+  width: clamp(80px, 18cqw, 150px);
   height: 1px;
   background-color: #2d3748;
-  margin-bottom: 8px;
+  margin-bottom: clamp(4px, 1cqw, 8px);
 }
 
 .signatureText {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: clamp(0.5rem, 1.6cqw, 0.8rem);
   color: #4a5568;
   font-weight: 600;
   letter-spacing: 1px;
 }
 
 .goldSeal {
-  width: 80px;
-  height: 80px;
+  width: clamp(40px, 10cqw, 80px);
+  height: clamp(40px, 10cqw, 80px);
 }
 
-@media (max-width: 768px) {
-  .certificate {
-    padding: 20px;
-  }
-  .title {
-    font-size: 1.5rem;
-  }
-  .studentName {
-    font-size: 2rem;
-  }
-  .courseName {
-    font-size: 1.25rem;
-  }
-  .logoContainer {
-    top: 20px;
-    right: 20px;
-  }
-  .footer {
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-  }
-  .footerRight {
-    width: 100%;
-    justify-content: space-between;
+@media (max-width: 480px) {
+  .certificateWrapper {
+    padding: 12px;
   }
 }
