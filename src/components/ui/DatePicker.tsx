@@ -163,12 +163,11 @@ export default function DatePicker({
             role="dialog"
             aria-modal="true"
             aria-label="Calendar"
-            className={styles.calendarPopover}
+            className={`${styles.calendarPopover} z-[9999]`}
             style={{
               position: 'absolute',
               top: position.top + 8,
               left: position.left,
-              zIndex: 9999,
             }}
           >
             <div className={styles.header}>
