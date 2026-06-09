@@ -11,6 +11,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 
@@ -118,8 +125,7 @@ export default function StaffListClient({
   };
 
   // Handle Export PDF: generate and email activity report for a staff member
-  const handleExportPdf = async (userId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleExportPdf = async (userId: string) => {
     setExportingUserId(userId);
     setExportFeedback(null);
     try {
@@ -237,12 +243,9 @@ export default function StaffListClient({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
-              <TableHead style={{ width: '70%' }} className="pl-12">
-                Name
-              </TableHead>
-              <TableHead style={{ width: '30%' }} className="text-right pr-12">
-                Date Invited
-              </TableHead>
+              <TableHead className="pl-12">Name</TableHead>
+              <TableHead className="hidden sm:table-cell text-right pr-12">Date Invited</TableHead>
+              <TableHead className="w-12 text-right pr-4">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -253,6 +256,7 @@ export default function StaffListClient({
                   onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
                   className={user.isPending ? 'cursor-default opacity-85' : styles.clickableRow}
                 >
+                  {/* Name / avatar cell */}
                   <TableCell className="pl-6">
                     <div className={styles.userInfo}>
                       <div className={styles.avatar}>
@@ -284,74 +288,10 @@ export default function StaffListClient({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-slate-500 pr-6 whitespace-nowrap">
-                    {user.isPending ? (
-                      <div className="inline-flex items-center gap-3">
-                        <span>{getRelativeTime(user.dateInvited)}</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRevokeTarget({ id: user.id, email: user.email });
-                          }}
-                          className="text-xs font-semibold text-red-600 bg-transparent border border-red-600 rounded-md px-2.5 py-0.5 cursor-pointer leading-normal"
-                        >
-                          Revoke
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="inline-flex items-center gap-3">
-                        <span>{getRelativeTime(user.dateInvited)}</span>
-                        {/* Export PDF button */}
-                        <button
-                          onClick={(e) => handleExportPdf(user.id, e)}
-                          disabled={exportingUserId === user.id}
-                          title="Export activity report as PDF (emailed to you)"
-                          className="text-xs font-semibold text-[#3182CE] bg-transparent px-2.5 py-0.5 cursor-pointer leading-normal disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
-                        >
-                          {exportingUserId === user.id ? (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className="animate-spin"
-                            >
-                              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                            </svg>
-                          ) : (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                              <polyline points="14 2 14 8 20 8" />
-                              <line x1="16" y1="13" x2="8" y2="13" />
-                              <line x1="16" y1="17" x2="8" y2="17" />
-                            </svg>
-                          )}
-                          {exportingUserId === user.id ? 'Exporting…' : 'Export PDF'}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRemoveTarget({ id: user.id, name: user.name, email: user.email });
-                          }}
-                          className="text-xs font-semibold text-red-600 bg-transparent border border-red-600 rounded-md px-2.5 py-0.5 cursor-pointer leading-normal"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    )}
+
+                  {/* Date cell — hidden on small screens */}
+                  <TableCell className="hidden sm:table-cell text-right text-slate-500 pr-6 whitespace-nowrap">
+                    {getRelativeTime(user.dateInvited)}
                     {/* Inline feedback for this row */}
                     {exportFeedback?.id === user.id && (
                       <div
@@ -363,11 +303,139 @@ export default function StaffListClient({
                       </div>
                     )}
                   </TableCell>
+
+                  {/* Kebab action cell — always visible */}
+                  <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-transparent text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400"
+                          aria-label="More options"
+                          title="More options"
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                          >
+                            <circle cx="12" cy="5" r="1.5" />
+                            <circle cx="12" cy="12" r="1.5" />
+                            <circle cx="12" cy="19" r="1.5" />
+                          </svg>
+                        </button>
+                      </DropdownMenuTrigger>
+
+                      <DropdownMenuContent align="end" className="min-w-[160px]">
+                        {user.isPending ? (
+                          /* ── Pending invite actions ── */
+                          <DropdownMenuItem
+                            variant="destructive"
+                            className="cursor-pointer"
+                            onSelect={() => setRevokeTarget({ id: user.id, email: user.email })}
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="15" y1="9" x2="9" y2="15" />
+                              <line x1="9" y1="9" x2="15" y2="15" />
+                            </svg>
+                            Revoke Invite
+                          </DropdownMenuItem>
+                        ) : (
+                          /* ── Active staff actions ── */
+                          <>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onSelect={() => router.push(`/dashboard/staff/${user.id}`)}
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                              View Profile
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              disabled={exportingUserId === user.id}
+                              onSelect={() => handleExportPdf(user.id)}
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                                <line x1="16" y1="13" x2="8" y2="13" />
+                                <line x1="16" y1="17" x2="8" y2="17" />
+                              </svg>
+                              {exportingUserId === user.id ? 'Exporting…' : 'Export PDF'}
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
+                            <DropdownMenuItem
+                              variant="destructive"
+                              className="cursor-pointer"
+                              onSelect={() =>
+                                setRemoveTarget({ id: user.id, name: user.name, email: user.email })
+                              }
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <line x1="23" y1="11" x2="17" y2="11" />
+                              </svg>
+                              Remove Staff
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={2} className="text-center p-[60px] text-slate-500">
+                <TableCell colSpan={3} className="text-center p-[60px] text-slate-500">
                   <div className="flex flex-col items-center gap-3">
                     <div className="text-slate-300">
                       <svg
