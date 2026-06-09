@@ -339,11 +339,11 @@ export async function verifyUserMfaCode(
     } else if (factor.type === 'email') {
       const otpPayload = decryptOtpPayload(factor.secret);
       if (!otpPayload) {
-        // Code already used
       } else if (otpPayload.expired) {
-        return { valid: false, error: 'Code has expired. Please request a new one.' };
+        if (/^\d{1,6}$/.test(code)) {
+          return { valid: false, error: 'Code has expired. Please request a new one.' };
+        }
       } else if (otpPayload.code === code) {
-        // Invalidate code after use
         await prisma.mfaFactor.update({
           where: { id: factor.id },
           data: { secret: encryptSecret('USED') },

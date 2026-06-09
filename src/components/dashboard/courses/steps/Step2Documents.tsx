@@ -66,7 +66,7 @@ export default function Step2Documents({
 
       <div className={styles.inputContainer}>
         <label className={styles.label}>Select file(s) from;</label>
-        <div style={{ marginBottom: '40px' }}>
+        <div className="mb-10">
           <Select
             value={source}
             onChange={(val) => setSource(val)}
@@ -90,7 +90,7 @@ export default function Step2Documents({
               <input
                 type="file"
                 ref={fileInputRef}
-                style={{ display: 'none' }}
+                className="hidden"
                 onChange={handleFileChange}
                 accept=".pdf,.docx"
               />
@@ -148,16 +148,7 @@ export default function Step2Documents({
               </p>
 
               {isAnalyzing && (
-                <div
-                  style={{
-                    width: '60%',
-                    height: '4px',
-                    background: '#E2E8F0',
-                    borderRadius: '2px',
-                    marginTop: '16px',
-                    overflow: 'hidden',
-                  }}
-                >
+                <div className="w-3/5 h-1 bg-[#E2E8F0] rounded-sm mt-4 overflow-hidden">
                   <div
                     style={{
                       width: `${progress}%`,
@@ -171,18 +162,7 @@ export default function Step2Documents({
             </div>
 
             {error && (
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: '12px',
-                  background: '#FED7D7',
-                  color: '#C53030',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  textAlign: 'center',
-                  border: '1px solid #F56565',
-                }}
-              >
+              <div className="mt-4 p-3 bg-[#FED7D7] text-[#C53030] rounded-lg text-sm text-center border border-[#F56565]">
                 <strong>Upload Failed:</strong> {error}
               </div>
             )}
@@ -216,7 +196,7 @@ export default function Step2Documents({
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div className="flex items-center gap-3">
                       <input
                         type="checkbox"
                         checked={doc.selected}
@@ -255,15 +235,10 @@ export default function Step2Documents({
                   </div>
                 ))}
                 {documents.length > 4 && (
-                  <div style={{ textAlign: 'center', margin: '20px 0 10px 0' }}>
+                  <div className="text-center my-5">
                     <Link
                       href="/dashboard/documents"
-                      style={{
-                        color: '#4C6EF5',
-                        textDecoration: 'none',
-                        fontWeight: 500,
-                        fontSize: '14px',
-                      }}
+                      className="text-[#4C6EF5] no-underline font-medium text-sm"
                     >
                       View more in Document Hub →
                     </Link>
@@ -271,7 +246,7 @@ export default function Step2Documents({
                 )}
               </div>
             ) : (
-              <p style={{ textAlign: 'center', color: '#718096', marginTop: 40 }}>
+              <p className="text-center text-slate-500 mt-10">
                 No previously uploaded documents found.
               </p>
             )}

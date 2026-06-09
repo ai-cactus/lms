@@ -19,22 +19,14 @@ export default function PasswordStrengthIndicator({ password }: PasswordStrength
   const color = strengthColors[passedCount] || '#9CA3AF';
 
   return (
-    <div style={{ marginTop: '8px' }}>
+    <div className="mt-2">
       {/* Strength bar */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '4px',
-          marginBottom: '6px',
-        }}
-      >
+      <div className="flex gap-1 mb-1.5">
         {checks.map((_, i) => (
           <div
             key={i}
+            className="flex-1 h-1 rounded-sm"
             style={{
-              flex: 1,
-              height: '4px',
-              borderRadius: '2px',
               backgroundColor: i < passedCount ? color : '#E5E7EB',
               transition: 'background-color 0.2s',
             }}
@@ -44,30 +36,18 @@ export default function PasswordStrengthIndicator({ password }: PasswordStrength
 
       {/* Strength label */}
       {password.length > 0 && (
-        <div
-          style={{
-            fontSize: '12px',
-            fontWeight: 500,
-            color,
-            marginBottom: '8px',
-          }}
-        >
+        <div className="text-xs font-medium mb-2" style={{ color }}>
           {label}
         </div>
       )}
 
       {/* Individual checks */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div className="flex flex-col gap-1">
         {checks.map((check) => (
           <div
             key={check.label}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12px',
-              color: check.passed ? '#16A34A' : '#6B7280',
-            }}
+            className="flex items-center gap-1.5 text-xs"
+            style={{ color: check.passed ? '#16A34A' : '#6B7280' }}
           >
             {check.passed ? (
               <svg

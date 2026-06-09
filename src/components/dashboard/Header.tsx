@@ -205,31 +205,13 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
                             {['QUIZ_RETRY_LIMIT_REACHED', 'COURSE_RETRY_REQUESTED'].includes(
                               notif.type || '',
                             ) && (
-                              <div style={{ marginTop: '8px' }}>
+                              <div className="mt-2">
                                 {notif.resolvedAt ? (
-                                  <span
-                                    style={{
-                                      fontSize: '11px',
-                                      color: '#059669',
-                                      backgroundColor: '#D1FAE5',
-                                      padding: '2px 6px',
-                                      borderRadius: '4px',
-                                      fontWeight: 500,
-                                    }}
-                                  >
+                                  <span className="text-[11px] text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded font-medium">
                                     Retake Assigned
                                   </span>
                                 ) : (
-                                  <span
-                                    style={{
-                                      fontSize: '11px',
-                                      color: '#1E40AF',
-                                      backgroundColor: '#DBEAFE',
-                                      padding: '2px 6px',
-                                      borderRadius: '4px',
-                                      fontWeight: 500,
-                                    }}
-                                  >
+                                  <span className="text-[11px] text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded font-medium">
                                     ➔ Click here to assign retake
                                   </span>
                                 )}
@@ -249,7 +231,7 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
           <div className={styles.profileWrapper} ref={dropdownRef}>
             <div className={styles.profile} onClick={toggleDropdown}>
               <div className={styles.avatar}>
-                <span style={{ fontSize: '12px', fontWeight: '600' }}>
+                <span className="text-xs font-semibold">
                   {fullName
                     ? fullName
                         .split(' ')
@@ -270,9 +252,9 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                className="transition-transform duration-200"
                 style={{
                   transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.2s',
                 }}
               >
                 <polyline points="6 9 12 15 18 9"></polyline>
@@ -331,8 +313,8 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
       </header>
 
       <Modal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)}>
-        <div style={{ padding: '24px', textAlign: 'center' }}>
-          <div style={{ marginBottom: '16px' }}>
+        <div className="p-6 text-center">
+          <div className="mb-4">
             <svg
               width="48"
               height="48"
@@ -342,20 +324,18 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              style={{ margin: '0 auto' }}
+              className="mx-auto"
             >
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
               <polyline points="16 17 21 12 16 7"></polyline>
               <line x1="21" y1="12" x2="9" y2="12"></line>
             </svg>
           </div>
-          <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>
-            Confirm Logout
-          </h3>
-          <p style={{ color: '#718096', marginBottom: '24px' }}>
+          <h3 className="text-lg font-semibold mb-2">Confirm Logout</h3>
+          <p className="text-slate-500 mb-6">
             Are you sure you want to log out? You will need to sign in again to access your account.
           </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+          <div className="flex justify-center gap-3">
             <Button variant="outline" onClick={() => setIsLogoutModalOpen(false)}>
               Cancel
             </Button>

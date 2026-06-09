@@ -335,9 +335,17 @@ function Verify2FAContent() {
             : "Can't access your email? Use a recovery code"}
         </button>
 
-        <a href="/login" style={logoutLinkStyle}>
+        <button
+          type="button"
+          onClick={() => {
+            // Full-page navigation (not client-side) so the browser processes
+            // the Set-Cookie headers that clear the session cookies.
+            window.location.href = '/api/auth/signout-all';
+          }}
+          style={logoutLinkStyle}
+        >
           Sign out and log in with a different account
-        </a>
+        </button>
       </div>
 
       <style>{`

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, FileUpload, TagInput } from '@/components/ui';
-import { Modal } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/legacy/Modal';
 import styles from '@/app/onboarding/onboarding.module.css';
 import Stepper from '@/components/onboarding/Stepper';
 import * as XLSX from 'xlsx';

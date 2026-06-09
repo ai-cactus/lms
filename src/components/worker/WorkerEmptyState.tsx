@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './WorkerDashboard.module.css';
 import Image from 'next/image';
-import { useModalContext } from '@/components/ui/ModalContext';
+import { useModalContext } from '@/components/ui/legacy/ModalContext';
 import { Button } from '@/components/ui';
 
 export default function WorkerEmptyState() {

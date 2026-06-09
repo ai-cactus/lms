@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
+import Button from '@/components/ui/legacy/Button';
+import Input from '@/components/ui/legacy/Input';
 import { getStandardManualHistory } from '@/app/actions/standard-manual';
 import styles from './manual.module.css';
 import { logger } from '@/lib/logger';

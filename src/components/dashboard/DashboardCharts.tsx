@@ -75,24 +75,15 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
   return (
     <div className={styles.chartsGrid}>
       {/* Performance Chart */}
-      <div className={styles.chartCard} style={{ minHeight: '440px', flex: 1 }}>
+      <div className={`${styles.chartCard} flex-1`} style={{ minHeight: '440px' }}>
         <div className={styles.chartHeader}>
           <h3 className={styles.chartTitle}>Performance of Learners</h3>
         </div>
 
         {/* Legend */}
         {/* ... (Performance Chart Content) ... */}
-        <div
-          style={{
-            display: 'flex',
-            gap: '24px',
-            marginBottom: '24px',
-            paddingBottom: '16px',
-            borderBottom: '1px solid #EDF2F7',
-            marginTop: '16px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="flex gap-6 mb-6 pb-4 border-b border-[#EDF2F7] mt-4">
+          <div className="flex items-center gap-2">
             <div
               style={{
                 width: '12px',
@@ -101,9 +92,9 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                 background: 'linear-gradient(180deg, #34D399 0%, #10B981 100%)',
               }}
             />
-            <span style={{ fontSize: '13px', fontWeight: '500', color: '#64748B' }}>Passed</span>
+            <span className="text-[13px] font-medium text-slate-500">Passed</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="flex items-center gap-2">
             <div
               style={{
                 width: '12px',
@@ -112,11 +103,11 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                 background: 'linear-gradient(180deg, #F87171 0%, #EF4444 100%)',
               }}
             />
-            <span style={{ fontSize: '13px', fontWeight: '500', color: '#64748B' }}>Failed</span>
+            <span className="text-[13px] font-medium text-slate-500">Failed</span>
           </div>
         </div>
 
-        <div style={{ height: 300, position: 'relative', marginTop: 10 }}>
+        <div className="relative mt-2.5" style={{ height: 300 }}>
           {/* ... (Performance Chart Bars/Axis) ... */}
           {/* Y-Axis */}
           <div
@@ -133,15 +124,7 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             }}
           >
             {ticks.map((tick, i) => (
-              <div
-                key={i}
-                style={{
-                  fontSize: '11px',
-                  color: '#A0AEC0',
-                  fontWeight: '500',
-                  textAlign: 'right',
-                }}
-              >
+              <div key={i} className="text-[11px] text-slate-400 font-medium text-right">
                 {tick}
               </div>
             ))}
@@ -162,14 +145,7 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             }}
           >
             {ticks.map((_, i) => (
-              <div
-                key={i}
-                style={{
-                  height: '1px',
-                  background: '#EDF2F7',
-                  width: '100%',
-                }}
-              />
+              <div key={i} className="h-px bg-[#EDF2F7] w-full" />
             ))}
           </div>
 
@@ -332,12 +308,12 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
       </div>
 
       {/* Coverage Donut Chart */}
-      <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className={`${styles.chartCard} flex flex-col`}>
         <div className={styles.chartHeader}>
           <h3 className={styles.chartTitle}>Training Coverage</h3>
         </div>
 
-        <div style={{ width: '100%', height: 260, position: 'relative', flexShrink: 0 }}>
+        <div className="w-full relative shrink-0" style={{ height: 260 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -379,93 +355,45 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
           </ResponsiveContainer>
         </div>
 
-        <div
-          className={styles.legend}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            marginTop: 'auto',
-            paddingTop: '16px',
-          }}
-        >
+        <div className={`${styles.legend} flex flex-col gap-3 mt-auto pt-4`}>
           {/* Item 1 */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
               <div
-                className={styles.legendDot}
-                style={{
-                  background: '#14B8A6',
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  flexShrink: 0,
-                }}
+                className={`${styles.legendDot} w-3 h-3 rounded-full shrink-0`}
+                style={{ background: '#14B8A6' }}
               ></div>
-              <span style={{ fontSize: '13px', color: '#4A5568' }}>Completed</span>
+              <span className="text-[13px] text-[#4A5568]">Completed</span>
             </div>
-            <div className={styles.legendValue} style={{ fontWeight: 600 }}>
+            <div className={`${styles.legendValue} font-semibold`}>
               {trainingCoverage?.completed}%
             </div>
           </div>
 
           {/* Item 2 */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
               <div
-                className={styles.legendDot}
-                style={{
-                  background: '#F59E0B',
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  flexShrink: 0,
-                }}
+                className={`${styles.legendDot} w-3 h-3 rounded-full shrink-0`}
+                style={{ background: '#F59E0B' }}
               ></div>
-              <span style={{ fontSize: '13px', color: '#4A5568' }}>Enrolled</span>
+              <span className="text-[13px] text-[#4A5568]">Enrolled</span>
             </div>
-            <div className={styles.legendValue} style={{ fontWeight: 600 }}>
+            <div className={`${styles.legendValue} font-semibold`}>
               {trainingCoverage?.inProgress}%
             </div>
           </div>
 
           {/* Item 3 */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
               <div
-                className={styles.legendDot}
-                style={{
-                  background: '#EF4444',
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  flexShrink: 0,
-                }}
+                className={`${styles.legendDot} w-3 h-3 rounded-full shrink-0`}
+                style={{ background: '#EF4444' }}
               ></div>
-              <span style={{ fontSize: '13px', color: '#4A5568' }}>Not Started</span>
+              <span className="text-[13px] text-[#4A5568]">Not Started</span>
             </div>
-            <div className={styles.legendValue} style={{ fontWeight: 600 }}>
+            <div className={`${styles.legendValue} font-semibold`}>
               {trainingCoverage?.notStarted}%
             </div>
           </div>

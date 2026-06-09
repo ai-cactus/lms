@@ -89,7 +89,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  style={{ marginRight: 6 }}
+                  className="mr-1.5"
                 >
                   <circle cx="12" cy="12" r="10"></circle>
                   <polyline points="9 12 11 14 15 10"></polyline>
@@ -107,7 +107,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
-                  style={{ marginRight: 6 }}
+                  className="mr-1.5"
                 >
                   <circle cx="12" cy="12" r="10"></circle>
                   <polyline points="12 6 12 12 16 14"></polyline>
@@ -122,7 +122,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
-                  style={{ marginRight: 6 }}
+                  className="mr-1.5"
                 >
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                   <line x1="16" y1="2" x2="16" y2="6"></line>
@@ -138,7 +138,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
           </div>
           <div className={styles.actions}>
             <Link href={`/dashboard/training/courses/${course.id}/preview`}>
-              <Button variant="primary" size="lg" style={{ backgroundColor: '#4C6EF5' }}>
+              <Button variant="primary" size="lg" className="bg-[#4C6EF5]">
                 Preview
               </Button>
             </Link>
@@ -157,7 +157,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                style={{ marginRight: 8 }}
+                className="mr-2"
               >
                 <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                 <circle cx="8.5" cy="7" r="4"></circle>
@@ -267,14 +267,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
       </div>
 
       <div className={styles.staffSection}>
-        <div
-          style={{
-            display: 'flex',
-            gap: '24px',
-            borderBottom: '1px solid #E2E8F0',
-            marginBottom: '24px',
-          }}
-        >
+        <div className="flex gap-6 border-b border-[#E2E8F0] mb-6">
           <button
             className={activeTab === 'staff' ? styles.tabActive : styles.tabInactive}
             onClick={() => setActiveTab('staff')}
@@ -307,7 +300,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    style={{ color: '#aaa' }}
+                    className="text-[#aaa]"
                   >
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -456,15 +449,8 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                         </span>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'flex-end',
-                          gap: 12,
-                          alignItems: 'center',
-                        }}
-                      >
+                    <td className="text-right">
+                      <div className="flex justify-end gap-3 items-center">
                         {enrollment.score !== null ? (
                           <Link
                             href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
@@ -472,12 +458,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                             <span className={styles.viewResultText}>View Result</span>
                           </Link>
                         ) : (
-                          <span
-                            className={styles.viewResultText}
-                            style={{ color: '#cbd5e0', cursor: 'not-allowed' }}
-                          >
-                            View Result
-                          </span>
+                          <span className="text-[#cbd5e0] cursor-not-allowed">View Result</span>
                         )}
                         <button className={styles.dotsButton} title="More actions">
                           <svg
@@ -501,7 +482,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                 ))}
                 {filteredEnrollments.length === 0 && (
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', color: '#718096', padding: 24 }}>
+                    <td colSpan={4} className="text-center text-slate-500 p-6">
                       No staff enrolled yet.
                     </td>
                   </tr>
@@ -512,7 +493,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         ) : (
           <div className="space-y-4">
             {enrollments.filter((e) => e.certificate).length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#718096', padding: 24 }}>
+              <div className="text-center text-slate-500 p-6">
                 No certificates have been issued for this course yet.
               </div>
             ) : (
@@ -549,7 +530,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                           </div>
                         </td>
                         <td>{new Date(enrollment.certificate!.issuedAt).toLocaleDateString()}</td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td className="text-right">
                           <Button
                             size="sm"
                             variant="outline"

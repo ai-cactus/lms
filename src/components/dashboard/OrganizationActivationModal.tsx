@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import styles from './OrganizationActivationModal.module.css';
 import { Logo, Modal, Button } from '@/components/ui';
-import { useModalContext } from '@/components/ui/ModalContext';
+import { useModalContext } from '@/components/ui/legacy/ModalContext';
 
 interface OrganizationActivationModalProps {
   hasOrganization: boolean;
@@ -134,7 +134,7 @@ export default function OrganizationActivationModal({
               size="md"
               pill
               onClick={() => router.push('/onboarding')}
-              style={{ width: '100%' }}
+              className="w-full"
             >
               {actionLabel || defaultAction}
             </Button>

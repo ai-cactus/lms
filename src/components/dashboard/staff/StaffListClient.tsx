@@ -111,9 +111,8 @@ export default function StaffListClient({
           {/* Plan seat usage badge — only shown when the org has a capped plan */}
           {planLimit !== null && (
             <p
+              className="mt-1 text-[13px]"
               style={{
-                marginTop: '4px',
-                fontSize: '13px',
                 color: isAtLimit ? '#C53030' : '#718096',
                 fontWeight: isAtLimit ? 600 : 400,
               }}
@@ -122,10 +121,7 @@ export default function StaffListClient({
                 <>
                   ⚠️ Worker limit reached &mdash; {totalUsed}/{planLimit} seats used ({planName}{' '}
                   plan).{' '}
-                  <a
-                    href="/dashboard/billing"
-                    style={{ color: '#3182CE', textDecoration: 'underline' }}
-                  >
+                  <a href="/dashboard/billing" className="text-[#3182CE] underline">
                     Upgrade
                   </a>{' '}
                   to add more.
@@ -191,7 +187,7 @@ export default function StaffListClient({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                style={{ color: '#A0AEC0' }}
+                className="text-slate-400"
               >
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -204,8 +200,10 @@ export default function StaffListClient({
         <table className={styles.table}>
           <thead>
             <tr>
-              <th style={{ width: '70%', paddingLeft: '24px' }}>Name</th>
-              <th style={{ width: '30%', textAlign: 'right', paddingRight: '24px' }}>
+              <th style={{ width: '70%' }} className="pl-6">
+                Name
+              </th>
+              <th style={{ width: '30%' }} className="text-right pr-6">
                 Date Invited
               </th>
             </tr>
@@ -216,10 +214,9 @@ export default function StaffListClient({
                 <tr
                   key={user.id}
                   onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
-                  className={user.isPending ? undefined : styles.clickableRow}
-                  style={user.isPending ? { cursor: 'default', opacity: 0.85 } : undefined}
+                  className={user.isPending ? 'cursor-default opacity-85' : styles.clickableRow}
                 >
-                  <td style={{ paddingLeft: '24px' }}>
+                  <td className="pl-6">
                     <div className={styles.userInfo}>
                       <div className={styles.avatar}>
                         {user.avatarUrl ? (
@@ -238,23 +235,10 @@ export default function StaffListClient({
                         {!user.isPending && <div className={styles.statusDot}></div>}
                       </div>
                       <div className={styles.userDetails}>
-                        <div
-                          className={styles.userName}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                        >
+                        <div className={`${styles.userName} flex items-center gap-2`}>
                           {user.email}
                           {user.isPending && (
-                            <span
-                              style={{
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                background: '#EBF4FF',
-                                color: '#3182CE',
-                                letterSpacing: '0.3px',
-                              }}
-                            >
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-[#EBF4FF] text-[#3182CE] tracking-wide">
                               Pending
                             </span>
                           )}
@@ -263,56 +247,29 @@ export default function StaffListClient({
                       </div>
                     </div>
                   </td>
-                  <td
-                    style={{
-                      textAlign: 'right',
-                      color: '#718096',
-                      paddingRight: '24px',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <td className="text-right text-slate-500 pr-6 whitespace-nowrap">
                     {user.isPending ? (
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+                      <div className="inline-flex items-center gap-3">
                         <span>{getRelativeTime(user.dateInvited)}</span>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setRevokeTarget({ id: user.id, email: user.email });
                           }}
-                          style={{
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            color: '#E53E3E',
-                            background: 'transparent',
-                            border: '1px solid #E53E3E',
-                            borderRadius: '6px',
-                            padding: '3px 10px',
-                            cursor: 'pointer',
-                            lineHeight: 1.5,
-                          }}
+                          className="text-xs font-semibold text-red-600 bg-transparent border border-red-600 rounded-md px-2.5 py-0.5 cursor-pointer leading-normal"
                         >
                           Revoke
                         </button>
                       </div>
                     ) : (
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+                      <div className="inline-flex items-center gap-3">
                         <span>{getRelativeTime(user.dateInvited)}</span>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setRemoveTarget({ id: user.id, name: user.name, email: user.email });
                           }}
-                          style={{
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            color: '#E53E3E',
-                            background: 'transparent',
-                            border: '1px solid #E53E3E',
-                            borderRadius: '6px',
-                            padding: '3px 10px',
-                            cursor: 'pointer',
-                            lineHeight: 1.5,
-                          }}
+                          className="text-xs font-semibold text-red-600 bg-transparent border border-red-600 rounded-md px-2.5 py-0.5 cursor-pointer leading-normal"
                         >
                           Remove
                         </button>
@@ -323,17 +280,10 @@ export default function StaffListClient({
               ))
             ) : (
               <tr>
-                <td colSpan={2} style={{ textAlign: 'center', padding: '60px', color: '#718096' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '12px',
-                    }}
-                  >
+                <td colSpan={2} className="text-center p-[60px] text-slate-500">
+                  <div className="flex flex-col items-center gap-3">
                     {/* Empty state icon */}
-                    <div style={{ color: '#CBD5E0' }}>
+                    <div className="text-slate-300">
                       <svg
                         width="64"
                         height="64"
@@ -350,10 +300,8 @@ export default function StaffListClient({
                         <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                       </svg>
                     </div>
-                    <p style={{ fontSize: '16px', fontWeight: 600, color: '#2D3748' }}>
-                      No staff members found
-                    </p>
-                    <p style={{ fontSize: '14px', color: '#718096' }}>
+                    <p className="text-base font-semibold text-[#2D3748]">No staff members found</p>
+                    <p className="text-sm text-slate-500">
                       Get started by adding a new staff member to your organization.
                     </p>
                   </div>

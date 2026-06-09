@@ -89,17 +89,8 @@ function PendingGenerationBanner() {
 
   return (
     <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '12px 16px',
-        border: '1px solid',
-        borderRadius: 10,
-        marginBottom: 16,
-        fontSize: 14,
-        ...(bannerStyles[banner] ?? {}),
-      }}
+      className="flex items-center gap-3 px-4 py-3 border rounded-[10px] mb-4 text-sm"
+      style={bannerStyles[banner]}
     >
       {banner === 'generating' && (
         <svg
@@ -109,13 +100,12 @@ function PendingGenerationBanner() {
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
-          style={{ flexShrink: 0, animation: 'spin 1s linear infinite' }}
+          className="shrink-0 animate-spin"
         >
           <circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10" />
-          <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
         </svg>
       )}
-      <span style={{ flex: 1 }}>
+      <span className="flex-1">
         {banner === 'generating' && 'Your course is still being generated in the background…'}
         {banner === 'done' &&
           '✅ Course generation complete! Resume the wizard to review and publish.'}
@@ -124,19 +114,14 @@ function PendingGenerationBanner() {
       {banner === 'done' && (
         <Link
           href="/dashboard/courses/create"
-          style={{
-            fontWeight: 600,
-            color: '#38A169',
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}
+          className="font-semibold text-[#38A169] no-underline whitespace-nowrap"
         >
           Resume Setup →
         </Link>
       )}
       <button
         onClick={dismiss}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, padding: 4 }}
+        className="bg-none border-none cursor-pointer opacity-60 p-1"
         title="Dismiss"
       >
         ✕
@@ -184,96 +169,37 @@ function CourseRenameModal({
 
   return (
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.45)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: '1rem',
-      }}
+      className="fixed inset-0 bg-black/45 flex items-center justify-center z-[1000] p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Rename course"
     >
-      <div
-        style={{
-          background: '#fff',
-          borderRadius: 12,
-          padding: '1.5rem',
-          width: '100%',
-          maxWidth: 420,
-          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-        }}
-      >
-        <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#111827', margin: '0 0 1rem' }}>
-          Rename Course
-        </h2>
+      <div className="bg-white rounded-xl p-6 w-full max-w-[420px] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+        <h2 className="text-lg font-semibold text-[#111827] mb-4">Rename Course</h2>
         <form onSubmit={handleSubmit}>
           <input
-            style={{
-              width: '100%',
-              padding: '0.625rem 0.875rem',
-              border: '1px solid #d1d5db',
-              borderRadius: 8,
-              fontSize: '0.875rem',
-              fontFamily: 'inherit',
-              color: '#111827',
-              boxSizing: 'border-box',
-            }}
+            className="w-full py-2.5 px-3.5 border border-[#d1d5db] rounded-lg text-sm font-[inherit] text-[#111827] box-border"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             autoFocus
             disabled={isPending}
             aria-label="New course title"
           />
-          {error && (
-            <p style={{ color: '#dc2626', fontSize: '0.8125rem', marginTop: '0.375rem' }}>
-              {error}
-            </p>
-          )}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '0.75rem',
-              marginTop: '1.25rem',
-            }}
-          >
+          {error && <p className="text-red-600 text-[0.8125rem] mt-1.5">{error}</p>}
+          <div className="flex justify-end gap-3 mt-5">
             <button
               type="button"
               onClick={onClose}
               disabled={isPending}
-              style={{
-                padding: '0.5rem 1rem',
-                border: '1px solid #d1d5db',
-                borderRadius: 8,
-                background: '#fff',
-                color: '#374151',
-                fontSize: '0.875rem',
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-              }}
+              className="py-2 px-4 border border-[#d1d5db] rounded-lg bg-white text-[#374151] text-sm font-[inherit] cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isPending}
-              style={{
-                padding: '0.5rem 1.25rem',
-                border: 'none',
-                borderRadius: 8,
-                background: '#4731f7',
-                color: '#fff',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                opacity: isPending ? 0.6 : 1,
-              }}
+              className="py-2 px-5 border-none rounded-lg bg-[#4731f7] text-white text-sm font-semibold font-[inherit] cursor-pointer"
+              style={{ opacity: isPending ? 0.6 : 1 }}
             >
               {isPending ? 'Saving…' : 'Save'}
             </button>
@@ -428,17 +354,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
 
       {/* Delete error banner */}
       {deleteError && (
-        <p
-          role="alert"
-          style={{
-            color: '#dc2626',
-            fontSize: '0.875rem',
-            marginBottom: '0.75rem',
-            padding: '0.5rem 0.75rem',
-            background: '#fef2f2',
-            borderRadius: 6,
-          }}
-        >
+        <p role="alert" className="text-red-600 text-sm mb-3 px-3 py-2 bg-red-50 rounded-md">
           ⚠️ {deleteError}
         </p>
       )}
@@ -465,7 +381,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                style={{ color: '#A0AEC0' }}
+                className="text-slate-400"
               >
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -492,8 +408,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                 <tr
                   key={course.id}
                   onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                  style={{ cursor: 'pointer' }}
-                  className={styles.clickableRow}
+                  className={`cursor-pointer ${styles.clickableRow}`}
                 >
                   <td>
                     <div className={styles.courseInfo}>
@@ -565,7 +480,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                                 strokeWidth="2"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                style={{ marginRight: 8 }}
+                                className="mr-2"
                                 aria-hidden="true"
                               >
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -593,7 +508,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                                 strokeWidth="2"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                style={{ marginRight: 8 }}
+                                className="mr-2"
                                 aria-hidden="true"
                               >
                                 <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
@@ -620,7 +535,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                                 strokeWidth="2"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                style={{ marginRight: 8 }}
+                                className="mr-2"
                                 aria-hidden="true"
                               >
                                 <polyline points="3 6 5 6 21 6" />

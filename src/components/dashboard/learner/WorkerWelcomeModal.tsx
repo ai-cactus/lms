@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import styles from './WorkerWelcomeModal.module.css';
 import { Modal, Button } from '@/components/ui';
-import { useModalContext } from '@/components/ui/ModalContext';
+import { useModalContext } from '@/components/ui/legacy/ModalContext';
 import { logger } from '@/lib/logger';
 
 const SNOOZE_DURATION_MS = 12 * 60 * 60 * 1000;
