@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import styles from './DashboardEmptyState.module.css';
 
-import { useModalContext } from '@/components/ui/ModalContext';
+import { useModalContext } from '@/components/ui/legacy/ModalContext';
 import { Button } from '@/components/ui';
 
 interface DashboardEmptyStateProps {
@@ -68,7 +68,7 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
           {/* Left Side - Illustration */}
           <div className={styles.illustrationSection}>
             {/* Placeholder Illustration - In alignment with design (Green Theme) */}
-            <div style={{ marginBottom: '32px' }}>
+            <div className="mb-8">
               <svg
                 width="200"
                 height="180"

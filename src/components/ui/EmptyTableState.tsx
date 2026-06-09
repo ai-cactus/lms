@@ -21,16 +21,7 @@ export default function EmptyTableState({
   asTableRow = false,
 }: EmptyTableStateProps) {
   const content = (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '48px 24px',
-        gap: '16px',
-      }}
-    >
+    <div className="flex flex-col items-center justify-center gap-4 py-12 px-6">
       {/* Empty state illustration */}
       <svg
         width="120"
@@ -131,28 +122,9 @@ export default function EmptyTableState({
         <circle cx="60" cy="80" r="1.5" fill="#E2E8F0" />
       </svg>
 
-      <div style={{ textAlign: 'center' }}>
-        <p
-          style={{
-            fontSize: '15px',
-            fontWeight: 600,
-            color: '#4A5568',
-            margin: '0 0 4px 0',
-          }}
-        >
-          {message}
-        </p>
-        {subMessage && (
-          <p
-            style={{
-              fontSize: '13px',
-              color: '#A0AEC0',
-              margin: 0,
-            }}
-          >
-            {subMessage}
-          </p>
-        )}
+      <div className="text-center">
+        <p className="text-[15px] font-semibold text-gray-600 mb-1">{message}</p>
+        {subMessage && <p className="text-[13px] text-slate-400 m-0">{subMessage}</p>}
       </div>
     </div>
   );
@@ -160,7 +132,7 @@ export default function EmptyTableState({
   if (asTableRow) {
     return (
       <tr>
-        <td colSpan={colSpan} style={{ border: 'none' }}>
+        <td colSpan={colSpan} className="border-none">
           {content}
         </td>
       </tr>

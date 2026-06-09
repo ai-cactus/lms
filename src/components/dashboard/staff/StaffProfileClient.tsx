@@ -160,17 +160,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                 className={styles.avatarImage}
               />
             ) : (
-              <div
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '28px',
-                  fontWeight: 600,
-                }}
-              >
+              <div className="w-full h-full flex items-center justify-center text-[28px] font-semibold">
                 {(user.name.charAt(0) || 'U').toUpperCase()}
               </div>
             )}
@@ -199,7 +189,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           </div>
         </div>
 
-        <div className={styles.headerActions} style={{ display: 'flex', gap: '12px' }}>
+        <div className={`${styles.headerActions} flex gap-3`}>
           <Button variant="ghost" size="md" onClick={() => setIsEditModalOpen(true)}>
             Edit Profile
           </Button>
@@ -207,7 +197,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
             variant="ghost"
             size="md"
             onClick={() => setShowRemoveModal(true)}
-            style={{ color: '#E53E3E', border: '1px solid #E53E3E' }}
+            className="text-red-600 border border-red-600"
           >
             Remove Staff
           </Button>
@@ -310,23 +300,11 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
 
       {/* Courses & Certificates */}
       <div className={styles.coursesSection}>
-        <div
-          style={{
-            display: 'flex',
-            gap: '24px',
-            borderBottom: '1px solid #E2E8F0',
-            marginBottom: '24px',
-          }}
-        >
+        <div className="flex gap-6 border-b border-[#E2E8F0] mb-6">
           <button
             onClick={() => setActiveTab('courses')}
+            className="py-3 font-semibold text-sm bg-transparent border-none cursor-pointer"
             style={{
-              padding: '12px 0',
-              fontWeight: 600,
-              fontSize: '14px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
               borderBottom: activeTab === 'courses' ? '2px solid #3182CE' : '2px solid transparent',
               color: activeTab === 'courses' ? '#2D3748' : '#718096',
             }}
@@ -335,13 +313,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           </button>
           <button
             onClick={() => setActiveTab('certificates')}
+            className="py-3 font-semibold text-sm bg-transparent border-none cursor-pointer"
             style={{
-              padding: '12px 0',
-              fontWeight: 600,
-              fontSize: '14px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
               borderBottom:
                 activeTab === 'certificates' ? '2px solid #3182CE' : '2px solid transparent',
               color: activeTab === 'certificates' ? '#2D3748' : '#718096',
@@ -356,8 +329,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
             <div className={styles.coursesHeader}>
               <div className={styles.searchWrapper}>
                 <Input
-                  className=""
-                  style={{ width: '250px' }}
+                  className="w-[250px]"
                   placeholder="Search for courses..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}

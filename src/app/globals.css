@@ -1,3 +1,70 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@theme inline {
+  /* Colors — mapped from existing CSS custom properties */
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --color-background: var(--background);
+  --color-background-secondary: var(--background-secondary);
+  --color-foreground: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-white: var(--text-white);
+  --color-border: var(--border-color);
+  --color-border-default: var(--border);
+  --color-border-light: var(--border-light);
+  --color-border-focus: var(--border-focus);
+  --color-error: var(--error);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-hover: var(--bg-hover);
+
+  /* Shadows */
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+
+  /* Border Radius */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-full: var(--radius-full);
+
+  /* Font Families */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Font Sizes */
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+  --text-3xl: var(--text-3xl);
+  --text-4xl: var(--text-4xl);
+  --text-5xl: var(--text-5xl);
+  --text-6xl: var(--text-6xl);
+
+  /* Animations */
+  --animate-spin: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* =====================================================
    FONT SYSTEM — Suisse Int'l + JetBrains Mono
    Suisse Int'l is self-hosted via next/font/local.
@@ -10,20 +77,28 @@
   --primary: #4730f7;
   --primary-hover: #3724c4;
   --primary-light: #6a56f9;
+  --primary-dark: #3724c4;
 
   /* Background Colors */
   --background: #ffffff;
   --background-secondary: #f9fafb;
   --background-hero: linear-gradient(135deg, #4730f7 0%, #6366f1 100%);
 
+  /* Semantic Backgrounds (ghost properties used by CSS modules) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-hover: #f3f4f6;
+
   /* Text Colors */
   --text-primary: #101010;
   --text-secondary: #4b4b4b;
   --text-muted: #6b7280;
+  --text-tertiary: #94a3b8;
   --text-white: #ffffff;
 
   /* Border Colors */
   --border: #e5e7eb;
+  --border-color: #e5e7eb;
   --border-light: #f3f4f6;
   --border-focus: #4730f7;
 
@@ -177,6 +252,25 @@ h6 {
   letter-spacing: -0.025em;
 }
 
+h1 {
+  font-size: var(--text-4xl);
+}
+h2 {
+  font-size: var(--text-3xl);
+}
+h3 {
+  font-size: var(--text-2xl);
+}
+h4 {
+  font-size: var(--text-xl);
+}
+h5 {
+  font-size: var(--text-lg);
+}
+h6 {
+  font-size: var(--text-base);
+}
+
 h1,
 h2,
 h3,
@@ -237,7 +331,6 @@ div {
 
 *:hover::-webkit-scrollbar-thumb {
   background: #cbd5e0;
-  /* Show on hover */
 }
 
 /* Specific override for visible on hover behavior */

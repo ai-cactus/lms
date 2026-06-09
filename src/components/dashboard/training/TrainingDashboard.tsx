@@ -179,7 +179,7 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
       <svg
         width={size}
         height={size}
-        style={{ cursor: 'pointer', display: 'block' }}
+        className="cursor-pointer block"
         onMouseLeave={() => setActiveSegment(null)}
       >
         {/* Donut Logic */}
@@ -239,37 +239,16 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
             zIndex: 100,
           }}
         >
-          <div
-            style={{
-              background: 'white',
-              border: '1px solid #E2E8F0',
-              padding: '12px',
-              borderRadius: '8px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              fontSize: '13px',
-            }}
-          >
+          <div className="bg-white border border-[#E2E8F0] p-3 rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.15)] text-[13px]">
             <div
               style={{
                 background: activeData.color,
-                color: 'white',
-                padding: '4px 10px',
-                borderRadius: '4px',
-                display: 'inline-block',
-                fontWeight: 600,
-                marginBottom: '8px',
               }}
+              className="text-white px-2.5 py-1 rounded inline-block font-semibold mb-2"
             >
               {activeData.value}%
             </div>
-            <div
-              style={{
-                color: '#4A5568',
-                lineHeight: 1.5,
-              }}
-            >
-              {activeData.label}
-            </div>
+            <div className="text-[#4A5568] leading-normal">{activeData.label}</div>
           </div>
         </div>
       )}
@@ -400,17 +379,8 @@ export default function TrainingDashboard({
           </div>
 
           {/* Legend */}
-          <div
-            style={{
-              display: 'flex',
-              gap: '24px',
-              marginBottom: '24px',
-              paddingBottom: '16px',
-              borderBottom: '1px solid #EDF2F7',
-              marginTop: '16px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="flex gap-6 mb-6 pb-4 border-b border-[#EDF2F7] mt-4">
+            <div className="flex items-center gap-2">
               <div
                 style={{
                   width: '12px',
@@ -419,9 +389,9 @@ export default function TrainingDashboard({
                   background: 'linear-gradient(180deg, #34D399 0%, #10B981 100%)',
                 }}
               />
-              <span style={{ fontSize: '13px', fontWeight: '500', color: '#64748B' }}>Passed</span>
+              <span className="text-[13px] font-medium text-slate-500">Passed</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="flex items-center gap-2">
               <div
                 style={{
                   width: '12px',
@@ -430,7 +400,7 @@ export default function TrainingDashboard({
                   background: 'linear-gradient(180deg, #F87171 0%, #EF4444 100%)',
                 }}
               />
-              <span style={{ fontSize: '13px', fontWeight: '500', color: '#64748B' }}>Failed</span>
+              <span className="text-[13px] font-medium text-slate-500">Failed</span>
             </div>
           </div>
 
@@ -656,41 +626,27 @@ export default function TrainingDashboard({
 
         {/* Donut Coverage Chart */}
         <div className={`${styles.chartCard} ${styles.coverageCard}`}>
-          <h3 className={styles.chartTitle} style={{ marginBottom: '24px' }}>
-            Training Coverage
-          </h3>
+          <h3 className={`${styles.chartTitle} mb-6`}>Training Coverage</h3>
 
           <div className={styles.pieChartContainer}>
             <DonutChartWithTooltip coverage={coverage} />
 
             <div
-              className={styles.legend}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'auto 1fr auto',
-                gap: '12px 16px',
-                alignItems: 'center',
-              }}
+              className={`${styles.legend} grid grid-cols-[auto_1fr_auto] gap-y-3 gap-x-4 items-center`}
             >
               {/* Item 1 */}
               <div className={styles.dot} style={{ background: '#14B8A6' }}></div>
-              <div style={{ fontSize: '14px', color: '#4A5568' }}>
-                % of staff who have completed
-              </div>
+              <div className="text-sm text-[#4A5568]">% of staff who have completed</div>
               <span className={styles.legendPercent}>{coverage.completed}%</span>
 
               {/* Item 2 */}
               <div className={styles.dot} style={{ background: '#F59E0B' }}></div>
-              <div style={{ fontSize: '14px', color: '#4A5568' }}>
-                % of staff currently enrolled
-              </div>
+              <div className="text-sm text-[#4A5568]">% of staff currently enrolled</div>
               <span className={styles.legendPercent}>{coverage.inProgress}%</span>
 
               {/* Item 3 */}
               <div className={styles.dot} style={{ background: '#EF4444' }}></div>
-              <div style={{ fontSize: '14px', color: '#4A5568' }}>
-                % of staff yet to begin any course
-              </div>
+              <div className="text-sm text-[#4A5568]">% of staff yet to begin any course</div>
               <span className={styles.legendPercent}>{coverage.notStarted}%</span>
             </div>
           </div>
@@ -715,7 +671,7 @@ export default function TrainingDashboard({
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  style={{ color: '#A0AEC0' }}
+                  className="text-slate-400"
                 >
                   <circle cx="11" cy="11" r="8"></circle>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -748,7 +704,7 @@ export default function TrainingDashboard({
                   <tr
                     key={course.id}
                     onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                    style={{ cursor: 'pointer' }}
+                    className="cursor-pointer"
                   >
                     <td>
                       <div className={styles.courseInfo}>
@@ -781,24 +737,10 @@ export default function TrainingDashboard({
           </table>
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            marginTop: '16px',
-            paddingRight: '24px',
-          }}
-        >
+        <div className="flex justify-end mt-4 pr-6">
           <Link
             href="/dashboard/courses"
-            style={{
-              color: '#4C6EF5',
-              fontSize: '14px',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
+            className="text-[#4C6EF5] text-sm font-semibold flex items-center gap-1"
           >
             View all
             <svg

@@ -131,7 +131,7 @@ export default function CoursePreview({
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
-                style={{ marginRight: 6 }}
+                className="mr-1.5"
               >
                 <circle cx="12" cy="12" r="10"></circle>
                 <polyline points="12 6 12 12 16 14"></polyline>
@@ -146,7 +146,7 @@ export default function CoursePreview({
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
-                style={{ marginRight: 6 }}
+                className="mr-1.5"
               >
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                 <line x1="16" y1="2" x2="16" y2="6"></line>
@@ -214,75 +214,27 @@ export default function CoursePreview({
         <div className={styles.sidebarColumn}>
           {/* Attestation Status Card */}
           {enrollment?.status === 'attested' && (
-            <div
-              className={styles.sidebarCard}
-              style={{
-                marginBottom: 24,
-                padding: 24,
-                border: '1px solid #E9D8FD',
-                backgroundColor: '#FAF5FF',
-              }}
-            >
-              <h3 className={styles.sidebarTitle} style={{ marginBottom: 16 }}>
-                Attestation status
-              </h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: '50%',
-                    backgroundColor: '#E2E8F0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: '#4A5568',
-                  }}
-                >
+            <div className={`${styles.sidebarCard} mb-6 p-6 border border-[#E9D8FD] bg-[#FAF5FF]`}>
+              <h3 className={`${styles.sidebarTitle} mb-4`}>Attestation status</h3>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-[#E2E8F0] flex items-center justify-center text-base font-semibold text-[#4A5568]">
                   {(user?.name?.[0] || 'U').toUpperCase()}
                 </div>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontWeight: 600, color: '#1A202C' }}>
-                      {user?.name || 'User'}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        backgroundColor: '#E2E8F0',
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                      }}
-                    >
-                      You
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[#1A202C]">{user?.name || 'User'}</span>
+                    <span className="text-[11px] bg-[#E2E8F0] px-1.5 py-0.5 rounded">You</span>
                   </div>
-                  <div style={{ fontSize: 13, color: '#718096' }}>{user?.email}</div>
+                  <div className="text-[13px] text-slate-500">{user?.email}</div>
                 </div>
               </div>
 
-              <div style={{ fontSize: 13, color: '#718096', marginBottom: 16 }}>
+              <div className="text-[13px] text-slate-500 mb-4">
                 Course: &quot;{course.title}&quot;
               </div>
 
-              <div
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <span
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    backgroundColor: '#DEF7EC',
-                    color: '#03543F',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    padding: '4px 10px',
-                    borderRadius: 12,
-                  }}
-                >
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 bg-[#DEF7EC] text-[#03543F] text-xs font-semibold px-2.5 py-1 rounded-xl">
                   Signed
                   <svg
                     width="12"
@@ -297,15 +249,7 @@ export default function CoursePreview({
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
                 </span>
-                <span
-                  style={{
-                    fontSize: 12,
-                    color: '#4C6EF5',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
+                <span className="text-xs text-[#4C6EF5] cursor-pointer flex items-center">
                   View details
                   <svg
                     width="12"
@@ -314,7 +258,7 @@ export default function CoursePreview({
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
-                    style={{ marginLeft: 2 }}
+                    className="ml-0.5"
                   >
                     <polyline points="9 18 15 12 9 6"></polyline>
                   </svg>
@@ -336,10 +280,7 @@ export default function CoursePreview({
                   </div>
                 ))
               ) : (
-                <div
-                  className={styles.lessonItem}
-                  style={{ color: '#718096', fontStyle: 'italic' }}
-                >
+                <div className={`${styles.lessonItem} text-slate-500 italic`}>
                   No content available yet.
                 </div>
               )}
@@ -363,7 +304,7 @@ export default function CoursePreview({
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      style={{ color: '#A0AEC0' }}
+                      className="text-slate-400"
                     >
                       <path d="M12 20V10"></path>
                       <path d="M18 20V4"></path>
@@ -371,7 +312,7 @@ export default function CoursePreview({
                     </svg>
                     Skill Level
                   </span>
-                  <span className={styles.metaValue} style={{ textTransform: 'capitalize' }}>
+                  <span className={`${styles.metaValue} capitalize`}>
                     {(
                       course.lessons.find(
                         (l) => (l as { quiz?: { difficulty?: string } }).quiz?.difficulty,
@@ -392,7 +333,7 @@ export default function CoursePreview({
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    style={{ color: '#A0AEC0' }}
+                    className="text-slate-400"
                   >
                     <circle cx="12" cy="12" r="10"></circle>
                     <polyline points="12 6 12 12 16 14"></polyline>
@@ -412,7 +353,7 @@ export default function CoursePreview({
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    style={{ color: '#A0AEC0' }}
+                    className="text-slate-400"
                   >
                     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                     <line x1="16" y1="2" x2="16" y2="6"></line>

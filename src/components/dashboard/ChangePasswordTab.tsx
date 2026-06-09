@@ -99,13 +99,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
     <button
       type="button"
       onClick={onClick}
-      style={{
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        padding: '0 8px',
-        color: '#64748B',
-      }}
+      className="bg-transparent border-none cursor-pointer px-2 text-slate-500"
     >
       {show ? (
         // Eye off icon
@@ -142,12 +136,12 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
   );
 
   return (
-    <div style={{ maxWidth: '600px', width: '100%', padding: '0 40px 40px' }}>
+    <div className="max-w-[600px] w-full px-10 pb-10">
       {message && <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>}
 
-      <div style={{ marginBottom: '24px' }}>
+      <div className="mb-6">
         <label className={styles.label}>Current Password</label>
-        <div style={{ position: 'relative' }}>
+        <div className="relative">
           <Input
             type={showCurrent ? 'text' : 'password'}
             value={currentPassword}
@@ -156,44 +150,30 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
             }
             placeholder="•••••••••"
           />
-          <div
-            style={{
-              position: 'absolute',
-              right: '8px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-            }}
-          >
+          <div className="absolute right-2 top-1/2 -translate-y-1/2">
             <EyeIcon show={showCurrent} onClick={() => setShowCurrent(!showCurrent)} />
           </div>
         </div>
       </div>
 
-      <div style={{ marginBottom: '24px' }}>
+      <div className="mb-6">
         <label className={styles.label}>New Password</label>
-        <div style={{ position: 'relative' }}>
+        <div className="relative">
           <Input
             type={showNew ? 'text' : 'password'}
             value={newPassword}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
             placeholder="•••••••••"
           />
-          <div
-            style={{
-              position: 'absolute',
-              right: '8px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-            }}
-          >
+          <div className="absolute right-2 top-1/2 -translate-y-1/2">
             <EyeIcon show={showNew} onClick={() => setShowNew(!showNew)} />
           </div>
         </div>
       </div>
 
-      <div style={{ marginBottom: '24px' }}>
+      <div className="mb-6">
         <label className={styles.label}>Confirm New Password</label>
-        <div style={{ position: 'relative' }}>
+        <div className="relative">
           <Input
             type={showConfirm ? 'text' : 'password'}
             value={confirmPassword}
@@ -202,21 +182,14 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
             }
             placeholder="•••••••••"
           />
-          <div
-            style={{
-              position: 'absolute',
-              right: '8px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-            }}
-          >
+          <div className="absolute right-2 top-1/2 -translate-y-1/2">
             <EyeIcon show={showConfirm} onClick={() => setShowConfirm(!showConfirm)} />
           </div>
         </div>
       </div>
 
       {/* Password Requirements Checklist */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '32px' }}>
+      <div className="flex flex-col gap-2 mb-8">
         {[
           { text: 'At least 12 characters', valid: newPassword.length >= 12 },
           { text: 'At least one uppercase letter', valid: /[A-Z]/.test(newPassword) },
@@ -227,7 +200,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
             valid: /[^A-Za-z0-9]/.test(newPassword),
           },
         ].map((req, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div key={i} className="flex items-center gap-2">
             {req.valid ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="#22c55e" stroke="#22c55e">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"></path>
@@ -237,18 +210,18 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"></path>
               </svg>
             )}
-            <span style={{ fontSize: '13px', color: '#64748B' }}>{req.text}</span>
+            <span className="text-[13px] text-slate-500">{req.text}</span>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
+      <div className="flex justify-end gap-4">
         <Button
           type="button"
           variant="outline"
           onClick={handleDiscard}
           disabled={isLoading}
-          style={{ borderColor: 'transparent', color: '#4f46e5' }}
+          className="border-transparent text-indigo-600"
         >
           Discard
         </Button>
@@ -258,7 +231,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
           onClick={handleSave}
           disabled={isLoading}
           loading={isLoading}
-          style={{ backgroundColor: '#4f46e5', minWidth: '140px' }}
+          className="bg-indigo-600 min-w-[140px]"
         >
           Save Changes
         </Button>
