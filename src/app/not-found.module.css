@@ -1,0 +1,253 @@
+/* ============================================================
+   Global 404 Not-Found Page
+   ============================================================ */
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  font-family: var(--font-suisse, system-ui, sans-serif);
+}
+
+/* ── Nav ── */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  height: 64px;
+  border-bottom: 1px solid #e8eaf0;
+}
+
+.navActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.signUpBtn {
+  background: transparent;
+  border: none;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #2d3748;
+  cursor: pointer;
+  border-radius: 8px;
+  font-family: inherit;
+  transition: background-color 0.15s;
+}
+
+.signUpBtn:hover {
+  background-color: #f7fafc;
+}
+
+.loginBtn {
+  background: #4731f7;
+  border: none;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  border-radius: 8px;
+  font-family: inherit;
+  transition: background-color 0.15s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.loginBtn:hover {
+  background: #3b27d4;
+}
+
+/* ── Main content ── */
+.main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 40px;
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  gap: 80px;
+  max-width: 860px;
+  width: 100%;
+}
+
+/* ── Illustration side ── */
+.illustration {
+  position: relative;
+  flex-shrink: 0;
+  width: 320px;
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Organic blob shape behind the image */
+.blob {
+  position: absolute;
+  inset: 0;
+  background: #f0f2f8;
+  border-radius: 60% 40% 55% 45% / 50% 55% 45% 50%;
+  z-index: 0;
+}
+
+.plugImage {
+  position: relative;
+  z-index: 1;
+  width: 260px;
+  height: auto;
+  object-fit: contain;
+  /* gentle float animation */
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* ── Text side ── */
+.textContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.heading {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: #1a202c;
+  margin: 0 0 16px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.description {
+  font-size: 1rem;
+  color: #9ca3af;
+  line-height: 1.65;
+  margin: 0 0 36px;
+  max-width: 320px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.homeBtn {
+  background: #4731f7;
+  border: none;
+  padding: 11px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  border-radius: 10px;
+  font-family: inherit;
+  transition: background-color 0.15s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.homeBtn:hover {
+  background: #3b27d4;
+}
+
+.backBtn {
+  background: transparent;
+  border: 1.5px solid #e2e8f0;
+  padding: 10px 24px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #4a5568;
+  cursor: pointer;
+  border-radius: 10px;
+  font-family: inherit;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.backBtn:hover {
+  background: #f7fafc;
+  border-color: #cbd5e0;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .nav {
+    padding: 0 20px;
+  }
+
+  .main {
+    padding: 40px 20px;
+  }
+
+  .content {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 40px;
+  }
+
+  .illustration {
+    width: 240px;
+    height: 210px;
+  }
+
+  .plugImage {
+    width: 190px;
+  }
+
+  .heading {
+    font-size: 1.75rem;
+  }
+
+  .description {
+    max-width: 100%;
+  }
+
+  .actions {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav {
+    padding: 0 16px;
+    height: 56px;
+  }
+
+  .signUpBtn {
+    display: none;
+  }
+
+  .main {
+    padding: 32px 16px;
+  }
+
+  .heading {
+    font-size: 1.5rem;
+  }
+}

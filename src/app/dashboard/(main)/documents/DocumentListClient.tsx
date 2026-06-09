@@ -3,7 +3,22 @@
 import { useState, useTransition, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { deleteDocument, renameDocument } from '@/app/actions/documents';
-import EmptyTableState from '@/components/ui/EmptyTableState';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button, Select } from '@/components/ui';
 import styles from './page.module.css';
 
 // ---------------------------------------------------------------------------
@@ -188,6 +203,21 @@ function RenameModal({
 }
 
 // ---------------------------------------------------------------------------
+// Kebab trigger button
+// ---------------------------------------------------------------------------
+function KebabTrigger() {
+  return (
+    <button className={styles.dotsBtn} title="More actions" aria-label="More actions">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <circle cx="12" cy="5" r="1.5" />
+        <circle cx="12" cy="12" r="1.5" />
+        <circle cx="12" cy="19" r="1.5" />
+      </svg>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export default function DocumentListClient({ initialDocs }: DocumentListClientProps) {
@@ -196,9 +226,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
-
-  // Three-dot dropdown
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
   // Rename modal
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
@@ -214,13 +241,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
   useEffect(() => {
     setDocs(initialDocs);
   }, [initialDocs]);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handler = () => setActiveDropdown(null);
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
-  }, []);
 
   const filteredDocs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -244,9 +264,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
     router.push(`/dashboard/documents/${docId}`);
   };
 
-  const handleDelete = (e: React.MouseEvent, docId: string, filename: string) => {
-    e.stopPropagation();
-    setActiveDropdown(null);
+  const handleDelete = (docId: string, filename: string) => {
     if (
       !confirm(
         `Delete "${filename}"?\n\nThis will permanently remove the file from storage and cannot be undone.`,
@@ -269,9 +287,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
     });
   };
 
-  const handleRenameClick = (e: React.MouseEvent, doc: DocumentRow) => {
-    e.stopPropagation();
-    setActiveDropdown(null);
+  const handleRenameClick = (doc: DocumentRow) => {
     setRenameTarget({ id: doc.id, name: doc.filename });
   };
 
@@ -338,187 +354,188 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
         </div>
 
         {/* Table */}
-        <div className={styles.tableWrapper}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th className={styles.thName}>Document Name</th>
-                <th className={styles.thDate}>Date Uploaded</th>
-                <th className={styles.thStatus}>Status</th>
-                <th className={styles.thAction}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedDocs.length > 0 ? (
-                pagedDocs.map((doc) => {
-                  const latest = doc.versions[0];
-                  const courseVersions = latest?.courseVersions || [];
-                  const status = deriveStatus(courseVersions);
-                  const hasCourse = courseVersions.length > 0;
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-0">
+              <TableHead className={styles.thName}>Document Name</TableHead>
+              <TableHead className={`${styles.thDate} hidden sm:table-cell`}>
+                Date Uploaded
+              </TableHead>
+              <TableHead className={`${styles.thStatus} hidden md:table-cell`}>Status</TableHead>
+              <TableHead className={`${styles.thAction} text-right`}>Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pagedDocs.length > 0 ? (
+              pagedDocs.map((doc) => {
+                const latest = doc.versions[0];
+                const courseVersions = latest?.courseVersions || [];
+                const status = deriveStatus(courseVersions);
+                const hasCourse = courseVersions.length > 0;
+                const isDeleting = deletingId === doc.id;
 
-                  const isDeleting = deletingId === doc.id;
-
-                  return (
-                    <tr key={doc.id} onClick={() => handleRowClick(doc.id)} className={styles.row}>
-                      {/* Document name */}
-                      <td className={styles.tdName}>
-                        <div className={styles.docNameCell}>
-                          <div className={styles.fileIcon}>
-                            {getFileIcon(doc.mimeType, doc.filename)}
-                          </div>
-                          <div>
-                            <div className={styles.filename}>{doc.filename}</div>
-                            <div className={styles.fileMeta}>
-                              {(doc.size / 1024 / 1024).toFixed(1)} MB
-                              {latest?.version && ` • v${latest.version}`}
-                            </div>
+                return (
+                  <TableRow
+                    key={doc.id}
+                    onClick={() => handleRowClick(doc.id)}
+                    className="cursor-pointer"
+                  >
+                    {/* Document name */}
+                    <TableCell>
+                      <div className={styles.docNameCell}>
+                        <div className={styles.fileIcon}>
+                          {getFileIcon(doc.mimeType, doc.filename)}
+                        </div>
+                        <div>
+                          <div className={styles.filename}>{doc.filename}</div>
+                          <div className={styles.fileMeta}>
+                            {(doc.size / 1024 / 1024).toFixed(1)} MB
+                            {latest?.version && ` • v${latest.version}`}
                           </div>
                         </div>
-                      </td>
+                      </div>
+                    </TableCell>
 
-                      {/* Date */}
-                      <td className={styles.tdDate}>
-                        {new Date(doc.updatedAt).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
-                      </td>
+                    {/* Date */}
+                    <TableCell className="text-[#6b7280] whitespace-nowrap hidden sm:table-cell">
+                      {new Date(doc.updatedAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </TableCell>
 
-                      {/* Status */}
-                      <td className={styles.tdStatus}>
-                        <StatusBadge status={status} />
-                      </td>
+                    {/* Status */}
+                    <TableCell className="hidden md:table-cell">
+                      <StatusBadge status={status} />
+                    </TableCell>
 
-                      {/* Action */}
-                      <td className={styles.tdAction} onClick={(e) => e.stopPropagation()}>
-                        <div className={styles.actionCell}>
-                          {/* Three-dot menu */}
-                          <div className={styles.dropdownWrap}>
-                            <button
-                              className={styles.dotsBtn}
-                              title="More actions"
-                              aria-label="More actions"
-                              aria-expanded={activeDropdown === doc.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveDropdown(activeDropdown === doc.id ? null : doc.id);
-                              }}
+                    {/* Action – shadcn DropdownMenu kebab */}
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <KebabTrigger />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-[140px]">
+                          {/* View */}
+                          <DropdownMenuItem
+                            onSelect={() => handleRowClick(doc.id)}
+                            className="cursor-pointer"
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
                             >
-                              <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="currentColor"
-                                aria-hidden="true"
-                              >
-                                <circle cx="12" cy="5" r="1.5" />
-                                <circle cx="12" cy="12" r="1.5" />
-                                <circle cx="12" cy="19" r="1.5" />
-                              </svg>
-                            </button>
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            View
+                          </DropdownMenuItem>
 
-                            {activeDropdown === doc.id && (
-                              <div className={styles.dropdown} role="menu">
-                                <button
-                                  className={styles.dropdownItem}
-                                  role="menuitem"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRowClick(doc.id);
-                                  }}
-                                >
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    style={{ marginRight: 8 }}
-                                  >
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                    <circle cx="12" cy="12" r="3" />
-                                  </svg>
-                                  View
-                                </button>
-                                <button
-                                  className={styles.dropdownItem}
-                                  role="menuitem"
-                                  onClick={(e) => handleRenameClick(e, doc)}
-                                >
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    aria-hidden="true"
-                                    style={{ marginRight: 8 }}
-                                  >
-                                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                  </svg>
-                                  Edit
-                                </button>
-                                <button
-                                  className={`${styles.dropdownItem} ${styles.dropdownItemDanger} ${hasCourse || isDeleting ? styles.dropdownItemDisabled : ''}`}
-                                  role="menuitem"
-                                  disabled={hasCourse || isDeleting}
-                                  title={
-                                    hasCourse
-                                      ? 'Cannot delete — this document has a linked course'
-                                      : isDeleting
-                                        ? 'Deleting…'
-                                        : 'Delete document'
-                                  }
-                                  onClick={(e) => handleDelete(e, doc.id, doc.filename)}
-                                >
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    aria-hidden="true"
-                                  >
-                                    <polyline points="3 6 5 6 21 6" />
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                    <line x1="10" y1="11" x2="10" y2="17" />
-                                    <line x1="14" y1="11" x2="14" y2="17" />
-                                  </svg>
-                                  {isDeleting ? 'Deleting…' : 'Delete'}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <EmptyTableState
-                  message={searchQuery ? 'No documents match your search.' : 'No documents found.'}
-                  subMessage={
-                    searchQuery
-                      ? 'Try a different search term.'
-                      : 'Upload a document to get started.'
-                  }
-                  colSpan={4}
-                  asTableRow
-                />
-              )}
-            </tbody>
-          </table>
-        </div>
+                          {/* Rename / Edit */}
+                          <DropdownMenuItem
+                            onSelect={() => handleRenameClick(doc)}
+                            className="cursor-pointer"
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                            </svg>
+                            Edit Name
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          {/* Delete */}
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={hasCourse || isDeleting}
+                            onSelect={() => handleDelete(doc.id, doc.filename)}
+                            className="cursor-pointer"
+                            title={
+                              hasCourse
+                                ? 'Cannot delete — this document has a linked course'
+                                : isDeleting
+                                  ? 'Deleting…'
+                                  : 'Delete document'
+                            }
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <line x1="10" y1="11" x2="10" y2="17" />
+                              <line x1="14" y1="11" x2="14" y2="17" />
+                            </svg>
+                            {isDeleting ? 'Deleting…' : 'Delete'}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            ) : (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={4} className="text-center p-[60px] text-slate-500">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="text-slate-300">
+                      <svg
+                        width="64"
+                        height="64"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <polyline points="10 9 9 9 8 9" />
+                      </svg>
+                    </div>
+                    <p className="text-base font-semibold text-[#2D3748]">
+                      {searchQuery ? 'No documents match your search.' : 'No documents found.'}
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      {searchQuery
+                        ? 'Try a different search term.'
+                        : 'Upload a document to get started.'}
+                    </p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
 
         {/* Pagination */}
         {totalEntries > 0 && (
@@ -529,8 +546,9 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
             </span>
 
             <div className={styles.paginationPages}>
-              <button
-                className={styles.pageBtn}
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
                 aria-label="Previous page"
@@ -548,7 +566,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                 >
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
-              </button>
+              </Button>
 
               {pageNumbers.map((n, i) =>
                 n === '…' ? (
@@ -556,19 +574,21 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                     …
                   </span>
                 ) : (
-                  <button
+                  <Button
                     key={n}
-                    className={`${styles.pageBtn} ${n === currentPage ? styles.pageBtnActive : ''}`}
+                    variant={n === currentPage ? 'primary' : 'ghost'}
+                    size="icon-sm"
                     onClick={() => handlePageChange(n as number)}
                     aria-current={n === currentPage ? 'page' : undefined}
                   >
                     {n}
-                  </button>
+                  </Button>
                 ),
               )}
 
-              <button
-                className={styles.pageBtn}
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages || totalPages === 0}
                 aria-label="Next page"
@@ -586,24 +606,25 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                 >
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
-              </button>
+              </Button>
             </div>
 
             <div className={styles.paginationShow}>
               Show
-              <select
-                className={styles.paginationSelect}
-                value={itemsPerPage}
-                onChange={(e) => {
-                  setItemsPerPage(Number(e.target.value));
+              <Select
+                value={itemsPerPage.toString()}
+                onChange={(value) => {
+                  setItemsPerPage(Number(value));
                   setCurrentPage(1);
                 }}
-                aria-label="Entries per page"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
+                options={[
+                  { label: '10', value: '10' },
+                  { label: '20', value: '20' },
+                  { label: '50', value: '50' },
+                ]}
+                size="sm"
+                direction="up"
+              />
               entries
             </div>
           </div>
