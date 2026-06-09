@@ -4,6 +4,21 @@ import React, { useState, useMemo, useEffect, useCallback, useTransition } from 
 import styles from './CoursesList.module.css';
 import { Button, Input, Select } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -11,6 +26,7 @@ import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
+import { MoreVertical, Eye, Pencil, Trash2 } from 'lucide-react';
 
 const PENDING_KEY = 'lms_pending_generation';
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -225,7 +241,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showBillingGate, setShowBillingGate] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [courseToRename, setCourseToRename] = useState<{ id: string; title: string } | null>(null);
@@ -236,17 +251,9 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
     setCourseList(courses);
   }, [courses]);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => setActiveDropdown(null);
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
   const handleDelete = useCallback(
     (e: React.MouseEvent, course: CourseWithStats) => {
       e.stopPropagation();
-      setActiveDropdown(null);
       if (
         !confirm(
           `Delete "${course.title}"?\n\nThis will permanently remove the course and cannot be undone.`,
@@ -360,6 +367,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
       )}
 
       <PendingGenerationBanner />
+
       <div className={styles.card}>
         {/* Search */}
         <div className={styles.searchContainer}>
@@ -369,7 +377,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              setCurrentPage(1); // Reset to page 1 on search
+              setCurrentPage(1);
             }}
             leftIcon={
               <svg
@@ -391,26 +399,25 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         </div>
 
         {/* Table */}
-        {/* Table */}
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ width: '40%' }}>Course Name</th>
-              <th style={{ width: '15%' }}>Assigned Staff</th>
-              <th style={{ width: '15%' }}>Role</th>
-              <th style={{ width: '20%' }}>Date Created</th>
-              <th style={{ width: '10%' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-0">
+              <TableHead style={{ width: '40%' }}>Course Name</TableHead>
+              <TableHead style={{ width: '15%' }}>Assigned Staff</TableHead>
+              <TableHead style={{ width: '15%' }}>Role</TableHead>
+              <TableHead style={{ width: '20%' }}>Date Created</TableHead>
+              <TableHead style={{ width: '10%' }}></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {currentCourses.length > 0 ? (
               currentCourses.map((course) => (
-                <tr
+                <TableRow
                   key={course.id}
                   onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                  className={`cursor-pointer ${styles.clickableRow}`}
+                  className="cursor-pointer"
                 >
-                  <td>
+                  <TableCell>
                     <div className={styles.courseInfo}>
                       <div className={styles.courseIcon}>
                         <Image
@@ -424,144 +431,73 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                         <span className={styles.courseName}>{course.title}</span>
                       </div>
                     </div>
-                  </td>
-                  <td>{course.enrollmentsCount}</td>
-                  <td>General</td>
-                  <td>
+                  </TableCell>
+                  <TableCell>{course.enrollmentsCount}</TableCell>
+                  <TableCell>General</TableCell>
+                  <TableCell>
                     {new Date(course.createdAt).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
                     })}
-                  </td>
-                  <td>
-                    <div className={styles.actionCell} onClick={(e) => e.stopPropagation()}>
-                      <div className={styles.dropdownContainer}>
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <button
                           className={styles.moreActionBtn}
                           aria-label="More actions"
-                          aria-expanded={activeDropdown === course.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveDropdown(activeDropdown === course.id ? null : course.id);
-                          }}
+                          aria-haspopup="menu"
                         >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <circle cx="12" cy="5" r="1.5" />
-                            <circle cx="12" cy="12" r="1.5" />
-                            <circle cx="12" cy="19" r="1.5" />
-                          </svg>
+                          <MoreVertical size={16} />
                         </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[160px]">
+                        {/* View */}
+                        <DropdownMenuItem
+                          onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                          className="gap-2 cursor-pointer"
+                        >
+                          <Eye size={14} />
+                          View
+                        </DropdownMenuItem>
 
-                        {activeDropdown === course.id && (
-                          <div className={styles.dropdownMenu} role="menu">
-                            {/* View */}
-                            <button
-                              className={styles.dropdownItem}
-                              role="menuitem"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveDropdown(null);
-                                router.push(`/dashboard/training/courses/${course.id}`);
-                              }}
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="mr-2"
-                                aria-hidden="true"
-                              >
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                <circle cx="12" cy="12" r="3" />
-                              </svg>
-                              View
-                            </button>
+                        {/* Rename */}
+                        <DropdownMenuItem
+                          onClick={() => setCourseToRename({ id: course.id, title: course.title })}
+                          className="gap-2 cursor-pointer"
+                        >
+                          <Pencil size={14} />
+                          Rename
+                        </DropdownMenuItem>
 
-                            {/* Rename */}
-                            <button
-                              className={styles.dropdownItem}
-                              role="menuitem"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveDropdown(null);
-                                setCourseToRename({ id: course.id, title: course.title });
-                              }}
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="mr-2"
-                                aria-hidden="true"
-                              >
-                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                              </svg>
-                              Rename
-                            </button>
+                        <DropdownMenuSeparator />
 
-                            {/* Delete */}
-                            <button
-                              className={`${styles.dropdownItem} ${styles.deleteItem} ${
-                                deletingId === course.id ? (styles.dropdownItemDisabled ?? '') : ''
-                              }`}
-                              role="menuitem"
-                              disabled={deletingId === course.id}
-                              title={deletingId === course.id ? 'Deleting…' : 'Delete course'}
-                              onClick={(e) => handleDelete(e, course)}
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="mr-2"
-                                aria-hidden="true"
-                              >
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                <line x1="10" y1="11" x2="10" y2="17" />
-                                <line x1="14" y1="11" x2="14" y2="17" />
-                              </svg>
-                              {deletingId === course.id ? 'Deleting…' : 'Delete'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
+                        {/* Delete */}
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={deletingId === course.id}
+                          onClick={(e) => handleDelete(e, course)}
+                          className="gap-2 cursor-pointer"
+                        >
+                          <Trash2 size={14} />
+                          {deletingId === course.id ? 'Deleting…' : 'Delete'}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
               ))
             ) : (
               <EmptyTableState
                 message="No courses found."
                 subMessage="Try adjusting your search or create a new course."
-                colSpan={3}
+                colSpan={5}
                 asTableRow
               />
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
 
         {/* Pagination */}
         <div className={styles.pagination}>

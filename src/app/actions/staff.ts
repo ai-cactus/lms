@@ -5,6 +5,7 @@ import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import type { UserRole } from '@prisma/client';
 import { logger } from '@/lib/logger';
+import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 
 export async function getStaffDetails(userId: string) {
   const session = await auth();
@@ -351,4 +352,114 @@ export async function revokeInvite(inviteId: string) {
 
   revalidatePath('/dashboard/staff');
   return { success: true };
+}
+
+/**
+ * Generates a PDF activity report for a specific staff member and emails
+ * it to the requesting admin.
+ *
+ * @param staffUserId - The ID of the worker whose report to generate.
+ */
+export async function generateStaffActivityPdfAndEmail(
+  staffUserId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    // Verify caller is an admin with an organization
+    const admin = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        role: true,
+        email: true,
+        organizationId: true,
+        organization: { select: { name: true } },
+      },
+    });
+
+    if (!admin || admin.role !== 'admin' || !admin.organizationId) {
+      return { success: false, error: 'Forbidden' };
+    }
+
+    // Verify the target staff belongs to the same organization
+    const staffUser = await prisma.user.findUnique({
+      where: { id: staffUserId },
+      select: {
+        organizationId: true,
+        email: true,
+        profile: { select: { fullName: true } },
+        enrollments: {
+          select: {
+            id: true,
+            courseId: true,
+            status: true,
+            score: true,
+            startedAt: true,
+            completedAt: true,
+            course: {
+              select: { id: true, title: true, category: true },
+            },
+          },
+          orderBy: { startedAt: 'desc' },
+        },
+      },
+    });
+
+    if (!staffUser) {
+      return { success: false, error: 'Staff member not found' };
+    }
+
+    if (staffUser.organizationId !== admin.organizationId) {
+      return { success: false, error: 'Forbidden — staff member not in your organization' };
+    }
+
+    const staffName = staffUser.profile?.fullName ?? staffUser.email.split('@')[0];
+    const orgName = admin.organization?.name ?? 'Your Organization';
+
+    // Build the report data
+    const { generateUserActivityPdf } = await import('@/lib/pdf-reports');
+
+    const enrollments: ActivityReportEnrollment[] = staffUser.enrollments.map((e) => ({
+      courseId: e.course.id,
+      courseTitle: e.course.title,
+      type: 'Course',
+      category: e.course.category,
+      score: e.score,
+      dateAssigned: e.startedAt,
+      dateCompleted: e.completedAt,
+      status: e.status,
+    }));
+
+    const pdfBuffer = await generateUserActivityPdf({
+      userName: staffName,
+      orgName,
+      generatedAt: new Date(),
+      enrollments,
+    });
+
+    // Send to admin
+    const { sendUserActivityReportEmail } = await import('@/lib/email');
+    const result = await sendUserActivityReportEmail(admin.email, staffName, orgName, pdfBuffer);
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: 'PDF generated but email delivery failed. Please try again.',
+      };
+    }
+
+    logger.info({
+      msg: '[staff] Activity PDF report sent',
+      staffUserId,
+      adminEmail: admin.email,
+    });
+
+    return { success: true };
+  } catch (error) {
+    logger.error({ msg: '[staff] Failed to generate activity PDF', err: error });
+    return { success: false, error: 'An unexpected error occurred. Please try again.' };
+  }
 }

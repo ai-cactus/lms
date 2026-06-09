@@ -4,6 +4,14 @@ import React, { useState, useMemo } from 'react';
 import styles from './MyCoursesTable.module.css';
 import { Input } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -27,16 +35,12 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter Logic
-  // ⚡ Bolt: Memoize filtered courses to avoid re-evaluating on every re-render.
-  // Useful as the list of courses grows.
   const filteredCourses = useMemo(() => {
     return courses.filter((course) =>
       course.title.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [courses, searchQuery]);
 
-  // Limit to maxItems for dashboard view
   const displayCourses = filteredCourses.slice(0, maxItems);
 
   return (
@@ -72,24 +76,24 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
 
       {/* Table */}
       <div className={styles.tableWrapper}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ width: '45%' }}>Course Name</th>
-              <th style={{ width: '15%' }}>Assigned Staff</th>
-              <th style={{ width: '20%' }}>Completion %</th>
-              <th style={{ width: '20%' }}>Date Created</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-0">
+              <TableHead style={{ width: '45%' }}>Course Name</TableHead>
+              <TableHead style={{ width: '15%' }}>Assigned Staff</TableHead>
+              <TableHead style={{ width: '20%' }}>Completion %</TableHead>
+              <TableHead style={{ width: '20%' }}>Date Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {displayCourses.length > 0 ? (
               displayCourses.map((course) => (
-                <tr
+                <TableRow
                   key={course.id}
                   onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                  className={styles.clickableRow}
+                  className={`cursor-pointer ${styles.clickableRow}`}
                 >
-                  <td>
+                  <TableCell>
                     <div className={styles.courseInfo}>
                       <div className={styles.courseIcon}>
                         <Image
@@ -103,19 +107,19 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                         <span className={styles.courseName}>{course.title}</span>
                       </div>
                     </div>
-                  </td>
-                  <td>{course.enrollmentsCount}</td>
-                  <td>
+                  </TableCell>
+                  <TableCell>{course.enrollmentsCount}</TableCell>
+                  <TableCell>
                     <span className={styles.completionRate}>{course.completionRate}%</span>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     {new Date(course.createdAt).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
                     })}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))
             ) : (
               <EmptyTableState
@@ -125,49 +129,31 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                 asTableRow
               />
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
-      {/* View All Button */}
-      {
-        // Show View All if there are more items than displayed OR if we are just showing the default list
-        // User's image shows "View all" at bottom right.
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            marginTop: '16px',
-            paddingRight: '24px',
-          }}
+      {/* View All Link */}
+      <div className="flex justify-end mt-4 pr-6">
+        <Link
+          href="/dashboard/courses"
+          className="text-[#4C6EF5] text-sm font-semibold flex items-center gap-1"
         >
-          <Link
-            href="/dashboard/courses"
-            style={{
-              color: '#4C6EF5',
-              fontSize: '14px',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
+          View all
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            View all
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
-          </Link>
-        </div>
-      }
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </Link>
+      </div>
     </div>
   );
 }

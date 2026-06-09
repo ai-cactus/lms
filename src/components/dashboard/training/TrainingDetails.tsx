@@ -3,9 +3,27 @@
 import React, { useState } from 'react';
 import styles from './TrainingDetails.module.css';
 import { Button, Input } from '@/components/ui';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import Link from 'next/link';
 import ShareCourseModal from './ShareCourseModal';
 import CertificateModal from './CertificateModal';
+import AssignRetakeModal from './AssignRetakeModal';
+import { MoreVertical, ClipboardList, RotateCcw } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 import { CourseWithRelations } from '@/types/course';
 
@@ -14,12 +32,16 @@ interface TrainingDetailsProps {
 }
 
 export default function TrainingDetails({ course }: TrainingDetailsProps) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'staff' | 'certificates'>('staff');
   const [selectedCertId, setSelectedCertId] = useState<string | null>(null);
+  const [retakeEnrollment, setRetakeEnrollment] = useState<{
+    id: string;
+    courseName: string;
+  } | null>(null);
 
-  // Use real enrollments from database only
   const enrollments = course.enrollments || [];
 
   const totalLearners = enrollments.length;
@@ -48,7 +70,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
   return (
     <div className={styles.container}>
-      {/* Breadcrumbs & Header */}
       {/* Breadcrumbs & Header */}
       <div className={styles.headerContainer}>
         <div className={styles.breadcrumbs}>
@@ -267,6 +288,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
       </div>
 
       <div className={styles.staffSection}>
+        {/* Tabs */}
         <div className="flex gap-6 border-b border-[#E2E8F0] mb-6">
           <button
             className={activeTab === 'staff' ? styles.tabActive : styles.tabInactive}
@@ -284,6 +306,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
         {activeTab === 'staff' ? (
           <>
+            {/* Search + Export bar */}
             <div className={styles.searchContainer}>
               <Input
                 placeholder="Search for staff..."
@@ -326,19 +349,22 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
               </button>
             </div>
 
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th style={{ width: '40%' }}>Staff Name</th>
-                  <th style={{ width: '20%' }}>Score</th>
-                  <th style={{ width: '20%' }}>Status</th>
-                  <th style={{ width: '20%', textAlign: 'right' }}>Quiz result</th>
-                </tr>
-              </thead>
-              <tbody>
+            {/* Enrolled Staff Table */}
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-0">
+                  <TableHead style={{ width: '40%' }}>Staff Name</TableHead>
+                  <TableHead style={{ width: '20%' }}>Score</TableHead>
+                  <TableHead style={{ width: '20%' }}>Status</TableHead>
+                  <TableHead style={{ width: '20%' }} className="text-right">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredEnrollments.map((enrollment) => (
-                  <tr key={enrollment.id}>
-                    <td>
+                  <TableRow key={enrollment.id}>
+                    <TableCell>
                       <div className={styles.staffProfile}>
                         <div className={styles.avatar}>
                           {(
@@ -356,13 +382,13 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                           </span>
                         </div>
                       </div>
-                    </td>
-                    <td>
+                    </TableCell>
+                    <TableCell>
                       <span className={styles.score}>
                         {enrollment.score !== null ? `${enrollment.score}%` : '-'}
                       </span>
-                    </td>
-                    <td>
+                    </TableCell>
+                    <TableCell>
                       {(enrollment.status === 'completed' || enrollment.status === 'attested') &&
                       (enrollment.score ?? 0) >= 70 ? (
                         <span className={`${styles.statusBadge} ${styles.passed}`}>
@@ -448,69 +474,110 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                           Not Started
                         </span>
                       )}
-                    </td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-3 items-center">
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end items-center gap-2">
+                        {/* Quick View Result link */}
                         {enrollment.score !== null ? (
                           <Link
                             href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
+                            className={styles.viewResultText}
                           >
-                            <span className={styles.viewResultText}>View Result</span>
+                            View Result
                           </Link>
                         ) : (
-                          <span className="text-[#cbd5e0] cursor-not-allowed">View Result</span>
+                          <span className="text-[#cbd5e0] cursor-not-allowed text-sm">
+                            View Result
+                          </span>
                         )}
-                        <button className={styles.dotsButton} title="More actions">
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <circle cx="12" cy="12" r="1"></circle>
-                            <circle cx="12" cy="5" r="1"></circle>
-                            <circle cx="12" cy="19" r="1"></circle>
-                          </svg>
-                        </button>
+
+                        {/* Kebab menu */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className={styles.dotsButton}
+                              title="More actions"
+                              aria-label="More actions"
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-[180px]">
+                            {/* View Result */}
+                            {enrollment.score !== null ? (
+                              <DropdownMenuItem
+                                className="gap-2 cursor-pointer"
+                                onClick={() =>
+                                  router.push(
+                                    `/dashboard/training/courses/${course.id}/results/${enrollment.id}`,
+                                  )
+                                }
+                              >
+                                <ClipboardList size={14} />
+                                View Result
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem disabled className="gap-2">
+                                <ClipboardList size={14} />
+                                View Result
+                              </DropdownMenuItem>
+                            )}
+
+                            <DropdownMenuSeparator />
+
+                            {/* Assign Retake */}
+                            <DropdownMenuItem
+                              className="gap-2 cursor-pointer"
+                              onClick={() =>
+                                setRetakeEnrollment({
+                                  id: enrollment.id,
+                                  courseName: course.title,
+                                })
+                              }
+                            >
+                              <RotateCcw size={14} />
+                              Assign Retake
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
                 {filteredEnrollments.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="text-center text-slate-500 p-6">
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={4} className="text-center text-slate-500 p-6">
                       No staff enrolled yet.
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </>
         ) : (
+          /* Certificates Tab */
           <div className="space-y-4">
             {enrollments.filter((e) => e.certificate).length === 0 ? (
               <div className="text-center text-slate-500 p-6">
                 No certificates have been issued for this course yet.
               </div>
             ) : (
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={{ width: '40%' }}>Staff Name</th>
-                    <th style={{ width: '30%' }}>Issue Date</th>
-                    <th style={{ width: '30%', textAlign: 'right' }}>Certificate</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent border-0">
+                    <TableHead style={{ width: '40%' }}>Staff Name</TableHead>
+                    <TableHead style={{ width: '30%' }}>Issue Date</TableHead>
+                    <TableHead style={{ width: '30%' }} className="text-right">
+                      Certificate
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {enrollments
                     .filter((e) => e.certificate)
                     .map((enrollment) => (
-                      <tr key={enrollment.id}>
-                        <td>
+                      <TableRow key={enrollment.id}>
+                        <TableCell>
                           <div className={styles.staffProfile}>
                             <div className={styles.avatar}>
                               {(
@@ -528,9 +595,11 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                               </span>
                             </div>
                           </div>
-                        </td>
-                        <td>{new Date(enrollment.certificate!.issuedAt).toLocaleDateString()}</td>
-                        <td className="text-right">
+                        </TableCell>
+                        <TableCell>
+                          {new Date(enrollment.certificate!.issuedAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-right">
                           <Button
                             size="sm"
                             variant="outline"
@@ -538,15 +607,17 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                           >
                             View Certificate
                           </Button>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
           </div>
         )}
       </div>
+
+      {/* Modals */}
       <ShareCourseModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
@@ -560,6 +631,14 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
           certificateId={selectedCertId}
         />
       )}
+
+      <AssignRetakeModal
+        isOpen={!!retakeEnrollment}
+        onClose={() => setRetakeEnrollment(null)}
+        enrollmentId={retakeEnrollment?.id || ''}
+        courseName={retakeEnrollment?.courseName || ''}
+        userName=""
+      />
     </div>
   );
 }
