@@ -3,6 +3,14 @@
 import React, { useState, useMemo } from 'react';
 import styles from './StaffList.module.css';
 import { Button, Input, Select } from '@/components/ui';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 
@@ -22,6 +30,7 @@ import InviteStaffModal from './InviteStaffModal';
 import RevokeInviteModal from './RevokeInviteModal';
 import RemoveStaffModal from './RemoveStaffModal';
 import WorkerLimitModal from './WorkerLimitModal';
+import { generateStaffActivityPdfAndEmail } from '@/app/actions/staff';
 
 interface StaffListClientProps {
   users: StaffEntry[];
@@ -58,6 +67,13 @@ export default function StaffListClient({
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  // Export state: tracks which user ID is currently being exported
+  const [exportingUserId, setExportingUserId] = useState<string | null>(null);
+  const [exportFeedback, setExportFeedback] = useState<{
+    id: string;
+    ok: boolean;
+    msg: string;
+  } | null>(null);
 
   // Filter Logic
   const filteredUsers = useMemo(() => {
@@ -99,6 +115,27 @@ export default function StaffListClient({
 
     const diffInMonths = Math.floor(diffInDays / 30);
     return `${diffInMonths} month${diffInMonths > 1 ? 's' : ''} ago`;
+  };
+
+  // Handle Export PDF: generate and email activity report for a staff member
+  const handleExportPdf = async (userId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExportingUserId(userId);
+    setExportFeedback(null);
+    try {
+      const result = await generateStaffActivityPdfAndEmail(userId);
+      setExportFeedback({
+        id: userId,
+        ok: result.success,
+        msg: result.success
+          ? 'Report emailed to you successfully.'
+          : (result.error ?? 'Failed to generate report.'),
+      });
+    } finally {
+      setExportingUserId(null);
+      // Auto-clear feedback after 5 s
+      setTimeout(() => setExportFeedback(null), 5000);
+    }
   };
 
   return (
@@ -175,7 +212,7 @@ export default function StaffListClient({
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              setCurrentPage(1); // Reset to page 1 on search
+              setCurrentPage(1);
             }}
             leftIcon={
               <svg
@@ -197,26 +234,26 @@ export default function StaffListClient({
         </div>
 
         {/* Table */}
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ width: '70%' }} className="pl-6">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-0">
+              <TableHead style={{ width: '70%' }} className="pl-6">
                 Name
-              </th>
-              <th style={{ width: '30%' }} className="text-right pr-6">
+              </TableHead>
+              <TableHead style={{ width: '30%' }} className="text-right pr-6">
                 Date Invited
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {currentUsers.length > 0 ? (
               currentUsers.map((user) => (
-                <tr
+                <TableRow
                   key={user.id}
                   onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
                   className={user.isPending ? 'cursor-default opacity-85' : styles.clickableRow}
                 >
-                  <td className="pl-6">
+                  <TableCell className="pl-6">
                     <div className={styles.userInfo}>
                       <div className={styles.avatar}>
                         {user.avatarUrl ? (
@@ -246,8 +283,8 @@ export default function StaffListClient({
                         <div className={styles.userRole}>{user.jobTitle}</div>
                       </div>
                     </div>
-                  </td>
-                  <td className="text-right text-slate-500 pr-6 whitespace-nowrap">
+                  </TableCell>
+                  <TableCell className="text-right text-slate-500 pr-6 whitespace-nowrap">
                     {user.isPending ? (
                       <div className="inline-flex items-center gap-3">
                         <span>{getRelativeTime(user.dateInvited)}</span>
@@ -264,6 +301,46 @@ export default function StaffListClient({
                     ) : (
                       <div className="inline-flex items-center gap-3">
                         <span>{getRelativeTime(user.dateInvited)}</span>
+                        {/* Export PDF button */}
+                        <button
+                          onClick={(e) => handleExportPdf(user.id, e)}
+                          disabled={exportingUserId === user.id}
+                          title="Export activity report as PDF (emailed to you)"
+                          className="text-xs font-semibold text-[#3182CE] bg-transparent border border-[#3182CE] rounded-md px-2.5 py-0.5 cursor-pointer leading-normal disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
+                        >
+                          {exportingUserId === user.id ? (
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="animate-spin"
+                            >
+                              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                            </svg>
+                          ) : (
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                              <line x1="16" y1="13" x2="8" y2="13" />
+                              <line x1="16" y1="17" x2="8" y2="17" />
+                            </svg>
+                          )}
+                          {exportingUserId === user.id ? 'Exporting…' : 'Export PDF'}
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -275,14 +352,23 @@ export default function StaffListClient({
                         </button>
                       </div>
                     )}
-                  </td>
-                </tr>
+                    {/* Inline feedback for this row */}
+                    {exportFeedback?.id === user.id && (
+                      <div
+                        className={`mt-1 text-[11px] font-medium ${
+                          exportFeedback.ok ? 'text-green-600' : 'text-red-600'
+                        }`}
+                      >
+                        {exportFeedback.msg}
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
               ))
             ) : (
-              <tr>
-                <td colSpan={2} className="text-center p-[60px] text-slate-500">
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={2} className="text-center p-[60px] text-slate-500">
                   <div className="flex flex-col items-center gap-3">
-                    {/* Empty state icon */}
                     <div className="text-slate-300">
                       <svg
                         width="64"
@@ -305,11 +391,11 @@ export default function StaffListClient({
                       Get started by adding a new staff member to your organization.
                     </p>
                   </div>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
 
         {/* Pagination */}
         <div className={styles.pagination}>
@@ -392,6 +478,7 @@ export default function StaffListClient({
           </div>
         </div>
       </div>
+
       {/* Feature Gate Modal */}
       <OrganizationActivationModal
         hasOrganization={hasOrganization}

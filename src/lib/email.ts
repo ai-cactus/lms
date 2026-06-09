@@ -574,3 +574,125 @@ export async function sendDemoRequestEmail(data: {
     return { success: false, error };
   }
 }
+
+// ---------------------------------------------------------------------------
+// PDF Report Emails
+// ---------------------------------------------------------------------------
+
+/**
+ * Sends a staff member's activity report PDF to the admin as an email attachment.
+ */
+export async function sendUserActivityReportEmail(
+  adminEmail: string,
+  staffName: string,
+  orgName: string,
+  pdfBuffer: Buffer,
+): Promise<{ success: boolean; error?: unknown }> {
+  const appName = 'Theraptly';
+  const now = new Date().toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const fileName = `activity-report-${staffName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+      <div style="background: #4C6EF5; border-radius: 12px 12px 0 0; padding: 28px 32px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 20px;">User Activity Report</h1>
+        <p style="margin: 6px 0 0 0; color: rgba(255,255,255,0.8); font-size: 13px;">${appName} LMS · Generated ${now}</p>
+      </div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; padding: 28px 32px;">
+        <p style="color: #333; font-size: 15px; line-height: 1.6; margin-top: 0;">
+          Please find attached the learning activity report for <strong>${staffName}</strong> from <strong>${orgName}</strong>.
+        </p>
+        <p style="color: #333; font-size: 15px; line-height: 1.6;">
+          The report contains course assignments, grades, and completion dates for all enrolled courses.
+        </p>
+        <p style="color: #718096; font-size: 12px; margin-top: 32px;">
+          This is an automated report from ${appName}. If you did not request this, please ignore this email.
+        </p>
+      </div>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to: adminEmail,
+      subject: `Activity Report: ${staffName} — ${orgName}`,
+      html,
+      attachments: [
+        {
+          filename: fileName,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+    logger.info({ msg: '[email] User activity report sent', messageId: info.messageId, staffName });
+    return { success: true };
+  } catch (error) {
+    logger.error({ msg: '[email] Failed to send user activity report', err: error });
+    return { success: false, error };
+  }
+}
+
+/**
+ * Sends the auditor pack PDF export to the admin as an email attachment.
+ */
+export async function sendAuditorPackPdfEmail(
+  adminEmail: string,
+  orgName: string,
+  pdfBuffer: Buffer,
+): Promise<{ success: boolean; error?: unknown }> {
+  const appName = 'Theraptly';
+  const now = new Date().toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const fileName = `auditor-pack-${orgName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+      <div style="background: #4C6EF5; border-radius: 12px 12px 0 0; padding: 28px 32px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 20px;">Auditor Pack — PDF Export</h1>
+        <p style="margin: 6px 0 0 0; color: rgba(255,255,255,0.8); font-size: 13px;">${appName} LMS · Generated ${now}</p>
+      </div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; padding: 28px 32px;">
+        <p style="color: #333; font-size: 15px; line-height: 1.6; margin-top: 0;">
+          Your auditor pack export for <strong>${orgName}</strong> is attached.
+        </p>
+        <p style="color: #333; font-size: 15px; line-height: 1.6;">
+          The document contains all staff learning activity, grades, completion dates, and course categories
+          as of ${now}. You can share this directly with your auditors.
+        </p>
+        <p style="color: #718096; font-size: 12px; margin-top: 32px;">
+          This is an automated export from ${appName}. If you did not request this, please ignore this email.
+        </p>
+      </div>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to: adminEmail,
+      subject: `Auditor Pack Export — ${orgName}`,
+      html,
+      attachments: [
+        {
+          filename: fileName,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+    logger.info({ msg: '[email] Auditor pack PDF sent', messageId: info.messageId, orgName });
+    return { success: true };
+  } catch (error) {
+    logger.error({ msg: '[email] Failed to send auditor pack PDF', err: error });
+    return { success: false, error };
+  }
+}

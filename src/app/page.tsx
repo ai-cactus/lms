@@ -81,7 +81,7 @@ export default function Home() {
           {/* Dashboard Mockup layered over */}
           <div className={styles.dashboardContainer}>
             <Image
-              src="/images/hero-shot.png"
+              src="/images/hero-shot-new.png"
               alt="Theraptly LMS dashboard preview"
               width={1080}
               height={800}

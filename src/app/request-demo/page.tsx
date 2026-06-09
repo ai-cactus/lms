@@ -95,7 +95,7 @@ export default function RequestDemoPage() {
           <Link href="/#features" className={styles.navLink}>
             Features
           </Link>
-          <Link href="/#blog" className={styles.navLink}>
+          {/* <Link href="/#blog" className={styles.navLink}>
             Blog
             <svg
               width="12"
@@ -110,7 +110,7 @@ export default function RequestDemoPage() {
             >
               <path d="m6 9 6 6 6-6" />
             </svg>
-          </Link>
+          </Link> */}
         </nav>
 
         <div className={styles.headerActions}>

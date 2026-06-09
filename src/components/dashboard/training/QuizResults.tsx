@@ -53,7 +53,6 @@ export default function QuizResults({
 }: QuizResultsProps) {
   const [isAttestationOpen, setIsAttestationOpen] = useState(false);
   const [isBadgeOpen, setIsBadgeOpen] = useState(false);
-  const [certificateId, setCertificateId] = useState<string | undefined>(undefined);
 
   // Use provided data or fallback for demo/empty state
   const stats = data || {
@@ -76,9 +75,8 @@ export default function QuizResults({
   const isPassed = stats.score >= passingScore;
   const strokeColor = isPassed ? '#00C55E' : '#E53E3E'; // Green or Red
 
-  const handleAttestSuccess = (certId?: string) => {
+  const handleAttestSuccess = () => {
     setIsAttestationOpen(false);
-    if (certId) setCertificateId(certId);
     setIsBadgeOpen(true); // Open badge modal
     if (onAttestSuccess) onAttestSuccess();
   };
@@ -367,7 +365,6 @@ export default function QuizResults({
         organizationName={organizationName || 'N/A'}
         issuedDate={new Date().toLocaleDateString()}
         courseId={courseId}
-        certificateId={certificateId}
       />
     </div>
   );

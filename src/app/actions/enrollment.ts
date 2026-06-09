@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
+import type { StaffEntry } from '@/types/enrollment';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -44,17 +45,21 @@ export async function getAvailableUsers() {
 }
 
 /**
- * Enroll users in a course by their email addresses.
- * Creates enrollment records for each valid email.
- * For emails not in the system, creates new user accounts and sends invite emails.
+ * Enroll users in a course using structured staff entries.
+ * Each entry must include an email address and may optionally include
+ * firstName, lastName, and role — all sourced from the CSV upload.
+ *
+ * - Existing users: enrolled immediately and notified.
+ * - New users: account is created (with profile hydrated from CSV fields),
+ *   a temporary password is issued, and a course invite email is sent.
  */
-export async function enrollUsers(courseId: string, emails: string[]) {
+export async function enrollUsers(courseId: string, staffEntries: StaffEntry[]) {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  // Verify course exists and user owns it
+  // Verify course exists and belongs to the calling user.
   const course = await prisma.course.findUnique({
     where: { id: courseId },
   });
@@ -63,7 +68,7 @@ export async function enrollUsers(courseId: string, emails: string[]) {
     throw new Error('Course not found');
   }
 
-  // Get organization info for new user creation
+  // Get organization info for new user creation.
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { organization: true },
@@ -80,42 +85,71 @@ export async function enrollUsers(courseId: string, emails: string[]) {
   const crypto = await import('crypto');
   const { sendCourseInviteEmail, sendCourseEnrollmentEmail } = await import('@/lib/email');
 
-  for (const email of emails) {
-    const normalizedEmail = email.toLowerCase().trim();
+  for (const entry of staffEntries) {
+    const normalizedEmail = entry.email.toLowerCase().trim();
 
-    // Validate email format
+    // Validate email format (should already be clean from the client, but
+    // server-side validation is mandatory).
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-      results.failed.push(email);
+      results.failed.push(normalizedEmail);
       continue;
     }
 
-    // Find user by email
+    // Derive display name from CSV fields (used in emails and profile).
+    const firstName = entry.firstName?.trim() || undefined;
+    const lastName = entry.lastName?.trim() || undefined;
+    const fullName =
+      firstName && lastName ? `${firstName} ${lastName}` : (firstName ?? lastName ?? undefined);
+    // Only allow 'admin' or 'worker'; default to 'worker' for safety.
+    const userRole: 'admin' | 'worker' = entry.role === 'admin' ? 'admin' : 'worker';
+
+    // Find existing user by email.
     let user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
       include: { profile: true },
     });
 
-    // If user not found, create a new one with invite
+    // If user not found, create a new account with the CSV-supplied details.
     if (!user) {
       try {
-        // Generate temporary password
         const tempPassword = crypto.randomBytes(8).toString('hex');
         const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-        // Create new user
         const newUser = await prisma.user.create({
           data: {
             email: normalizedEmail,
             password: hashedPassword,
-            role: 'worker',
+            role: userRole,
             emailVerified: true,
             organizationId: currentUser?.organizationId || null,
+            // Hydrate profile immediately so the worker's name is visible
+            // throughout the app without requiring them to edit their profile.
+            profile:
+              firstName || lastName
+                ? {
+                    create: {
+                      email: normalizedEmail,
+                      firstName: firstName ?? null,
+                      lastName: lastName ?? null,
+                      fullName: fullName ?? null,
+                    },
+                  }
+                : undefined,
           },
+          include: { profile: true },
         });
 
-        user = { ...newUser, profile: null };
+        user = newUser;
 
-        // Send invite email with credentials
+        logger.info({
+          msg: '[enrollment] New user created via CSV invite',
+          userId: newUser.id,
+          role: userRole,
+          hasProfile: !!(firstName || lastName),
+          courseId,
+        });
+
+        // Send invite email with temporary credentials.
         try {
           await sendCourseInviteEmail(
             normalizedEmail,
@@ -123,47 +157,73 @@ export async function enrollUsers(courseId: string, emails: string[]) {
             course.title,
             currentUser?.organization?.name || 'Your Organization',
           );
-          results.newInvited.push(email);
+          results.newInvited.push(normalizedEmail);
         } catch (emailErr) {
-          logger.error({ msg: `Failed to send invite email to ${email}:`, err: emailErr });
-          results.newInvited.push(email);
+          logger.error({
+            msg: '[enrollment] Failed to send invite email',
+            userId: newUser.id,
+            err: emailErr,
+          });
+          // Still mark as invited — user account was created successfully.
+          results.newInvited.push(normalizedEmail);
         }
       } catch (createErr) {
-        logger.error({ msg: `Failed to create user for ${email}:`, err: createErr });
-        results.failed.push(email);
+        logger.error({
+          msg: '[enrollment] Failed to create user',
+          email: normalizedEmail,
+          err: createErr,
+        });
+        results.failed.push(normalizedEmail);
         continue;
+      }
+    } else if (firstName || lastName) {
+      // Existing user: opportunistically update profile name fields if the
+      // CSV provided them and the profile fields are currently blank.
+      const profile = user.profile;
+      if (!profile?.fullName && fullName) {
+        await prisma.profile.upsert({
+          where: { id: user.id },
+          create: {
+            id: user.id,
+            email: normalizedEmail,
+            firstName: firstName ?? null,
+            lastName: lastName ?? null,
+            fullName: fullName ?? null,
+          },
+          update: {
+            firstName: profile?.firstName ?? firstName ?? null,
+            lastName: profile?.lastName ?? lastName ?? null,
+            fullName: profile?.fullName ?? fullName ?? null,
+          },
+        });
       }
     }
 
     if (!user) continue;
 
-    // Check if already enrolled
-    // Check both unique constraint and startedAt to handle re-enrollment logic if needed
+    // Check if the user is already enrolled in this course.
     const existing = await prisma.enrollment.findFirst({
-      where: {
-        userId: user.id,
-        courseId: courseId,
-      },
+      where: { userId: user.id, courseId },
     });
 
     if (existing) {
-      if (!results.newInvited.includes(email)) {
-        results.alreadyEnrolled.push(email);
+      if (!results.newInvited.includes(normalizedEmail)) {
+        results.alreadyEnrolled.push(normalizedEmail);
       }
       continue;
     }
 
-    // Create enrollment
+    // Create the enrollment record.
     await prisma.enrollment.create({
       data: {
         userId: user.id,
-        courseId: courseId,
+        courseId,
         status: 'enrolled',
         progress: 0,
       },
     });
 
-    // Notify the worker in-app
+    // In-app notification for the worker.
     await createNotification({
       userId: user.id,
       type: 'COURSE_ASSIGNED',
@@ -173,24 +233,35 @@ export async function enrollUsers(courseId: string, emails: string[]) {
       metadata: { courseId },
     });
 
-    // Send enrollment notification only to existing users — new users already received
-    // the invite email (with credentials) from sendCourseInviteEmail above.
-    if (!results.newInvited.includes(email)) {
+    // Send enrollment email only to pre-existing users — new users already
+    // received the invite email with their temporary credentials above.
+    if (!results.newInvited.includes(normalizedEmail)) {
       try {
         await sendCourseEnrollmentEmail(
           normalizedEmail,
-          user.profile?.fullName || 'there',
+          user.profile?.fullName || fullName || 'there',
           course.title,
           currentUser?.organization?.name || 'Your Organization',
         );
       } catch (emailErr) {
-        logger.error({ msg: `Failed to send enrollment email to ${email}:`, err: emailErr });
+        logger.error({
+          msg: '[enrollment] Failed to send enrollment email',
+          userId: user.id,
+          err: emailErr,
+        });
       }
     }
 
-    if (!results.newInvited.includes(email)) {
-      results.success.push(email);
+    if (!results.newInvited.includes(normalizedEmail)) {
+      results.success.push(normalizedEmail);
     }
+
+    logger.info({
+      msg: '[enrollment] User enrolled in course',
+      userId: user.id,
+      courseId,
+      enrolledBy: session.user.id,
+    });
   }
 
   revalidatePath(`/dashboard/training/courses/${courseId}`);
