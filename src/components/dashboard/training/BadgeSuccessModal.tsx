@@ -67,10 +67,10 @@ export default function BadgeSuccessModal({
             <div className={styles.ribbon} />
           </div>
 
-          <h2 className={styles.title}>{`Well done! You've earned a certificate!`}</h2>
+          <h2 className={styles.title}>{`Well done! You've earned a Certificate!`}</h2>
 
           <p className={styles.description}>
-            The attestation is now securely stored and accessible on your dashboard anytime.
+            The certificate is now securely stored and accessible on your dashboard anytime.
           </p>
 
           <div className={styles.badgeCard}>
@@ -99,24 +99,13 @@ export default function BadgeSuccessModal({
           </div>
 
           <Button
-            variant="primary"
+            variant="outline"
             fullWidth
             className={styles.dashboardBtn}
             onClick={handleDashboard}
           >
-            View Course Status
+            Go to Dashboard
           </Button>
-
-          {certificateId && (
-            <Button
-              variant="outline"
-              fullWidth
-              style={{ marginTop: '12px' }}
-              onClick={() => window.open(`/api/certificates/${certificateId}`, '_blank')}
-            >
-              View Certificate
-            </Button>
-          )}
 
           <div className={styles.startNewLink}>
             or{' '}
@@ -133,27 +122,11 @@ export default function BadgeSuccessModal({
         </div>
 
         <div className={styles.rightPanel}>
-          {/* Purple gradient background with confetti/shapes */}
-          <div className={styles.shape1} />
-          <div className={styles.shape2} />
-          <div className={styles.shape3} />
-
-          <div className={styles.floatingBadge}>
-            <svg
-              width="80"
-              height="80"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-                fill="#FFD700"
-                stroke="white"
-                strokeWidth="1.5"
-              />
-            </svg>
-          </div>
+          <img
+            src="/images/course_badge_modal.png"
+            alt="Badge Success"
+            className={styles.rightImage}
+          />
         </div>
       </div>
     </Modal>
