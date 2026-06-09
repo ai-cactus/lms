@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Logo, Input, Button } from '@/components/ui';
 import { sendPasswordResetLink } from '@/app/actions/auth';
+import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 import styles from './page.module.css';
 
 export default function ForgotPasswordPage() {
@@ -128,28 +128,8 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
 
-      {/* Right Side - Hero Image */}
-      <div className={styles.heroSection}>
-        <Image
-          src="/images/login-bg.png"
-          alt="Secure Access"
-          fill
-          className={styles.heroImage}
-          priority
-          quality={100}
-        />
-
-        {/* Overlay Content */}
-        <div className={styles.heroOverlay}>
-          <div className={styles.heroTextContent}>
-            <h2 className={styles.heroTitle}>Secure Access Recovery</h2>
-            <p className={styles.heroSubtitle}>
-              Your data is protected with industry-standard security protocols to ensure only
-              authorized personnel can access sensitive information.
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Right Side - Hero Slider */}
+      <AuthHeroSlider />
     </div>
   );
 }

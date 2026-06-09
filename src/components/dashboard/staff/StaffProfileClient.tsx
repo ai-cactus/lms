@@ -420,7 +420,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
 
             <Table>
               <TableHeader>
-                <TableRow className="hover:bg-transparent border-0">
+                <TableRow className="hover:bg-transparent border-0 ">
                   <TableHead style={{ width: '40%' }}>Name</TableHead>
                   <TableHead style={{ width: '30%' }}>Progress</TableHead>
                   <TableHead style={{ width: '15%' }}>Quiz Status</TableHead>
