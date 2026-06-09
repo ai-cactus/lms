@@ -3,6 +3,14 @@
 import React, { useState, useMemo } from 'react';
 import styles from './StaffList.module.css';
 import { Button, Input, Select } from '@/components/ui';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 
@@ -175,7 +183,7 @@ export default function StaffListClient({
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              setCurrentPage(1); // Reset to page 1 on search
+              setCurrentPage(1);
             }}
             leftIcon={
               <svg
@@ -197,26 +205,26 @@ export default function StaffListClient({
         </div>
 
         {/* Table */}
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ width: '70%' }} className="pl-6">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-0">
+              <TableHead style={{ width: '70%' }} className="pl-6">
                 Name
-              </th>
-              <th style={{ width: '30%' }} className="text-right pr-6">
+              </TableHead>
+              <TableHead style={{ width: '30%' }} className="text-right pr-6">
                 Date Invited
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {currentUsers.length > 0 ? (
               currentUsers.map((user) => (
-                <tr
+                <TableRow
                   key={user.id}
                   onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
                   className={user.isPending ? 'cursor-default opacity-85' : styles.clickableRow}
                 >
-                  <td className="pl-6">
+                  <TableCell className="pl-6">
                     <div className={styles.userInfo}>
                       <div className={styles.avatar}>
                         {user.avatarUrl ? (
@@ -246,8 +254,8 @@ export default function StaffListClient({
                         <div className={styles.userRole}>{user.jobTitle}</div>
                       </div>
                     </div>
-                  </td>
-                  <td className="text-right text-slate-500 pr-6 whitespace-nowrap">
+                  </TableCell>
+                  <TableCell className="text-right text-slate-500 pr-6 whitespace-nowrap">
                     {user.isPending ? (
                       <div className="inline-flex items-center gap-3">
                         <span>{getRelativeTime(user.dateInvited)}</span>
@@ -275,14 +283,13 @@ export default function StaffListClient({
                         </button>
                       </div>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))
             ) : (
-              <tr>
-                <td colSpan={2} className="text-center p-[60px] text-slate-500">
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={2} className="text-center p-[60px] text-slate-500">
                   <div className="flex flex-col items-center gap-3">
-                    {/* Empty state icon */}
                     <div className="text-slate-300">
                       <svg
                         width="64"
@@ -305,11 +312,11 @@ export default function StaffListClient({
                       Get started by adding a new staff member to your organization.
                     </p>
                   </div>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
 
         {/* Pagination */}
         <div className={styles.pagination}>
@@ -392,6 +399,7 @@ export default function StaffListClient({
           </div>
         </div>
       </div>
+
       {/* Feature Gate Modal */}
       <OrganizationActivationModal
         hasOrganization={hasOrganization}

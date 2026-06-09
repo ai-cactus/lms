@@ -3,7 +3,14 @@
 import React, { useState } from 'react';
 import styles from './StaffProfile.module.css';
 import { Button, Input } from '@/components/ui';
-
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -352,19 +359,19 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               </div>
             </div>
 
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th style={{ width: '40%' }}>Name</th>
-                  <th style={{ width: '30%' }}>Progress</th>
-                  <th style={{ width: '15%' }}>Quiz Status</th>
-                  <th style={{ width: '15%' }}></th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-0">
+                  <TableHead style={{ width: '40%' }}>Name</TableHead>
+                  <TableHead style={{ width: '30%' }}>Progress</TableHead>
+                  <TableHead style={{ width: '15%' }}>Quiz Status</TableHead>
+                  <TableHead style={{ width: '15%' }}></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredEnrollments.map((enrollment) => (
-                  <tr key={enrollment.id}>
-                    <td>
+                  <TableRow key={enrollment.id}>
+                    <TableCell>
                       <div className={styles.courseItem}>
                         <div className={styles.courseThumb}>
                           <svg
@@ -388,8 +395,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                           </span>
                         </div>
                       </div>
-                    </td>
-                    <td>
+                    </TableCell>
+                    <TableCell>
                       <div className={styles.progressWrapper}>
                         <div className={styles.bgBar}>
                           <div
@@ -399,8 +406,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                         </div>
                         <span className={styles.pctText}>{enrollment.progress || 0}%</span>
                       </div>
-                    </td>
-                    <td>
+                    </TableCell>
+                    <TableCell>
                       {(enrollment.status === 'completed' || enrollment.progress === 100) &&
                       enrollment.score >= (enrollment.passingScore || 70) ? (
                         <span className={`${styles.badge} ${styles.badgePassed}`}>
@@ -486,8 +493,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                           )}
                         </div>
                       )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
+                    </TableCell>
+                    <TableCell style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                         {enrollment.status === 'locked' && (
                           <Button
@@ -517,8 +524,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                           </Button>
                         )}
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
                 {filteredEnrollments.length === 0 && (
                   <EmptyTableState
@@ -528,8 +535,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                     asTableRow
                   />
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </>
         ) : (
           <div>

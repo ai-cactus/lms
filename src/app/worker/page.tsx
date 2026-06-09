@@ -7,12 +7,13 @@ import WorkerDashboardMetrics from '@/components/worker/WorkerDashboardMetrics';
 import WorkerCourseList from '@/components/worker/WorkerCourseList';
 import WorkerAchievements from '@/components/worker/WorkerAchievements';
 import WorkerEmptyState from '@/components/worker/WorkerEmptyState';
+import { getWorkerCertificates } from '@/app/actions/certificate';
 
 export default async function LearnerDashboard() {
   const session = await auth();
   const userId = session?.user?.id;
 
-  const [allEnrollments, user] = await Promise.all([
+  const [allEnrollments, user, allCertificates] = await Promise.all([
     prisma.enrollment.findMany({
       where: { userId },
       include: {
@@ -29,7 +30,12 @@ export default async function LearnerDashboard() {
           include: { profile: true },
         })
       : null,
+    // Fetch certs only when a valid session exists; fall back to [] if not authed
+    userId ? getWorkerCertificates().catch(() => []) : Promise.resolve([]),
   ]);
+
+  // 3 most recent certificates for the achievements widget
+  const recentCertificates = allCertificates.slice(0, 3);
 
   const profileIncomplete = !user?.profile?.firstName?.trim() || !user?.profile?.lastName?.trim();
 
@@ -143,9 +149,11 @@ export default async function LearnerDashboard() {
 
       <WorkerAchievements
         badgeCount={badgeCount}
-        completedCourses={courses
-          .filter((c) => c.status === 'attested' || c.status === 'completed')
-          .map((c) => ({ id: c.id, title: c.title }))}
+        recentCertificates={recentCertificates.map((cert) => ({
+          id: cert.id,
+          courseTitle: cert.course.title,
+          issuedAt: cert.issuedAt,
+        }))}
       />
 
       {showWelcomeModal && <WorkerEmptyState />}

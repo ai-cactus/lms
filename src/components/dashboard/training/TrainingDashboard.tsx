@@ -3,6 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import styles from './TrainingDashboard.module.css';
 import { Button, Input } from '@/components/ui';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import Image from 'next/image';
 import { CourseWithStats } from '@/types/course';
 import { useRouter } from 'next/navigation';
@@ -682,16 +690,16 @@ export default function TrainingDashboard({
         </div>
 
         <div className={styles.tableWrapper}>
-          <table className={styles.coursesTable}>
-            <thead>
-              <tr>
-                <th className={styles.colName}>Course Name</th>
-                <th className={styles.colStaff}>Assigned Staff</th>
-                <th className={styles.colCompletion}>Completion %</th>
-                <th className={styles.colDate}>Date Created</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent border-0">
+                <TableHead className={styles.colName}>Course Name</TableHead>
+                <TableHead className={styles.colStaff}>Assigned Staff</TableHead>
+                <TableHead className={styles.colCompletion}>Completion %</TableHead>
+                <TableHead className={styles.colDate}>Date Created</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {courses.length === 0 ? (
                 <EmptyTableState
                   message="No courses found."
@@ -701,12 +709,12 @@ export default function TrainingDashboard({
                 />
               ) : (
                 courses.map((course) => (
-                  <tr
+                  <TableRow
                     key={course.id}
                     onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
                     className="cursor-pointer"
                   >
-                    <td>
+                    <TableCell>
                       <div className={styles.courseInfo}>
                         <div className={styles.courseIcon}>
                           <Image
@@ -720,21 +728,21 @@ export default function TrainingDashboard({
                           <span className={styles.courseName}>{course.title}</span>
                         </div>
                       </div>
-                    </td>
-                    <td>{course.enrollmentsCount}</td>
-                    <td>{course.completionRate}%</td>
-                    <td>
+                    </TableCell>
+                    <TableCell>{course.enrollmentsCount}</TableCell>
+                    <TableCell>{course.completionRate}%</TableCell>
+                    <TableCell>
                       {new Date(course.createdAt).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
                       })}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
 
         <div className="flex justify-end mt-4 pr-6">
