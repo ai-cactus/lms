@@ -324,7 +324,7 @@
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  padding: 24px 0;
+  padding: 20px;
   /* Padding for header/footer, 0 for table to go edge to edge logic if needed, but here contained */
 }
 

@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Logo, Input, Button } from '@/components/ui';
+import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 import styles from '../../login/page.module.css';
-
-import { Suspense } from 'react';
 
 function MfaRecoverForm() {
   const router = useRouter();
@@ -59,6 +58,7 @@ function MfaRecoverForm() {
 
   return (
     <div className={styles.container}>
+      {/* Left Side - Form */}
       <div className={styles.formSection}>
         <div className={styles.formContent}>
           <Logo size="md" />
@@ -142,41 +142,8 @@ function MfaRecoverForm() {
         </div>
       </div>
 
-      <div className={styles.heroSection}>
-        <div
-          style={{
-            position: 'relative',
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#1E3A5F',
-          }}
-        >
-          <div style={{ textAlign: 'center', padding: '40px', color: '#fff' }}>
-            <svg
-              width="64"
-              height="64"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ margin: '0 auto 24px' }}
-            >
-              <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
-            </svg>
-            <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '12px' }}>
-              Account Recovery
-            </h2>
-            <p style={{ fontSize: '14px', opacity: 0.8 }}>
-              Use a recovery code if you can&apos;t receive your email verification code.
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Right Side - Hero Slider */}
+      <AuthHeroSlider />
     </div>
   );
 }

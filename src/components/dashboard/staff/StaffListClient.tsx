@@ -237,10 +237,10 @@ export default function StaffListClient({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
-              <TableHead style={{ width: '70%' }} className="pl-6">
+              <TableHead style={{ width: '70%' }} className="pl-12">
                 Name
               </TableHead>
-              <TableHead style={{ width: '30%' }} className="text-right pr-6">
+              <TableHead style={{ width: '30%' }} className="text-right pr-12">
                 Date Invited
               </TableHead>
             </TableRow>
@@ -306,7 +306,7 @@ export default function StaffListClient({
                           onClick={(e) => handleExportPdf(user.id, e)}
                           disabled={exportingUserId === user.id}
                           title="Export activity report as PDF (emailed to you)"
-                          className="text-xs font-semibold text-[#3182CE] bg-transparent border border-[#3182CE] rounded-md px-2.5 py-0.5 cursor-pointer leading-normal disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
+                          className="text-xs font-semibold text-[#3182CE] bg-transparent px-2.5 py-0.5 cursor-pointer leading-normal disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
                         >
                           {exportingUserId === user.id ? (
                             <svg
