@@ -30,6 +30,7 @@ import InviteStaffModal from './InviteStaffModal';
 import RevokeInviteModal from './RevokeInviteModal';
 import RemoveStaffModal from './RemoveStaffModal';
 import WorkerLimitModal from './WorkerLimitModal';
+import { generateStaffActivityPdfAndEmail } from '@/app/actions/staff';
 
 interface StaffListClientProps {
   users: StaffEntry[];
@@ -66,6 +67,13 @@ export default function StaffListClient({
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  // Export state: tracks which user ID is currently being exported
+  const [exportingUserId, setExportingUserId] = useState<string | null>(null);
+  const [exportFeedback, setExportFeedback] = useState<{
+    id: string;
+    ok: boolean;
+    msg: string;
+  } | null>(null);
 
   // Filter Logic
   const filteredUsers = useMemo(() => {
@@ -107,6 +115,27 @@ export default function StaffListClient({
 
     const diffInMonths = Math.floor(diffInDays / 30);
     return `${diffInMonths} month${diffInMonths > 1 ? 's' : ''} ago`;
+  };
+
+  // Handle Export PDF: generate and email activity report for a staff member
+  const handleExportPdf = async (userId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExportingUserId(userId);
+    setExportFeedback(null);
+    try {
+      const result = await generateStaffActivityPdfAndEmail(userId);
+      setExportFeedback({
+        id: userId,
+        ok: result.success,
+        msg: result.success
+          ? 'Report emailed to you successfully.'
+          : (result.error ?? 'Failed to generate report.'),
+      });
+    } finally {
+      setExportingUserId(null);
+      // Auto-clear feedback after 5 s
+      setTimeout(() => setExportFeedback(null), 5000);
+    }
   };
 
   return (
@@ -272,6 +301,46 @@ export default function StaffListClient({
                     ) : (
                       <div className="inline-flex items-center gap-3">
                         <span>{getRelativeTime(user.dateInvited)}</span>
+                        {/* Export PDF button */}
+                        <button
+                          onClick={(e) => handleExportPdf(user.id, e)}
+                          disabled={exportingUserId === user.id}
+                          title="Export activity report as PDF (emailed to you)"
+                          className="text-xs font-semibold text-[#3182CE] bg-transparent border border-[#3182CE] rounded-md px-2.5 py-0.5 cursor-pointer leading-normal disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
+                        >
+                          {exportingUserId === user.id ? (
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="animate-spin"
+                            >
+                              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                            </svg>
+                          ) : (
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                              <line x1="16" y1="13" x2="8" y2="13" />
+                              <line x1="16" y1="17" x2="8" y2="17" />
+                            </svg>
+                          )}
+                          {exportingUserId === user.id ? 'Exporting…' : 'Export PDF'}
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -281,6 +350,16 @@ export default function StaffListClient({
                         >
                           Remove
                         </button>
+                      </div>
+                    )}
+                    {/* Inline feedback for this row */}
+                    {exportFeedback?.id === user.id && (
+                      <div
+                        className={`mt-1 text-[11px] font-medium ${
+                          exportFeedback.ok ? 'text-green-600' : 'text-red-600'
+                        }`}
+                      >
+                        {exportFeedback.msg}
                       </div>
                     )}
                   </TableCell>

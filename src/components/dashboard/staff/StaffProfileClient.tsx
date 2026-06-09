@@ -26,6 +26,7 @@ import CertificateCardList from '../training/CertificateCardList';
 
 type WorkerCertificate = Awaited<ReturnType<typeof getAdminWorkerCertificates>>[number];
 import { logger } from '@/lib/logger';
+import { generateStaffActivityPdfAndEmail } from '@/app/actions/staff';
 
 interface StaffProfileClientProps {
   staff: {
@@ -95,6 +96,9 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
   const [activeTab, setActiveTab] = useState<'courses' | 'certificates'>('courses');
   const [certificates, setCertificates] = useState<WorkerCertificate[]>([]);
   const [loadingCerts, setLoadingCerts] = useState(false);
+  // Export PDF state
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportFeedback, setExportFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
 
   React.useEffect(() => {
     if (activeTab === 'certificates' && certificates.length === 0) {
@@ -122,6 +126,24 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
       logger.error({ msg: 'Error loading result', err });
     } finally {
       setLoadingEnrollmentId(null);
+    }
+  };
+
+  // Generate and email activity PDF report to the admin
+  const handleExportPdf = async () => {
+    setExportingPdf(true);
+    setExportFeedback(null);
+    try {
+      const result = await generateStaffActivityPdfAndEmail(user.id);
+      setExportFeedback({
+        ok: result.success,
+        msg: result.success
+          ? 'Report emailed to you successfully.'
+          : (result.error ?? 'Failed to generate report.'),
+      });
+    } finally {
+      setExportingPdf(false);
+      setTimeout(() => setExportFeedback(null), 5000);
     }
   };
 
@@ -196,7 +218,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           </div>
         </div>
 
-        <div className={`${styles.headerActions} flex gap-3`}>
+        <div className={`${styles.headerActions} flex gap-3 flex-wrap items-start`}>
           <Button variant="ghost" size="md" onClick={() => setIsEditModalOpen(true)}>
             Edit Profile
           </Button>
@@ -208,6 +230,43 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           >
             Remove Staff
           </Button>
+          {/* Export PDF button */}
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              loading={exportingPdf}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ marginRight: 4 }}
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              {exportingPdf ? 'Exporting…' : 'Export PDF'}
+            </Button>
+            {exportFeedback && (
+              <span
+                className={`text-[11px] font-medium ${
+                  exportFeedback.ok ? 'text-green-600' : 'text-red-600'
+                }`}
+              >
+                {exportFeedback.msg}
+              </span>
+            )}
+          </div>
           <Button variant="primary" size="md" onClick={() => setIsAssignModalOpen(true)}>
             Assign Course
           </Button>

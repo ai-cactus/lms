@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import styles from './auditor-pack.module.css';
 import { logger } from '@/lib/logger';
+import { generateAndEmailAuditorPackPdf } from '@/app/actions/auditor';
 
 type ExportState = 'idle' | 'processing' | 'completed';
 
@@ -11,6 +12,9 @@ export default function AuditorExportTab() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
+  // PDF email export state (independent of the DOCX/CSV bulk export)
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [pdfFeedback, setPdfFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const startExport = async () => {
     try {
@@ -34,6 +38,27 @@ export default function AuditorExportTab() {
     // In a robust complete system, we might DELETE the job. For now, abort polling visually.
     setExportState('idle');
     setJobId(null);
+  };
+
+  // Generate a full auditor pack PDF and email it to the admin
+  const handlePdfExport = async () => {
+    setPdfExporting(true);
+    setPdfFeedback(null);
+    try {
+      const result = await generateAndEmailAuditorPackPdf();
+      setPdfFeedback({
+        ok: result.success,
+        msg: result.success
+          ? 'Auditor pack PDF sent to your email successfully.'
+          : (result.error ?? 'Failed to generate PDF. Please try again.'),
+      });
+    } catch (err) {
+      logger.error({ msg: '[auditor] PDF export client error', err });
+      setPdfFeedback({ ok: false, msg: 'An unexpected error occurred.' });
+    } finally {
+      setPdfExporting(false);
+      setTimeout(() => setPdfFeedback(null), 8000);
+    }
   };
 
   useEffect(() => {
@@ -73,6 +98,7 @@ export default function AuditorExportTab() {
       <div className={styles.exportTabContent}>
         {exportState === 'idle' && (
           <div className={styles.idleState}>
+            {/* ── Existing: Full DOCX/CSV bulk export ── */}
             <div className={styles.exportIllustration}>
               <svg
                 width="40"
@@ -97,8 +123,110 @@ export default function AuditorExportTab() {
               documents.
             </p>
             <button className={styles.startExportBtn} onClick={startExport}>
-              Start Export
+              Start Export (DOCX / CSV)
             </button>
+
+            {/* ── New: PDF via Email ── */}
+            <div
+              style={{
+                marginTop: '24px',
+                paddingTop: '24px',
+                borderTop: '1px solid #E2E8F0',
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#3182CE"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                  <polyline points="22,6 12,13 2,6" />
+                </svg>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: '#2D3748' }}>
+                  Export as PDF &amp; Email to me
+                </span>
+              </div>
+              <p style={{ fontSize: '13px', color: '#718096', margin: '0', textAlign: 'center' }}>
+                Generates a formatted PDF of all staff learning activity and sends it to your admin
+                email address.
+              </p>
+              <button
+                onClick={handlePdfExport}
+                disabled={pdfExporting}
+                style={{
+                  marginTop: '4px',
+                  padding: '9px 24px',
+                  background: pdfExporting ? '#93C5FD' : '#3182CE',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '14px',
+                  cursor: pdfExporting ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'background 0.2s',
+                }}
+              >
+                {pdfExporting ? (
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ animation: 'spin 1s linear infinite' }}
+                  >
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                )}
+                {pdfExporting ? 'Generating PDF…' : 'Send PDF to Email'}
+              </button>
+              {pdfFeedback && (
+                <p
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: pdfFeedback.ok ? '#276749' : '#C53030',
+                    margin: '0',
+                    textAlign: 'center',
+                  }}
+                >
+                  {pdfFeedback.ok ? '✓ ' : '✗ '}
+                  {pdfFeedback.msg}
+                </p>
+              )}
+            </div>
           </div>
         )}
 
