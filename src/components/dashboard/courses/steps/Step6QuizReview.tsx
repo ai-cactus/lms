@@ -122,9 +122,7 @@ export default function Step6QuizReview({
               if (isEditing && editingQuestion) {
                 return (
                   <div key={index} className={styles.questionCard}>
-                    <h4 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>
-                      Edit Question {index + 1}
-                    </h4>
+                    <h4 className="m-0 mb-4 text-base">Edit Question {index + 1}</h4>
 
                     <div className={styles.formGroup}>
                       <label>Question Text</label>
@@ -205,10 +203,10 @@ export default function Step6QuizReview({
                 <div key={index} className={styles.questionCard}>
                   <div className={styles.questionHeader}>
                     <div className={styles.questionText}>
-                      <span style={{ fontWeight: 'bold', marginRight: 8 }}>{index + 1}.</span>
+                      <span className="font-bold mr-2">{index + 1}.</span>
                       {q.question}
                     </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div className="flex gap-1.5">
                       <Button
                         variant="outline"
                         size="xs"
@@ -229,14 +227,7 @@ export default function Step6QuizReview({
                         />
                         {opt}
                         {q.answer === optIndex && (
-                          <span
-                            style={{
-                              marginLeft: 8,
-                              fontSize: 12,
-                              color: '#48BB78',
-                              fontWeight: 600,
-                            }}
-                          >
+                          <span className="ml-2 text-xs text-[#48BB78] font-semibold">
                             (Correct)
                           </span>
                         )}
@@ -246,42 +237,14 @@ export default function Step6QuizReview({
 
                   {/* Embedded Explanation (Always Visible) */}
                   {q.explanation && (
-                    <div
-                      style={{
-                        marginTop: '12px',
-                        padding: '12px 16px',
-                        background: '#F7FAFC',
-                        borderRadius: '8px',
-                        border: '1px solid #E2E8F0',
-                        fontSize: '13px',
-                        lineHeight: '1.6',
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          color: '#38A169',
-                          marginBottom: 6,
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: '6px',
-                        }}
-                      >
+                    <div className="mt-3 px-4 py-3 bg-[#F7FAFC] rounded-lg border border-[#E2E8F0] text-[13px] leading-relaxed">
+                      <div className="font-semibold text-[#38A169] mb-1.5 flex items-start gap-1.5">
                         <span>✓</span>
-                        <span style={{}}>Correct: {q.explanation.correctExplanation}</span>
+                        <span>Correct: {q.explanation.correctExplanation}</span>
                       </div>
                       {q.explanation.incorrectOptions &&
                         Object.entries(q.explanation.incorrectOptions).map(([key, text]) => (
-                          <div
-                            key={key}
-                            style={{
-                              color: '#E53E3E',
-                              marginTop: 8,
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                              gap: '6px',
-                            }}
-                          >
+                          <div key={key} className="text-red-600 mt-2 flex items-start gap-1.5">
                             <span>✕</span>
                             <span>
                               Option {String.fromCharCode(65 + parseInt(key))}: {text}
@@ -289,7 +252,7 @@ export default function Step6QuizReview({
                           </div>
                         ))}
                       {q.evidence?.moduleSectionHeading && (
-                        <div style={{ color: '#A0AEC0', marginTop: 8, fontSize: 11 }}>
+                        <div className="text-slate-400 mt-2 text-[11px]">
                           Source: {q.evidence.moduleSectionHeading}
                         </div>
                       )}
@@ -345,10 +308,7 @@ export default function Step6QuizReview({
               </div>
             </div>
 
-            <div
-              className={styles.formActions}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
+            <div className={`${styles.formActions} flex justify-between items-center`}>
               <div>
                 <Button
                   variant="outline"
@@ -372,7 +332,7 @@ export default function Step6QuizReview({
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        style={{ marginRight: '8px' }}
+                        className="mr-2"
                       >
                         <path d="M12 2v4"></path>
                         <path d="M12 18v4"></path>
@@ -388,7 +348,7 @@ export default function Step6QuizReview({
                   )}
                 </Button>
               </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
+              <div className="flex gap-3">
                 <Button variant="ghost" size="md" onClick={() => setIsAdding(false)}>
                   Cancel
                 </Button>

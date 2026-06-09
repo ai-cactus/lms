@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { getCategories, createCustomCategory } from '@/app/actions/categories';
-import Button from '@/components/ui/Button';
-import { Select } from '@/components/ui/Select';
+import Button from '@/components/ui/legacy/Button';
+import { Select } from '@/components/ui/legacy/Select';
 import styles from './Step1Category.module.css';
 import { logger } from '@/lib/logger';
 

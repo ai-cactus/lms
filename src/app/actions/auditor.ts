@@ -3,6 +3,7 @@
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -260,4 +261,107 @@ export async function generateAuditorPackCsv(): Promise<string> {
   ];
 
   return rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Generate auditor pack as PDF and email to admin
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates a full org-wide auditor pack PDF and emails it to the requesting admin.
+ */
+export async function generateAndEmailAuditorPackPdf(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const { userId, organizationId } = await requireAdminSession();
+
+    // Fetch admin details for email delivery
+    const admin = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        organization: { select: { name: true, hasAuditorAccess: true } },
+      },
+    });
+
+    if (!admin?.organization?.hasAuditorAccess) {
+      return { success: false, error: 'Auditor Pack access requires a billing plan.' };
+    }
+
+    const orgName = admin.organization.name;
+
+    // Fetch all org workers
+    const orgUserIds = await prisma.user
+      .findMany({ where: { organizationId }, select: { id: true } })
+      .then((u) => u.map((x) => x.id));
+
+    const enrollments = await prisma.enrollment.findMany({
+      where: { userId: { in: orgUserIds } },
+      select: {
+        courseId: true,
+        status: true,
+        score: true,
+        startedAt: true,
+        completedAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true } },
+          },
+        },
+        course: {
+          select: { id: true, title: true, category: true },
+        },
+      },
+      orderBy: [{ user: { email: 'asc' } }, { startedAt: 'desc' }],
+    });
+
+    // Build a combined report representing the entire organization
+    const { generateUserActivityPdf } = await import('@/lib/pdf-reports');
+
+    const reportRows: ActivityReportEnrollment[] = enrollments.map((e) => ({
+      // Prefix courseId with learner initials for auditor context
+      courseId: e.course.id,
+      courseTitle: e.course.title,
+      type: 'Course',
+      category: e.course.category,
+      score: e.score,
+      dateAssigned: e.startedAt,
+      dateCompleted: e.completedAt,
+      status: e.status,
+    }));
+
+    const pdfBuffer = await generateUserActivityPdf({
+      userName: `All Staff — ${orgName}`,
+      orgName,
+      generatedAt: new Date(),
+      enrollments: reportRows,
+    });
+
+    // Email to admin
+    const { sendAuditorPackPdfEmail } = await import('@/lib/email');
+    const result = await sendAuditorPackPdfEmail(admin.email, orgName, pdfBuffer);
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: 'PDF generated but email delivery failed. Please try again.',
+      };
+    }
+
+    logger.info({
+      msg: '[auditor] Auditor pack PDF emailed',
+      organizationId,
+      adminEmail: admin.email,
+      enrollmentCount: enrollments.length,
+    });
+
+    return { success: true };
+  } catch (error) {
+    logger.error({ msg: '[auditor] Failed to generate auditor pack PDF', err: error });
+    return { success: false, error: 'An unexpected error occurred. Please try again.' };
+  }
 }

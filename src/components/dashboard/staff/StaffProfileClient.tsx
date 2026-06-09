@@ -3,7 +3,14 @@
 import React, { useState } from 'react';
 import styles from './StaffProfile.module.css';
 import { Button, Input } from '@/components/ui';
-
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -19,6 +26,7 @@ import CertificateCardList from '../training/CertificateCardList';
 
 type WorkerCertificate = Awaited<ReturnType<typeof getAdminWorkerCertificates>>[number];
 import { logger } from '@/lib/logger';
+import { generateStaffActivityPdfAndEmail } from '@/app/actions/staff';
 
 interface StaffProfileClientProps {
   staff: {
@@ -88,6 +96,9 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
   const [activeTab, setActiveTab] = useState<'courses' | 'certificates'>('courses');
   const [certificates, setCertificates] = useState<WorkerCertificate[]>([]);
   const [loadingCerts, setLoadingCerts] = useState(false);
+  // Export PDF state
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportFeedback, setExportFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
 
   React.useEffect(() => {
     if (activeTab === 'certificates' && certificates.length === 0) {
@@ -115,6 +126,24 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
       logger.error({ msg: 'Error loading result', err });
     } finally {
       setLoadingEnrollmentId(null);
+    }
+  };
+
+  // Generate and email activity PDF report to the admin
+  const handleExportPdf = async () => {
+    setExportingPdf(true);
+    setExportFeedback(null);
+    try {
+      const result = await generateStaffActivityPdfAndEmail(user.id);
+      setExportFeedback({
+        ok: result.success,
+        msg: result.success
+          ? 'Report emailed to you successfully.'
+          : (result.error ?? 'Failed to generate report.'),
+      });
+    } finally {
+      setExportingPdf(false);
+      setTimeout(() => setExportFeedback(null), 5000);
     }
   };
 
@@ -160,17 +189,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                 className={styles.avatarImage}
               />
             ) : (
-              <div
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '28px',
-                  fontWeight: 600,
-                }}
-              >
+              <div className="w-full h-full flex items-center justify-center text-[28px] font-semibold">
                 {(user.name.charAt(0) || 'U').toUpperCase()}
               </div>
             )}
@@ -199,7 +218,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           </div>
         </div>
 
-        <div className={styles.headerActions} style={{ display: 'flex', gap: '12px' }}>
+        <div className={`${styles.headerActions} flex gap-3 flex-wrap items-start`}>
           <Button variant="ghost" size="md" onClick={() => setIsEditModalOpen(true)}>
             Edit Profile
           </Button>
@@ -207,10 +226,47 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
             variant="ghost"
             size="md"
             onClick={() => setShowRemoveModal(true)}
-            style={{ color: '#E53E3E', border: '1px solid #E53E3E' }}
+            className="text-red-600 border border-red-600"
           >
             Remove Staff
           </Button>
+          {/* Export PDF button */}
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              loading={exportingPdf}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ marginRight: 4 }}
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              {exportingPdf ? 'Exporting…' : 'Export PDF'}
+            </Button>
+            {exportFeedback && (
+              <span
+                className={`text-[11px] font-medium ${
+                  exportFeedback.ok ? 'text-green-600' : 'text-red-600'
+                }`}
+              >
+                {exportFeedback.msg}
+              </span>
+            )}
+          </div>
           <Button variant="primary" size="md" onClick={() => setIsAssignModalOpen(true)}>
             Assign Course
           </Button>
@@ -310,23 +366,11 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
 
       {/* Courses & Certificates */}
       <div className={styles.coursesSection}>
-        <div
-          style={{
-            display: 'flex',
-            gap: '24px',
-            borderBottom: '1px solid #E2E8F0',
-            marginBottom: '24px',
-          }}
-        >
+        <div className="flex gap-6 border-b border-[#E2E8F0] mb-6">
           <button
             onClick={() => setActiveTab('courses')}
+            className="py-3 font-semibold text-sm bg-transparent border-none cursor-pointer"
             style={{
-              padding: '12px 0',
-              fontWeight: 600,
-              fontSize: '14px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
               borderBottom: activeTab === 'courses' ? '2px solid #3182CE' : '2px solid transparent',
               color: activeTab === 'courses' ? '#2D3748' : '#718096',
             }}
@@ -335,13 +379,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           </button>
           <button
             onClick={() => setActiveTab('certificates')}
+            className="py-3 font-semibold text-sm bg-transparent border-none cursor-pointer"
             style={{
-              padding: '12px 0',
-              fontWeight: 600,
-              fontSize: '14px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
               borderBottom:
                 activeTab === 'certificates' ? '2px solid #3182CE' : '2px solid transparent',
               color: activeTab === 'certificates' ? '#2D3748' : '#718096',
@@ -356,8 +395,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
             <div className={styles.coursesHeader}>
               <div className={styles.searchWrapper}>
                 <Input
-                  className=""
-                  style={{ width: '250px' }}
+                  className="w-[250px]"
                   placeholder="Search for courses..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -380,19 +418,19 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               </div>
             </div>
 
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th style={{ width: '40%' }}>Name</th>
-                  <th style={{ width: '30%' }}>Progress</th>
-                  <th style={{ width: '15%' }}>Quiz Status</th>
-                  <th style={{ width: '15%' }}></th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-0 ">
+                  <TableHead style={{ width: '40%' }}>Name</TableHead>
+                  <TableHead style={{ width: '30%' }}>Progress</TableHead>
+                  <TableHead style={{ width: '15%' }}>Quiz Status</TableHead>
+                  <TableHead style={{ width: '15%' }}></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredEnrollments.map((enrollment) => (
-                  <tr key={enrollment.id}>
-                    <td>
+                  <TableRow key={enrollment.id}>
+                    <TableCell>
                       <div className={styles.courseItem}>
                         <div className={styles.courseThumb}>
                           <svg
@@ -416,8 +454,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                           </span>
                         </div>
                       </div>
-                    </td>
-                    <td>
+                    </TableCell>
+                    <TableCell>
                       <div className={styles.progressWrapper}>
                         <div className={styles.bgBar}>
                           <div
@@ -427,8 +465,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                         </div>
                         <span className={styles.pctText}>{enrollment.progress || 0}%</span>
                       </div>
-                    </td>
-                    <td>
+                    </TableCell>
+                    <TableCell>
                       {(enrollment.status === 'completed' || enrollment.progress === 100) &&
                       enrollment.score >= (enrollment.passingScore || 70) ? (
                         <span className={`${styles.badge} ${styles.badgePassed}`}>
@@ -514,8 +552,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                           )}
                         </div>
                       )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
+                    </TableCell>
+                    <TableCell style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                         {enrollment.status === 'locked' && (
                           <Button
@@ -545,8 +583,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                           </Button>
                         )}
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
                 {filteredEnrollments.length === 0 && (
                   <EmptyTableState
@@ -556,8 +594,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                     asTableRow
                   />
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </>
         ) : (
           <div>

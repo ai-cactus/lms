@@ -104,7 +104,10 @@ export default function AssignUserCourseModal({
     setResult(null);
 
     try {
-      const res = await enrollUsers(selectedCourseId, finalEmails);
+      const res = await enrollUsers(
+        selectedCourseId,
+        finalEmails.map((email) => ({ email })),
+      );
       setResult(res);
 
       // If completely successful or already enrolled, close after a delay

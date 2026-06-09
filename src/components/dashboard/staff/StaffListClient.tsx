@@ -3,6 +3,21 @@
 import React, { useState, useMemo } from 'react';
 import styles from './StaffList.module.css';
 import { Button, Input, Select } from '@/components/ui';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 
@@ -22,6 +37,7 @@ import InviteStaffModal from './InviteStaffModal';
 import RevokeInviteModal from './RevokeInviteModal';
 import RemoveStaffModal from './RemoveStaffModal';
 import WorkerLimitModal from './WorkerLimitModal';
+import { generateStaffActivityPdfAndEmail } from '@/app/actions/staff';
 
 interface StaffListClientProps {
   users: StaffEntry[];
@@ -58,6 +74,13 @@ export default function StaffListClient({
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  // Export state: tracks which user ID is currently being exported
+  const [exportingUserId, setExportingUserId] = useState<string | null>(null);
+  const [exportFeedback, setExportFeedback] = useState<{
+    id: string;
+    ok: boolean;
+    msg: string;
+  } | null>(null);
 
   // Filter Logic
   const filteredUsers = useMemo(() => {
@@ -101,6 +124,26 @@ export default function StaffListClient({
     return `${diffInMonths} month${diffInMonths > 1 ? 's' : ''} ago`;
   };
 
+  // Handle Export PDF: generate and email activity report for a staff member
+  const handleExportPdf = async (userId: string) => {
+    setExportingUserId(userId);
+    setExportFeedback(null);
+    try {
+      const result = await generateStaffActivityPdfAndEmail(userId);
+      setExportFeedback({
+        id: userId,
+        ok: result.success,
+        msg: result.success
+          ? 'Report emailed to you successfully.'
+          : (result.error ?? 'Failed to generate report.'),
+      });
+    } finally {
+      setExportingUserId(null);
+      // Auto-clear feedback after 5 s
+      setTimeout(() => setExportFeedback(null), 5000);
+    }
+  };
+
   return (
     <div className={styles.container}>
       {/* Header */}
@@ -111,9 +154,8 @@ export default function StaffListClient({
           {/* Plan seat usage badge — only shown when the org has a capped plan */}
           {planLimit !== null && (
             <p
+              className="mt-1 text-[13px]"
               style={{
-                marginTop: '4px',
-                fontSize: '13px',
                 color: isAtLimit ? '#C53030' : '#718096',
                 fontWeight: isAtLimit ? 600 : 400,
               }}
@@ -122,10 +164,7 @@ export default function StaffListClient({
                 <>
                   ⚠️ Worker limit reached &mdash; {totalUsed}/{planLimit} seats used ({planName}{' '}
                   plan).{' '}
-                  <a
-                    href="/dashboard/billing"
-                    style={{ color: '#3182CE', textDecoration: 'underline' }}
-                  >
+                  <a href="/dashboard/billing" className="text-[#3182CE] underline">
                     Upgrade
                   </a>{' '}
                   to add more.
@@ -179,7 +218,7 @@ export default function StaffListClient({
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              setCurrentPage(1); // Reset to page 1 on search
+              setCurrentPage(1);
             }}
             leftIcon={
               <svg
@@ -191,7 +230,7 @@ export default function StaffListClient({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                style={{ color: '#A0AEC0' }}
+                className="text-slate-400"
               >
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -201,25 +240,24 @@ export default function StaffListClient({
         </div>
 
         {/* Table */}
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ width: '70%', paddingLeft: '24px' }}>Name</th>
-              <th style={{ width: '30%', textAlign: 'right', paddingRight: '24px' }}>
-                Date Invited
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-0">
+              <TableHead className="pl-12">Name</TableHead>
+              <TableHead className="hidden sm:table-cell text-right pr-12">Date Invited</TableHead>
+              <TableHead className="w-12 text-right pr-4">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {currentUsers.length > 0 ? (
               currentUsers.map((user) => (
-                <tr
+                <TableRow
                   key={user.id}
                   onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
-                  className={user.isPending ? undefined : styles.clickableRow}
-                  style={user.isPending ? { cursor: 'default', opacity: 0.85 } : undefined}
+                  className={user.isPending ? 'cursor-default opacity-85' : styles.clickableRow}
                 >
-                  <td style={{ paddingLeft: '24px' }}>
+                  {/* Name / avatar cell */}
+                  <TableCell className="pl-6">
                     <div className={styles.userInfo}>
                       <div className={styles.avatar}>
                         {user.avatarUrl ? (
@@ -238,23 +276,10 @@ export default function StaffListClient({
                         {!user.isPending && <div className={styles.statusDot}></div>}
                       </div>
                       <div className={styles.userDetails}>
-                        <div
-                          className={styles.userName}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                        >
+                        <div className={`${styles.userName} flex items-center gap-2`}>
                           {user.email}
                           {user.isPending && (
-                            <span
-                              style={{
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                background: '#EBF4FF',
-                                color: '#3182CE',
-                                letterSpacing: '0.3px',
-                              }}
-                            >
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-[#EBF4FF] text-[#3182CE] tracking-wide">
                               Pending
                             </span>
                           )}
@@ -262,78 +287,157 @@ export default function StaffListClient({
                         <div className={styles.userRole}>{user.jobTitle}</div>
                       </div>
                     </div>
-                  </td>
-                  <td
-                    style={{
-                      textAlign: 'right',
-                      color: '#718096',
-                      paddingRight: '24px',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {user.isPending ? (
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
-                        <span>{getRelativeTime(user.dateInvited)}</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRevokeTarget({ id: user.id, email: user.email });
-                          }}
-                          style={{
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            color: '#E53E3E',
-                            background: 'transparent',
-                            border: '1px solid #E53E3E',
-                            borderRadius: '6px',
-                            padding: '3px 10px',
-                            cursor: 'pointer',
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          Revoke
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
-                        <span>{getRelativeTime(user.dateInvited)}</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRemoveTarget({ id: user.id, name: user.name, email: user.email });
-                          }}
-                          style={{
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            color: '#E53E3E',
-                            background: 'transparent',
-                            border: '1px solid #E53E3E',
-                            borderRadius: '6px',
-                            padding: '3px 10px',
-                            cursor: 'pointer',
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          Remove
-                        </button>
+                  </TableCell>
+
+                  {/* Date cell — hidden on small screens */}
+                  <TableCell className="hidden sm:table-cell text-right text-slate-500 pr-6 whitespace-nowrap">
+                    {getRelativeTime(user.dateInvited)}
+                    {/* Inline feedback for this row */}
+                    {exportFeedback?.id === user.id && (
+                      <div
+                        className={`mt-1 text-[11px] font-medium ${
+                          exportFeedback.ok ? 'text-green-600' : 'text-red-600'
+                        }`}
+                      >
+                        {exportFeedback.msg}
                       </div>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+
+                  {/* Kebab action cell — always visible */}
+                  <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-transparent text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400"
+                          aria-label="More options"
+                          title="More options"
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                          >
+                            <circle cx="12" cy="5" r="1.5" />
+                            <circle cx="12" cy="12" r="1.5" />
+                            <circle cx="12" cy="19" r="1.5" />
+                          </svg>
+                        </button>
+                      </DropdownMenuTrigger>
+
+                      <DropdownMenuContent align="end" className="min-w-[160px]">
+                        {user.isPending ? (
+                          /* ── Pending invite actions ── */
+                          <DropdownMenuItem
+                            variant="destructive"
+                            className="cursor-pointer"
+                            onSelect={() => setRevokeTarget({ id: user.id, email: user.email })}
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="15" y1="9" x2="9" y2="15" />
+                              <line x1="9" y1="9" x2="15" y2="15" />
+                            </svg>
+                            Revoke Invite
+                          </DropdownMenuItem>
+                        ) : (
+                          /* ── Active staff actions ── */
+                          <>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onSelect={() => router.push(`/dashboard/staff/${user.id}`)}
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                              View Profile
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              disabled={exportingUserId === user.id}
+                              onSelect={() => handleExportPdf(user.id)}
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                                <line x1="16" y1="13" x2="8" y2="13" />
+                                <line x1="16" y1="17" x2="8" y2="17" />
+                              </svg>
+                              {exportingUserId === user.id ? 'Exporting…' : 'Export PDF'}
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
+                            <DropdownMenuItem
+                              variant="destructive"
+                              className="cursor-pointer"
+                              onSelect={() =>
+                                setRemoveTarget({ id: user.id, name: user.name, email: user.email })
+                              }
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <line x1="23" y1="11" x2="17" y2="11" />
+                              </svg>
+                              Remove Staff
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
               ))
             ) : (
-              <tr>
-                <td colSpan={2} style={{ textAlign: 'center', padding: '60px', color: '#718096' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '12px',
-                    }}
-                  >
-                    {/* Empty state icon */}
-                    <div style={{ color: '#CBD5E0' }}>
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={3} className="text-center p-[60px] text-slate-500">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="text-slate-300">
                       <svg
                         width="64"
                         height="64"
@@ -350,18 +454,16 @@ export default function StaffListClient({
                         <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                       </svg>
                     </div>
-                    <p style={{ fontSize: '16px', fontWeight: 600, color: '#2D3748' }}>
-                      No staff members found
-                    </p>
-                    <p style={{ fontSize: '14px', color: '#718096' }}>
+                    <p className="text-base font-semibold text-[#2D3748]">No staff members found</p>
+                    <p className="text-sm text-slate-500">
                       Get started by adding a new staff member to your organization.
                     </p>
                   </div>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
 
         {/* Pagination */}
         <div className={styles.pagination}>
@@ -444,6 +546,7 @@ export default function StaffListClient({
           </div>
         </div>
       </div>
+
       {/* Feature Gate Modal */}
       <OrganizationActivationModal
         hasOrganization={hasOrganization}

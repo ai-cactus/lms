@@ -4,6 +4,21 @@ import React, { useState, useMemo, useEffect, useCallback, useTransition } from 
 import styles from './CoursesList.module.css';
 import { Button, Input, Select } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -11,6 +26,7 @@ import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
+import { MoreVertical, Eye, Pencil, Trash2 } from 'lucide-react';
 
 const PENDING_KEY = 'lms_pending_generation';
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -89,17 +105,8 @@ function PendingGenerationBanner() {
 
   return (
     <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '12px 16px',
-        border: '1px solid',
-        borderRadius: 10,
-        marginBottom: 16,
-        fontSize: 14,
-        ...(bannerStyles[banner] ?? {}),
-      }}
+      className="flex items-center gap-3 px-4 py-3 border rounded-[10px] mb-4 text-sm"
+      style={bannerStyles[banner]}
     >
       {banner === 'generating' && (
         <svg
@@ -109,13 +116,12 @@ function PendingGenerationBanner() {
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
-          style={{ flexShrink: 0, animation: 'spin 1s linear infinite' }}
+          className="shrink-0 animate-spin"
         >
           <circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10" />
-          <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
         </svg>
       )}
-      <span style={{ flex: 1 }}>
+      <span className="flex-1">
         {banner === 'generating' && 'Your course is still being generated in the background…'}
         {banner === 'done' &&
           '✅ Course generation complete! Resume the wizard to review and publish.'}
@@ -124,19 +130,14 @@ function PendingGenerationBanner() {
       {banner === 'done' && (
         <Link
           href="/dashboard/courses/create"
-          style={{
-            fontWeight: 600,
-            color: '#38A169',
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}
+          className="font-semibold text-[#38A169] no-underline whitespace-nowrap"
         >
           Resume Setup →
         </Link>
       )}
       <button
         onClick={dismiss}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, padding: 4 }}
+        className="bg-none border-none cursor-pointer opacity-60 p-1"
         title="Dismiss"
       >
         ✕
@@ -184,96 +185,37 @@ function CourseRenameModal({
 
   return (
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.45)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: '1rem',
-      }}
+      className="fixed inset-0 bg-black/45 flex items-center justify-center z-[1000] p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Rename course"
     >
-      <div
-        style={{
-          background: '#fff',
-          borderRadius: 12,
-          padding: '1.5rem',
-          width: '100%',
-          maxWidth: 420,
-          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-        }}
-      >
-        <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#111827', margin: '0 0 1rem' }}>
-          Rename Course
-        </h2>
+      <div className="bg-white rounded-xl p-6 w-full max-w-[420px] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+        <h2 className="text-lg font-semibold text-[#111827] mb-4">Rename Course</h2>
         <form onSubmit={handleSubmit}>
           <input
-            style={{
-              width: '100%',
-              padding: '0.625rem 0.875rem',
-              border: '1px solid #d1d5db',
-              borderRadius: 8,
-              fontSize: '0.875rem',
-              fontFamily: 'inherit',
-              color: '#111827',
-              boxSizing: 'border-box',
-            }}
+            className="w-full py-2.5 px-3.5 border border-[#d1d5db] rounded-lg text-sm font-[inherit] text-[#111827] box-border"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             autoFocus
             disabled={isPending}
             aria-label="New course title"
           />
-          {error && (
-            <p style={{ color: '#dc2626', fontSize: '0.8125rem', marginTop: '0.375rem' }}>
-              {error}
-            </p>
-          )}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '0.75rem',
-              marginTop: '1.25rem',
-            }}
-          >
+          {error && <p className="text-red-600 text-[0.8125rem] mt-1.5">{error}</p>}
+          <div className="flex justify-end gap-3 mt-5">
             <button
               type="button"
               onClick={onClose}
               disabled={isPending}
-              style={{
-                padding: '0.5rem 1rem',
-                border: '1px solid #d1d5db',
-                borderRadius: 8,
-                background: '#fff',
-                color: '#374151',
-                fontSize: '0.875rem',
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-              }}
+              className="py-2 px-4 border border-[#d1d5db] rounded-lg bg-white text-[#374151] text-sm font-[inherit] cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isPending}
-              style={{
-                padding: '0.5rem 1.25rem',
-                border: 'none',
-                borderRadius: 8,
-                background: '#4731f7',
-                color: '#fff',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                opacity: isPending ? 0.6 : 1,
-              }}
+              className="py-2 px-5 border-none rounded-lg bg-[#4731f7] text-white text-sm font-semibold font-[inherit] cursor-pointer"
+              style={{ opacity: isPending ? 0.6 : 1 }}
             >
               {isPending ? 'Saving…' : 'Save'}
             </button>
@@ -299,7 +241,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showBillingGate, setShowBillingGate] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [courseToRename, setCourseToRename] = useState<{ id: string; title: string } | null>(null);
@@ -310,17 +251,9 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
     setCourseList(courses);
   }, [courses]);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => setActiveDropdown(null);
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
   const handleDelete = useCallback(
     (e: React.MouseEvent, course: CourseWithStats) => {
       e.stopPropagation();
-      setActiveDropdown(null);
       if (
         !confirm(
           `Delete "${course.title}"?\n\nThis will permanently remove the course and cannot be undone.`,
@@ -428,22 +361,13 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
 
       {/* Delete error banner */}
       {deleteError && (
-        <p
-          role="alert"
-          style={{
-            color: '#dc2626',
-            fontSize: '0.875rem',
-            marginBottom: '0.75rem',
-            padding: '0.5rem 0.75rem',
-            background: '#fef2f2',
-            borderRadius: 6,
-          }}
-        >
+        <p role="alert" className="text-red-600 text-sm mb-3 px-3 py-2 bg-red-50 rounded-md">
           ⚠️ {deleteError}
         </p>
       )}
 
       <PendingGenerationBanner />
+
       <div className={styles.card}>
         {/* Search */}
         <div className={styles.searchContainer}>
@@ -453,7 +377,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              setCurrentPage(1); // Reset to page 1 on search
+              setCurrentPage(1);
             }}
             leftIcon={
               <svg
@@ -465,7 +389,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                style={{ color: '#A0AEC0' }}
+                className="text-slate-400"
               >
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -475,27 +399,25 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         </div>
 
         {/* Table */}
-        {/* Table */}
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th style={{ width: '40%' }}>Course Name</th>
-              <th style={{ width: '15%' }}>Assigned Staff</th>
-              <th style={{ width: '15%' }}>Role</th>
-              <th style={{ width: '20%' }}>Date Created</th>
-              <th style={{ width: '10%' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-0">
+              <TableHead style={{ width: '40%' }}>Course Name</TableHead>
+              <TableHead style={{ width: '15%' }}>Assigned Staff</TableHead>
+              <TableHead style={{ width: '15%' }}>Role</TableHead>
+              <TableHead style={{ width: '20%' }}>Date Created</TableHead>
+              <TableHead style={{ width: '10%' }}></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {currentCourses.length > 0 ? (
               currentCourses.map((course) => (
-                <tr
+                <TableRow
                   key={course.id}
                   onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                  style={{ cursor: 'pointer' }}
-                  className={styles.clickableRow}
+                  className="cursor-pointer"
                 >
-                  <td>
+                  <TableCell>
                     <div className={styles.courseInfo}>
                       <div className={styles.courseIcon}>
                         <Image
@@ -509,144 +431,73 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                         <span className={styles.courseName}>{course.title}</span>
                       </div>
                     </div>
-                  </td>
-                  <td>{course.enrollmentsCount}</td>
-                  <td>General</td>
-                  <td>
+                  </TableCell>
+                  <TableCell>{course.enrollmentsCount}</TableCell>
+                  <TableCell>General</TableCell>
+                  <TableCell>
                     {new Date(course.createdAt).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
                     })}
-                  </td>
-                  <td>
-                    <div className={styles.actionCell} onClick={(e) => e.stopPropagation()}>
-                      <div className={styles.dropdownContainer}>
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <button
                           className={styles.moreActionBtn}
                           aria-label="More actions"
-                          aria-expanded={activeDropdown === course.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveDropdown(activeDropdown === course.id ? null : course.id);
-                          }}
+                          aria-haspopup="menu"
                         >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <circle cx="12" cy="5" r="1.5" />
-                            <circle cx="12" cy="12" r="1.5" />
-                            <circle cx="12" cy="19" r="1.5" />
-                          </svg>
+                          <MoreVertical size={16} />
                         </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[160px]">
+                        {/* View */}
+                        <DropdownMenuItem
+                          onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                          className="gap-2 cursor-pointer"
+                        >
+                          <Eye size={14} />
+                          View
+                        </DropdownMenuItem>
 
-                        {activeDropdown === course.id && (
-                          <div className={styles.dropdownMenu} role="menu">
-                            {/* View */}
-                            <button
-                              className={styles.dropdownItem}
-                              role="menuitem"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveDropdown(null);
-                                router.push(`/dashboard/training/courses/${course.id}`);
-                              }}
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                style={{ marginRight: 8 }}
-                                aria-hidden="true"
-                              >
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                <circle cx="12" cy="12" r="3" />
-                              </svg>
-                              View
-                            </button>
+                        {/* Rename */}
+                        <DropdownMenuItem
+                          onClick={() => setCourseToRename({ id: course.id, title: course.title })}
+                          className="gap-2 cursor-pointer"
+                        >
+                          <Pencil size={14} />
+                          Rename
+                        </DropdownMenuItem>
 
-                            {/* Rename */}
-                            <button
-                              className={styles.dropdownItem}
-                              role="menuitem"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveDropdown(null);
-                                setCourseToRename({ id: course.id, title: course.title });
-                              }}
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                style={{ marginRight: 8 }}
-                                aria-hidden="true"
-                              >
-                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                              </svg>
-                              Rename
-                            </button>
+                        <DropdownMenuSeparator />
 
-                            {/* Delete */}
-                            <button
-                              className={`${styles.dropdownItem} ${styles.deleteItem} ${
-                                deletingId === course.id ? (styles.dropdownItemDisabled ?? '') : ''
-                              }`}
-                              role="menuitem"
-                              disabled={deletingId === course.id}
-                              title={deletingId === course.id ? 'Deleting…' : 'Delete course'}
-                              onClick={(e) => handleDelete(e, course)}
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                style={{ marginRight: 8 }}
-                                aria-hidden="true"
-                              >
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                <line x1="10" y1="11" x2="10" y2="17" />
-                                <line x1="14" y1="11" x2="14" y2="17" />
-                              </svg>
-                              {deletingId === course.id ? 'Deleting…' : 'Delete'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
+                        {/* Delete */}
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={deletingId === course.id}
+                          onClick={(e) => handleDelete(e, course)}
+                          className="gap-2 cursor-pointer"
+                        >
+                          <Trash2 size={14} />
+                          {deletingId === course.id ? 'Deleting…' : 'Delete'}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
               ))
             ) : (
               <EmptyTableState
                 message="No courses found."
                 subMessage="Try adjusting your search or create a new course."
-                colSpan={3}
+                colSpan={5}
                 asTableRow
               />
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
 
         {/* Pagination */}
         <div className={styles.pagination}>

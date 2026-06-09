@@ -536,13 +536,10 @@ export default function Step5Review({
   // Loading / Error States
   if (error && !generatedContent) {
     return (
-      <div
-        className={styles.playerContainer}
-        style={{ alignItems: 'center', justifyContent: 'center' }}
-      >
-        <div style={{ textAlign: 'center' }}>
-          <h2 style={{ color: '#EF4444', marginBottom: 8 }}>Generation Failed</h2>
-          <p style={{ color: '#6B7280', marginBottom: 16 }}>{error}</p>
+      <div className={`${styles.playerContainer} items-center justify-center`}>
+        <div className="text-center">
+          <h2 className="text-red-500 mb-2">Generation Failed</h2>
+          <p className="text-[#6B7280] mb-4">{error}</p>
           <Button variant="primary" size="md" onClick={() => window.location.reload()}>
             Try Again
           </Button>
@@ -555,50 +552,24 @@ export default function Step5Review({
   // (ref is declared near the top of the component, above all early returns)
   if (isGenerating) {
     return (
-      <div
-        className={styles.playerContainer}
-        style={{ alignItems: 'center', justifyContent: 'center' }}
-      >
-        <div style={{ textAlign: 'center', maxWidth: 420 }}>
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              border: '3px solid #E5E7EB',
-              borderTopColor: '#1a1a1a',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-              margin: '0 auto 24px',
-            }}
-          />
-          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1A202C', marginBottom: 8 }}>
-            Creating your course and quiz…
-          </h2>
-          <p style={{ color: '#4A5568', fontSize: 15, lineHeight: 1.6, marginBottom: 8 }}>
+      <div className={`${styles.playerContainer} items-center justify-center`}>
+        <div className="text-center max-w-[420px]">
+          <div className="w-10 h-10 border-[3px] border-[#E5E7EB] border-t-[#1a1a1a] rounded-full animate-spin mx-auto mb-6" />
+          <h2 className="text-xl font-bold text-[#1A202C] mb-2">Creating your course and quiz…</h2>
+          <p className="text-[#4A5568] text-[15px] leading-relaxed mb-2">
             We&apos;re reading your documents, pulling out the key points, and turning them into a
             clear course with a quiz.
           </p>
-          <p style={{ color: '#A0AEC0', fontSize: 13 }}>
+          <p className="text-slate-400 text-[13px]">
             You&apos;ll be able to review and edit everything before publishing.
           </p>
-          <p style={{ color: '#A0AEC0', fontSize: 12, marginTop: 8 }}>
+          <p className="text-slate-400 text-xs mt-2">
             You can go back to the dashboard — generation will continue and you can resume from
             there.
           </p>
           <button
             onClick={() => handleBackToDashboard(activeJobIdRef.current ?? '')}
-            style={{
-              display: 'inline-block',
-              marginTop: 32,
-              fontSize: 14,
-              fontWeight: 600,
-              color: '#4C6EF5',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              textDecoration: 'underline',
-            }}
+            className="inline-block mt-8 text-sm font-semibold text-[#4C6EF5] bg-none border-none cursor-pointer underline"
           >
             ← Back to Dashboard
           </button>
@@ -618,7 +589,7 @@ export default function Step5Review({
   return (
     <div className={styles.playerContainer}>
       {/* Main Area */}
-      <div className={styles.main} style={{ width: '100%' }}>
+      <div className={`${styles.main} w-full`}>
         {/* Content Stage */}
         <div className={styles.contentArea}>
           {viewMode === 'slides' ? (
@@ -666,7 +637,7 @@ export default function Step5Review({
           if (!hasShortfall) return null;
 
           return (
-            <div style={{ padding: '0 32px 24px' }}>
+            <div className="px-8 pb-6">
               <div className={wizardStyles.qualityWarningCard}>
                 <div className={wizardStyles.qualityWarningHeader}>CONTENT SHORTFALL</div>
                 <div className={wizardStyles.qualityWarningBody}>
@@ -697,15 +668,7 @@ export default function Step5Review({
 
         {/* Warning banner for partial failures */}
         {generatedContent?.warning && (
-          <div
-            style={{
-              padding: '12px 16px',
-              background: '#FEF3C7',
-              borderTop: '1px solid #F59E0B',
-              color: '#92400E',
-              fontSize: 13,
-            }}
-          >
+          <div className="px-4 py-3 bg-[#FEF3C7] border-t border-[#F59E0B] text-[#92400E] text-[13px]">
             ⚠ {generatedContent.warning}
           </div>
         )}

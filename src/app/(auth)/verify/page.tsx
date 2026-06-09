@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Image from 'next/image';
 import { Logo, Button } from '@/components/ui';
+import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 import styles from '../verify-email/page.module.css';
 
 function VerifyContent() {
@@ -90,26 +90,9 @@ export default function VerifyTokenPage() {
           <VerifyContent />
         </Suspense>
       </div>
-      {/* Keeping the same right-side layout as verify-email */}
-      <div className={styles.heroSection}>
-        <Image
-          src="/images/login-bg.png"
-          alt="Theraptly Training"
-          fill
-          className={styles.heroImage}
-          priority
-          quality={100}
-        />
-        <div className={styles.heroOverlay}>
-          <div className={styles.heroTextContent}>
-            <h2 className={styles.heroTitle}>Audit-ready training, built from your policies</h2>
-            <p className={styles.heroSubtitle}>
-              Turn compliance policies into structured training, track completion automatically, and
-              keep clear records.
-            </p>
-          </div>
-        </div>
-      </div>
+
+      {/* Right Side - Hero Slider */}
+      <AuthHeroSlider />
     </div>
   );
 }

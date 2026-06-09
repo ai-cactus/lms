@@ -13,7 +13,7 @@ import Step7Publish from './steps/Step7Publish';
 import CourseSuccessModal from './CourseSuccessModal';
 import ConfirmPublishModal from './ConfirmPublishModal';
 import Logo from '@/components/ui/Logo';
-import Button from '@/components/ui/Button';
+import Button from '@/components/ui/legacy/Button';
 import PhiErrorModal from './PhiErrorModal';
 import { createFullCourse } from '@/app/actions/course';
 import { analyzeStoredDocument } from '@/app/actions/course-ai';
@@ -573,27 +573,14 @@ export default function CourseWizard() {
 
       <main className={styles.content}>
         {showResumeBanner && (
-          <div
-            style={{
-              backgroundColor: '#EBF4FF',
-              border: '1px solid #BEE3F8',
-              borderRadius: '8px',
-              padding: '16px',
-              marginBottom: '24px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
+          <div className="bg-[#EBF4FF] border border-[#BEE3F8] rounded-lg p-4 mb-6 flex justify-between items-center">
             <div>
-              <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#2B6CB0' }}>
-                Resume your draft?
-              </h3>
-              <p style={{ margin: 0, fontSize: '14px', color: '#2C5282' }}>
+              <h3 className="m-0 mb-1 text-base text-[#2B6CB0]">Resume your draft?</h3>
+              <p className="m-0 text-sm text-[#2C5282]">
                 We found an unsaved course creation draft from your current session.
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -675,30 +662,9 @@ export default function CourseWizard() {
         />
 
         {currentStep === 2 && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              textAlign: 'center',
-              padding: '24px 0',
-              marginTop: '16px',
-              backgroundColor: '#FAFCFE',
-              borderRadius: '12px',
-              border: '1px dashed #E2E8F0',
-              width: '100%',
-              maxWidth: '800px',
-            }}
-          >
+          <div className="flex flex-col items-center text-center py-6 mt-4 bg-[#FAFCFE] rounded-xl border border-dashed border-[#E2E8F0] w-full max-w-[800px]">
             {/* Icon Layer from PhiErrorModal */}
-            <div
-              style={{
-                position: 'relative',
-                width: '120px',
-                height: '120px',
-                marginBottom: '24px',
-              }}
-            >
+            <div className="relative w-[120px] h-[120px] mb-6">
               {/* Document Icon */}
               <svg
                 width="100"
@@ -747,14 +713,7 @@ export default function CourseWizard() {
               </svg>
 
               {/* Magnifying Glass with Badge */}
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: '0',
-                  left: '-10px',
-                  filter: 'drop-shadow(0px 10px 15px rgba(0,0,0,0.1))',
-                }}
-              >
+              <div className="absolute bottom-0 left-[-10px] [filter:drop-shadow(0px_10px_15px_rgba(0,0,0,0.1))]">
                 <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
                   <circle cx="25" cy="25" r="20" fill="white" stroke="#4C6EF5" strokeWidth="4" />
                   <path d="M40 40L55 55" stroke="#4C6EF5" strokeWidth="6" strokeLinecap="round" />
@@ -765,20 +724,8 @@ export default function CourseWizard() {
               </div>
             </div>
 
-            <h2
-              style={{ fontSize: '20px', fontWeight: 700, color: '#1A202C', marginBottom: '12px' }}
-            >
-              We care about your privacy!
-            </h2>
-            <p
-              style={{
-                fontSize: '15px',
-                color: '#4A5568',
-                maxWidth: '500px',
-                lineHeight: '1.5',
-                marginBottom: '0',
-              }}
-            >
+            <h2 className="text-xl font-bold text-[#1A202C] mb-3">We care about your privacy!</h2>
+            <p className="text-[15px] text-[#4A5568] max-w-[500px] leading-relaxed mb-0">
               Ensure that any document you upload does NOT contain personal health information.
             </p>
           </div>
@@ -792,51 +739,13 @@ export default function CourseWizard() {
         />
 
         {showExitConfirm && (
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 9999,
-            }}
-          >
-            <div
-              style={{
-                background: 'white',
-                width: '90%',
-                maxWidth: '420px',
-                borderRadius: '16px',
-                padding: '24px',
-                boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
-              }}
-            >
-              <h2
-                style={{
-                  fontSize: '18px',
-                  fontWeight: 600,
-                  color: '#1A202C',
-                  marginBottom: '12px',
-                }}
-              >
-                Exit course creation?
-              </h2>
-              <p
-                style={{
-                  fontSize: '14px',
-                  color: '#4A5568',
-                  marginBottom: '24px',
-                  lineHeight: 1.5,
-                }}
-              >
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
+            <div className="bg-white w-[90%] max-w-[420px] rounded-2xl p-6 shadow-[0_20px_25px_-5px_rgba(0,0,0,0.1)]">
+              <h2 className="text-lg font-semibold text-[#1A202C] mb-3">Exit course creation?</h2>
+              <p className="text-sm text-[#4A5568] mb-6 leading-relaxed">
                 You have unsaved progress. If you exit now, your work will be lost.
               </p>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <div className="flex justify-end gap-3">
                 <Button variant="outline" size="sm" onClick={() => setShowExitConfirm(false)}>
                   Cancel
                 </Button>

@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { decode, JWT } from 'next-auth/jwt';
 import { logger } from '@/lib/logger';
 
-// ✅ All route rules live in one config object — easy to audit and extend
+// All route rules live in one config object — easy to audit and extend
 const ROUTE_CONFIG = {
   worker: {
     cookiePrefix: 'worker',
@@ -104,10 +104,17 @@ export async function proxy(req: NextRequest) {
   }
 
   // ✅ MFA Step-up check
+  // NOTE: We deliberately skip this check on the login page itself.
+  // A user with an unfinished/abandoned 2FA session must be allowed to reach
+  // /login so they can re-authenticate (as the same or a different account).
+  // NextAuth's signIn flow will mint a new session and new sessionId, starting
+  // the MFA challenge fresh. Redirecting to /verify-2fa from /login would
+  // trap the user in the old session's 2FA flow with no way out.
   if (
     (token as unknown as Record<string, unknown>).mfaEnabled === true &&
     (token as unknown as Record<string, unknown>).mfaVerified !== true &&
-    pathname !== '/verify-2fa'
+    pathname !== '/verify-2fa' &&
+    pathname !== cfg.loginPath
   ) {
     const mfaUrl = new URL('/verify-2fa', req.url);
     mfaUrl.searchParams.set('callbackUrl', pathname);

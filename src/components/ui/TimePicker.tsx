@@ -118,7 +118,7 @@ function ClockFace({ mode, h12, minutes, onSelectHour, onSelectMinute }: ClockFa
       height={SIZE}
       viewBox={`0 0 ${SIZE} ${SIZE}`}
       onClick={handleClick}
-      style={{ cursor: 'pointer', userSelect: 'none' }}
+      className="cursor-pointer select-none"
     >
       {/* Face */}
       <circle cx={CX} cy={CY} r={SIZE / 2 - 4} fill="#F7FAFF" stroke="#E2E8F0" strokeWidth={1.5} />
@@ -314,15 +314,7 @@ export default function TimePicker({
       <div className={`${styles.inputWrapper} ${open ? styles.active : ''}`}>
         <input
           type="text"
-          className={styles.inputText}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            width: '100%',
-            color: 'inherit',
-            fontSize: 'inherit',
-          }}
+          className={`${styles.inputText} bg-transparent border-none outline-none w-full text-inherit text-base`}
           placeholder={placeholder}
           value={textInput}
           onChange={(e) => setTextInput(e.target.value)}
@@ -340,15 +332,7 @@ export default function TimePicker({
           type="button"
           tabIndex={-1}
           onClick={() => setOpen((o) => !o)}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            color: '#718096',
-            padding: 0,
-          }}
+          className="bg-transparent border-none cursor-pointer flex items-center text-slate-500 p-0"
         >
           <svg
             width="18"
@@ -373,61 +357,39 @@ export default function TimePicker({
           onMouseDown={(e) => e.preventDefault()} // prevent blur on clock click
         >
           {/* Digital time display + AM/PM toggle */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              padding: '16px 16px 8px',
-            }}
-          >
+          <div className="flex items-center justify-center gap-2 pt-4 px-4 pb-2">
             <button
               onClick={() => setMode('hours')}
+              className="text-[28px] font-bold border-none rounded-lg py-1 px-2.5 cursor-pointer"
               style={{
-                fontSize: 28,
-                fontWeight: 700,
                 color: mode === 'hours' ? '#4C6EF5' : '#2D3748',
                 background: mode === 'hours' ? '#EBF4FF' : '#F7FAFC',
-                border: 'none',
-                borderRadius: 8,
-                padding: '4px 10px',
-                cursor: 'pointer',
               }}
             >
               {pad(h12)}
             </button>
-            <span style={{ fontSize: 28, fontWeight: 700, color: '#2D3748' }}>:</span>
+            <span className="text-[28px] font-bold text-gray-800">:</span>
             <button
               onClick={() => setMode('minutes')}
+              className="text-[28px] font-bold border-none rounded-lg py-1 px-2.5 cursor-pointer"
               style={{
-                fontSize: 28,
-                fontWeight: 700,
                 color: mode === 'minutes' ? '#4C6EF5' : '#2D3748',
                 background: mode === 'minutes' ? '#EBF4FF' : '#F7FAFC',
-                border: 'none',
-                borderRadius: 8,
-                padding: '4px 10px',
-                cursor: 'pointer',
               }}
             >
               {pad(minutes)}
             </button>
             {/* AM / PM */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginLeft: 4 }}>
+            <div className="flex flex-col gap-1 ml-1">
               {(['AM', 'PM'] as const).map((a) => (
                 <button
                   key={a}
                   onClick={() => handleAmpm(a)}
+                  className="text-xs font-bold py-[3px] px-2 rounded-md cursor-pointer"
                   style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    padding: '3px 8px',
-                    borderRadius: 6,
                     border: ampm === a ? '2px solid #4C6EF5' : '2px solid #E2E8F0',
                     background: ampm === a ? '#4C6EF5' : 'white',
                     color: ampm === a ? 'white' : '#718096',
-                    cursor: 'pointer',
                   }}
                 >
                   {a}
@@ -437,12 +399,12 @@ export default function TimePicker({
           </div>
 
           {/* Mode label */}
-          <div style={{ textAlign: 'center', fontSize: 11, color: '#A0AEC0', marginBottom: 4 }}>
+          <div className="text-center text-[11px] text-slate-400 mb-1">
             {mode === 'hours' ? 'Select hour' : 'Select minute'}
           </div>
 
           {/* Clock face */}
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '0 16px 8px' }}>
+          <div className="flex justify-center px-4 pb-2">
             <ClockFace
               mode={mode}
               h12={h12}
@@ -453,22 +415,13 @@ export default function TimePicker({
           </div>
 
           {/* OK button */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 12px' }}>
+          <div className="flex justify-end py-2 px-4 pb-3">
             <button
               onClick={() => {
                 setOpen(false);
                 setMode('hours');
               }}
-              style={{
-                background: '#4C6EF5',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                padding: '7px 20px',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
+              className="bg-[#4C6EF5] text-white border-none rounded-lg py-[7px] px-5 text-[13px] font-semibold cursor-pointer"
             >
               OK — {displayTime}
             </button>

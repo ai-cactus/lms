@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Logo, Input, Button } from '@/components/ui';
+import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 import styles from '../../login/page.module.css';
-
-import { Suspense } from 'react';
 
 function MfaVerifyForm() {
   const router = useRouter();
@@ -69,6 +68,7 @@ function MfaVerifyForm() {
 
   return (
     <div className={styles.container}>
+      {/* Left Side - Form */}
       <div className={styles.formSection}>
         <div className={styles.formContent}>
           <Logo size="md" />
@@ -155,42 +155,8 @@ function MfaVerifyForm() {
         </div>
       </div>
 
-      <div className={styles.heroSection}>
-        <div
-          style={{
-            position: 'relative',
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#1E3A5F',
-          }}
-        >
-          <div style={{ textAlign: 'center', padding: '40px', color: '#fff' }}>
-            <svg
-              width="64"
-              height="64"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ margin: '0 auto 24px' }}
-            >
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-            <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '12px' }}>
-              Secure Verification
-            </h2>
-            <p style={{ fontSize: '14px', opacity: 0.8 }}>
-              Your account is protected with two-factor authentication.
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Right Side - Hero Slider */}
+      <AuthHeroSlider />
     </div>
   );
 }
