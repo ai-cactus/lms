@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import styles from './BadgeSuccessModal.module.css';
 import { Modal, Button } from '@/components/ui';
 
@@ -12,7 +13,6 @@ interface BadgeSuccessModalProps {
   badgeId?: string;
   issuedDate: string;
   courseId?: string; // Optional for navigation
-  certificateId?: string;
 }
 
 export default function BadgeSuccessModal({
@@ -23,7 +23,6 @@ export default function BadgeSuccessModal({
   badgeId = 'LMS-104',
   issuedDate,
   courseId,
-  certificateId,
 }: BadgeSuccessModalProps) {
   const router = useRouter();
 
@@ -122,9 +121,10 @@ export default function BadgeSuccessModal({
         </div>
 
         <div className={styles.rightPanel}>
-          <img
+          <Image
             src="/images/course_badge_modal.png"
             alt="Badge Success"
+            fill
             className={styles.rightImage}
           />
         </div>
