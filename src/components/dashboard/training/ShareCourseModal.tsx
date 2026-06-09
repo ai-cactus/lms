@@ -5,6 +5,7 @@ import styles from './ShareCourseModal.module.css';
 import { enrollUsers } from '@/app/actions/enrollment';
 import { Modal, Button } from '@/components/ui';
 import { logger } from '@/lib/logger';
+import type { StaffEntry } from '@/types/enrollment';
 
 interface ShareCourseModalProps {
   isOpen: boolean;
@@ -13,7 +14,7 @@ interface ShareCourseModalProps {
 }
 
 export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCourseModalProps) {
-  const [emails, setEmails] = React.useState<string[]>([]);
+  const [entries, setEntries] = React.useState<StaffEntry[]>([]);
   const [inputValue, setInputValue] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [hasDeadline, setHasDeadline] = React.useState(false);
@@ -32,21 +33,55 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const lines = text.split('\n');
-      const newEmails: string[] = [];
-      lines.forEach((line) => {
-        const parts = line.split(',');
-        parts.forEach((part) => {
-          const email = part.trim();
-          if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            newEmails.push(email);
-          }
-        });
+      const lines = text
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      if (lines.length === 0) return;
+
+      // Detect whether the first row is a header by checking if the last
+      // column of the first row contains a valid email address.
+      const firstRowCells = lines[0].split(',').map((c) => c.trim());
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const hasHeader = !emailRegex.test(firstRowCells[firstRowCells.length - 1]);
+      const dataLines = hasHeader ? lines.slice(1) : lines;
+
+      const existingEmails = new Set(entries.map((en) => en.email.toLowerCase()));
+      const newEntries: StaffEntry[] = [];
+
+      dataLines.forEach((line) => {
+        const cells = line.split(',').map((c) => c.trim());
+
+        // Support both old single-column (email only) and new four-column format.
+        // New format: First Name, Last Name, Role, Email
+        let firstName: string | undefined;
+        let lastName: string | undefined;
+        let role: 'admin' | 'worker' | undefined;
+        let email: string;
+
+        if (cells.length >= 4) {
+          firstName = cells[0] || undefined;
+          lastName = cells[1] || undefined;
+          const rawRole = cells[2].toLowerCase();
+          role = rawRole === 'admin' ? 'admin' : 'worker';
+          email = cells[3];
+        } else {
+          // Fallback: scan all cells for the first valid email.
+          email = cells.find((c) => emailRegex.test(c)) ?? '';
+        }
+
+        if (!email || !emailRegex.test(email)) return;
+
+        const normalizedEmail = email.toLowerCase();
+        if (existingEmails.has(normalizedEmail)) return;
+
+        existingEmails.add(normalizedEmail);
+        newEntries.push({ email: normalizedEmail, firstName, lastName, role });
       });
 
-      const uniqueNew = newEmails.filter((e) => !emails.includes(e));
-      if (uniqueNew.length > 0) {
-        setEmails([...emails, ...uniqueNew]);
+      if (newEntries.length > 0) {
+        setEntries((prev) => [...prev, ...newEntries]);
       }
     };
     reader.readAsText(file);
@@ -54,61 +89,67 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
   };
 
   const downloadTemplate = () => {
-    const csvContent = 'data:text/csv;charset=utf-8,Email\nuser1@example.com\nuser2@example.com';
-    const encodedUri = encodeURI(csvContent);
+    const rows = [
+      'First Name,Last Name,Role,Email',
+      'Jane,Doe,worker,jane.doe@example.com',
+      'John,Smith,worker,john.smith@example.com',
+    ].join('\n');
+    const blob = new Blob([rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', 'assign_staff_template.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (['Enter', 'Tab', ',', ' '].includes(e.key)) {
       e.preventDefault();
-      const email = inputValue.trim();
+      const email = inputValue.trim().toLowerCase();
       if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        if (!emails.includes(email)) {
-          setEmails([...emails, email]);
+        if (!entries.some((en) => en.email === email)) {
+          setEntries((prev) => [...prev, { email }]);
         }
         setInputValue('');
       }
-    } else if (e.key === 'Backspace' && !inputValue && emails.length > 0) {
-      setEmails(emails.slice(0, -1));
+    } else if (e.key === 'Backspace' && !inputValue && entries.length > 0) {
+      setEntries((prev) => prev.slice(0, -1));
     }
   };
 
-  const removeEmail = (index: number) => {
-    setEmails(emails.filter((_, i) => i !== index));
+  const removeEntry = (index: number) => {
+    setEntries((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleShare = async () => {
-    if (emails.length === 0) return;
+    if (entries.length === 0) return;
 
     setIsLoading(true);
     setResult(null);
 
     try {
-      const res = await enrollUsers(courseId, emails);
+      const res = await enrollUsers(courseId, entries);
       setResult(res);
 
-      // Clear successfully enrolled emails
-      if (res.success.length > 0) {
-        const remainingEmails = emails.filter((e) => !res.success.includes(e));
-        setEmails(remainingEmails);
+      // Remove successfully processed entries from the chip list.
+      const processedEmails = new Set([...res.success, ...res.newInvited]);
+      if (processedEmails.size > 0) {
+        setEntries((prev) => prev.filter((en) => !processedEmails.has(en.email)));
       }
 
-      // Auto-close if all successful or invited
-      if (res.success.length + res.newInvited.length === emails.length) {
+      // Auto-close if all entries were successfully handled.
+      if (res.success.length + res.newInvited.length === entries.length) {
         setTimeout(() => {
           onClose();
-          setEmails([]);
+          setEntries([]);
           setResult(null);
         }, 1500);
       }
     } catch (error) {
-      logger.error({ msg: 'Failed to enroll users:', err: error });
+      logger.error({ msg: '[share-course] Failed to enroll users', err: error });
     } finally {
       setIsLoading(false);
     }
@@ -142,14 +183,20 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
             <polyline points="22,6 12,13 2,6"></polyline>
           </svg>
 
-          {emails.map((email, index) => (
-            <span key={index} className={styles.chip}>
-              {email}
+          {entries.map((entry, index) => (
+            <span
+              key={index}
+              className={styles.chip}
+              title={
+                entry.firstName ? `${entry.firstName} ${entry.lastName ?? ''}`.trim() : entry.email
+              }
+            >
+              {entry.email}
               <Button
                 variant="ghost"
                 size="icon-sm"
                 className={styles.removeChip}
-                onClick={() => removeEmail(index)}
+                onClick={() => removeEntry(index)}
               >
                 <svg
                   width="14"
@@ -171,7 +218,7 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
           <input
             id="email-input"
             className={styles.input}
-            placeholder={emails.length === 0 ? 'Emails, comma separated' : ''}
+            placeholder={entries.length === 0 ? 'Emails, comma separated' : ''}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -180,9 +227,9 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
         </div>
         <Button
           variant="primary"
-          className={`${styles.shareButton} ${emails.length > 0 ? styles.shareButtonActive : ''}`}
+          className={`${styles.shareButton} ${entries.length > 0 ? styles.shareButtonActive : ''}`}
           onClick={handleShare}
-          disabled={emails.length === 0 || isLoading}
+          disabled={entries.length === 0 || isLoading}
         >
           {isLoading ? 'Assigning...' : 'Assign'}
         </Button>
