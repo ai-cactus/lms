@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Image from 'next/image';
 import Link from 'next/link';
 import { Logo, Button } from '@/components/ui';
+import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 import styles from './page.module.css';
 
 function VerifyEmailContent() {
@@ -209,35 +209,8 @@ export default function VerifyEmailPage() {
         </Suspense>
       </div>
 
-      {/* Right Side - Hero Image (Same as Login/Signup) */}
-      <div className={styles.heroSection}>
-        <Image
-          src="/images/login-bg.png"
-          alt="Theraptly Training"
-          fill
-          className={styles.heroImage}
-          priority
-          quality={100}
-        />
-
-        {/* Overlay Content */}
-        <div className={styles.heroOverlay}>
-          <div className={styles.heroTextContent}>
-            <h2 className={styles.heroTitle}>Audit-ready training, built from your policies</h2>
-            <p className={styles.heroSubtitle}>
-              Turn compliance policies into structured training, track completion automatically, and
-              keep clear records that stand up during audits.
-            </p>
-          </div>
-
-          <div className={styles.progressBarContainer}>
-            <div className={`${styles.progressSegment} ${styles.active}`}></div>
-            <div className={styles.progressSegment}></div>
-            <div className={styles.progressSegment}></div>
-            <div className={styles.progressSegment}></div>
-          </div>
-        </div>
-      </div>
+      {/* Right Side - Hero Slider */}
+      <AuthHeroSlider />
     </div>
   );
 }

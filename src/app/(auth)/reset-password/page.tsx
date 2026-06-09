@@ -2,12 +2,12 @@
 
 import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { Logo, Input, Button } from '@/components/ui';
 import { resetPasswordWithToken, forceResetPassword } from '@/app/actions/auth';
 import { validatePassword } from '@/lib/password-policy';
 import PasswordStrengthIndicator from '@/components/ui/PasswordStrengthIndicator';
+import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 import styles from './page.module.css';
 
 function ResetPasswordForm() {
@@ -104,24 +104,8 @@ function ResetPasswordForm() {
             </div>
           </div>
         </div>
-        <div className={styles.heroSection}>
-          <Image
-            src="/images/login-bg.png"
-            alt="Secure Access"
-            fill
-            className={styles.heroImage}
-            priority
-            quality={100}
-          />
-          <div className={styles.heroOverlay}>
-            <div className={styles.heroTextContent}>
-              <h2 className={styles.heroTitle}>Secure Access Recovery</h2>
-              <p className={styles.heroSubtitle}>
-                Your data is protected with industry-standard security protocols.
-              </p>
-            </div>
-          </div>
-        </div>
+        {/* Right Side - Hero Slider */}
+        <AuthHeroSlider />
       </div>
     );
   }
@@ -221,25 +205,8 @@ function ResetPasswordForm() {
         </div>
       </div>
 
-      <div className={styles.heroSection}>
-        <Image
-          src="/images/login-bg.png"
-          alt="Secure Access"
-          fill
-          className={styles.heroImage}
-          priority
-          quality={100}
-        />
-        <div className={styles.heroOverlay}>
-          <div className={styles.heroTextContent}>
-            <h2 className={styles.heroTitle}>Secure Access Recovery</h2>
-            <p className={styles.heroSubtitle}>
-              Your data is protected with industry-standard security protocols to ensure only
-              authorized personnel can access sensitive information.
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Right Side - Hero Slider */}
+      <AuthHeroSlider />
     </div>
   );
 }
