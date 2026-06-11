@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Logo, Input, Button } from '@/components/ui';
-import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
-import styles from '../../login/page.module.css';
+import { Logo } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import { OtpInput } from '@/components/ui/otp-input';
+import { AuthShell } from '@/components/auth/AuthShell';
 
 function MfaVerifyForm() {
   const router = useRouter();
@@ -31,139 +33,115 @@ function MfaVerifyForm() {
     });
   }, [challenge, router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (!code || code.length !== 6) {
-      setError('Please enter a valid 6-digit code');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/auth/mfa/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challenge, code }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Verification failed');
-        setLoading(false);
+  const submitCode = useCallback(
+    async (codeToSubmit: string) => {
+      if (!codeToSubmit || codeToSubmit.length !== 6) {
+        setError('Please enter a valid 6-digit code');
         return;
       }
 
-      // Use role from API response (not from URL params)
-      const redirectUrl = data.role === 'worker' ? '/worker' : '/dashboard';
-      router.push(redirectUrl);
-    } catch {
-      setError('Something went wrong. Please try again.');
-      setLoading(false);
-    }
+      setLoading(true);
+      setError('');
+
+      try {
+        const res = await fetch('/api/auth/mfa/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ challenge, code: codeToSubmit }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setError(data.error || 'Verification failed');
+          setLoading(false);
+          return;
+        }
+
+        // Use role from API response (not from URL params)
+        const redirectUrl = data.role === 'worker' ? '/worker' : '/dashboard';
+        router.push(redirectUrl);
+      } catch {
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+      }
+    },
+    [challenge, router],
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitCode(code);
   };
 
   return (
-    <div className={styles.container}>
-      {/* Left Side - Form */}
-      <div className={styles.formSection}>
-        <div className={styles.formContent}>
-          <Logo size="md" />
+    <AuthShell>
+      <Logo size="md" />
 
-          <div className={styles.formHeader}>
-            <h1 className={styles.title}>Two-Factor Authentication</h1>
-            <p className={styles.subtitle}>
-              We&apos;ve sent a 6-digit code to your email. Enter it below to continue.
-            </p>
-          </div>
-
-          {error && (
-            <div
-              style={{
-                backgroundColor: '#FEF2F2',
-                color: '#991B1B',
-                padding: '12px',
-                borderRadius: '6px',
-                marginBottom: '16px',
-                border: '1px solid #FCA5A5',
-                fontSize: '14px',
-                textAlign: 'center',
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className={styles.form}>
-            <Input
-              label="Authentication Code"
-              type="text"
-              name="code"
-              placeholder="000000"
-              value={code}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                setCode(val);
-                if (error) setError('');
-              }}
-              error={error}
-              autoComplete="one-time-code"
-              inputMode="numeric"
-              pattern="[0-9]*"
-            />
-
-            <Button type="submit" size="lg" fullWidth loading={loading}>
-              Verify
-            </Button>
-          </form>
-
-          <div style={{ marginTop: '16px', textAlign: 'center' }}>
-            <button
-              type="button"
-              onClick={() => router.push('/mfa/recover?challenge=' + challenge)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#2563EB',
-                cursor: 'pointer',
-                fontSize: '14px',
-                textDecoration: 'underline',
-              }}
-            >
-              Use a recovery code instead
-            </button>
-          </div>
-
-          <p className={styles.signupPrompt}>
-            <button
-              type="button"
-              onClick={() => router.push('/login')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#6B7280',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
-              ← Back to login
-            </button>
-          </p>
-        </div>
+      <div className="w-full text-left">
+        <h1 className="mb-2 text-2xl font-semibold text-foreground">Two-Factor Authentication</h1>
+        <p className="text-sm leading-relaxed text-text-secondary">
+          We&apos;ve sent a 6-digit code to your email. Enter it below to continue.
+        </p>
       </div>
 
-      {/* Right Side - Hero Slider */}
-      <AuthHeroSlider />
-    </div>
+      {error && (
+        <Alert variant="error" className="w-full">
+          {error}
+        </Alert>
+      )}
+
+      <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
+        <OtpInput
+          value={code}
+          onChange={(v) => {
+            setCode(v);
+            if (error) setError('');
+          }}
+          onComplete={(v) => submitCode(v)}
+          ariaLabel="Two-factor authentication code"
+        />
+
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          loading={loading}
+          disabled={code.length !== 6}
+        >
+          Verify
+        </Button>
+      </form>
+
+      <button
+        type="button"
+        onClick={() => router.push('/mfa/recover?challenge=' + challenge)}
+        className="text-sm font-medium text-primary hover:underline"
+      >
+        Use a recovery code instead
+      </button>
+
+      <button
+        type="button"
+        onClick={() => router.push('/login')}
+        className="text-sm text-text-secondary hover:text-foreground"
+      >
+        ← Back to login
+      </button>
+    </AuthShell>
   );
 }
 
 export default function MfaVerifyPage() {
   return (
-    <Suspense fallback={<div>Loading verification form...</div>}>
+    <Suspense
+      fallback={
+        <AuthShell>
+          <Logo size="md" />
+          <p className="text-sm text-text-secondary">Loading...</p>
+        </AuthShell>
+      }
+    >
       <MfaVerifyForm />
     </Suspense>
   );

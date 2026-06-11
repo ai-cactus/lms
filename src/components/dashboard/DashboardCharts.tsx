@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Label } from 'recharts';
-import styles from '@/app/dashboard/(main)/page.module.css';
 
 interface DashboardChartsProps {
   stats?: {
@@ -73,11 +72,14 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
   const ticks = Array.from({ length: 6 }, (_, i) => Math.round((maxVal / 5) * i)).reverse();
 
   return (
-    <div className={styles.chartsGrid}>
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
       {/* Performance Chart */}
-      <div className={`${styles.chartCard} flex-1`} style={{ minHeight: '440px' }}>
-        <div className={styles.chartHeader}>
-          <h3 className={styles.chartTitle}>Performance of Learners</h3>
+      <div
+        className="flex min-h-[400px] flex-col rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm flex-1"
+        style={{ minHeight: '440px' }}
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-[#1a202c]">Performance of Learners</h3>
         </div>
 
         {/* Legend */}
@@ -308,9 +310,9 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
       </div>
 
       {/* Coverage Donut Chart */}
-      <div className={`${styles.chartCard} flex flex-col`}>
-        <div className={styles.chartHeader}>
-          <h3 className={styles.chartTitle}>Training Coverage</h3>
+      <div className="flex min-h-[400px] flex-col rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm flex flex-col">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-[#1a202c]">Training Coverage</h3>
         </div>
 
         <div className="w-full relative shrink-0" style={{ height: 260 }}>
@@ -355,47 +357,41 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
           </ResponsiveContainer>
         </div>
 
-        <div className={`${styles.legend} flex flex-col gap-3 mt-auto pt-4`}>
+        <div className="flex flex-col gap-3 mt-auto pt-4">
           {/* Item 1 */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div
-                className={`${styles.legendDot} w-3 h-3 rounded-full shrink-0`}
+                className="w-3 h-3 rounded-full shrink-0"
                 style={{ background: '#14B8A6' }}
               ></div>
               <span className="text-[13px] text-[#4A5568]">Completed</span>
             </div>
-            <div className={`${styles.legendValue} font-semibold`}>
-              {trainingCoverage?.completed}%
-            </div>
+            <div className="font-semibold text-[#1a202c]">{trainingCoverage?.completed}%</div>
           </div>
 
           {/* Item 2 */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div
-                className={`${styles.legendDot} w-3 h-3 rounded-full shrink-0`}
+                className="w-3 h-3 rounded-full shrink-0"
                 style={{ background: '#F59E0B' }}
               ></div>
               <span className="text-[13px] text-[#4A5568]">Enrolled</span>
             </div>
-            <div className={`${styles.legendValue} font-semibold`}>
-              {trainingCoverage?.inProgress}%
-            </div>
+            <div className="font-semibold text-[#1a202c]">{trainingCoverage?.inProgress}%</div>
           </div>
 
           {/* Item 3 */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div
-                className={`${styles.legendDot} w-3 h-3 rounded-full shrink-0`}
+                className="w-3 h-3 rounded-full shrink-0"
                 style={{ background: '#EF4444' }}
               ></div>
               <span className="text-[13px] text-[#4A5568]">Not Started</span>
             </div>
-            <div className={`${styles.legendValue} font-semibold`}>
-              {trainingCoverage?.notStarted}%
-            </div>
+            <div className="font-semibold text-[#1a202c]">{trainingCoverage?.notStarted}%</div>
           </div>
         </div>
       </div>

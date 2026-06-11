@@ -2,7 +2,6 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import UploadSection from './upload-section';
 import DocumentListClient from './DocumentListClient';
-import styles from './page.module.css';
 
 export const metadata = {
   title: 'Documents | Theraptly LMS',
@@ -29,11 +28,11 @@ export default async function DocumentsPage() {
   });
 
   return (
-    <div className={styles.container}>
-      <header className={styles.header}>
-        <div className={styles.headerText}>
-          <h1>Documents</h1>
-          <p className={styles.headerSubtitle}>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
+      <header className="mb-8 flex items-start justify-between gap-4 max-sm:flex-col">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1a202c]">Documents</h1>
+          <p className="mt-1 text-sm text-[#718096]">
             Documents and attachments that have been uploaded are displayed here
           </p>
         </div>

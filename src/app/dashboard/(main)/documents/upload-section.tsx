@@ -2,16 +2,17 @@
 
 import { useState } from 'react';
 import UploadModal from './upload-modal';
-import styles from './page.module.css';
-import { Button } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
 
 export default function UploadSection() {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <>
-      <Button variant="primary" onClick={() => setIsOpen(true)} className={styles.uploadBtn}>
-        + Upload New
+      <Button onClick={() => setIsOpen(true)}>
+        <Plus className="size-5" />
+        Upload New
       </Button>
       {isOpen && <UploadModal onClose={() => setIsOpen(false)} />}
     </>

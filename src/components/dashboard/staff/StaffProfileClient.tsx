@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import styles from './StaffProfile.module.css';
-import { Button, Input } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -27,6 +27,21 @@ import CertificateCardList from '../training/CertificateCardList';
 type WorkerCertificate = Awaited<ReturnType<typeof getAdminWorkerCertificates>>[number];
 import { logger } from '@/lib/logger';
 import { generateStaffActivityPdfAndEmail } from '@/app/actions/staff';
+import { cn } from '@/lib/utils';
+import {
+  ArrowLeft,
+  User,
+  FileText,
+  X,
+  BookOpen,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Lock,
+  Check,
+  RotateCcw,
+  Search,
+} from 'lucide-react';
 
 interface StaffProfileClientProps {
   staff: {
@@ -153,40 +168,31 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
   );
 
   return (
-    <div className={styles.container}>
+    <div className="mx-auto w-full max-w-[1400px]">
       {/* Breadcrumb */}
-      <Link href="/dashboard/staff" className={styles.backLink}>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="19" y1="12" x2="5" y2="12"></line>
-          <polyline points="12 19 5 12 12 5"></polyline>
-        </svg>
+      <Link
+        href="/dashboard/staff"
+        className="mb-6 inline-flex items-center gap-2 text-sm text-[#718096] hover:text-[#4a5568]"
+      >
+        <ArrowLeft className="size-4" />
         Go Back
-        <span>/</span>
+        <span className="text-[#cbd5e0]">/</span>
         Staff Details
-        <span>/</span>
-        <span className={styles.activeCrumb}>Staff Profile</span>
+        <span className="text-[#cbd5e0]">/</span>
+        <span className="font-medium text-primary">Staff Profile</span>
       </Link>
 
       {/* Header */}
-      <div className={styles.headerProfile}>
-        <div className={styles.profileInfo}>
-          <div className={styles.avatarLarge}>
+      <div className="mb-8 flex items-start justify-between gap-4 max-md:flex-col">
+        <div className="flex gap-6">
+          <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1a202c] text-white">
             {user.avatarUrl ? (
               <Image
                 src={user.avatarUrl}
                 alt={user.name}
                 width={80}
                 height={80}
-                className={styles.avatarImage}
+                className="size-full object-cover"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-[28px] font-semibold">
@@ -194,39 +200,26 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               </div>
             )}
           </div>
-          <div className={styles.infoContent}>
-            <h1 className={styles.name}>{user.name}</h1>
-            <div className={styles.emailLine}>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
+          <div className="flex flex-col justify-center">
+            <h1 className="mb-1 text-2xl font-bold text-[#1a202c]">{user.name}</h1>
+            <div className="mb-3 flex items-center gap-2 text-sm text-[#718096]">
+              <User className="size-3.5" />
               {user.email}
             </div>
-            <div className={styles.roleBadge}>
+            <div className="inline-block w-fit rounded bg-[#e6fffa] px-3 py-1 text-xs font-semibold text-[#2c7a7b]">
               {user.jobTitle || 'Direct Support Professional (DSP)'}
             </div>
           </div>
         </div>
 
-        <div className={`${styles.headerActions} flex gap-3 flex-wrap items-start`}>
-          <Button variant="ghost" size="md" onClick={() => setIsEditModalOpen(true)}>
+        <div className="flex flex-wrap items-start gap-3">
+          <Button variant="ghost" onClick={() => setIsEditModalOpen(true)}>
             Edit Profile
           </Button>
           <Button
-            variant="ghost"
-            size="md"
+            variant="outline"
             onClick={() => setShowRemoveModal(true)}
-            className="text-red-600 border border-red-600"
+            className="border-red-600 text-red-600 hover:bg-red-50 hover:text-red-700"
           >
             Remove Staff
           </Button>
@@ -234,27 +227,11 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           <div className="flex flex-col items-end gap-1">
             <Button
               variant="outline"
-              size="md"
               onClick={handleExportPdf}
               disabled={exportingPdf}
               loading={exportingPdf}
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ marginRight: 4 }}
-              >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-              </svg>
+              <FileText className="size-4" />
               {exportingPdf ? 'Exporting…' : 'Export PDF'}
             </Button>
             {exportFeedback && (
@@ -267,124 +244,75 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               </span>
             )}
           </div>
-          <Button variant="primary" size="md" onClick={() => setIsAssignModalOpen(true)}>
-            Assign Course
-          </Button>
+          <Button onClick={() => setIsAssignModalOpen(true)}>Assign Course</Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className={styles.statsRow}>
-        <div className={`${styles.statsCard} ${styles.statsBlue}`}>
-          <div className={`${styles.statsIcon} ${styles.iconBlue}`}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-            </svg>
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#bee3f8] bg-[#ebf8ff]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2b6cb0]">
+            <BookOpen className="size-5" />
           </div>
-          <div className={styles.statsInfo}>
-            <span className={styles.statsLabel}>Total Courses Assigned</span>
-            <span className={styles.statsValue}>{stats.totalCourses}</span>
+          <div className="flex flex-col">
+            <span className="mb-1 text-[13px] text-[#4a5568]">Total Courses Assigned</span>
+            <span className="text-xl font-bold text-[#1a202c]">{stats.totalCourses}</span>
           </div>
         </div>
 
-        <div className={`${styles.statsCard} ${styles.statsGreen}`}>
-          <div className={`${styles.statsIcon} ${styles.iconGreen}`}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-            </svg>
+        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#c6f6d5] bg-[#f0fff4]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2f855a]">
+            <CheckCircle2 className="size-5" />
           </div>
-          <div className={styles.statsInfo}>
-            <span className={styles.statsLabel}>Courses Completed</span>
-            <span className={styles.statsValue}>{stats.completedCourses}</span>
+          <div className="flex flex-col">
+            <span className="mb-1 text-[13px] text-[#4a5568]">Courses Completed</span>
+            <span className="text-xl font-bold text-[#1a202c]">{stats.completedCourses}</span>
           </div>
         </div>
 
-        <div className={`${styles.statsCard} ${styles.statsRed}`}>
-          <div className={`${styles.statsIcon} ${styles.iconRed}`}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-            </svg>
+        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fed7d7] bg-[#fff5f5]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#c53030]">
+            <AlertTriangle className="size-5" />
           </div>
-          <div className={styles.statsInfo}>
-            <span className={styles.statsLabel}>Failed / Retake Needed</span>
-            <span className={styles.statsValue}>{stats.failedCourses}</span>
+          <div className="flex flex-col">
+            <span className="mb-1 text-[13px] text-[#4a5568]">Failed / Retake Needed</span>
+            <span className="text-xl font-bold text-[#1a202c]">{stats.failedCourses}</span>
           </div>
         </div>
 
-        <div className={`${styles.statsCard} ${styles.statsYellow}`}>
-          <div className={`${styles.statsIcon} ${styles.iconYellow}`}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-            </svg>
+        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fefcbf] bg-[#fffff0]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#d69e2e]">
+            <Clock className="size-5" />
           </div>
-          <div className={styles.statsInfo}>
-            <span className={styles.statsLabel}>Active / Due Soon</span>
-            <span className={styles.statsValue}>{stats.activeCourses}</span>
+          <div className="flex flex-col">
+            <span className="mb-1 text-[13px] text-[#4a5568]">Active / Due Soon</span>
+            <span className="text-xl font-bold text-[#1a202c]">{stats.activeCourses}</span>
           </div>
         </div>
       </div>
 
       {/* Courses & Certificates */}
-      <div className={styles.coursesSection}>
+      <div className="mt-6 rounded-xl border border-[#e2e8f0] bg-white p-5">
         <div className="flex gap-6 border-b border-[#E2E8F0] mb-6">
           <button
             onClick={() => setActiveTab('courses')}
-            className="py-3 font-semibold text-sm bg-transparent border-none cursor-pointer"
-            style={{
-              borderBottom: activeTab === 'courses' ? '2px solid #3182CE' : '2px solid transparent',
-              color: activeTab === 'courses' ? '#2D3748' : '#718096',
-            }}
+            className={cn(
+              'cursor-pointer border-b-2 py-3 text-sm font-semibold',
+              activeTab === 'courses'
+                ? 'border-primary text-[#2D3748]'
+                : 'border-transparent text-[#718096]',
+            )}
           >
             Courses
           </button>
           <button
             onClick={() => setActiveTab('certificates')}
-            className="py-3 font-semibold text-sm bg-transparent border-none cursor-pointer"
-            style={{
-              borderBottom:
-                activeTab === 'certificates' ? '2px solid #3182CE' : '2px solid transparent',
-              color: activeTab === 'certificates' ? '#2D3748' : '#718096',
-            }}
+            className={cn(
+              'cursor-pointer border-b-2 py-3 text-sm font-semibold',
+              activeTab === 'certificates'
+                ? 'border-primary text-[#2D3748]'
+                : 'border-transparent text-[#718096]',
+            )}
           >
             Certificates Issued
           </button>
@@ -392,28 +320,14 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
 
         {activeTab === 'courses' ? (
           <>
-            <div className={styles.coursesHeader}>
-              <div className={styles.searchWrapper}>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
                 <Input
-                  className="w-[250px]"
+                  className="h-11 w-full sm:w-[250px]"
                   placeholder="Search for courses..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  leftIcon={
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#A0AEC0"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                  }
+                  startIcon={<Search aria-hidden="true" />}
                 />
               </div>
             </div>
@@ -422,8 +336,12 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-0 ">
                   <TableHead style={{ width: '40%' }}>Name</TableHead>
-                  <TableHead style={{ width: '30%' }}>Progress</TableHead>
-                  <TableHead style={{ width: '15%' }}>Quiz Status</TableHead>
+                  <TableHead style={{ width: '30%' }} className="hidden md:table-cell">
+                    Progress
+                  </TableHead>
+                  <TableHead style={{ width: '15%' }} className="hidden sm:table-cell">
+                    Quiz Status
+                  </TableHead>
                   <TableHead style={{ width: '15%' }}></TableHead>
                 </TableRow>
               </TableHeader>
@@ -431,57 +349,38 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                 {filteredEnrollments.map((enrollment) => (
                   <TableRow key={enrollment.id}>
                     <TableCell>
-                      <div className={styles.courseItem}>
-                        <div className={styles.courseThumb}>
-                          <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="white"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-                          </svg>
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-[#2d3748] text-white">
+                          <BookOpen className="size-5" />
                         </div>
                         <div>
-                          <span className={styles.courseName}>{enrollment.courseName}</span>
-                          <span className={styles.courseLvl}>
+                          <span className="block font-semibold text-[#1a202c]">
+                            {enrollment.courseName}
+                          </span>
+                          <span className="text-xs text-[#718096]">
                             {enrollment.difficulty || 'Advanced'}
                           </span>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className={styles.progressWrapper}>
-                        <div className={styles.bgBar}>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="flex w-full max-w-[200px] items-center gap-3">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#edf2f7]">
                           <div
-                            className={styles.fillBar}
+                            className="h-full rounded-full bg-primary"
                             style={{ width: `${enrollment.progress || 0}%` }}
                           ></div>
                         </div>
-                        <span className={styles.pctText}>{enrollment.progress || 0}%</span>
+                        <span className="w-8 text-xs text-[#718096]">
+                          {enrollment.progress || 0}%
+                        </span>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       {(enrollment.status === 'completed' || enrollment.progress === 100) &&
                       enrollment.score >= (enrollment.passingScore || 70) ? (
-                        <span className={`${styles.badge} ${styles.badgePassed}`}>
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                          </svg>
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#f0fff4] text-[#2f855a]">
+                          <Check className="size-3" />
                           Passed
                         </span>
                       ) : enrollment.status === 'locked' ? (
@@ -494,41 +393,17 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                           }}
                         >
                           <span
-                            className={`${styles.badge} ${styles.badgeFailed}`}
+                            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#fff5f5] text-[#c53030]"
                             style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
                           >
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="3"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                            </svg>
+                            <Lock className="size-3" />
                             Locked
                           </span>
                           <span style={{ fontSize: '10px', color: '#E53E3E' }}>Limit reached</span>
                         </div>
                       ) : enrollment.status === 'completed' || enrollment.progress === 100 ? (
-                        <span className={`${styles.badge} ${styles.badgeFailed}`}>
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                          </svg>
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#fff5f5] text-[#c53030]">
+                          <X className="size-3" />
                           Failed
                         </span>
                       ) : (
@@ -557,8 +432,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                         {enrollment.status === 'locked' && (
                           <Button
-                            variant="primary"
-                            size="xs"
+                            size="sm"
                             onClick={() =>
                               setRetakeEnrollment({
                                 id: enrollment.id,
@@ -566,6 +440,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                               })
                             }
                           >
+                            <RotateCcw className="size-3.5" />
                             Retake
                           </Button>
                         )}
@@ -574,7 +449,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                           (enrollment.quizAttempts && enrollment.quizAttempts.length > 0)) && (
                           <Button
                             variant="outline"
-                            size="xs"
+                            size="sm"
                             onClick={() => handleViewResult(enrollment.id)}
                             disabled={loadingEnrollmentId === enrollment.id}
                             loading={loadingEnrollmentId === enrollment.id}
@@ -600,9 +475,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         ) : (
           <div>
             {loadingCerts ? (
-              <div style={{ textAlign: 'center', padding: '48px', color: '#718096' }}>
-                Loading certificates...
-              </div>
+              <div className="py-12 text-center text-[#718096]">Loading certificates...</div>
             ) : (
               <CertificateCardList
                 certificates={certificates}
@@ -649,52 +522,20 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
 
       {viewingResult && (
         <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-          }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
           onClick={() => setViewingResult(null)}
         >
           <div
-            style={{
-              background: 'white',
-              width: '90%',
-              maxWidth: '800px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              borderRadius: '16px',
-              padding: '24px',
-              position: 'relative',
-            }}
+            className="relative max-h-[90vh] w-[90%] max-w-[800px] overflow-y-auto rounded-2xl bg-white p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <Button
               variant="ghost"
-              size="icon-md"
+              size="icon-sm"
               onClick={() => setViewingResult(null)}
-              style={{ position: 'absolute', top: '12px', right: '12px' }}
+              className="absolute right-3 top-3"
             >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
+              <X className="size-4" />
             </Button>
             <QuizResults
               courseId=""

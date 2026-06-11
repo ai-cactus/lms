@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import { Logo, Button } from '@/components/ui';
+import { Building2, User } from 'lucide-react';
+import { Logo } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { AuthShell } from '@/components/auth/AuthShell';
 import { signupWithRole } from '@/app/actions/auth';
-import styles from './page.module.css';
+import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 
 interface PendingSignup {
@@ -72,143 +74,80 @@ export default function RoleSelectionPage() {
 
   if (!pendingSignup) {
     return (
-      <div className={styles.container}>
-        <div className={styles.formSection}>
-          <div className={styles.formContent}>
-            <Logo size="md" />
-            <p>Loading...</p>
-          </div>
-        </div>
-      </div>
+      <AuthShell>
+        <Logo size="md" />
+        <p className="text-sm text-text-secondary">Loading...</p>
+      </AuthShell>
     );
   }
 
   return (
-    <div className={styles.container}>
-      {/* Left Side - Form */}
-      <div className={styles.formSection}>
-        <div className={styles.formContent}>
-          <Logo size="md" />
+    <AuthShell>
+      <Logo size="md" />
 
-          <div className={styles.formHeader}>
-            <h1 className={styles.title}>Tell us about your role</h1>
-            <p className={styles.subtitle}>
-              Choose the option that best describes how you wish to use Theraptly.
-            </p>
-          </div>
+      <div className="w-full text-left">
+        <h1 className="mb-2 text-2xl font-semibold text-foreground">Tell us about your role</h1>
+        <p className="text-sm leading-relaxed text-text-secondary">
+          Choose the option that best describes how you wish to use Theraptly.
+        </p>
+      </div>
 
-          <div className={styles.roleCards}>
-            {/* Admin Card */}
-            <div
-              className={`${styles.roleCard} ${selectedRole === 'admin' ? styles.selected : ''}`}
-              onClick={() => setSelectedRole('admin')}
-            >
-              <div className={styles.cardHeader}>
-                <div className={styles.iconWrapper}>
-                  <svg
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="2" y="5" width="20" height="14" rx="2" />
-                    <line x1="2" y1="10" x2="22" y2="10" />
-                  </svg>
-                </div>
-                <div className={styles.radio}>
-                  {selectedRole === 'admin' && <div className={styles.radioInner} />}
-                </div>
-              </div>
-              <h3 className={styles.roleName}>Health Service Provider (Admin)</h3>
-            </div>
-
-            {/* Worker Card */}
-            <div
-              className={`${styles.roleCard} ${selectedRole === 'worker' ? styles.selected : ''}`}
-              onClick={() => setSelectedRole('worker')}
-            >
-              <div className={styles.cardHeader}>
-                <div className={styles.iconWrapper}>
-                  <svg
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="2" y="5" width="20" height="14" rx="2" />
-                    <line x1="2" y1="10" x2="22" y2="10" />
-                  </svg>
-                </div>
-                <div className={styles.radio}>
-                  {selectedRole === 'worker' && <div className={styles.radioInner} />}
-                </div>
-              </div>
-              <h3 className={styles.roleName}>Worker</h3>
-            </div>
-          </div>
-
-          {error && <p className={styles.error}>{error}</p>}
-
-          <Button
-            size="lg"
-            fullWidth
-            onClick={handleContinue}
-            loading={isLoading}
-            disabled={isLoading}
+      <div className="grid w-full grid-cols-1 gap-3">
+        {(
+          [
+            { value: 'admin', label: 'Health Service Provider (Admin)', icon: Building2 },
+            { value: 'worker', label: 'Worker', icon: User },
+          ] as const
+        ).map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setSelectedRole(value)}
+            aria-pressed={selectedRole === value}
+            className={cn(
+              'flex w-full items-center justify-between rounded-xl border-2 p-4 text-left transition-colors',
+              selectedRole === value
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-primary/40',
+            )}
           >
-            Continue
-          </Button>
-
-          <p className={styles.backLink}>
-            <a
-              href="/signup"
-              onClick={(e) => {
-                e.preventDefault();
-                router.back();
-              }}
+            <span className="flex items-center gap-3">
+              <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Icon className="size-5" aria-hidden="true" />
+              </span>
+              <span className="font-medium text-foreground">{label}</span>
+            </span>
+            <span
+              className={cn(
+                'flex size-5 items-center justify-center rounded-full border-2',
+                selectedRole === value ? 'border-primary' : 'border-border',
+              )}
             >
-              ← Back to signup
-            </a>
-          </p>
-        </div>
+              {selectedRole === value && <span className="size-2.5 rounded-full bg-primary" />}
+            </span>
+          </button>
+        ))}
       </div>
 
-      {/* Right Side - Hero Image */}
-      <div className={styles.heroSection}>
-        <Image
-          src="/images/login-bg.png"
-          alt="Theraptly Training"
-          fill
-          className={styles.heroImage}
-          priority
-          quality={100}
-        />
+      {error && <p className="text-sm text-error">{error}</p>}
 
-        <div className={styles.heroOverlay}>
-          <div className={styles.heroTextContent}>
-            <h2 className={styles.heroTitle}>Audit-ready training, built from your policies</h2>
-            <p className={styles.heroSubtitle}>
-              Turn compliance policies into structured training, track completion automatically, and
-              keep clear records that stand up during audits.
-            </p>
-          </div>
+      <Button
+        size="lg"
+        className="w-full"
+        onClick={handleContinue}
+        loading={isLoading}
+        disabled={isLoading}
+      >
+        Continue
+      </Button>
 
-          <div className={styles.progressBarContainer}>
-            <div className={styles.progressSegment}></div>
-            <div className={`${styles.progressSegment} ${styles.active}`}></div>
-            <div className={styles.progressSegment}></div>
-            <div className={styles.progressSegment}></div>
-          </div>
-        </div>
-      </div>
-    </div>
+      <button
+        type="button"
+        onClick={() => router.back()}
+        className="text-sm text-text-secondary hover:text-foreground"
+      >
+        ← Back to signup
+      </button>
+    </AuthShell>
   );
 }

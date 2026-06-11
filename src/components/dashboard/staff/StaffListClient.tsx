@@ -1,8 +1,16 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import styles from './StaffList.module.css';
-import { Button, Input, Select } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { RowActionsMenu } from '@/components/ui';
 import {
   Table,
   TableBody,
@@ -11,15 +19,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import {
+  Plus,
+  Search,
+  Eye,
+  FileText,
+  UserMinus,
+  XCircle,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface StaffEntry {
   id: string;
@@ -145,20 +158,19 @@ export default function StaffListClient({
   };
 
   return (
-    <div className={styles.container}>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
       {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.titleSection}>
-          <h1 className={styles.title}>Staff Details</h1>
-          <p className={styles.subtitle}>Here is an overview of your staff details</p>
+      <div className="mb-6 flex items-start justify-between gap-4 max-sm:flex-col">
+        <div className="flex flex-col">
+          <h1 className="text-2xl font-bold text-[#1a202c]">Staff Details</h1>
+          <p className="text-sm text-[#718096]">Here is an overview of your staff details</p>
           {/* Plan seat usage badge — only shown when the org has a capped plan */}
           {planLimit !== null && (
             <p
-              className="mt-1 text-[13px]"
-              style={{
-                color: isAtLimit ? '#C53030' : '#718096',
-                fontWeight: isAtLimit ? 600 : 400,
-              }}
+              className={cn(
+                'mt-1 text-[13px]',
+                isAtLimit ? 'font-semibold text-[#C53030]' : 'text-[#718096]',
+              )}
             >
               {isAtLimit ? (
                 <>
@@ -191,51 +203,24 @@ export default function StaffListClient({
             }
           }}
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
+          <Plus className="size-4" />
           Add Worker
         </Button>
       </div>
 
       {/* Content Card */}
-      <div className={styles.card}>
+      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
         {/* Search */}
-        <div className={styles.searchContainer}>
+        <div className="mb-6 w-full sm:w-[380px]">
           <Input
+            className="h-11"
             placeholder="Search for staff..."
-            className={styles.searchInput}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
               setCurrentPage(1);
             }}
-            leftIcon={
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-slate-400"
-              >
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            }
+            startIcon={<Search aria-hidden="true" />}
           />
         </div>
 
@@ -254,29 +239,31 @@ export default function StaffListClient({
                 <TableRow
                   key={user.id}
                   onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
-                  className={user.isPending ? 'cursor-default opacity-85' : styles.clickableRow}
+                  className={user.isPending ? 'cursor-default opacity-85' : 'cursor-pointer'}
                 >
                   {/* Name / avatar cell */}
                   <TableCell className="pl-6">
-                    <div className={styles.userInfo}>
-                      <div className={styles.avatar}>
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e2e8f0] text-[#4a5568]">
                         {user.avatarUrl ? (
                           <Image
                             src={user.avatarUrl}
                             alt={user.name}
                             width={32}
                             height={32}
-                            className={styles.avatarImage}
+                            className="size-full object-cover"
                           />
                         ) : (
-                          <div className={styles.avatarFallback}>
+                          <div className="flex size-full items-center justify-center text-sm font-semibold">
                             {(user.name.charAt(0) || user.email.charAt(0)).toUpperCase()}
                           </div>
                         )}
-                        {!user.isPending && <div className={styles.statusDot}></div>}
+                        {!user.isPending && (
+                          <div className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-white bg-green-500"></div>
+                        )}
                       </div>
-                      <div className={styles.userDetails}>
-                        <div className={`${styles.userName} flex items-center gap-2`}>
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2 font-semibold text-[#1a202c]">
                           {user.email}
                           {user.isPending && (
                             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-[#EBF4FF] text-[#3182CE] tracking-wide">
@@ -284,7 +271,7 @@ export default function StaffListClient({
                             </span>
                           )}
                         </div>
-                        <div className={styles.userRole}>{user.jobTitle}</div>
+                        <div className="text-xs text-[#718096]">{user.jobTitle}</div>
                       </div>
                     </div>
                   </TableCell>
@@ -306,130 +293,44 @@ export default function StaffListClient({
 
                   {/* Kebab action cell — always visible */}
                   <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-transparent text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400"
-                          aria-label="More options"
-                          title="More options"
-                        >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <circle cx="12" cy="5" r="1.5" />
-                            <circle cx="12" cy="12" r="1.5" />
-                            <circle cx="12" cy="19" r="1.5" />
-                          </svg>
-                        </button>
-                      </DropdownMenuTrigger>
-
-                      <DropdownMenuContent align="end" className="min-w-[160px]">
-                        {user.isPending ? (
-                          /* ── Pending invite actions ── */
-                          <DropdownMenuItem
-                            variant="destructive"
-                            className="cursor-pointer"
-                            onSelect={() => setRevokeTarget({ id: user.id, email: user.email })}
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <circle cx="12" cy="12" r="10" />
-                              <line x1="15" y1="9" x2="9" y2="15" />
-                              <line x1="9" y1="9" x2="15" y2="15" />
-                            </svg>
-                            Revoke Invite
-                          </DropdownMenuItem>
-                        ) : (
-                          /* ── Active staff actions ── */
-                          <>
-                            <DropdownMenuItem
-                              className="cursor-pointer"
-                              onSelect={() => router.push(`/dashboard/staff/${user.id}`)}
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                <circle cx="12" cy="12" r="3" />
-                              </svg>
-                              View Profile
-                            </DropdownMenuItem>
-
-                            <DropdownMenuItem
-                              className="cursor-pointer"
-                              disabled={exportingUserId === user.id}
-                              onSelect={() => handleExportPdf(user.id)}
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                <polyline points="14 2 14 8 20 8" />
-                                <line x1="16" y1="13" x2="8" y2="13" />
-                                <line x1="16" y1="17" x2="8" y2="17" />
-                              </svg>
-                              {exportingUserId === user.id ? 'Exporting…' : 'Export PDF'}
-                            </DropdownMenuItem>
-
-                            <DropdownMenuSeparator />
-
-                            <DropdownMenuItem
-                              variant="destructive"
-                              className="cursor-pointer"
-                              onSelect={() =>
-                                setRemoveTarget({ id: user.id, name: user.name, email: user.email })
-                              }
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                <circle cx="9" cy="7" r="4" />
-                                <line x1="23" y1="11" x2="17" y2="11" />
-                              </svg>
-                              Remove Staff
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <RowActionsMenu
+                      actions={
+                        user.isPending
+                          ? [
+                              {
+                                label: 'Revoke Invite',
+                                icon: <XCircle className="size-4" />,
+                                variant: 'destructive',
+                                onSelect: () => setRevokeTarget({ id: user.id, email: user.email }),
+                              },
+                            ]
+                          : [
+                              {
+                                label: 'View Profile',
+                                icon: <Eye className="size-4" />,
+                                onSelect: () => router.push(`/dashboard/staff/${user.id}`),
+                              },
+                              {
+                                label: exportingUserId === user.id ? 'Exporting…' : 'Export PDF',
+                                icon: <FileText className="size-4" />,
+                                disabled: exportingUserId === user.id,
+                                onSelect: () => handleExportPdf(user.id),
+                              },
+                              {
+                                label: 'Remove Staff',
+                                icon: <UserMinus className="size-4" />,
+                                variant: 'destructive',
+                                separatorBefore: true,
+                                onSelect: () =>
+                                  setRemoveTarget({
+                                    id: user.id,
+                                    name: user.name,
+                                    email: user.email,
+                                  }),
+                              },
+                            ]
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               ))
@@ -437,23 +338,7 @@ export default function StaffListClient({
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={3} className="text-center p-[60px] text-slate-500">
                   <div className="flex flex-col items-center gap-3">
-                    <div className="text-slate-300">
-                      <svg
-                        width="64"
-                        height="64"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="9" cy="7" r="4"></circle>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                      </svg>
-                    </div>
+                    <Users className="size-16 text-slate-300" />
                     <p className="text-base font-semibold text-[#2D3748]">No staff members found</p>
                     <p className="text-sm text-slate-500">
                       Get started by adding a new staff member to your organization.
@@ -466,37 +351,26 @@ export default function StaffListClient({
         </Table>
 
         {/* Pagination */}
-        <div className={styles.pagination}>
-          <div className={styles.paginationInfo}>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
+          <div className="text-sm text-[#718096]">
             Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
             {Math.min(startIndex + itemsPerPage, totalEntries)} of {totalEntries} entries
           </div>
 
-          <div className={styles.paginationCenter}>
+          <div className="flex items-center gap-1.5">
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon-sm"
               disabled={currentPage === 1}
               onClick={() => handlePageChange(currentPage - 1)}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
+              <ChevronLeft className="size-4" />
             </Button>
 
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
               <Button
                 key={page}
-                variant={page === currentPage ? 'primary' : 'ghost'}
+                variant={page === currentPage ? 'default' : 'outline'}
                 size="icon-sm"
                 onClick={() => handlePageChange(page)}
               >
@@ -505,43 +379,33 @@ export default function StaffListClient({
             ))}
 
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon-sm"
               disabled={currentPage === totalPages || totalPages === 0}
               onClick={() => handlePageChange(currentPage + 1)}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
+              <ChevronRight className="size-4" />
             </Button>
           </div>
 
-          <div className={styles.paginationRight}>
+          <div className="flex items-center gap-2 text-sm text-[#718096]">
             Show
             <Select
               value={itemsPerPage.toString()}
-              onChange={(value) => {
+              onValueChange={(value) => {
                 setItemsPerPage(Number(value));
                 setCurrentPage(1);
               }}
-              options={[
-                { label: '5', value: '5' },
-                { label: '10', value: '10' },
-                { label: '20', value: '20' },
-              ]}
-              size="sm"
-              direction="up"
-              className={styles.entriesSelect}
-            />
+            >
+              <SelectTrigger size="sm" className="w-[72px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5</SelectItem>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+              </SelectContent>
+            </Select>
             entries
           </div>
         </div>
