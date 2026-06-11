@@ -3,9 +3,19 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Logo, Button } from '@/components/ui';
-import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
-import styles from './page.module.css';
+import { Mail, CheckCircle2, XCircle } from 'lucide-react';
+import { Logo } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { AuthShell } from '@/components/auth/AuthShell';
+
+function StatusFallback() {
+  return (
+    <div className="flex w-full flex-col items-center gap-6 text-center">
+      <Logo size="md" />
+      <p className="text-sm text-text-secondary">Loading...</p>
+    </div>
+  );
+}
 
 function VerifyEmailContent() {
   const router = useRouter();
@@ -78,30 +88,19 @@ function VerifyEmailContent() {
     }
 
     return (
-      <div className={styles.formContent}>
+      <div className="flex w-full flex-col items-center gap-6 text-center">
         <Logo size="md" />
-
-        <div className={styles.iconWrapper}>
-          <svg
-            width="64"
-            height="64"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#EF4444"
-            strokeWidth="2"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="15" y1="9" x2="9" y2="15" />
-            <line x1="9" y1="9" x2="15" y2="15" />
-          </svg>
+        <div className="flex size-16 items-center justify-center rounded-full bg-error/15 text-error">
+          <XCircle className="size-8" aria-hidden="true" />
         </div>
-
-        <h1 className={styles.title}>Verification Failed</h1>
-        <p className={styles.subtitle}>{errorMessage}</p>
+        <div>
+          <h1 className="mb-2 text-2xl font-semibold text-foreground">Verification Failed</h1>
+          <p className="text-sm leading-relaxed text-text-secondary">{errorMessage}</p>
+        </div>
 
         <Button
           size="lg"
-          fullWidth
+          className="w-full"
           onClick={handleResend}
           loading={isResending}
           disabled={resendCooldown > 0}
@@ -109,10 +108,10 @@ function VerifyEmailContent() {
           {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Verification Email'}
         </Button>
 
-        {resendError && <p className={styles.error}>{resendError}</p>}
-        {resendSuccess && <p className={styles.success}>Verification email sent!</p>}
+        {resendError && <p className="text-sm text-error">{resendError}</p>}
+        {resendSuccess && <p className="text-sm text-success">Verification email sent!</p>}
 
-        <Link href="/signup" className={styles.link}>
+        <Link href="/signup" className="text-sm font-semibold text-primary hover:underline">
           Back to Sign Up
         </Link>
       </div>
@@ -122,70 +121,51 @@ function VerifyEmailContent() {
   // Success state
   if (success === 'true') {
     return (
-      <div className={styles.formContent}>
+      <div className="flex w-full flex-col items-center gap-6 text-center">
         <Logo size="md" />
-        <div className={styles.iconWrapper}>
-          <svg
-            width="64"
-            height="64"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#10B981"
-            strokeWidth="2"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="9 12 12 15 16 10" />
-          </svg>
+        <div className="flex size-16 items-center justify-center rounded-full bg-success/15 text-success">
+          <CheckCircle2 className="size-8" aria-hidden="true" />
         </div>
-        <h1 className={styles.title}>Email Verified!</h1>
-        <p className={styles.subtitle}>Redirecting you to login...</p>
+        <div>
+          <h1 className="mb-2 text-2xl font-semibold text-foreground">Email Verified!</h1>
+          <p className="text-sm leading-relaxed text-text-secondary">Redirecting you to login...</p>
+        </div>
       </div>
     );
   }
 
   // Default state - check your email
   return (
-    <div className={styles.formContent}>
+    <div className="flex w-full flex-col items-center gap-6 text-center">
       <Logo size="md" />
-
-      <div className={styles.iconWrapper}>
-        <svg
-          width="64"
-          height="64"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#4C6EF5"
-          strokeWidth="2"
-        >
-          <rect x="2" y="4" width="20" height="16" rx="2" />
-          <polyline points="22 6 12 13 2 6" />
-        </svg>
+      <div className="flex size-16 items-center justify-center rounded-full bg-primary/15 text-primary">
+        <Mail className="size-8" aria-hidden="true" />
+      </div>
+      <div>
+        <h1 className="mb-2 text-2xl font-semibold text-foreground">Check your email</h1>
+        <p className="text-sm leading-relaxed text-text-secondary">
+          We&apos;ve sent a verification link to your email address. Please click the link to verify
+          your account.
+        </p>
       </div>
 
-      <h1 className={styles.title}>Check your email</h1>
-      <p className={styles.subtitle}>
-        We&apos;ve sent a verification link to your email address. Please click the link to verify
-        your account.
-      </p>
-      <p className={styles.expiry}>The link expires in 5 minutes.</p>
+      <p className="text-xs text-text-secondary">The link expires in 5 minutes.</p>
 
-      <div className={styles.actions}>
-        <Button
-          size="lg"
-          fullWidth
-          variant="secondary"
-          onClick={handleResend}
-          loading={isResending}
-          disabled={resendCooldown > 0}
-        >
-          {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Email'}
-        </Button>
-      </div>
+      <Button
+        size="lg"
+        className="w-full"
+        variant="secondary"
+        onClick={handleResend}
+        loading={isResending}
+        disabled={resendCooldown > 0}
+      >
+        {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Email'}
+      </Button>
 
-      {resendError && <p className={styles.error}>{resendError}</p>}
-      {resendSuccess && <p className={styles.success}>Verification email sent!</p>}
+      {resendError && <p className="text-sm text-error">{resendError}</p>}
+      {resendSuccess && <p className="text-sm text-success">Verification email sent!</p>}
 
-      <Link href="/signup" className={styles.link}>
+      <Link href="/signup" className="text-sm font-semibold text-primary hover:underline">
         Use a different email
       </Link>
     </div>
@@ -194,23 +174,10 @@ function VerifyEmailContent() {
 
 export default function VerifyEmailPage() {
   return (
-    <div className={styles.container}>
-      {/* Left Side - Form */}
-      <div className={styles.formSection}>
-        <Suspense
-          fallback={
-            <div className={styles.formContent}>
-              <Logo size="md" />
-              <p>Loading...</p>
-            </div>
-          }
-        >
-          <VerifyEmailContent />
-        </Suspense>
-      </div>
-
-      {/* Right Side - Hero Slider */}
-      <AuthHeroSlider />
-    </div>
+    <AuthShell>
+      <Suspense fallback={<StatusFallback />}>
+        <VerifyEmailContent />
+      </Suspense>
+    </AuthShell>
   );
 }

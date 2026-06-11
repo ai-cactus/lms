@@ -2,10 +2,16 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Checkbox, Logo } from '@/components/ui';
+import { Info, X, User, Lock } from 'lucide-react';
+import { Logo } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert } from '@/components/ui/alert';
 import { validatePassword, PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
 import PasswordStrengthIndicator from '@/components/ui/PasswordStrengthIndicator';
-import styles from './JoinPage.module.css';
 
 interface JoinPageClientProps {
   invite: {
@@ -88,154 +94,137 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
   };
 
   return (
-    <div className={styles.container}>
-      {/* Rainbow Gradient Header */}
-      <div className={styles.gradientHeader} />
-
-      {/* Main Content */}
-      <div className={styles.content}>
-        {/* Logo */}
-        <div className={styles.logo}>
+    <div className="flex min-h-screen w-full flex-col items-center bg-background-secondary px-4 py-10">
+      <div className="w-full max-w-[480px] overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+        <div className="h-1.5 w-full bg-gradient-to-r from-primary via-primary-light to-primary" />
+        <div className="flex flex-col gap-6 p-6 sm:p-8">
           <Logo size="md" />
-        </div>
 
-        {/* Notification Banner */}
-        {showBanner && (
-          <div className={styles.notificationBanner}>
-            <svg
-              className={styles.notificationIcon}
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
-            <span className={styles.notificationText}>
-              You&apos;ve been invited to join <strong>{orgName}</strong> as a{' '}
-              <strong>{displayRole}</strong>.
-            </span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className={styles.closeButton}
-              onClick={() => setShowBanner(false)}
-              type="button"
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+          {showBanner && (
+            <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+              <Info className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+              <span className="flex-1 text-text-secondary">
+                You&apos;ve been invited to join{' '}
+                <strong className="font-semibold text-foreground">{orgName}</strong> as a{' '}
+                <strong className="font-semibold text-foreground">{displayRole}</strong>.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowBanner(false)}
+                aria-label="Dismiss"
+                className="text-text-tertiary hover:text-foreground"
               >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </Button>
-          </div>
-        )}
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </div>
+          )}
 
-        {/* Title */}
-        <div className={styles.titleSection}>
-          <h1 className={styles.title}>
-            You&apos;re joining <span>{orgName}</span> as a <span>{displayRole}</span>.
-          </h1>
-          <h2 className={styles.subtitle}>Sign in to continue</h2>
-        </div>
-
-        {/* Error Banner */}
-        {error && <div className={styles.errorBanner}>{error}</div>}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className={styles.form}>
-          {/* Name Row */}
-          <div className={styles.row}>
-            <Input
-              label="First Name"
-              placeholder="Enter your first name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              required
-            />
-            <Input
-              label="Last Name"
-              placeholder="Enter your last name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              required
-            />
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">
+              You&apos;re joining <span className="text-primary">{orgName}</span> as a{' '}
+              <span className="text-primary">{displayRole}</span>.
+            </h1>
+            <h2 className="mt-1 text-sm text-text-secondary">Sign in to continue</h2>
           </div>
 
-          {/* Work Email (Disabled) */}
-          <div className={styles.field}>
-            <label className={styles.label}>Work Email</label>
-            <div className={styles.disabledField}>{invite.email}</div>
-          </div>
+          {error && (
+            <Alert variant="error" className="w-full">
+              {error}
+            </Alert>
+          )}
 
-          {/* Assigned Role (Disabled) */}
-          <div className={styles.field}>
-            <label className={styles.label}>Assigned role</label>
-            <div className={styles.disabledField}>{displayRole}</div>
-          </div>
+          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
+            <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="First Name">
+                <Input
+                  placeholder="Enter your first name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  startIcon={<User aria-hidden="true" />}
+                  autoComplete="given-name"
+                />
+              </Field>
+              <Field label="Last Name">
+                <Input
+                  placeholder="Enter your last name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  startIcon={<User aria-hidden="true" />}
+                  autoComplete="family-name"
+                />
+              </Field>
+            </div>
 
-          {/* Password */}
-          <Input
-            label="Password"
-            type="password"
-            placeholder={`Password (at least ${PASSWORD_MIN_LENGTH} characters)`}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <PasswordStrengthIndicator password={password} />
+            <Field label="Work Email">
+              <Input value={invite.email} disabled readOnly />
+            </Field>
 
-          {/* Confirm Password */}
-          <Input
-            label="Confirm Password"
-            type="password"
-            placeholder={`Password (at least ${PASSWORD_MIN_LENGTH} characters)`}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-          />
+            <Field label="Assigned role">
+              <Input value={displayRole} disabled readOnly />
+            </Field>
 
-          {/* Terms Checkbox */}
-          <div className={styles.checkboxWrapper}>
-            <Checkbox
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-              label={
-                <>
-                  Yes, I understand and agree to the{' '}
-                  <a href="/terms" target="_blank" rel="noopener noreferrer">
-                    Theraptly Terms of Service
-                  </a>
-                </>
+            <Field label="Password">
+              <PasswordInput
+                placeholder={`Password (at least ${PASSWORD_MIN_LENGTH} characters)`}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                startIcon={<Lock aria-hidden="true" />}
+                autoComplete="new-password"
+              />
+            </Field>
+            <PasswordStrengthIndicator password={password} />
+
+            <Field label="Confirm Password">
+              <PasswordInput
+                placeholder={`Password (at least ${PASSWORD_MIN_LENGTH} characters)`}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                startIcon={<Lock aria-hidden="true" />}
+                autoComplete="new-password"
+              />
+            </Field>
+
+            <label className="flex items-start gap-2 text-sm text-text-secondary">
+              <Checkbox
+                checked={agreed}
+                onCheckedChange={(c) => setAgreed(c === true)}
+                className="mt-0.5"
+              />
+              <span>
+                Yes, I understand and agree to the{' '}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary hover:underline"
+                >
+                  Theraptly Terms of Service
+                </a>
+              </span>
+            </label>
+
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              loading={isLoading}
+              disabled={
+                isLoading ||
+                !firstName.trim() ||
+                !lastName.trim() ||
+                !password ||
+                !confirmPassword ||
+                !agreed
               }
-            />
-          </div>
-
-          {/* Submit Button */}
-          <Button
-            type="submit"
-            variant="primary"
-            className={styles.submitButton}
-            loading={isLoading}
-            disabled={isLoading}
-          >
-            Create Account
-          </Button>
-        </form>
+            >
+              Create Account
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );

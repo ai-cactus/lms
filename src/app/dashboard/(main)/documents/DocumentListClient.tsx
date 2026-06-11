@@ -11,15 +11,28 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Button, Select } from '@/components/ui';
-import styles from './page.module.css';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { RowActionsMenu } from '@/components/ui';
+import {
+  Search,
+  Eye,
+  Pencil,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  FileText,
+  FileX2,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,62 +82,39 @@ function getFileIcon(mimeType: string, filename: string) {
     filename.endsWith('.docx') ||
     filename.endsWith('.doc');
 
-  const color = isPdf ? '#EF4444' : isDoc ? '#3B82F6' : '#94A3B8';
-
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
+    <FileText
       aria-hidden="true"
-    >
-      <path
-        d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M14 2V8H20"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      className={cn(
+        'size-[22px]',
+        isPdf ? 'text-[#EF4444]' : isDoc ? 'text-[#3B82F6]' : 'text-[#94A3B8]',
+      )}
+    />
   );
 }
 
 function StatusBadge({ status }: { status: 'completed' | 'in-progress' | 'not-started' }) {
   if (status === 'completed') {
     return (
-      <span className={`${styles.badge} ${styles.badgeCompleted}`}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="12" cy="12" r="10" stroke="#166534" strokeWidth="2.5" />
-          <path
-            d="M8 12l3 3 5-5"
-            stroke="#166534"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
+        <CheckCircle2 className="size-3.5" />
         Completed
       </span>
     );
   }
   if (status === 'in-progress') {
     return (
-      <span className={`${styles.badge} ${styles.badgeInProgress}`}>
-        <span className={styles.badgeDot} aria-hidden="true" />
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning">
+        <span className="size-1.5 rounded-full bg-warning" />
         In Progress
       </span>
     );
   }
-  return <span className={`${styles.badge} ${styles.badgeNotStarted}`}>Not Started</span>;
+  return (
+    <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+      Not Started
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -166,54 +156,43 @@ function RenameModal({
 
   return (
     <div
-      className={styles.renameOverlay}
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/45 p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Rename document"
     >
-      <div className={styles.renameDialog}>
-        <h2 className={styles.renameTitle}>Rename Document</h2>
+      <div className="w-full max-w-[420px] rounded-xl bg-white p-6 shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+        <h2 className="mb-4 text-lg font-semibold text-[#111827]">Rename Document</h2>
         <form onSubmit={handleSubmit}>
           <input
-            className={styles.renameInput}
+            className="w-full rounded-lg border border-[#d1d5db] px-3.5 py-2.5 text-sm text-[#111827] outline-none transition-[border-color] focus:border-[#4731f7] focus:ring-[3px] focus:ring-[rgba(71,49,247,0.1)] disabled:opacity-60 box-border"
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoFocus
             disabled={isPending}
             aria-label="New document name"
           />
-          {error && <p className={styles.renameError}>{error}</p>}
-          <div className={styles.renameActions}>
+          {error && <p className="mt-1.5 text-[0.8125rem] text-[#dc2626]">{error}</p>}
+          <div className="mt-5 flex justify-end gap-3">
             <button
               type="button"
-              className={styles.renameCancelBtn}
+              className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2 text-sm text-[#374151] transition-colors hover:bg-[#f9fafb] disabled:opacity-60 disabled:cursor-not-allowed"
               onClick={onClose}
               disabled={isPending}
             >
               Cancel
             </button>
-            <button type="submit" className={styles.renameSaveBtn} disabled={isPending}>
+            <button
+              type="submit"
+              className="rounded-lg border-0 bg-[#4731f7] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#3b27d4] disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={isPending}
+            >
               {isPending ? 'Saving…' : 'Save'}
             </button>
           </div>
         </form>
       </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Kebab trigger button
-// ---------------------------------------------------------------------------
-function KebabTrigger() {
-  return (
-    <button className={styles.dotsBtn} title="More actions" aria-label="More actions">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <circle cx="12" cy="5" r="1.5" />
-        <circle cx="12" cy="12" r="1.5" />
-        <circle cx="12" cy="19" r="1.5" />
-      </svg>
-    </button>
   );
 }
 
@@ -316,32 +295,17 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
       )}
 
       {deleteError && (
-        <p className={styles.globalError} role="alert">
+        <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600" role="alert">
           ⚠️ {deleteError}
         </p>
       )}
 
       {/* Card */}
-      <div className={styles.card}>
+      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
         {/* Search */}
-        <div className={styles.searchWrapper}>
-          <svg
-            className={styles.searchIcon}
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            className={styles.searchInput}
+        <div className="mb-6 w-full sm:w-[380px]">
+          <Input
+            className="h-11"
             type="search"
             placeholder="Search for document..."
             value={searchQuery}
@@ -350,6 +314,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
               setCurrentPage(1);
             }}
             aria-label="Search documents"
+            startIcon={<Search aria-hidden="true" />}
           />
         </div>
 
@@ -357,12 +322,10 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
-              <TableHead className={styles.thName}>Document Name</TableHead>
-              <TableHead className={`${styles.thDate} hidden sm:table-cell`}>
-                Date Uploaded
-              </TableHead>
-              <TableHead className={`${styles.thStatus} hidden md:table-cell`}>Status</TableHead>
-              <TableHead className={`${styles.thAction} text-right`}>Action</TableHead>
+              <TableHead>Document Name</TableHead>
+              <TableHead className="hidden sm:table-cell">Date Uploaded</TableHead>
+              <TableHead className="hidden md:table-cell">Status</TableHead>
+              <TableHead className="text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -382,13 +345,13 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                   >
                     {/* Document name */}
                     <TableCell>
-                      <div className={styles.docNameCell}>
-                        <div className={styles.fileIcon}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#f1f5f9]">
                           {getFileIcon(doc.mimeType, doc.filename)}
                         </div>
                         <div>
-                          <div className={styles.filename}>{doc.filename}</div>
-                          <div className={styles.fileMeta}>
+                          <div className="font-semibold text-[#1a202c]">{doc.filename}</div>
+                          <div className="text-xs text-[#718096]">
                             {(doc.size / 1024 / 1024).toFixed(1)} MB
                             {latest?.version && ` • v${latest.version}`}
                           </div>
@@ -410,92 +373,30 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                       <StatusBadge status={status} />
                     </TableCell>
 
-                    {/* Action – shadcn DropdownMenu kebab */}
+                    {/* Action – RowActionsMenu */}
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <KebabTrigger />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[140px]">
-                          {/* View */}
-                          <DropdownMenuItem
-                            onSelect={() => handleRowClick(doc.id)}
-                            className="cursor-pointer"
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                              <circle cx="12" cy="12" r="3" />
-                            </svg>
-                            View
-                          </DropdownMenuItem>
-
-                          {/* Rename / Edit */}
-                          <DropdownMenuItem
-                            onSelect={() => handleRenameClick(doc)}
-                            className="cursor-pointer"
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                            </svg>
-                            Edit Name
-                          </DropdownMenuItem>
-
-                          <DropdownMenuSeparator />
-
-                          {/* Delete */}
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={hasCourse || isDeleting}
-                            onSelect={() => handleDelete(doc.id, doc.filename)}
-                            className="cursor-pointer"
-                            title={
-                              hasCourse
-                                ? 'Cannot delete — this document has a linked course'
-                                : isDeleting
-                                  ? 'Deleting…'
-                                  : 'Delete document'
-                            }
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              <line x1="10" y1="11" x2="10" y2="17" />
-                              <line x1="14" y1="11" x2="14" y2="17" />
-                            </svg>
-                            {isDeleting ? 'Deleting…' : 'Delete'}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <RowActionsMenu
+                        actions={[
+                          {
+                            label: 'View',
+                            icon: <Eye className="size-4" />,
+                            onSelect: () => handleRowClick(doc.id),
+                          },
+                          {
+                            label: 'Edit Name',
+                            icon: <Pencil className="size-4" />,
+                            onSelect: () => handleRenameClick(doc),
+                          },
+                          {
+                            label: isDeleting ? 'Deleting…' : 'Delete',
+                            icon: <Trash2 className="size-4" />,
+                            variant: 'destructive',
+                            separatorBefore: true,
+                            disabled: hasCourse || isDeleting,
+                            onSelect: () => handleDelete(doc.id, doc.filename),
+                          },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 );
@@ -504,24 +405,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={4} className="text-center p-[60px] text-slate-500">
                   <div className="flex flex-col items-center gap-3">
-                    <div className="text-slate-300">
-                      <svg
-                        width="64"
-                        height="64"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                        <line x1="16" y1="13" x2="8" y2="13" />
-                        <line x1="16" y1="17" x2="8" y2="17" />
-                        <polyline points="10 9 9 9 8 9" />
-                      </svg>
-                    </div>
+                    <FileX2 className="size-16 text-slate-300" />
                     <p className="text-base font-semibold text-[#2D3748]">
                       {searchQuery ? 'No documents match your search.' : 'No documents found.'}
                     </p>
@@ -539,44 +423,32 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
 
         {/* Pagination */}
         {totalEntries > 0 && (
-          <div className={styles.pagination}>
-            <span className={styles.paginationInfo}>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
+            <span className="text-sm text-[#718096]">
               Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, totalEntries)} of{' '}
               {totalEntries} entries
             </span>
 
-            <div className={styles.paginationPages}>
+            <div className="flex items-center gap-1.5">
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon-sm"
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
                 aria-label="Previous page"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
+                <ChevronLeft className="size-4" />
               </Button>
 
               {pageNumbers.map((n, i) =>
                 n === '…' ? (
-                  <span key={`ellipsis-${i}`} className={styles.pageDots}>
+                  <span key={`ellipsis-${i}`} className="px-1 text-[#718096]">
                     …
                   </span>
                 ) : (
                   <Button
                     key={n}
-                    variant={n === currentPage ? 'primary' : 'ghost'}
+                    variant={n === currentPage ? 'default' : 'outline'}
                     size="icon-sm"
                     onClick={() => handlePageChange(n as number)}
                     aria-current={n === currentPage ? 'page' : undefined}
@@ -587,44 +459,34 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
               )}
 
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon-sm"
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages || totalPages === 0}
                 aria-label="Next page"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
+                <ChevronRight className="size-4" />
               </Button>
             </div>
 
-            <div className={styles.paginationShow}>
+            <div className="flex items-center gap-2 text-sm text-[#718096]">
               Show
               <Select
                 value={itemsPerPage.toString()}
-                onChange={(value) => {
-                  setItemsPerPage(Number(value));
+                onValueChange={(v) => {
+                  setItemsPerPage(Number(v));
                   setCurrentPage(1);
                 }}
-                options={[
-                  { label: '10', value: '10' },
-                  { label: '20', value: '20' },
-                  { label: '50', value: '50' },
-                ]}
-                size="sm"
-                direction="up"
-              />
+              >
+                <SelectTrigger size="sm" className="w-[72px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
               entries
             </div>
           </div>

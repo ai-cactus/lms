@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import styles from './TrainingDashboard.module.css';
-import { Button, Input } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -16,6 +16,7 @@ import { CourseWithStats } from '@/types/course';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import { Plus, Search, BookOpen, Users, Activity, ChevronRight } from 'lucide-react';
 
 export interface DashboardStats {
   totalCourses: number;
@@ -43,7 +44,6 @@ interface TrainingDashboardProps {
   courses: CourseWithStats[];
 }
 
-// ... imports remain the same ...
 // Interactive Donut Chart with hover tooltips
 function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainingCoverage'] }) {
   const [activeSegment, setActiveSegment] = useState<string | null>(null);
@@ -296,94 +296,63 @@ export default function TrainingDashboard({
   const ticks = Array.from({ length: 6 }, (_, i) => Math.round((maxVal / 5) * i)).reverse();
 
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 xl:gap-8">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 max-sm:flex-col">
         <div>
-          <h1 className={styles.title}>Training Dashboard</h1>
-          <p className={styles.subtitle}>Here is an overview of your courses</p>
+          <h1 className="text-2xl font-bold text-[#1a202c]">Training Dashboard</h1>
+          <p className="text-base text-[#718096]">Here is an overview of your courses</p>
         </div>
-        <Button variant="primary" onClick={onCreateCourse}>
-          + Create Course
+        <Button onClick={onCreateCourse}>
+          <Plus className="size-5" />
+          Create Course
         </Button>
       </div>
 
       {/* Stats Cards */}
-      <div className={styles.statsGrid}>
-        <div className={`${styles.statCard} ${styles.cardBlue}`}>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+        {/* Total Courses - Blue */}
+        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#EEF2FF]">
           <div>
-            <div className={styles.iconWrapper}>
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-              </svg>
+            <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#4730F7]">
+              <BookOpen className="size-6" />
             </div>
-            <div className={styles.statLabel}>Total Courses</div>
-            <div className={styles.statValue}>{stats.totalCourses}</div>
+            <p className="mb-1 text-sm font-semibold text-[#4a5568]">Total Courses</p>
           </div>
+          <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{stats.totalCourses}</p>
         </div>
 
-        <div className={`${styles.statCard} ${styles.cardGreen}`}>
+        {/* Total Staff Assigned - Green */}
+        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#ECFDF5]">
           <div>
-            <div className={styles.iconWrapper}>
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="9" cy="7" r="4"></circle>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-              </svg>
+            <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#10B981]">
+              <Users className="size-6" />
             </div>
-            <div className={styles.statLabel}>Total Staff Assigned</div>
-            <div className={styles.statValue}>{stats.totalStaffAssigned}</div>
+            <p className="mb-1 text-sm font-semibold text-[#4a5568]">Total Staff Assigned</p>
           </div>
+          <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">
+            {stats.totalStaffAssigned}
+          </p>
         </div>
 
-        <div className={`${styles.statCard} ${styles.cardRed}`}>
+        {/* Average Grade - Red */}
+        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#FEF2F2]">
           <div>
-            <div className={styles.iconWrapper}>
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                <polyline points="22 4 12 14.01 9 11.01"></polyline>
-              </svg>
+            <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#EF4444]">
+              <Activity className="size-6" />
             </div>
-            <div className={styles.statLabel}>Average Grade</div>
-            <div className={styles.statValue}>{stats.averageGrade}%</div>
+            <p className="mb-1 text-sm font-semibold text-[#4a5568]">Average Grade</p>
           </div>
+          <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{stats.averageGrade}%</p>
         </div>
       </div>
 
       {/* Charts Section */}
-      <div className={styles.chartsGrid}>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
         {/* Performance Chart */}
-        <div className={`${styles.chartCard} ${styles.performanceCard}`}>
-          <div className={styles.chartHeader}>
-            <h3 className={styles.chartTitle}>Performance of Learners</h3>
+        <div className="flex min-h-[400px] flex-col rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
+          <div className="mb-6 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-[#1a202c]">Performance of Learners</h3>
           </div>
 
           {/* Legend */}
@@ -412,10 +381,7 @@ export default function TrainingDashboard({
             </div>
           </div>
 
-          <div
-            className={styles.barChartContainer}
-            style={{ height: 320, position: 'relative', marginTop: 10 }}
-          >
+          <div style={{ height: 320, position: 'relative', marginTop: 10 }}>
             {/* Y-Axis */}
             <div
               style={{
@@ -633,136 +599,107 @@ export default function TrainingDashboard({
         </div>
 
         {/* Donut Coverage Chart */}
-        <div className={`${styles.chartCard} ${styles.coverageCard}`}>
-          <h3 className={`${styles.chartTitle} mb-6`}>Training Coverage</h3>
+        <div className="flex min-h-[400px] flex-col rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-[#1a202c] mb-6">Training Coverage</h3>
 
-          <div className={styles.pieChartContainer}>
+          <div className="flex flex-col items-center gap-6 py-5">
             <DonutChartWithTooltip coverage={coverage} />
 
-            <div
-              className={`${styles.legend} grid grid-cols-[auto_1fr_auto] gap-y-3 gap-x-4 items-center`}
-            >
+            <div className="grid grid-cols-[auto_1fr_auto] gap-y-3 gap-x-4 items-center w-full">
               {/* Item 1 */}
-              <div className={styles.dot} style={{ background: '#14B8A6' }}></div>
+              <div className="size-3 rounded-full" style={{ background: '#14B8A6' }}></div>
               <div className="text-sm text-[#4A5568]">% of staff who have completed</div>
-              <span className={styles.legendPercent}>{coverage.completed}%</span>
+              <span className="font-semibold text-[#1a202c]">{coverage.completed}%</span>
 
               {/* Item 2 */}
-              <div className={styles.dot} style={{ background: '#F59E0B' }}></div>
+              <div className="size-3 rounded-full" style={{ background: '#F59E0B' }}></div>
               <div className="text-sm text-[#4A5568]">% of staff currently enrolled</div>
-              <span className={styles.legendPercent}>{coverage.inProgress}%</span>
+              <span className="font-semibold text-[#1a202c]">{coverage.inProgress}%</span>
 
               {/* Item 3 */}
-              <div className={styles.dot} style={{ background: '#EF4444' }}></div>
+              <div className="size-3 rounded-full" style={{ background: '#EF4444' }}></div>
               <div className="text-sm text-[#4A5568]">% of staff yet to begin any course</div>
-              <span className={styles.legendPercent}>{coverage.notStarted}%</span>
+              <span className="font-semibold text-[#1a202c]">{coverage.notStarted}%</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* My Courses Widget */}
-      <div className={styles.coursesSection}>
-        <div className={styles.coursesHeader}>
-          <h3 className={styles.coursesTitle}>My Courses</h3>
-          <div className={styles.coursesControls}>
+      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <h3 className="text-lg font-bold text-[#1a202c]">My Courses</h3>
+          <div className="w-full sm:w-80">
             <Input
               placeholder="Search for courses..."
-              className={styles.searchInput}
-              leftIcon={
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="text-slate-400"
-                >
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-              }
+              className="h-11"
+              startIcon={<Search aria-hidden="true" />}
             />
           </div>
         </div>
 
-        <div className={styles.tableWrapper}>
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-0">
-                <TableHead className={styles.colName}>Course Name</TableHead>
-                <TableHead className={styles.colStaff}>Assigned Staff</TableHead>
-                <TableHead className={styles.colCompletion}>Completion %</TableHead>
-                <TableHead className={styles.colDate}>Date Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {courses.length === 0 ? (
-                <EmptyTableState
-                  message="No courses found."
-                  subMessage="Create your first course above."
-                  colSpan={4}
-                  asTableRow
-                />
-              ) : (
-                courses.map((course) => (
-                  <TableRow
-                    key={course.id}
-                    onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                    className="cursor-pointer"
-                  >
-                    <TableCell>
-                      <div className={styles.courseInfo}>
-                        <div className={styles.courseIcon}>
-                          <Image
-                            src={course.thumbnail || '/images/icon-course-blue.svg'}
-                            alt={course.title}
-                            width={40}
-                            height={40}
-                          />
-                        </div>
-                        <div>
-                          <span className={styles.courseName}>{course.title}</span>
-                        </div>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-0">
+              <TableHead className="w-full md:w-[40%]">Course Name</TableHead>
+              <TableHead className="hidden md:table-cell">Assigned Staff</TableHead>
+              <TableHead className="hidden md:table-cell">Completion %</TableHead>
+              <TableHead className="hidden md:table-cell">Date Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {courses.length === 0 ? (
+              <EmptyTableState
+                message="No courses found."
+                subMessage="Create your first course above."
+                colSpan={4}
+                asTableRow
+              />
+            ) : (
+              courses.map((course) => (
+                <TableRow
+                  key={course.id}
+                  onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                  className="cursor-pointer"
+                >
+                  <TableCell>
+                    <div className="flex items-center gap-4">
+                      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
+                        <Image
+                          src={course.thumbnail || '/images/icon-course-blue.svg'}
+                          alt={course.title}
+                          width={40}
+                          height={40}
+                          className="object-cover"
+                        />
                       </div>
-                    </TableCell>
-                    <TableCell>{course.enrollmentsCount}</TableCell>
-                    <TableCell>{course.completionRate}%</TableCell>
-                    <TableCell>
-                      {new Date(course.createdAt).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                      <div>
+                        <span className="font-semibold text-[#0f172a]">{course.title}</span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">{course.enrollmentsCount}</TableCell>
+                  <TableCell className="hidden md:table-cell">{course.completionRate}%</TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {new Date(course.createdAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
 
-        <div className="flex justify-end mt-4 pr-6">
+        <div className="mt-4 flex justify-end">
           <Link
             href="/dashboard/courses"
-            className="text-[#4C6EF5] text-sm font-semibold flex items-center gap-1"
+            className="flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
           >
             View all
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
+            <ChevronRight className="size-4" aria-hidden="true" />
           </Link>
         </div>
       </div>
