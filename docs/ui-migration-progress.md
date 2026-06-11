@@ -2,7 +2,7 @@
 
 Living status of the Tailwind v4 + shadcn UI migration. **Update this file whenever a slice/page is migrated** — it is the single source of truth for "what's done" across sessions (we ship features between migration passes, so don't rely on memory).
 
-**Last updated:** 2026-06-11 (dashboard: shell, home, Courses list, Documents list, Staff Profile, Staff list)
+**Last updated:** 2026-06-11 (dashboard: shell, home, Courses list, Documents list, Staff Profile, Staff list, Training pages)
 **Branch convention:** one `feature/<slice>-ui-migration` branch per slice, PR'd against `dev`.
 **Companion docs:** conventions → [`ui-migration-pattern.md`](./ui-migration-pattern.md) · auth spec → [`superpowers/specs/2026-06-10-auth-ui-migration-design.md`](./superpowers/specs/2026-06-10-auth-ui-migration-design.md)
 
@@ -44,7 +44,7 @@ Biggest slice: ~16 page routes + ~50 components. Sub-order:
 - 🚧 Documents: ✅ **Documents list** (`page.tsx` header + `upload-section` + `DocumentListClient` — file-type icons, status pills [Completed/In Progress/Not Started], `RowActionsMenu` kebab [View/Edit Name/Delete, Delete disabled when course-linked], search, pagination, rename modal; responsive column-hiding; all functionality preserved). NOTE: `documents/page.module.css` **kept** (still imported by `[id]/page.tsx` detail + `upload-modal`). ⬜ `(main)/documents/[id]` detail.
 - 🚧 **Tables** — ✅ `MyCoursesTable` (home display table: shadcn `Table` + View Course links, responsive scroll, module deleted). ✅ New reusable **`RowActionsMenu`** kebab (`src/components/ui/RowActionsMenu.tsx`, lucide `MoreVertical` + themed dropdown, on `/styleguide`) — list ports below should use it instead of inline kebabs.
 - ✅ Staff: ✅ **Staff Profile** (`StaffProfileClient` `/staff/[id]` — avatar header + 4 action buttons, 4 tinted stat cards, Courses/Certificates tabs, courses table with progress bars + multi-state quiz badges + Retake/View, quiz-result overlay, 4 modals; `StaffProfile.module.css` deleted). ✅ **Staff list** (`StaffListClient` — avatars w/ status dot + Pending badge, plan-seat badge, conditional `RowActionsMenu` kebab [pending: Revoke; active: View Profile/Export PDF/Remove], search, pagination, 5 modals; all logic preserved). NOTE: `StaffList.module.css` **kept** (still imported by `RemoveStaffModal`). Minor: staff-profile mobile action buttons get tight (table scrolls) — polish later.
-- ⬜ Training: `(main)/training`, `(main)/training/courses/[id]` (+ preview, results), `components/dashboard/training/*`
+- 🚧 Training: ✅ **`TrainingDashboard`** (`/training` — stats cards + bar chart + custom donut + responsive My Courses table; module deleted) + ✅ **`TrainingDetails`** (`/training/courses/[id]` — breadcrumb/header/badges, 4 stat cards, Enrolled-Staff + Certificates tabs, status badges, `RowActionsMenu` kebab [View Result/Assign Retake], 3 modals; module deleted; all logic preserved). ⬜ `training/courses/[id]/preview` + `/results/[enrollmentId]`, other `components/dashboard/training/*`.
 - ⬜ Billing: `(main)/billing` + `components/billing/*` (5 files)
 - ⬜ Profile/settings: `(main)/profile`, `ProfileForm`, `ChangePasswordTab`, `TwoFactorAuthTab`, `components/auth/MfaSettings` (legacy Button)
 - ⬜ Auditor pack: `(main)/auditor-pack` + `components/dashboard/auditor/*`
@@ -65,7 +65,7 @@ Biggest slice: ~16 page routes + ~50 components. Sub-order:
 
 ## Overall module.css burn-down
 - **Start of migration:** 81 `.module.css` files.
-- **As of last update:** 66 remaining (auth −10; dashboard shell −1; dashboard home −1; the two shared shell modules deferred to the Worker slice). Run to refresh:
+- **As of last update:** 64 remaining (auth −10; dashboard shell −1; dashboard home −1; the two shared shell modules deferred to the Worker slice). Run to refresh:
   ```bash
   find src -name "*.module.css" | wc -l
   ```
