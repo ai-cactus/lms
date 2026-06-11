@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import styles from './DashboardEmptyState.module.css';
+import { X } from 'lucide-react';
 
 import { useModalContext } from '@/components/ui/legacy/ModalContext';
-import { Button } from '@/components/ui';
+import { Button } from '@/components/ui/button';
 
 interface DashboardEmptyStateProps {
   totalCourses: number;
@@ -46,28 +46,23 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
   if (!hasMounted || !isOpen) return null;
 
   return (
-    <div className={styles.overlay}>
-      <div className={styles.modal}>
-        <Button variant="ghost" size="icon-md" className={styles.closeButton} onClick={handleClose}>
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="relative mx-auto w-full max-w-[900px] overflow-y-auto rounded-2xl bg-white p-4 shadow-[0px_20px_25px_-5px_rgba(0,0,0,0.1),0px_10px_10px_-5px_rgba(0,0,0,0.04)] max-h-[calc(100vh-48px)]">
+        {/* Close button */}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="absolute right-6 top-6 z-10 flex size-8 cursor-pointer items-center justify-center rounded-full bg-[#f1f5f9] text-[#64748b] transition-all hover:bg-[#e2e8f0] hover:text-[#475569]"
+          onClick={handleClose}
+        >
+          <X className="size-5" />
         </Button>
 
-        <div className={styles.content}>
+        {/* Two-column content */}
+        <div className="flex min-h-[500px] flex-col md:flex-row">
           {/* Left Side - Illustration */}
-          <div className={styles.illustrationSection}>
-            {/* Placeholder Illustration - In alignment with design (Green Theme) */}
+          <div className="flex flex-1 flex-col items-center justify-center rounded-[20px] bg-[#d1fae5] p-8 text-center md:mt-0 md:p-10">
+            {/* Decorative illustration — preserved as-is (art, not an icon) */}
             <div className="mb-8">
               <svg
                 width="200"
@@ -112,19 +107,19 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
               </svg>
             </div>
 
-            <h2 className={styles.illustrationTitle}>
+            <h2 className="mb-3 text-2xl font-bold leading-[1.3] text-[#065f46]">
               Turn Your Healthcare Policies <br />
               into Interactive Training in <br />
               Minutes.
             </h2>
-            <p className={styles.illustrationText}>
+            <p className="max-w-full text-base leading-[1.5] text-[#374151]">
               Operationalize your policies and procedures <br />
               by training your staff
             </p>
 
             <Link
               href="/dashboard/courses/create"
-              className={styles.ctaButton}
+              className="mt-8 inline-flex items-center rounded-full bg-[#059669] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#047857]"
               onClick={handleClose}
             >
               Create your first course
@@ -132,36 +127,42 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
           </div>
 
           {/* Right Side - Steps Checklist */}
-          <div className={styles.checklistSection}>
-            <h3 className={styles.checklistTitle}>How to get started</h3>
+          <div className="flex flex-[1.2] flex-col justify-center bg-white px-4 py-4 md:px-12 md:py-[60px]">
+            <h3 className="mb-8 text-left text-[28px] font-bold text-[#111827]">
+              How to get started
+            </h3>
 
-            <div className={styles.stepsList}>
-              <div className={styles.stepItem}>
-                <span className={styles.stepNumber}>1.</span>
-                <div className={styles.stepContent}>
-                  <div className={styles.stepTitle}>Upload Policies</div>
-                  <div className={styles.stepDescription}>
+            <div className="flex flex-col gap-6">
+              <div className="flex items-start gap-4">
+                <span className="min-w-[16px] text-base font-bold text-[#111827]">1.</span>
+                <div className="flex-1">
+                  <div className="mb-1 text-base font-bold text-[#111827]">Upload Policies</div>
+                  <div className="text-sm leading-[1.5] text-[#6b7280]">
                     Upload your organization&apos;s documents. Theraptly will analyze and prepare a
                     draft training automatically.
                   </div>
                 </div>
               </div>
 
-              <div className={styles.stepItem}>
-                <span className={styles.stepNumber}>2.</span>
-                <div className={styles.stepContent}>
-                  <div className={styles.stepTitle}>Configure Course & Assessment</div>
-                  <div className={styles.stepDescription}>
+              <div className="flex items-start gap-4">
+                <span className="min-w-[16px] text-base font-bold text-[#111827]">2.</span>
+                <div className="flex-1">
+                  <div className="mb-1 text-base font-bold text-[#111827]">
+                    Configure Course &amp; Assessment
+                  </div>
+                  <div className="text-sm leading-[1.5] text-[#6b7280]">
                     Define course structure, quiz settings, difficulty level, and deadlines.
                   </div>
                 </div>
               </div>
 
-              <div className={styles.stepItem}>
-                <span className={styles.stepNumber}>3.</span>
-                <div className={styles.stepContent}>
-                  <div className={styles.stepTitle}>Review & Publish Course</div>
-                  <div className={styles.stepDescription}>
+              <div className="flex items-start gap-4">
+                <span className="min-w-[16px] text-base font-bold text-[#111827]">3.</span>
+                <div className="flex-1">
+                  <div className="mb-1 text-base font-bold text-[#111827]">
+                    Review &amp; Publish Course
+                  </div>
+                  <div className="text-sm leading-[1.5] text-[#6b7280]">
                     Review AI-generated lessons and quizzes, make adjustments, and approve for
                     publishing. Instantly make your training available for your team to access and
                     complete.
@@ -169,11 +170,13 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
                 </div>
               </div>
 
-              <div className={styles.stepItem}>
-                <span className={styles.stepNumber}>4.</span>
-                <div className={styles.stepContent}>
-                  <div className={styles.stepTitle}>Invite Workers to Course</div>
-                  <div className={styles.stepDescription}>
+              <div className="flex items-start gap-4">
+                <span className="min-w-[16px] text-base font-bold text-[#111827]">4.</span>
+                <div className="flex-1">
+                  <div className="mb-1 text-base font-bold text-[#111827]">
+                    Invite Workers to Course
+                  </div>
+                  <div className="text-sm leading-[1.5] text-[#6b7280]">
                     Assign courses to individuals or departments and track progress directly from
                     your dashboard.
                   </div>

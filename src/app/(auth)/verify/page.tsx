@@ -2,9 +2,19 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Logo, Button } from '@/components/ui';
-import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
-import styles from '../verify-email/page.module.css';
+import { Mail } from 'lucide-react';
+import { Logo } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { AuthShell } from '@/components/auth/AuthShell';
+
+function StatusFallback() {
+  return (
+    <div className="flex w-full flex-col items-center gap-6 text-center">
+      <Logo size="md" />
+      <p className="text-sm text-text-secondary">Loading...</p>
+    </div>
+  );
+}
 
 function VerifyContent() {
   const router = useRouter();
@@ -51,48 +61,33 @@ function VerifyContent() {
   if (!token) return null;
 
   return (
-    <div className={styles.formContent}>
+    <div className="flex w-full flex-col items-center gap-6 text-center">
       <Logo size="md" />
-
-      <div className={styles.iconWrapper}>
-        <svg
-          width="64"
-          height="64"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#4C6EF5"
-          strokeWidth="2"
-        >
-          <rect x="2" y="4" width="20" height="16" rx="2" />
-          <polyline points="22 6 12 13 2 6" />
-        </svg>
+      <div className="flex size-16 items-center justify-center rounded-full bg-primary/15 text-primary">
+        <Mail className="size-8" aria-hidden="true" />
+      </div>
+      <div>
+        <h1 className="mb-2 text-2xl font-semibold text-foreground">Welcome to Theraptly</h1>
+        <p className="text-sm leading-relaxed text-text-secondary">
+          Click the button below to verify your email address and complete your registration.
+        </p>
       </div>
 
-      <h1 className={styles.title}>Welcome to Theraptly</h1>
-      <p className={styles.subtitle}>
-        Click the button below to verify your email address and complete your registration.
-      </p>
-
-      <Button size="lg" fullWidth onClick={handleVerify} loading={isVerifying}>
+      <Button size="lg" className="w-full" onClick={handleVerify} loading={isVerifying}>
         Verify Email Address
       </Button>
 
-      {error && <p className={styles.error}>{error}</p>}
+      {error && <p className="text-sm text-error">{error}</p>}
     </div>
   );
 }
 
 export default function VerifyTokenPage() {
   return (
-    <div className={styles.container}>
-      <div className={styles.formSection}>
-        <Suspense fallback={<p>Loading...</p>}>
-          <VerifyContent />
-        </Suspense>
-      </div>
-
-      {/* Right Side - Hero Slider */}
-      <AuthHeroSlider />
-    </div>
+    <AuthShell>
+      <Suspense fallback={<StatusFallback />}>
+        <VerifyContent />
+      </Suspense>
+    </AuthShell>
   );
 }

@@ -51,7 +51,7 @@ git push origin feature/auth-refactor
 - **TypeScript**: Use strict typing where possible. Avoid `any`.
 - **Next.js**: Follow App Router conventions.
 - **Prisma**: Ensure all schema changes are backed by migrations or documented push steps.
-- **Styling**: Use Vanila CSS and follow the existing design system.
+- **Styling**: Use **Tailwind CSS v4 + shadcn/ui** components for all new pages, features, and UI. Do not add new CSS Modules (`.module.css`) or inline styles; use `lucide-react` for icons and the theme tokens in `src/app/globals.css`. Reuse the shared primitives in `src/components/ui/*`, keep every screen responsive, and follow `docs/ui-migration-pattern.md`.
 - **Logging**: Use the centralized logger in `src/lib/logger.ts`.
 
 ## 🐛 Bug Reports & Feature Requests

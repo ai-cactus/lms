@@ -1,8 +1,16 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback, useTransition } from 'react';
-import styles from './CoursesList.module.css';
-import { Button, Input, Select } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { RowActionsMenu } from '@/components/ui';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Table,
@@ -12,13 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -26,7 +27,7 @@ import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
-import { MoreVertical, Eye, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 const PENDING_KEY = 'lms_pending_generation';
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -38,6 +39,12 @@ interface PendingGeneration {
 }
 
 type BannerState = 'generating' | 'done' | 'failed' | 'hidden';
+
+const bannerClasses: Record<Exclude<BannerState, 'hidden'>, string> = {
+  generating: 'border-[#4C6EF5] bg-[#EBF4FF] text-[#1e3a8a]',
+  done: 'border-[#38A169] bg-[#F0FFF4] text-[#1a4731]',
+  failed: 'border-[#E53E3E] bg-[#FFF5F5] text-[#742a2a]',
+};
 
 function PendingGenerationBanner() {
   const [banner, setBanner] = useState<BannerState>('hidden');
@@ -97,29 +104,12 @@ function PendingGenerationBanner() {
 
   if (banner === 'hidden' || !pending) return null;
 
-  const bannerStyles: Record<string, React.CSSProperties> = {
-    generating: { background: '#EBF4FF', borderColor: '#4C6EF5', color: '#1e3a8a' },
-    done: { background: '#F0FFF4', borderColor: '#38A169', color: '#1a4731' },
-    failed: { background: '#FFF5F5', borderColor: '#E53E3E', color: '#742a2a' },
-  };
-
   return (
     <div
-      className="flex items-center gap-3 px-4 py-3 border rounded-[10px] mb-4 text-sm"
-      style={bannerStyles[banner]}
+      className={`flex items-center gap-3 rounded-[10px] border px-4 py-3 mb-4 text-sm ${bannerClasses[banner]}`}
     >
       {banner === 'generating' && (
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="shrink-0 animate-spin"
-        >
-          <circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10" />
-        </svg>
+        <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
       )}
       <span className="flex-1">
         {banner === 'generating' && 'Your course is still being generated in the background…'}
@@ -193,8 +183,8 @@ function CourseRenameModal({
       <div className="bg-white rounded-xl p-6 w-full max-w-[420px] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
         <h2 className="text-lg font-semibold text-[#111827] mb-4">Rename Course</h2>
         <form onSubmit={handleSubmit}>
-          <input
-            className="w-full py-2.5 px-3.5 border border-[#d1d5db] rounded-lg text-sm font-[inherit] text-[#111827] box-border"
+          <Input
+            className="h-11"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             autoFocus
@@ -203,22 +193,12 @@ function CourseRenameModal({
           />
           {error && <p className="text-red-600 text-[0.8125rem] mt-1.5">{error}</p>}
           <div className="flex justify-end gap-3 mt-5">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isPending}
-              className="py-2 px-4 border border-[#d1d5db] rounded-lg bg-white text-[#374151] text-sm font-[inherit] cursor-pointer"
-            >
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="py-2 px-5 border-none rounded-lg bg-[#4731f7] text-white text-sm font-semibold font-[inherit] cursor-pointer"
-              style={{ opacity: isPending ? 0.6 : 1 }}
-            >
+            </Button>
+            <Button type="submit" loading={isPending}>
               {isPending ? 'Saving…' : 'Save'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -252,8 +232,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
   }, [courses]);
 
   const handleDelete = useCallback(
-    (e: React.MouseEvent, course: CourseWithStats) => {
-      e.stopPropagation();
+    (course: CourseWithStats) => {
       if (
         !confirm(
           `Delete "${course.title}"?\n\nThis will permanently remove the course and cannot be undone.`,
@@ -301,7 +280,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
   };
 
   return (
-    <div className={styles.container}>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
       {/* Rename modal */}
       {courseToRename && (
         <CourseRenameModal
@@ -316,14 +295,13 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
       )}
 
       {/* Header */}
-      <div className={styles.header}>
+      <div className="mb-8 flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
         <div>
-          <div className={styles.breadcrumbs}>Trainings / Courses</div>
-          <h1 className={styles.title}>Courses</h1>
+          <div className="mb-2 text-sm text-[#718096]">Trainings / Courses</div>
+          <h1 className="text-2xl font-bold text-[#1a202c]">Courses</h1>
         </div>
         <Button
           id="create-course-btn"
-          className={styles.createButton}
           onClick={() => {
             if (!hasBilling) {
               setShowBillingGate(true);
@@ -332,20 +310,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
             router.push('/dashboard/courses/create');
           }}
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
+          <Plus className="size-5" />
           Create Course
         </Button>
       </div>
@@ -368,33 +333,18 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
 
       <PendingGenerationBanner />
 
-      <div className={styles.card}>
+      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
         {/* Search */}
-        <div className={styles.searchContainer}>
+        <div className="mb-6 w-full sm:w-[380px]">
           <Input
+            className="h-11"
             placeholder="Search for courses..."
-            className={styles.searchInput}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
               setCurrentPage(1);
             }}
-            leftIcon={
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-slate-400"
-              >
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            }
+            startIcon={<Search aria-hidden="true" />}
           />
         </div>
 
@@ -403,10 +353,16 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
               <TableHead style={{ width: '40%' }}>Course Name</TableHead>
-              <TableHead style={{ width: '15%' }}>Assigned Staff</TableHead>
-              <TableHead style={{ width: '15%' }}>Role</TableHead>
-              <TableHead style={{ width: '20%' }}>Date Created</TableHead>
-              <TableHead style={{ width: '10%' }}></TableHead>
+              <TableHead className="hidden md:table-cell" style={{ width: '15%' }}>
+                Assigned Staff
+              </TableHead>
+              <TableHead className="hidden md:table-cell" style={{ width: '15%' }}>
+                Role
+              </TableHead>
+              <TableHead className="hidden lg:table-cell" style={{ width: '20%' }}>
+                Date Created
+              </TableHead>
+              <TableHead className="text-right" style={{ width: '10%' }}></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -418,73 +374,57 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                   className="cursor-pointer"
                 >
                   <TableCell>
-                    <div className={styles.courseInfo}>
-                      <div className={styles.courseIcon}>
+                    <div className="flex items-center gap-4">
+                      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
                         <Image
                           src={course.thumbnail || '/images/icon-course-blue.svg'}
                           alt={course.title}
                           width={40}
                           height={40}
+                          className="object-cover"
                         />
                       </div>
                       <div>
-                        <span className={styles.courseName}>{course.title}</span>
+                        <span className="font-semibold text-[#1a202c]">{course.title}</span>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>{course.enrollmentsCount}</TableCell>
-                  <TableCell>General</TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">{course.enrollmentsCount}</TableCell>
+                  <TableCell className="hidden md:table-cell">General</TableCell>
+                  <TableCell className="hidden lg:table-cell">
                     {new Date(course.createdAt).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
                     })}
                   </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          className={styles.moreActionBtn}
-                          aria-label="More actions"
-                          aria-haspopup="menu"
-                        >
-                          <MoreVertical size={16} />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-[160px]">
-                        {/* View */}
-                        <DropdownMenuItem
-                          onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                          className="gap-2 cursor-pointer"
-                        >
-                          <Eye size={14} />
-                          View
-                        </DropdownMenuItem>
-
-                        {/* Rename */}
-                        <DropdownMenuItem
-                          onClick={() => setCourseToRename({ id: course.id, title: course.title })}
-                          className="gap-2 cursor-pointer"
-                        >
-                          <Pencil size={14} />
-                          Rename
-                        </DropdownMenuItem>
-
-                        <DropdownMenuSeparator />
-
-                        {/* Delete */}
-                        <DropdownMenuItem
-                          variant="destructive"
-                          disabled={deletingId === course.id}
-                          onClick={(e) => handleDelete(e, course)}
-                          className="gap-2 cursor-pointer"
-                        >
-                          <Trash2 size={14} />
-                          {deletingId === course.id ? 'Deleting…' : 'Delete'}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-3">
+                      <Link
+                        href={`/dashboard/training/courses/${course.id}`}
+                        className="hidden text-sm font-semibold text-primary hover:underline sm:inline-flex"
+                      >
+                        View
+                      </Link>
+                      <RowActionsMenu
+                        actions={[
+                          {
+                            label: 'Rename',
+                            icon: <Pencil className="size-4" />,
+                            onSelect: () =>
+                              setCourseToRename({ id: course.id, title: course.title }),
+                          },
+                          {
+                            label: deletingId === course.id ? 'Deleting…' : 'Delete',
+                            icon: <Trash2 className="size-4" />,
+                            variant: 'destructive',
+                            separatorBefore: true,
+                            disabled: deletingId === course.id,
+                            onSelect: () => handleDelete(course),
+                          },
+                        ]}
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -500,40 +440,27 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         </Table>
 
         {/* Pagination */}
-        <div className={styles.pagination}>
-          <div className={styles.paginationInfo}>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
+          <div className="text-sm text-[#718096]">
             Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
             {Math.min(startIndex + itemsPerPage, totalEntries)} of {totalEntries} entries
           </div>
 
-          <div className={styles.paginationCenter}>
+          <div className="flex items-center gap-1.5">
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon-sm"
-              className={styles.pageButton}
               disabled={currentPage === 1}
               onClick={() => handlePageChange(currentPage - 1)}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
+              <ChevronLeft className="size-4" />
             </Button>
 
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
               <Button
                 key={page}
-                variant={page === currentPage ? 'primary' : 'ghost'}
-                size="sm"
-                className={`${styles.pageButton} ${page === currentPage ? styles.active : ''}`}
+                variant={page === currentPage ? 'default' : 'outline'}
+                size="icon-sm"
                 onClick={() => handlePageChange(page)}
               >
                 {page}
@@ -541,45 +468,34 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
             ))}
 
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon-sm"
-              className={styles.pageButton}
               disabled={currentPage === totalPages || totalPages === 0}
               onClick={() => handlePageChange(currentPage + 1)}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
+              <ChevronRight className="size-4" />
             </Button>
           </div>
 
-          <div className={styles.paginationRight}>
-            Show
+          <div className="flex items-center gap-2 text-sm text-[#718096]">
+            <span>Show</span>
             <Select
               value={itemsPerPage.toString()}
-              onChange={(value) => {
-                setItemsPerPage(Number(value));
+              onValueChange={(v) => {
+                setItemsPerPage(Number(v));
                 setCurrentPage(1);
               }}
-              options={[
-                { label: '5', value: '5' },
-                { label: '10', value: '10' },
-                { label: '20', value: '20' },
-              ]}
-              size="sm"
-              direction="up"
-              className={styles.entriesSelect}
-            />
-            entries
+            >
+              <SelectTrigger size="sm" className="w-[72px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5</SelectItem>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+              </SelectContent>
+            </Select>
+            <span>entries</span>
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence, wrap } from 'framer-motion';
-import styles from './AuthHeroSlider.module.css';
+import { cn } from '@/lib/utils';
 
 const slides = [
   {
@@ -78,7 +78,7 @@ export default function AuthHeroSlider() {
   }, [page, paginate]);
 
   return (
-    <div className={styles.heroSection}>
+    <div className="relative m-4 ml-0 hidden flex-1 overflow-hidden rounded-3xl bg-[#f7fafc] lg:block">
       <AnimatePresence initial={false} custom={direction}>
         <motion.div
           key={page}
@@ -103,24 +103,24 @@ export default function AuthHeroSlider() {
               paginate(-1);
             }
           }}
-          className={styles.motionContainer}
+          className="absolute inset-0 size-full"
         >
           <Image
             src={slides[imageIndex].image}
             alt={slides[imageIndex].title}
             fill
-            className={styles.heroImage}
+            className="pointer-events-none rounded-3xl object-cover"
             priority={imageIndex === 0}
             quality={100}
             sizes="(max-width: 1024px) 0vw, 50vw"
             // Ensure pointer events drop through to motion layer
-            style={{ pointerEvents: 'none' }}
+            draggable={false}
           />
         </motion.div>
       </AnimatePresence>
 
       {/* Overlay Content */}
-      <div className={styles.heroOverlay}>
+      <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-end gap-2.5 bg-[linear-gradient(180deg,rgba(16,16,16,0)_53.5%,rgba(16,16,16,1)_100%)] p-10">
         <AnimatePresence mode="wait">
           <motion.div
             key={page}
@@ -128,18 +128,25 @@ export default function AuthHeroSlider() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.3 }}
-            className={styles.heroTextContent}
+            className="pointer-events-auto max-w-[540px] text-white"
           >
-            <h2 className={styles.heroTitle}>{slides[imageIndex].title}</h2>
-            <p className={styles.heroSubtitle}>{slides[imageIndex].subtitle}</p>
+            <h2 className="mb-2.5 text-[32px] font-semibold leading-[1.3]">
+              {slides[imageIndex].title}
+            </h2>
+            <p className="text-lg font-normal leading-normal opacity-90">
+              {slides[imageIndex].subtitle}
+            </p>
           </motion.div>
         </AnimatePresence>
 
-        <div className={styles.progressBarContainer}>
+        <div className="pointer-events-auto flex gap-2">
           {slides.map((_, index) => (
             <button
               key={index}
-              className={`${styles.progressSegment} ${index === imageIndex ? styles.active : ''}`}
+              className={cn(
+                'h-1 w-12 cursor-pointer rounded bg-white/30 transition-colors hover:bg-white/60',
+                index === imageIndex && 'bg-white',
+              )}
               onClick={() => {
                 const newDirection = index > imageIndex ? 1 : -1;
                 setPage([index, newDirection]);

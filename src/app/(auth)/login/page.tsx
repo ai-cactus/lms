@@ -4,12 +4,16 @@ import React, { useState, useActionState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Logo, Input, Button } from '@/components/ui';
+import { Mail, Lock } from 'lucide-react';
+import { Logo } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
+import { Alert } from '@/components/ui/alert';
+import { AuthShell } from '@/components/auth/AuthShell';
 import { authenticate } from '@/app/actions/auth';
-import { PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
-import styles from './page.module.css';
 import { signIn } from 'next-auth/react';
-import AuthHeroSlider from '@/components/auth/AuthHeroSlider';
 import { logger } from '@/lib/logger';
 
 function LoginForm() {
@@ -67,10 +71,12 @@ function LoginForm() {
       newErrors.email = 'Please enter a valid email';
     }
 
+    // Login validates only that a password was entered — never enforce the
+    // signup-strength minimum here, or existing users whose password predates
+    // the current policy (and is shorter than PASSWORD_MIN_LENGTH) would be
+    // blocked from submitting valid credentials. The server verifies via bcrypt.
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if ((formData.password || '').length < PASSWORD_MIN_LENGTH) {
-      newErrors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
     }
 
     setErrors(newErrors);
@@ -113,259 +119,122 @@ function LoginForm() {
   }, [state, router]);
 
   return (
-    <div className={styles.formContent}>
+    <AuthShell>
       <Logo size="md" />
 
-      <div className={styles.formHeader}>
-        <h1 className={styles.title}>Log in to your account</h1>
-        <p className={styles.subtitle}>Log in to your workspace and get back to what matters.</p>
+      <div className="w-full text-left">
+        <h1 className="mb-2 text-2xl font-semibold text-foreground">Log in to your account</h1>
+        <p className="text-sm leading-relaxed text-text-secondary">
+          Log in to your workspace and get back to what matters.
+        </p>
       </div>
 
       {joined && (
-        <div
-          style={{
-            backgroundColor: '#ECFDF5',
-            color: '#065F46',
-            padding: '12px',
-            borderRadius: '6px',
-            marginBottom: '16px',
-            border: '1px solid #A7F3D0',
-            fontSize: '14px',
-            textAlign: 'center',
-          }}
-        >
-          Account created successfully! Please log in.
-        </div>
+        <Alert variant="success" className="w-full" title="Account created successfully!">
+          Please log in.
+        </Alert>
       )}
 
       {searchParams.get('verified') && (
-        <div
-          style={{
-            backgroundColor: '#ECFDF5',
-            color: '#065F46',
-            padding: '16px 20px',
-            borderRadius: '12px',
-            marginBottom: '24px',
-            border: '1px solid #A7F3D0',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            width: '100%',
-          }}
-        >
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              backgroundColor: '#10B981',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '2px' }}>
-              Email verified successfully!
-            </div>
-            <div style={{ fontSize: '13px', color: '#047857' }}>
-              Please log in to continue to your account.
-            </div>
-          </div>
-        </div>
+        <Alert variant="success" className="w-full" title="Email verified successfully!">
+          Please log in to continue to your account.
+        </Alert>
       )}
 
       {oauthError === 'AccessDenied' && (
-        <div
-          style={{
-            backgroundColor: '#FEF2F2',
-            color: '#991B1B',
-            padding: '16px 20px',
-            borderRadius: '12px',
-            marginBottom: '24px',
-            border: '1px solid #FCA5A5',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            width: '100%',
-          }}
-        >
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              backgroundColor: '#EF4444',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '2px' }}>
-              Access Denied
-            </div>
-            <div style={{ fontSize: '13px', color: '#B91C1C' }}>
-              You do not have authorization to log in with this role.
-            </div>
-          </div>
-        </div>
+        <Alert variant="error" className="w-full" title="Access Denied">
+          You do not have authorization to log in with this role.
+        </Alert>
       )}
 
       {inactiveReason === 'inactive' && (
-        <div
-          style={{
-            backgroundColor: '#FEF3C7',
-            color: '#92400E',
-            padding: '16px 20px',
-            borderRadius: '12px',
-            marginBottom: '24px',
-            border: '1px solid #FCD34D',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            width: '100%',
-          }}
-        >
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              backgroundColor: '#F59E0B',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '2px' }}>
-              Session Expired
-            </div>
-            <div style={{ fontSize: '13px', color: '#A16207' }}>
-              You were logged out due to inactivity. Please log in again.
-            </div>
-          </div>
-        </div>
+        <Alert variant="warning" className="w-full" title="Session Expired">
+          You were logged out due to inactivity. Please log in again.
+        </Alert>
       )}
 
-      <div className={styles.socialLogin}>
-        <Button
-          variant="outline"
-          type="button"
-          className={styles.microsoftButton}
-          onClick={handleMicrosoftLogin}
-          loading={isMicrosoftLoading}
-        >
-          <Image src="/icons/microsoft.svg" alt="Microsoft" width={20} height={20} />
-          <span>Log In with Microsoft</span>
-        </Button>
-      </div>
+      <Button
+        variant="secondary"
+        type="button"
+        className="w-full gap-3 rounded-full"
+        onClick={handleMicrosoftLogin}
+        loading={isMicrosoftLoading}
+      >
+        <Image src="/icons/microsoft.svg" alt="Microsoft" width={20} height={20} />
+        <span>Log In with Microsoft</span>
+      </Button>
 
-      <div className={styles.divider}>
+      <div className="flex w-full items-center gap-3 text-xs text-text-tertiary">
+        <span className="h-px flex-1 bg-border" />
         <span>or continue with email</span>
+        <span className="h-px flex-1 bg-border" />
       </div>
 
-      <form onSubmit={handleSubmit} className={styles.form}>
-        <Input
-          label="Email"
-          type="email"
-          name="email"
-          placeholder="Enter your email address"
-          value={formData.email}
-          onChange={handleChange}
-          error={errors.email}
-          autoComplete="email"
-        />
+      <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
+        <Field label="Email" error={errors.email}>
+          <Input
+            type="email"
+            name="email"
+            placeholder="Enter your email address"
+            value={formData.email}
+            onChange={handleChange}
+            autoComplete="email"
+            startIcon={<Mail aria-hidden="true" />}
+          />
+        </Field>
 
-        <Input
-          label="Password"
-          type="password"
-          name="password"
-          placeholder="Enter your password"
-          value={formData.password}
-          onChange={handleChange}
-          error={errors.password}
-          autoComplete="current-password"
-        />
+        <Field label="Password" error={errors.password}>
+          <PasswordInput
+            name="password"
+            placeholder="Enter your password"
+            value={formData.password}
+            onChange={handleChange}
+            autoComplete="current-password"
+            startIcon={<Lock aria-hidden="true" />}
+          />
+        </Field>
 
-        <div className={styles.formOptions}>
-          <Link href="/forgot-password" className={styles.link}>
+        <div className="-mt-2 flex w-full justify-end">
+          <Link
+            href="/forgot-password"
+            className="text-sm font-semibold text-primary hover:underline"
+          >
             Forgot your password?
           </Link>
         </div>
 
-        <Button type="submit" size="lg" fullWidth loading={isPending}>
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          loading={isPending}
+          disabled={!formData.email || !formData.password}
+        >
           Log in
         </Button>
       </form>
 
-      <p className={styles.signupPrompt}>
+      <p className="text-sm text-text-secondary">
         Don&apos;t have an account?{' '}
-        <Link href="/signup" className={styles.signupLink}>
+        <Link href="/signup" className="font-semibold text-primary hover:underline">
           Sign Up
         </Link>
       </p>
-    </div>
+    </AuthShell>
   );
 }
 
 export default function LoginPage() {
   return (
-    <div className={styles.container}>
-      {/* Left Side - Form */}
-      <div className={styles.formSection}>
-        <Suspense fallback={<div>Loading...</div>}>
-          <LoginForm />
-        </Suspense>
-      </div>
-
-      {/* Right Side - Hero Slider */}
-      <AuthHeroSlider />
-    </div>
+    <Suspense
+      fallback={
+        <AuthShell>
+          <Logo size="md" />
+          <p className="text-sm text-text-secondary">Loading...</p>
+        </AuthShell>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

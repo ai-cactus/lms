@@ -1,5 +1,4 @@
 import React from 'react';
-import styles from './page.module.css';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
@@ -8,6 +7,7 @@ import MyCoursesTable from '@/components/dashboard/MyCoursesTable';
 import { getDashboardData } from '@/app/actions/course';
 import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
 import DashboardCreateCourseButton from '@/components/dashboard/DashboardCreateCourseButton';
+import { BookOpen, Users, Activity } from 'lucide-react';
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -39,87 +39,49 @@ export default async function DashboardPage() {
   const averageGrade = stats?.averageGrade || 0;
 
   return (
-    <div className={styles.container}>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 px-5 py-6 sm:px-8 xl:gap-8 xl:px-10">
       {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.titleSection}>
-          <h1 className={styles.title}>Dashboard</h1>
-          <p className={styles.subtitle}>Here is an overview of your courses</p>
+      <div className="flex flex-wrap items-start justify-between gap-4 max-sm:flex-col">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold text-[#1a202c] xl:text-[28px]">Dashboard</h1>
+          <p className="text-base text-[#718096]">Here is an overview of your courses</p>
         </div>
         <DashboardCreateCourseButton hasBilling={hasBilling} />
       </div>
 
       {/* Metrics Options */}
-      <div className={styles.metricsGrid}>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
         {/* Total Courses - Green */}
-        <div className={styles.metricCard} style={{ background: '#ECFDF5' }}>
+        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#ECFDF5]">
           <div>
-            <div className={styles.metricIcon} style={{ backgroundColor: '#10B981' }}>
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-              </svg>
+            <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#10B981]">
+              <BookOpen className="size-6" />
             </div>
-            <p className={styles.metricLabel}>Total Courses</p>
+            <p className="mb-1 text-sm font-semibold text-[#4a5568]">Total Courses</p>
           </div>
-          <p className={styles.metricValue}>{totalCourses}</p>
+          <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{totalCourses}</p>
         </div>
 
         {/* Total Staff - Blue */}
-        <div className={styles.metricCard} style={{ background: '#EEF2FF' }}>
+        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#EEF2FF]">
           <div>
-            <div className={styles.metricIcon} style={{ backgroundColor: '#4730F7' }}>
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="9" cy="7" r="4"></circle>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-              </svg>
+            <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#4730F7]">
+              <Users className="size-6" />
             </div>
-            <p className={styles.metricLabel}>Total Staff Assigned</p>
+            <p className="mb-1 text-sm font-semibold text-[#4a5568]">Total Staff Assigned</p>
           </div>
-          <p className={styles.metricValue}>{totalStaffAssigned}</p>
+          <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{totalStaffAssigned}</p>
         </div>
 
         {/* Average Grade - Red */}
-        <div className={styles.metricCard} style={{ background: '#FEF2F2' }}>
+        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#FEF2F2]">
           <div>
-            <div className={styles.metricIcon} style={{ backgroundColor: '#EF4444' }}>
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                <polyline points="22 4 12 14.01 9 11.01"></polyline>
-              </svg>
+            <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#EF4444]">
+              <Activity className="size-6" />
             </div>
-            <p className={styles.metricLabel}>Average Grade</p>
+            <p className="mb-1 text-sm font-semibold text-[#4a5568]">Average Grade</p>
           </div>
-          <p className={styles.metricValue}>{averageGrade}%</p>
+          <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{averageGrade}%</p>
         </div>
       </div>
 
