@@ -87,6 +87,29 @@ All base/reset/element rules live inside **`@layer base`**. Tailwind v4 puts uti
 - Table search inputs: shrink the global 56px Input with `className="h-11"`.
 - Reference implementations: `MyCoursesTable` (display table) and the `/styleguide` "Table + row actions" section.
 
+## 3b. Modals / dialogs
+
+Replace legacy `Modal` (and hand-rolled `fixed inset-0` overlays) with the shadcn **`Dialog`** family (`@/components/ui/dialog`) — accessible (focus trap, ESC, overlay click), themed, with a built-in close button. Canonical shape:
+
+```tsx
+<Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+  <DialogContent className="sm:max-w-md">
+    <DialogHeader><DialogTitle>Upload Document</DialogTitle></DialogHeader>
+    <form action={action} className="flex flex-col gap-6">
+      {/* …fields… banners via <Alert> … */}
+      <DialogFooter>
+        <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
+        <Button type="submit" loading={isPending} disabled={!ready}>Save</Button>
+      </DialogFooter>
+    </form>
+  </DialogContent>
+</Dialog>
+```
+
+- `onOpenChange(false)` fires on ESC / overlay / the ✕ — route it to the existing `onClose`.
+- **Preserve form gating.** Native `required`/HTML validation does NOT carry over when you swap a native `<input type="checkbox" required>` for the shadcn `Checkbox` (Radix renders a `<button>`). Mirror the gate with controlled state and fold it into the submit button's `disabled` (e.g. `disabled={!file || !agreed}`). Pair `Checkbox id=…` with `<label htmlFor=…>` (the Radix root is a labelable `<button>`, so the label still toggles it).
+- Reference: `documents/upload-modal.tsx`, `dashboard/Header.tsx` (logout confirm). The pre-Dialog `CoursesListClient` rename modal uses a hand-rolled overlay — fine where it is, but new/ported modals should use `Dialog`.
+
 ## 4. Per-page migration procedure
 
 1. Read the page and its `.module.css`. Read an already-ported sibling as a reference.

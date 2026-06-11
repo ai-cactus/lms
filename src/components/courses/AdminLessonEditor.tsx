@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
 import CourseArticle from '@/components/courses/CourseArticle';
-import styles from '@/components/courses/CoursePlayer.module.css';
 import { updateLessonContent } from '@/app/actions/course';
 import 'react-quill-new/dist/quill.snow.css';
 import { Button } from '@/components/ui';
@@ -89,7 +88,7 @@ export default function AdminLessonEditor({
         isEditing ? (
           <textarea
             ref={titleRef}
-            className={styles.articleTitleInput}
+            className="w-full text-[36px] font-extrabold tracking-[-0.03em] text-foreground bg-transparent border-none outline-none resize-none leading-[1.15] font-[inherit] p-0 max-md:text-[26px] max-[480px]:text-[22px]"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Lesson Title"
@@ -108,7 +107,9 @@ export default function AdminLessonEditor({
             }}
           />
         ) : (
-          <h1 className={styles.articleTitle}>{title}</h1>
+          <h1 className="text-[36px] font-extrabold tracking-[-0.03em] text-foreground leading-[1.15] max-md:text-[26px] max-[480px]:text-[22px]">
+            {title}
+          </h1>
         )
       }
       onNext={onNext}
@@ -152,7 +153,7 @@ export default function AdminLessonEditor({
       </div>
 
       {isEditing ? (
-        <div className={styles.quillWrapper}>
+        <div className="[&_.ql-container]:!text-[18px] [&_.ql-container]:font-[450] [&_.ql-container]:leading-[1.8] [&_.ql-container]:text-text-secondary [&_.ql-container]:font-[inherit] [&_.ql-container]:!border-none [&_.ql-editor]:!p-0 [&_.ql-toolbar]:!border-none [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-b-[#f3f4f6] [&_.ql-toolbar]:mb-6 [&_.ql-toolbar]:bg-transparent [&_.ql-toolbar]:!py-2 [&_.ql-toolbar]:!px-0">
           <ReactQuill theme="snow" value={content} onChange={setContent} modules={quillModules} />
         </div>
       ) : (

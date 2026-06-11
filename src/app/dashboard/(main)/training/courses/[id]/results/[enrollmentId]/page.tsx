@@ -21,7 +21,7 @@ export default async function QuizResultsPage({
     if (!latestAttempt) {
       // No quiz attempt yet - show empty state or redirect
       return (
-        <div style={{ padding: 40, textAlign: 'center' }}>
+        <div className="p-10 text-center">
           <h2>No Quiz Results</h2>
           <p>This user has not completed the quiz yet.</p>
         </div>
@@ -102,7 +102,7 @@ export default async function QuizResultsPage({
     if (error instanceof Error) {
       if (error.message === 'Unauthorized') {
         return (
-          <div style={{ padding: 40, textAlign: 'center' }}>
+          <div className="p-10 text-center">
             <h2>Please Log In</h2>
             <p>You need to be logged in to view quiz results.</p>
           </div>
@@ -110,7 +110,7 @@ export default async function QuizResultsPage({
       }
       if (error.message === 'Access denied') {
         return (
-          <div style={{ padding: 40, textAlign: 'center' }}>
+          <div className="p-10 text-center">
             <h2>Access Denied</h2>
             <p>You don&apos;t have permission to view these results.</p>
           </div>
@@ -118,7 +118,7 @@ export default async function QuizResultsPage({
       }
       if (error.message === 'Enrollment not found') {
         return (
-          <div style={{ padding: 40, textAlign: 'center' }}>
+          <div className="p-10 text-center">
             <h2>Not Found</h2>
             <p>This enrollment could not be found.</p>
           </div>

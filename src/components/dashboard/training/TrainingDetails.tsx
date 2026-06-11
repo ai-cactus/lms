@@ -35,6 +35,8 @@ import {
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
+import { Badge } from '@/components/ui/badge';
+import { courseTypeLabel, courseTypeBadgeVariant } from '@/lib/video/course-type-label';
 import { CourseWithRelations } from '@/types/course';
 
 interface TrainingDetailsProps {
@@ -99,7 +101,12 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         {/* Header */}
         <div className="flex items-start justify-between gap-10 max-md:flex-col">
           <div className="flex-1">
-            <h1 className="mb-3 text-2xl font-bold text-[#1a202c]">{course.title}</h1>
+            <div className="mb-2 flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-[#1a202c]">{course.title}</h1>
+              <Badge variant={courseTypeBadgeVariant(course.type)}>
+                {courseTypeLabel(course.type)}
+              </Badge>
+            </div>
             <p className="text-sm text-[#718096]">
               Mandatory annual training aligned with organizational standards
             </p>

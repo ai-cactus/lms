@@ -59,20 +59,33 @@ export async function enrollUsers(courseId: string, staffEntries: StaffEntry[]) 
     throw new Error('Unauthorized');
   }
 
-  // Verify course exists and belongs to the calling user.
+  // Verify course exists and the calling admin is allowed to enroll staff into it.
   const course = await prisma.course.findUnique({
     where: { id: courseId },
   });
 
-  if (!course || course.createdBy !== session.user.id) {
-    throw new Error('Course not found');
-  }
-
-  // Get organization info for new user creation.
+  // Get organization info for new user creation and offering checks.
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { organization: true },
   });
+
+  const isOwnCourse = course?.createdBy === session.user.id;
+
+  // An org admin may also enroll staff into a global course that their
+  // organization has explicitly offered (an OrgCourseOffering row exists).
+  const organizationId = currentUser?.organizationId ?? null;
+  const isOfferedGlobal =
+    !isOwnCourse && course?.isGlobal === true && organizationId !== null
+      ? (await prisma.orgCourseOffering.findUnique({
+          where: { organizationId_courseId: { organizationId, courseId } },
+          select: { id: true },
+        })) !== null
+      : false;
+
+  if (!course || (!isOwnCourse && !isOfferedGlobal)) {
+    throw new Error('Course not found');
+  }
 
   const results = {
     success: [] as string[],

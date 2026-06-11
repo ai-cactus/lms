@@ -1,8 +1,11 @@
 'use client';
 
 import React from 'react';
-import styles from '../CourseWizard.module.css';
-import { Select, Input, Button } from '@/components/ui';
+import { Clock } from 'lucide-react';
+
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/legacy/Select';
 
 import { CourseWizardData } from '@/types/course';
 
@@ -13,17 +16,19 @@ interface Step3DetailsProps {
 
 export default function Step3Details({ data, onChange }: Step3DetailsProps) {
   return (
-    <div className={styles.stepWrapper}>
-      <h2 className={styles.stepTitle}>Course Details</h2>
-      <p className={styles.stepSubtitle}>
+    <div className="relative z-50 flex w-full max-w-[800px] flex-col items-center transition-[max-width] duration-300">
+      <h2 className="mb-5 shrink-0 text-center font-heading text-[32px] font-bold tracking-[-0.5px] text-foreground">
+        Course Details
+      </h2>
+      <p className="mb-[30px] max-w-[600px] shrink-0 text-center text-base leading-[1.5] text-text-secondary">
         Start by uploading the policy or compliance document you want to turn into a course. This
         will help you analyze and generate lessons and quizzes automatically.
       </p>
 
-      <div className={styles.scrollableStepContent}>
+      <div className="w-full flex-1 overflow-y-auto pb-10">
         {/* Course Title */}
-        <div className={styles.formRow}>
-          <label className={styles.formLabel}>Course Title</label>
+        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
+          <label className="text-sm font-medium text-text-muted">Course Title</label>
           <Input
             name="title"
             value={data.title}
@@ -33,11 +38,11 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
         </div>
 
         {/* Short Description */}
-        <div className={`${styles.formRow} ${styles.formRowTop}`}>
-          <label className={`${styles.formLabel} ${styles.formLabelTop}`}>Short Description</label>
+        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-start gap-5">
+          <label className="pt-3 text-sm font-medium text-text-muted">Short Description</label>
           <textarea
             name="description"
-            className={styles.textarea}
+            className="min-h-[120px] w-full resize-y rounded-lg border border-border px-4 py-3 font-[inherit] text-base text-[#2d3748] transition-all duration-200 ease-in-out outline-none focus:border-[#2d4ddd] focus:shadow-[0_0_0_3px_rgba(45,77,221,0.1)]"
             value={data.description}
             onChange={(e) => onChange('description', e.target.value)}
             placeholder="Enter short description"
@@ -45,40 +50,17 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
         </div>
 
         {/* Estimated Duration (AI-generated, read-only) */}
-        <div className={styles.formRow}>
-          <label className={styles.formLabel}>Estimated Duration</label>
+        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
+          <label className="text-sm font-medium text-text-muted">Estimated Duration</label>
           <div
-            style={{
-              padding: '10px 14px',
-              background: '#F7FAFC',
-              border: '1px solid #E2E8F0',
-              borderRadius: '8px',
-              fontSize: '14px',
-              color: data.duration ? '#2D3748' : '#A0AEC0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
+            className={`flex items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3.5 py-2.5 text-sm ${
+              data.duration ? 'text-[#2D3748]' : 'text-[#A0AEC0]'
+            }`}
           >
             {data.duration ? (
               <>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#4C6EF5"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                ~{data.duration} mins
-                <span style={{ fontSize: '12px', color: '#718096', marginLeft: '4px' }}>
-                  (Estimate)
-                </span>
+                <Clock className="size-4 text-primary" aria-hidden="true" />~{data.duration} mins
+                <span className="ml-1 text-xs text-text-muted">(Estimate)</span>
               </>
             ) : (
               'Will be estimated after document analysis'
@@ -87,8 +69,8 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
         </div>
 
         {/* No of Notes / Slides */}
-        <div className={styles.formRow}>
-          <label className={styles.formLabel}>No of Notes / Slides</label>
+        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
+          <label className="text-sm font-medium text-text-muted">No of Notes / Slides</label>
           <Select
             value={data.notesCount}
             onChange={(val) => onChange('notesCount', val)}
@@ -101,36 +83,20 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
           />
         </div>
 
-        <hr style={{ margin: '40px 0', border: 'none', borderTop: '1px solid #EDF2F7' }} />
+        <hr className="my-10 border-0 border-t border-t-[#EDF2F7]" />
 
-        <h3 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: '#1A202C' }}>
-          Learning Objectives
-        </h3>
+        <h3 className="mb-6 text-xl font-bold text-foreground">Learning Objectives</h3>
 
         {/* Learning Objectives */}
-        <div className={`${styles.formRow} ${styles.formRowTop}`}>
-          <label className={`${styles.formLabel} ${styles.formLabelTop}`}>
+        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-start gap-5">
+          <label className="pt-3 text-sm font-medium text-text-muted">
             Objectives
-            <span
-              style={{ fontSize: '12px', fontWeight: 400, color: '#718096', marginLeft: '8px' }}
-            >
-              (Minimum 3 required)
-            </span>
+            <span className="ml-2 text-xs font-normal text-text-muted">(Minimum 3 required)</span>
           </label>
-          <div className={styles.objectivesList}>
+          <div className="flex w-full flex-col gap-3">
             {data.objectives.map((obj: string, index: number) => (
-              <div key={index} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                <div
-                  style={{
-                    width: '24px',
-                    height: '40px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#718096',
-                    fontWeight: 600,
-                  }}
-                >
+              <div key={index} className="mb-2 flex gap-2">
+                <div className="flex h-10 w-6 items-center justify-center font-semibold text-text-muted">
                   {index + 1}.
                 </div>
                 <Input
@@ -151,7 +117,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                     );
                     onChange('objectives', newObjectives);
                   }}
-                  style={{ color: '#E53E3E' }}
+                  className="text-error"
                   title="Remove Objective"
                 >
                   ✕
@@ -163,11 +129,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
               onClick={() => {
                 onChange('objectives', [...data.objectives, '']);
               }}
-              style={{
-                marginTop: '8px',
-                width: '100%',
-                borderStyle: 'dashed',
-              }}
+              className="mt-2 w-full border-dashed"
             >
               + Add Objective
             </Button>
