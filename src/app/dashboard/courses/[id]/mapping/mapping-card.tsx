@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { saveMapping } from '@/app/actions/mapping';
-import styles from './mapping.module.css';
+import { Button } from '@/components/ui/button';
 
 interface MappingSuggestion {
   standardId: string;
@@ -26,20 +26,16 @@ export default function MappingCard({
   }
 
   return (
-    <div className={styles.snippetCard}>
+    <div className="mb-4 rounded-md border border-border bg-white p-4">
       <strong>{suggestion.standardId}</strong>
-      <p className={styles.snippetText}>{suggestion.snippet}</p>
-      <div className="flex justify-between items-center mt-2">
-        <span className="text-xs text-green-600">
+      <p className="text-sm leading-relaxed text-text-secondary">{suggestion.snippet}</p>
+      <div className="mt-2 flex items-center justify-between">
+        <span className="text-xs text-success">
           Match: {Math.round(suggestion.confidence * 100)}%
         </span>
-        <button
-          onClick={handleSave}
-          disabled={status !== 'idle'}
-          className="text-xs bg-blue-600 text-white px-2 py-1 rounded disabled:opacity-50"
-        >
+        <Button size="sm" onClick={handleSave} disabled={status !== 'idle'}>
           {status === 'saved' ? 'Saved' : 'Approve'}
-        </button>
+        </Button>
       </div>
     </div>
   );

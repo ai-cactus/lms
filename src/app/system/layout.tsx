@@ -1,5 +1,6 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import {
   isSystemAdminEnabled,
   checkSystemAuth,
@@ -39,6 +40,26 @@ export default async function SystemLayout({ children }: { children: React.React
           <span className={styles.headerTitle}>System Admin</span>
           <span className={styles.headerBadge}>Staging</span>
         </div>
+        <nav className="flex items-center gap-1">
+          <Link
+            href="/system"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-[#334155] transition-colors hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+          >
+            Users
+          </Link>
+          <Link
+            href="/system/manual"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-[#334155] transition-colors hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+          >
+            Manual
+          </Link>
+          <Link
+            href="/system/video-courses"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-[#334155] transition-colors hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+          >
+            Video Courses
+          </Link>
+        </nav>
         <div className={styles.headerRight}>
           <form action={logoutSystemAdmin}>
             <button type="submit" className={styles.logoutButton}>

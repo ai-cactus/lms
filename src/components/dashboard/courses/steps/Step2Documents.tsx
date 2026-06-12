@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useRef } from 'react';
-import styles from '../CourseWizard.module.css';
-import { Select, Button } from '@/components/ui';
+import { Folder, FileText, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { Select } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import Link from 'next/link';
 
 import { CourseDocument } from '@/types/course';
@@ -57,28 +59,25 @@ export default function Step2Documents({
   }, [documents, source]);
 
   return (
-    <div className={styles.stepWrapper}>
-      <h2 className={styles.stepTitle}>Upload Training Documents</h2>
-      <p className={styles.stepSubtitle}>
+    <div className="relative z-50 flex w-full max-w-[800px] flex-col items-center transition-[max-width] duration-300">
+      <h2 className="mb-5 shrink-0 text-center text-[32px] font-bold tracking-[-0.5px] text-[#1a202c] [font-family:var(--font-heading)]">
+        Upload Training Documents
+      </h2>
+      <p className="mb-[30px] shrink-0 max-w-[600px] text-center text-base leading-normal text-[#4a5568]">
         Upload your policy or compliance documents. We will analyze them and convert them into
         courses and quizzes automatically.
       </p>
 
-      <div className={styles.inputContainer}>
-        <label className={styles.label}>Select file(s) from;</label>
+      <div className="relative z-30 flex min-h-0 w-full max-w-[500px] flex-1 flex-col">
+        <label className="mb-2 block shrink-0 text-sm text-[#718096]">Select file(s) from;</label>
         <div className="mb-10">
-          <Select
-            value={source}
-            onChange={(val) => setSource(val)}
-            options={sourceOptions}
-            className={styles.selectInput}
-          />
+          <Select value={source} onChange={(val) => setSource(val)} options={sourceOptions} />
         </div>
 
         {source === 'computer' ? (
-          <div className={styles.scrollableContent}>
+          <div>
             <div
-              className={styles.uploadZone}
+              className="flex h-[180px] w-full shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#e2e8f0] bg-[#fafcfe] transition-all hover:border-[#4c6ef5] hover:bg-[#f8fafc]"
               onClick={() => !isAnalyzing && fileInputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
@@ -94,54 +93,24 @@ export default function Step2Documents({
                 onChange={handleFileChange}
                 accept=".pdf,.docx"
               />
-              <div className={styles.uploadIconWrapper}>
+              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-[#f7fafc]">
                 {isAnalyzing ? (
-                  <div className={styles.loadingSpinner} />
+                  <Loader2 className="size-8 animate-spin text-[#4c6ef5]" />
                 ) : (
-                  <svg
-                    width="32"
-                    height="32"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H13L11 5H5C3.89543 5 3 5.89543 3 7Z"
-                      fill="#718096"
-                      stroke="#718096"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <circle cx="12" cy="12" r="6" fill="white" />
-                    <path
-                      d="M12 15V9"
-                      stroke="#718096"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M9 12L12 9L15 12"
-                      stroke="#718096"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <Folder className="size-8 text-[#718096]" />
                 )}
               </div>
-              <p className={styles.uploadText}>
+              <p className="mb-2 text-balance text-center text-base font-medium text-[#1a202c]">
                 {isAnalyzing ? (
                   'Check the parsing...'
                 ) : (
                   <>
                     Drop your file here or{' '}
-                    <span className={styles.uploadLink}>Click to upload</span>
+                    <span className="cursor-pointer text-[#4c6ef5] underline">Click to upload</span>
                   </>
                 )}
               </p>
-              <p className={styles.uploadSubtext}>
+              <p className="text-balance text-center text-sm text-[#718096]">
                 {isAnalyzing
                   ? 'Analyzing document structure and content...'
                   : 'PDF, DOCX. Single file upload.'}
@@ -168,68 +137,47 @@ export default function Step2Documents({
             )}
           </div>
         ) : (
-          <div className={styles.scrollableContent}>
+          <div>
             {documents.length > 0 ? (
-              <div className={styles.uploadedFilesContainer}>
+              <div className="mt-6 max-h-none min-h-0 w-full flex-1 overflow-y-auto rounded-xl border-2 border-dashed border-[#e2e8f0] bg-white px-6 py-2">
                 {documents.slice(0, 4).map((doc) => (
-                  <div key={doc.id} className={styles.uploadedFileItem}>
-                    <div className={styles.fileLeft}>
-                      <div className={styles.fileIcon}>
-                        <svg
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke={doc.name.endsWith('.pdf') ? '#F56565' : '#4C6EF5'}
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" />
-                        </svg>
+                  <div
+                    key={doc.id}
+                    className="flex items-center justify-between border-b border-[#edf2f7] py-6 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center justify-center">
+                        <FileText
+                          className="size-6"
+                          style={{ color: doc.name.endsWith('.pdf') ? '#F56565' : '#4C6EF5' }}
+                        />
                       </div>
-                      <div className={styles.uploadedFileInfo}>
-                        <span className={styles.uploadedFileName}>{doc.name}</span>
-                        <span className={styles.uploadedFileSize}>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-semibold text-[#1a202c]">{doc.name}</span>
+                        <span className="text-[13px] text-[#718096]">
                           {doc.file ? `${(doc.file.size / 1024 / 1024).toFixed(2)} MB` : ''}
                         </span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={doc.selected}
-                        onChange={() => onToggleSelect(doc.id)}
-                        className={styles.checkbox}
+                        onCheckedChange={() => onToggleSelect(doc.id)}
+                        className="size-5 cursor-pointer data-[state=checked]:border-[#4c6ef5] data-[state=checked]:bg-[#4c6ef5]"
                         disabled={isAnalyzing}
                       />
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className={styles.trashBtn}
+                        className="size-9 rounded-lg text-[#a0aec0] transition-all hover:bg-[#fff5f5] hover:text-[#e53e3e]"
                         disabled={isAnalyzing}
                         onClick={(e) => {
                           e.stopPropagation();
                           onDelete?.(doc.id);
                         }}
                       >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M2.5 4H13.5" />
-                          <path d="M6.5 7V11" />
-                          <path d="M9.5 7V11" />
-                          <path d="M3.5 4L4.5 13C4.5 13.55 4.95 14 5.5 14H10.5C11.05 14 11.5 13.55 11.5 13L12.5 4" />
-                          <path d="M6 4V2.5C6 2.22386 6.22386 2 6.5 2H9.5C9.77614 2 10 2.22386 10 2.5V4" />
-                        </svg>
+                        <Trash2 className="size-[18px]" />
                       </Button>
                     </div>
                   </div>
@@ -255,8 +203,8 @@ export default function Step2Documents({
       </div>
 
       {isScanningPhi && (
-        <div className={styles.scanningCard}>
-          <div className={styles.scanningIcon}>
+        <div className="mt-4 flex w-full items-center gap-4 rounded-xl border border-[#e2e8f0] bg-white p-4">
+          <div className="relative flex h-10 w-10 items-center justify-center rounded-lg bg-[#eef2ff]">
             <svg
               width="24"
               height="24"
@@ -275,11 +223,13 @@ export default function Step2Documents({
                 strokeLinecap="round"
               />
             </svg>
-            <span className={styles.sparkle}>✨</span>
+            <Sparkles className="absolute -right-[5px] -top-[5px] size-3.5 text-[#f59e0b]" />
           </div>
-          <div className={styles.scanningContent}>
-            <h4>Scanning...</h4>
-            <p>Ensuring document does not contain personal health information</p>
+          <div>
+            <h4 className="mb-1 text-sm font-semibold text-[#1a202c]">Scanning...</h4>
+            <p className="text-[13px] text-[#718096]">
+              Ensuring document does not contain personal health information
+            </p>
           </div>
         </div>
       )}

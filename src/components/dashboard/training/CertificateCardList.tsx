@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import styles from './CertificateCardList.module.css';
+import { Award, Check, Download } from 'lucide-react';
 import CertificateModal from './CertificateModal';
-import { Button } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 interface CertificateData {
   id: string;
@@ -57,36 +58,27 @@ export default function CertificateCardList({
   };
 
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
+    <div className="mx-auto w-full max-w-[1200px]">
+      <div className="mb-6 flex flex-col items-start justify-between gap-4 md:flex-row md:gap-0">
         <div>
-          <h1 className={styles.title}>{title}</h1>
-          <p className={styles.description}>{description}</p>
+          <h1 className="m-0 mb-1 text-2xl font-bold text-foreground">{title}</h1>
+          <p className="m-0 text-sm text-text-secondary">{description}</p>
         </div>
         {showExport && (
-          <div className={styles.actions}>
-            <div className={styles.filterGroup}>
-              <select className={styles.select}>
+          <div className="flex items-center gap-3">
+            <div>
+              <select className="cursor-pointer rounded-md border border-border bg-white px-3 py-2 text-sm text-text-secondary outline-none">
                 <option>Last 7 days</option>
                 <option>Last 30 days</option>
                 <option>All time</option>
               </select>
             </div>
-            <Button variant="outline" className={styles.exportBtn} onClick={handleExportAll}>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
+            <Button
+              variant="outline"
+              className="flex items-center gap-2 bg-white"
+              onClick={handleExportAll}
+            >
+              <Download className="size-4" />
               Export
             </Button>
           </div>
@@ -94,60 +86,46 @@ export default function CertificateCardList({
       </div>
 
       {certificates.length === 0 ? (
-        <div className={styles.emptyState}>No certificates available.</div>
+        <div className="rounded-lg border border-dashed border-border bg-background-secondary p-12 text-center text-text-secondary">
+          No certificates available.
+        </div>
       ) : (
-        <div className={styles.list}>
+        <div className="flex flex-col gap-3">
           {certificates.map((cert) => (
-            <div key={cert.id} className={styles.card} onClick={() => setSelectedCertId(cert.id)}>
-              <div className={styles.cardLeft}>
-                <div className={styles.iconBox}>
-                  <svg
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <circle cx="12" cy="12" r="8" fill="#FFDF00" stroke="#D4AF37" strokeWidth="2" />
-                    <path
-                      d="M8 18 L6 24 L10 21 L12 24 L14 21 L18 24 L16 18 Z"
-                      fill="#FFDF00"
-                      stroke="#D4AF37"
-                      strokeWidth="1"
-                    />
-                    <path
-                      d="M12 8 L13.5 11 L17 11.5 L14.5 14 L15 17 L12 15.5 L9 17 L9.5 14 L7 11.5 L10.5 11 Z"
-                      fill="#fff"
-                    />
-                  </svg>
+            <div
+              key={cert.id}
+              className="flex cursor-pointer flex-col items-start justify-between gap-4 rounded-xl border border-border bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:border-border hover:shadow-md sm:flex-row sm:items-center sm:gap-0 sm:px-6 sm:py-5"
+              onClick={() => setSelectedCertId(cert.id)}
+            >
+              <div className="flex items-center gap-5">
+                <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">
+                  <Award className="size-6" />
                 </div>
-                <div className={styles.cardInfo}>
-                  <h3 className={styles.courseTitle}>{cert.course.title}</h3>
-                  <span className={styles.certId}>
+                <div className="flex flex-col gap-1">
+                  <h3 className="m-0 text-base font-semibold text-foreground">
+                    {cert.course.title}
+                  </h3>
+                  <span className="text-sm text-text-secondary">
                     Certificate ID: #{cert.id.substring(0, 8).toUpperCase()}
                   </span>
                 </div>
               </div>
-              <div className={styles.cardRight}>
-                <div className={styles.dateTime}>
-                  <span className={styles.date}>{formatIssueDate(cert.issuedAt)}</span>
-                  <span className={styles.time}>{formatIssueTime(cert.issuedAt)}</span>
+              <div className="flex w-full items-center justify-between gap-8 border-t border-border pt-4 sm:w-auto sm:border-t-0 sm:pt-0">
+                <div className="flex flex-col items-start gap-1 sm:items-end">
+                  <span className="text-sm font-medium text-foreground">
+                    {formatIssueDate(cert.issuedAt)}
+                  </span>
+                  <span className="text-xs text-text-tertiary">
+                    {formatIssueTime(cert.issuedAt)}
+                  </span>
                 </div>
-                <div className={styles.badge}>
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                <Badge
+                  variant="secondary"
+                  className="gap-1.5 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary"
+                >
+                  <Check className="size-3" strokeWidth={3} />
                   Approved
-                </div>
+                </Badge>
               </div>
             </div>
           ))}

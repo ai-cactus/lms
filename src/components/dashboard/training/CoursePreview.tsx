@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import styles from './CoursePreview.module.css';
-import { Button } from '@/components/ui';
+import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Check, ChevronRight, Clock, Calendar, BarChart3 } from 'lucide-react';
 
 import { CourseWithRelations, EnrollmentWithRelations } from '@/types/course';
 
@@ -79,10 +79,11 @@ function WorkerStartButton({
 
   return (
     <Button
-      className={styles.startCourseButton}
+      className="text-base"
+      size="lg"
       onClick={handleClick}
       disabled={loading || isRetryRequested}
-      variant={isFailed ? 'outline' : 'primary'}
+      variant={isFailed ? 'outline' : 'default'}
     >
       {buttonText}
     </Button>
@@ -98,61 +99,39 @@ export default function CoursePreview({
   const [activeTab, setActiveTab] = useState('About');
 
   return (
-    <div className={styles.container}>
+    <div className="min-h-screen bg-[#f9fafb]">
       {/* Dark Header Section */}
-      <div className={styles.heroSection}>
-        <div className={styles.heroContent}>
-          <div className={styles.breadcrumbs}>
+      <div className="relative -m-10 mb-10 bg-[#1a202c] px-6 py-10 text-white md:px-[60px]">
+        <div className="relative mx-auto max-w-[1200px]">
+          <div className="mb-6 flex items-center gap-2 text-sm text-[#a0aec0]">
             <Link
               href={`/dashboard/training/courses/${course.id}`}
-              className={styles.breadcrumbLink}
+              className="text-[#a0aec0] no-underline hover:text-white"
             >
               Course
             </Link>
-            <span className={styles.separator}>/</span>
-            <span className={styles.currentBreadcrumb}>{course.title}</span>
+            <span className="text-[#718096]">/</span>
+            <span className="font-medium text-white">{course.title}</span>
           </div>
 
-          <h1 className={styles.title}>{course.title}</h1>
-          <p className={styles.description}>
+          <h1 className="mb-3 text-3xl font-bold md:text-[36px]">{course.title}</h1>
+          <p className="mb-4 text-base text-[#cbd5e0]">
             {course.description || 'Mandatory annual training aligned with CARF 1.H 4. a-b'}
           </p>
-          <p className={styles.author}>
+          <p className="mb-8 text-sm text-[#a0aec0]">
             By {course.creator?.profile?.fullName || course.creator?.email || 'Unknown Author'}
           </p>
 
-          <div className={styles.metaRow}>
-            <span className={`${styles.badge} ${styles.badgeActive}`}>Active</span>
-            <span className={styles.metaBadge}>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="mr-1.5"
-              >
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
+          <div className="mb-8 flex w-full flex-wrap items-center gap-3 border-y border-dashed border-[#4a5568] py-4 lg:w-[70%]">
+            <span className="rounded-full bg-[#c6f6d5] px-3 py-1 text-[13px] font-semibold text-[#22543d]">
+              Active
+            </span>
+            <span className="flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[13px] text-white/85">
+              <Clock className="mr-1.5 size-3.5" />
               {course.duration || 10} min read
             </span>
-            <span className={styles.metaBadge}>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="mr-1.5"
-              >
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="16" y1="2" x2="16" y2="6"></line>
-                <line x1="8" y1="2" x2="8" y2="6"></line>
-                <line x1="3" y1="10" x2="21" y2="10"></line>
-              </svg>
+            <span className="flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[13px] text-white/85">
+              <Calendar className="mr-1.5 size-3.5" />
               Pass mark:{' '}
               {course.lessons?.find((l) => (l as { quiz?: { passingScore?: number } }).quiz)?.quiz
                 ?.passingScore || 80}
@@ -160,12 +139,14 @@ export default function CoursePreview({
             </span>
           </div>
 
-          <div className={styles.heroActions}>
+          <div className="lg:absolute lg:right-0 lg:bottom-10">
             {mode === 'worker' ? (
               <WorkerStartButton courseId={course.id} enrollment={enrollment} />
             ) : (
               <Link href={`/learn/${course.id}`}>
-                <Button className={styles.startCourseButton}>View Course</Button>
+                <Button className="text-base" size="lg">
+                  View Course
+                </Button>
               </Link>
             )}
           </div>
@@ -173,16 +154,20 @@ export default function CoursePreview({
       </div>
 
       {/* Main Content */}
-      <div className={styles.mainLayout}>
+      <div className="my-10 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         {/* Left Column */}
-        <div className={styles.contentColumn}>
-          <div className={styles.mainCard}>
+        <div>
+          <div className="h-full rounded-lg border border-[#e2e8f0] bg-white p-6">
             {/* Tabs */}
-            <div className={styles.tabs}>
+            <div className="mb-8 flex gap-8 border-b border-[#e2e8f0]">
               {['About'].map((tab) => (
                 <button
                   key={tab}
-                  className={`${styles.tab} ${activeTab === tab ? styles.activeTab : ''}`}
+                  className={`relative cursor-pointer py-3 text-base font-medium ${
+                    activeTab === tab
+                      ? "font-semibold text-primary after:absolute after:-bottom-px after:left-0 after:h-0.5 after:w-full after:bg-primary after:content-['']"
+                      : 'text-[#718096]'
+                  }`}
                   onClick={() => setActiveTab(tab)}
                 >
                   {tab}
@@ -191,14 +176,18 @@ export default function CoursePreview({
             </div>
 
             {activeTab === 'About' && (
-              <div className={styles.tabContent}>
-                <h2 className={styles.sectionTitle}>Course Overview</h2>
-                <p className={styles.text}>{course.description || 'No description available.'}</p>
+              <div className="mt-8">
+                <h2 className="mt-0 mb-6 text-2xl font-bold text-[#1a202c]">Course Overview</h2>
+                <p className="mb-8 text-base leading-relaxed text-[#4a5568]">
+                  {course.description || 'No description available.'}
+                </p>
 
                 {course.objectives && course.objectives.length > 0 && (
                   <>
-                    <h3 className={styles.subTitle}>What You&apos;ll Learn</h3>
-                    <ul className={styles.learnList}>
+                    <h3 className="mb-4 text-xl font-bold text-[#1a202c]">
+                      What You&apos;ll Learn
+                    </h3>
+                    <ul className="ml-5 list-disc leading-[1.8] text-[#4a5568]">
                       {course.objectives.map((objective: string, index: number) => (
                         <li key={index}>{objective}</li>
                       ))}
@@ -211,11 +200,11 @@ export default function CoursePreview({
         </div>
 
         {/* Right Column (Sidebar) */}
-        <div className={styles.sidebarColumn}>
+        <div>
           {/* Attestation Status Card */}
           {enrollment?.status === 'attested' && (
-            <div className={`${styles.sidebarCard} mb-6 p-6 border border-[#E9D8FD] bg-[#FAF5FF]`}>
-              <h3 className={`${styles.sidebarTitle} mb-4`}>Attestation status</h3>
+            <div className="mb-6 box-border rounded-lg border border-[#E9D8FD] bg-[#FAF5FF] p-6">
+              <h3 className="mb-4 text-lg font-bold text-[#1a202c]">Attestation status</h3>
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-full bg-[#E2E8F0] flex items-center justify-center text-base font-semibold text-[#4A5568]">
                   {(user?.name?.[0] || 'U').toUpperCase()}
@@ -236,83 +225,51 @@ export default function CoursePreview({
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5 bg-[#DEF7EC] text-[#03543F] text-xs font-semibold px-2.5 py-1 rounded-xl">
                   Signed
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                  <Check className="size-3" strokeWidth={3} />
                 </span>
                 <span className="text-xs text-[#4C6EF5] cursor-pointer flex items-center">
                   View details
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className="ml-0.5"
-                  >
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
+                  <ChevronRight className="ml-0.5 size-3" />
                 </span>
               </div>
             </div>
           )}
 
-          <div className={styles.sidebarCard}>
-            <h3 className={styles.sidebarTitle}>Table of Content</h3>
-            <div className={styles.lessonsList}>
+          <div className="box-border h-full rounded-lg border border-[#e2e8f0] bg-white p-6">
+            <h3 className="mb-6 text-lg font-bold text-[#1a202c]">Table of Content</h3>
+            <div className="mb-6 flex flex-col gap-2">
               {course.lessons && course.lessons.length > 0 ? (
                 course.lessons.map((lesson) => (
-                  <div key={lesson.id} className={styles.lessonItem}>
-                    <span className={styles.lessonTitle}>{lesson.title}</span>
-                    <span className={styles.lessonDuration}>
+                  <div
+                    key={lesson.id}
+                    className="flex cursor-pointer items-center justify-between border-b border-dashed border-[#edf2f7] py-2.5 text-sm text-[#2d3748] last:border-b-0"
+                  >
+                    <span className="font-medium text-[#2d3748]">{lesson.title}</span>
+                    <span className="shrink-0 text-xs text-[#a0aec0]">
                       {(lesson as { duration?: number }).duration || 3} mins
                     </span>
                   </div>
                 ))
               ) : (
-                <div className={`${styles.lessonItem} text-slate-500 italic`}>
+                <div className="flex cursor-pointer items-center justify-between py-2.5 text-sm italic text-slate-500">
                   No content available yet.
                 </div>
               )}
             </div>
 
-            <div className={styles.divider}></div>
+            <div className="my-6 h-px bg-[#e2e8f0]"></div>
 
-            <div className={styles.courseMeta}>
+            <div className="flex flex-col gap-3">
               {/* Skill Level - Try to get from quiz or hide */}
               {course.lessons?.some(
                 (l) => (l as { quiz?: { difficulty?: string } }).quiz?.difficulty,
               ) && (
-                <div className={styles.metaRowSidebar}>
-                  <span className={styles.metaLabel}>
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-slate-400"
-                    >
-                      <path d="M12 20V10"></path>
-                      <path d="M18 20V4"></path>
-                      <path d="M6 20v-4"></path>
-                    </svg>
+                <div className="flex justify-start gap-5 text-sm">
+                  <span className="flex min-w-[140px] items-center gap-2 text-[#718096]">
+                    <BarChart3 className="size-4 text-slate-400" />
                     Skill Level
                   </span>
-                  <span className={`${styles.metaValue} capitalize`}>
+                  <span className="font-semibold capitalize text-[#2d3748]">
                     {(
                       course.lessons.find(
                         (l) => (l as { quiz?: { difficulty?: string } }).quiz?.difficulty,
@@ -322,47 +279,19 @@ export default function CoursePreview({
                 </div>
               )}
 
-              <div className={styles.metaRowSidebar}>
-                <span className={styles.metaLabel}>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-slate-400"
-                  >
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
-                  </svg>
+              <div className="flex justify-start gap-5 text-sm">
+                <span className="flex min-w-[140px] items-center gap-2 text-[#718096]">
+                  <Clock className="size-4 text-slate-400" />
                   Duration
                 </span>
-                <span className={styles.metaValue}>{course.duration || 0} mins</span>
+                <span className="font-semibold text-[#2d3748]">{course.duration || 0} mins</span>
               </div>
-              <div className={styles.metaRowSidebar}>
-                <span className={styles.metaLabel}>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-slate-400"
-                  >
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                    <line x1="16" y1="2" x2="16" y2="6"></line>
-                    <line x1="8" y1="2" x2="8" y2="6"></line>
-                    <line x1="3" y1="10" x2="21" y2="10"></line>
-                  </svg>
+              <div className="flex justify-start gap-5 text-sm">
+                <span className="flex min-w-[140px] items-center gap-2 text-[#718096]">
+                  <Calendar className="size-4 text-slate-400" />
                   Last Updated
                 </span>
-                <span className={styles.metaValue}>
+                <span className="font-semibold text-[#2d3748]">
                   {new Date(course.updatedAt).toLocaleDateString(undefined, {
                     year: 'numeric',
                     month: 'long',

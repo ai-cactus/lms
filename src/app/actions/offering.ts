@@ -1,0 +1,191 @@
+'use server';
+
+import { prisma } from '@/lib/prisma';
+import { auth as adminAuth } from '@/auth';
+import { auth as workerAuth } from '@/auth.worker';
+import { revalidatePath } from 'next/cache';
+
+// ---------------------------------------------------------------------------
+// Session helper — mirrors the pattern in course.ts
+// ---------------------------------------------------------------------------
+async function resolveSession() {
+  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+  return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
+}
+
+// ---------------------------------------------------------------------------
+// Org resolver — derives organizationId for the current user and asserts admin
+// ---------------------------------------------------------------------------
+async function resolveOrg(userId: string): Promise<string> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { organizationId: true, role: true },
+  });
+  if (!user?.organizationId) {
+    throw new Error('No organization');
+  }
+  if (user.role !== 'admin') {
+    throw new Error('Forbidden');
+  }
+  return user.organizationId;
+}
+
+// ---------------------------------------------------------------------------
+// Return type for listAvailableVideoCourses
+// ---------------------------------------------------------------------------
+export interface VideoCourseAvailabilityRow {
+  id: string;
+  title: string;
+  description: string | null;
+  durationSeconds: number | null;
+  questionCount: number;
+  isOffered: boolean;
+  offeringId: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// 1. listAvailableVideoCourses
+//    Returns all published global video courses with this org's adoption state.
+// ---------------------------------------------------------------------------
+export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabilityRow[]> {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const userId = session.user.id;
+  const organizationId = await resolveOrg(userId);
+
+  const courses = await prisma.course.findMany({
+    where: { type: 'video', isGlobal: true, status: 'published' },
+    include: {
+      lessons: {
+        include: {
+          quiz: {
+            include: {
+              _count: { select: { questions: true } },
+            },
+          },
+        },
+      },
+      offerings: {
+        where: { organizationId },
+      },
+    },
+  });
+
+  return courses.map((course) => {
+    const firstLesson = course.lessons[0];
+    const durationSeconds = firstLesson?.videoDurationSeconds ?? null;
+    const questionCount = firstLesson?.quiz?._count?.questions ?? 0;
+
+    return {
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      durationSeconds,
+      questionCount,
+      isOffered: course.offerings.length > 0,
+      offeringId: course.offerings[0]?.id ?? null,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 2. offerCourseToOrg
+//    Upsert an OrgCourseOffering keyed by [organizationId, courseId].
+// ---------------------------------------------------------------------------
+export interface OfferingOverrides {
+  customTitle?: string;
+  customDescription?: string;
+  customIntro?: string;
+}
+
+export async function offerCourseToOrg(courseId: string, overrides?: OfferingOverrides) {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const userId = session.user.id;
+  const organizationId = await resolveOrg(userId);
+
+  const course = await prisma.course.findFirst({
+    where: { id: courseId, isGlobal: true, type: 'video', status: 'published' },
+    select: { id: true },
+  });
+  if (!course) throw new Error('Course not found');
+
+  const offering = await prisma.orgCourseOffering.upsert({
+    where: { organizationId_courseId: { organizationId, courseId } },
+    update: { ...(overrides ?? {}) },
+    create: {
+      organizationId,
+      courseId,
+      addedByAdminId: userId,
+      ...(overrides ?? {}),
+    },
+  });
+
+  revalidatePath('/dashboard/courses');
+  revalidatePath('/dashboard');
+
+  return offering;
+}
+
+// ---------------------------------------------------------------------------
+// 3. updateOffering
+//    Update custom fields on an existing offering (must belong to caller's org).
+// ---------------------------------------------------------------------------
+export async function updateOffering(id: string, overrides: OfferingOverrides) {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const userId = session.user.id;
+  const organizationId = await resolveOrg(userId);
+
+  const existing = await prisma.orgCourseOffering.findUnique({ where: { id } });
+  if (!existing || existing.organizationId !== organizationId) {
+    throw new Error('Forbidden');
+  }
+
+  const updated = await prisma.orgCourseOffering.update({
+    where: { id },
+    data: {
+      customTitle: overrides.customTitle,
+      customDescription: overrides.customDescription,
+      customIntro: overrides.customIntro,
+    },
+  });
+
+  revalidatePath('/dashboard/courses');
+  revalidatePath('/dashboard');
+
+  return updated;
+}
+
+// ---------------------------------------------------------------------------
+// 4. withdrawOffering
+//    Delete an offering (must belong to caller's org).
+// ---------------------------------------------------------------------------
+export async function withdrawOffering(id: string) {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const userId = session.user.id;
+  const organizationId = await resolveOrg(userId);
+
+  const existing = await prisma.orgCourseOffering.findUnique({ where: { id } });
+  if (!existing || existing.organizationId !== organizationId) {
+    throw new Error('Forbidden');
+  }
+
+  await prisma.orgCourseOffering.delete({ where: { id } });
+
+  revalidatePath('/dashboard/courses');
+  revalidatePath('/dashboard');
+}

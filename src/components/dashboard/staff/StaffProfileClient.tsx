@@ -23,6 +23,8 @@ import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentQuizResult } from '@/app/actions/staff';
 import { getAdminWorkerCertificates } from '@/app/actions/certificate';
 import CertificateCardList from '../training/CertificateCardList';
+import { Badge } from '@/components/ui/badge';
+import { courseTypeLabel, courseTypeBadgeVariant } from '@/lib/video/course-type-label';
 
 type WorkerCertificate = Awaited<ReturnType<typeof getAdminWorkerCertificates>>[number];
 import { logger } from '@/lib/logger';
@@ -63,6 +65,7 @@ interface StaffProfileClientProps {
       id: string;
       courseId: string;
       courseName: string;
+      courseType?: string;
       progress: number;
       status: string;
       score: number;
@@ -354,9 +357,14 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                           <BookOpen className="size-5" />
                         </div>
                         <div>
-                          <span className="block font-semibold text-[#1a202c]">
-                            {enrollment.courseName}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-[#1a202c]">
+                              {enrollment.courseName}
+                            </span>
+                            <Badge variant={courseTypeBadgeVariant(enrollment.courseType)}>
+                              {courseTypeLabel(enrollment.courseType)}
+                            </Badge>
+                          </div>
                           <span className="text-xs text-[#718096]">
                             {enrollment.difficulty || 'Advanced'}
                           </span>

@@ -1,9 +1,17 @@
 'use client';
 
 import React from 'react';
-import styles from './ShareCourseModal.module.css';
+import { Mail, X, PlusCircle, Calendar } from 'lucide-react';
 import { enrollUsers } from '@/app/actions/enrollment';
-import { Modal, Button } from '@/components/ui';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
 
@@ -156,182 +164,137 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      size="md"
-      title="Assign this course"
-      description="Enter one or more emails to invite to your course."
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className={styles.inputGroup}>
-        <div
-          className={styles.inputWrapper}
-          onClick={() => document.getElementById('email-input')?.focus()}
-        >
-          <svg
-            className={styles.inputIcon}
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-            <polyline points="22,6 12,13 2,6"></polyline>
-          </svg>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Assign this course</DialogTitle>
+          <DialogDescription>Enter one or more emails to invite to your course.</DialogDescription>
+        </DialogHeader>
 
-          {entries.map((entry, index) => (
-            <span
-              key={index}
-              className={styles.chip}
-              title={
-                entry.firstName ? `${entry.firstName} ${entry.lastName ?? ''}`.trim() : entry.email
-              }
-            >
-              {entry.email}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={styles.removeChip}
-                onClick={() => removeEntry(index)}
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+          <div
+            className="relative flex min-h-11 flex-1 flex-wrap items-center gap-1.5 rounded-md border border-border bg-background py-1.5 pr-3 pl-9 transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary cursor-text"
+            onClick={() => document.getElementById('email-input')?.focus()}
+          >
+            <Mail
+              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-text-tertiary"
+              aria-hidden="true"
+            />
+
+            {entries.map((entry, index) => (
+              <span
+                key={index}
+                className="flex items-center rounded bg-secondary px-2 py-1 text-[13px] font-medium text-foreground"
+                title={
+                  entry.firstName
+                    ? `${entry.firstName} ${entry.lastName ?? ''}`.trim()
+                    : entry.email
+                }
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+                {entry.email}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="ml-1.5 size-auto p-0 text-text-secondary hover:bg-transparent hover:text-error"
+                  onClick={() => removeEntry(index)}
                 >
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </Button>
-            </span>
-          ))}
+                  <X className="size-3.5" aria-hidden="true" />
+                </Button>
+              </span>
+            ))}
 
-          <input
-            id="email-input"
-            className={styles.input}
-            placeholder={entries.length === 0 ? 'Emails, comma separated' : ''}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading}
-          />
-        </div>
-        <Button
-          variant="primary"
-          className={`${styles.shareButton} ${entries.length > 0 ? styles.shareButtonActive : ''}`}
-          onClick={handleShare}
-          disabled={entries.length === 0 || isLoading}
-        >
-          {isLoading ? 'Assigning...' : 'Assign'}
-        </Button>
-      </div>
-
-      <div className={styles.csvLinks}>
-        <label className={styles.csvLink}>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ marginRight: 6 }}
-          >
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="16"></line>
-            <line x1="8" y1="12" x2="16" y2="12"></line>
-          </svg>
-          Click to upload .csv file instead
-          <input
-            type="file"
-            accept=".csv"
-            onChange={handleFileUpload}
-            style={{ display: 'none' }}
-          />
-        </label>
-        <button className={styles.csvLink} onClick={downloadTemplate}>
-          Download sample .csv template
-        </button>
-      </div>
-
-      <div className={styles.toggleRow}>
-        <div className={styles.labelGroup}>
-          <span className={styles.labelTitle}>Set Completion Deadline</span>
-          <span className={styles.labelDesc}>
-            Set a deadline for team member to complete this course
-          </span>
-        </div>
-        <label className={styles.switch}>
-          <input
-            type="checkbox"
-            checked={hasDeadline}
-            onChange={(e) => setHasDeadline(e.target.checked)}
-          />
-          <span className={styles.slider}></span>
-        </label>
-      </div>
-
-      {hasDeadline && (
-        <div className={styles.datePickerContainer}>
-          <div className={styles.dateInputWrapper}>
-            <svg
-              className={styles.dateIcon}
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
             <input
-              type="date"
-              value={deadlineDate}
-              onChange={(e) => setDeadlineDate(e.target.value)}
-              className={styles.dateInput}
+              id="email-input"
+              className="min-w-[120px] flex-1 border-none bg-transparent px-0 py-0.5 text-sm text-foreground outline-none"
+              placeholder={entries.length === 0 ? 'Emails, comma separated' : ''}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isLoading}
             />
           </div>
+          <Button
+            variant="default"
+            className="self-center"
+            onClick={handleShare}
+            disabled={entries.length === 0 || isLoading}
+          >
+            {isLoading ? 'Assigning...' : 'Assign'}
+          </Button>
         </div>
-      )}
 
-      {/* Result feedback */}
-      {result && (
-        <div className={styles.resultSection}>
-          {result.success.length > 0 && (
-            <div className={styles.resultSuccess}>✓ Enrolled: {result.success.join(', ')}</div>
-          )}
-          {result.newInvited.length > 0 && (
-            <div className={styles.resultInvited}>
-              📧 Invited & Enrolled: {result.newInvited.join(', ')}
-            </div>
-          )}
-          {result.alreadyEnrolled.length > 0 && (
-            <div className={styles.resultWarning}>
-              Already enrolled: {result.alreadyEnrolled.join(', ')}
-            </div>
-          )}
-          {result.failed.length > 0 && (
-            <div className={styles.resultError}>Failed: {result.failed.join(', ')}</div>
-          )}
+        <div className="mb-6 flex items-center gap-6">
+          <label className="flex cursor-pointer items-center text-sm font-medium text-primary hover:underline">
+            <PlusCircle className="mr-1.5 size-4" aria-hidden="true" />
+            Click to upload .csv file instead
+            <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+          </label>
+          <button
+            className="flex items-center text-sm font-medium text-primary hover:underline"
+            onClick={downloadTemplate}
+          >
+            Download sample .csv template
+          </button>
         </div>
-      )}
-    </Modal>
+
+        <div className="mb-4 flex items-center justify-between border-b border-bg-secondary pb-4">
+          <div className="flex-1">
+            <span className="mb-1 block text-base font-semibold text-foreground">
+              Set Completion Deadline
+            </span>
+            <span className="block max-w-[90%] text-xs leading-snug text-text-secondary">
+              Set a deadline for team member to complete this course
+            </span>
+          </div>
+          <label className="relative inline-block h-6 w-11 shrink-0">
+            <input
+              type="checkbox"
+              checked={hasDeadline}
+              onChange={(e) => setHasDeadline(e.target.checked)}
+              className="peer size-0 opacity-0"
+            />
+            <span className="absolute inset-0 cursor-pointer rounded-full bg-[#cbd5e0] transition-colors duration-300 peer-checked:bg-primary" />
+            <span className="absolute bottom-0.5 left-0.5 size-4 rounded-full bg-white transition-transform duration-200 peer-checked:translate-x-4" />
+          </label>
+        </div>
+
+        {hasDeadline && (
+          <div className="mt-4 mb-6">
+            <div className="flex items-center rounded-md border border-border bg-background px-3 py-2">
+              <Calendar className="mr-2 size-[18px] text-text-tertiary" aria-hidden="true" />
+              <input
+                type="date"
+                value={deadlineDate}
+                onChange={(e) => setDeadlineDate(e.target.value)}
+                className="flex-1 border-none bg-transparent text-sm text-foreground outline-none"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Result feedback */}
+        {result && (
+          <div className="mb-4 flex flex-col gap-2">
+            {result.success.length > 0 && (
+              <Alert variant="success">Enrolled: {result.success.join(', ')}</Alert>
+            )}
+            {result.newInvited.length > 0 && (
+              <Alert variant="info">Invited &amp; Enrolled: {result.newInvited.join(', ')}</Alert>
+            )}
+            {result.alreadyEnrolled.length > 0 && (
+              <Alert variant="warning">Already enrolled: {result.alreadyEnrolled.join(', ')}</Alert>
+            )}
+            {result.failed.length > 0 && (
+              <Alert variant="error">Failed: {result.failed.join(', ')}</Alert>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

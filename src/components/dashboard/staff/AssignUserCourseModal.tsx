@@ -1,10 +1,26 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Modal, Button } from '@/components/ui';
+import { X } from 'lucide-react';
 import { getCourses } from '@/app/actions/course';
 import { enrollUsers } from '@/app/actions/enrollment';
-import styles from './AssignUserCourseModal.module.css';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Alert } from '@/components/ui/alert';
 import { logger } from '@/lib/logger';
 
 interface AssignUserCourseModalProps {
@@ -126,180 +142,115 @@ export default function AssignUserCourseModal({
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      size="md"
-      title={userName ? `Assign Course to ${userName}` : 'Assign Course'}
-      description={`Select a course to assign.`}
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className={styles.inputGroup}>
-        <div style={{ marginBottom: '16px' }}>
-          <label
-            style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: '#4A5568',
-            }}
-          >
-            Email Addresses
-          </label>
-          <div
-            style={{
-              border: '2px solid #E2E8F0',
-              borderRadius: '8px',
-              padding: '8px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '8px',
-              minHeight: '44px',
-              alignItems: 'center',
-              background: 'white',
-              cursor: 'text',
-              transition: 'border-color 0.2s',
-            }}
-            onClick={() => document.getElementById('assign-email-chip-input')?.focus()}
-            onFocus={(e) => (e.currentTarget.style.borderColor = '#4c6ef5')}
-            onBlur={(e) => (e.currentTarget.style.borderColor = '#E2E8F0')}
-          >
-            {emails.map((email) => (
-              <div
-                key={email}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  background: '#EBF8FF',
-                  color: '#2C5282',
-                  borderRadius: '16px',
-                  padding: '4px 12px',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                }}
-              >
-                {email}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeEmail(email);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    marginLeft: '6px',
-                    cursor: 'pointer',
-                    color: '#2C5282',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-              </div>
-            ))}
-            <input
-              id="assign-email-chip-input"
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={emails.length === 0 ? 'Enter emails...' : ''}
-              style={{
-                border: 'none',
-                outline: 'none',
-                flex: 1,
-                fontSize: '14px',
-                minWidth: '120px',
-                color: '#2D3748',
-                background: 'transparent',
-              }}
-            />
-          </div>
-          <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-            Press Space, Enter or Comma to add an email.
-          </p>
-        </div>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{userName ? `Assign Course to ${userName}` : 'Assign Course'}</DialogTitle>
+          <DialogDescription>Select a course to assign.</DialogDescription>
+        </DialogHeader>
 
-        <div className={styles.selectWrapper}>
-          <select
-            className={`${styles.select} ${selectedCourseId ? styles.hasSelection : ''}`}
+        <div className="mb-6 flex flex-col gap-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-text-secondary">
+              Email Addresses
+            </label>
+            <div
+              className="flex min-h-11 cursor-text flex-wrap items-center gap-2 rounded-md border-2 border-border bg-background p-2 transition-colors focus-within:border-primary"
+              onClick={() => document.getElementById('assign-email-chip-input')?.focus()}
+            >
+              {emails.map((email) => (
+                <div
+                  key={email}
+                  className="flex items-center rounded-2xl bg-primary/10 px-3 py-1 text-sm font-medium text-primary"
+                >
+                  {email}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeEmail(email);
+                    }}
+                    className="ml-1.5 flex items-center text-primary"
+                  >
+                    <X className="size-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              <input
+                id="assign-email-chip-input"
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={emails.length === 0 ? 'Enter emails...' : ''}
+                className="min-w-[120px] flex-1 border-none bg-transparent text-sm text-foreground outline-none"
+              />
+            </div>
+            <p className="mt-1 text-xs text-text-tertiary">
+              Press Space, Enter or Comma to add an email.
+            </p>
+          </div>
+
+          <Select
             value={selectedCourseId}
-            onChange={(e) => setSelectedCourseId(e.target.value)}
+            onValueChange={(value) => setSelectedCourseId(value)}
             disabled={isLoading || isFetching || courses.length === 0}
           >
-            <option value="" disabled>
-              {isFetching
-                ? 'Loading courses...'
-                : courses.length === 0
-                  ? 'User has been assigned all available courses'
-                  : 'Select a course...'}
-            </option>
-            {courses.map((course) => (
-              <option key={course.id} value={course.id}>
-                {course.title}
-              </option>
-            ))}
-          </select>
-          <div className={styles.chevron}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
+            <SelectTrigger className="h-11 w-full">
+              <SelectValue
+                placeholder={
+                  isFetching
+                    ? 'Loading courses...'
+                    : courses.length === 0
+                      ? 'User has been assigned all available courses'
+                      : 'Select a course...'
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {courses.map((course) => (
+                <SelectItem key={course.id} value={course.id}>
+                  {course.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Result feedback */}
+        {result && (
+          <div className="mb-4 flex flex-col gap-2">
+            {result.success.length > 0 && (
+              <Alert variant="success">Successfully assigned course</Alert>
+            )}
+            {result.alreadyEnrolled?.length > 0 && (
+              <Alert variant="warning">User is already enrolled in this course</Alert>
+            )}
+            {result.failed?.length > 0 && <Alert variant="error">Failed to assign course</Alert>}
           </div>
-        </div>
+        )}
 
-        <Button
-          onClick={handleAssign}
-          disabled={
-            !selectedCourseId ||
-            isLoading ||
-            isFetching ||
-            (emails.length === 0 && !inputValue.trim())
-          }
-          loading={isLoading}
-          className={styles.assignButton}
-        >
-          {isLoading ? 'Assigning...' : 'Assign Course'}
-        </Button>
-      </div>
-
-      {/* Result feedback */}
-      {result && (
-        <div className={styles.resultSection}>
-          {result.success.length > 0 && (
-            <div className={styles.resultSuccess}>✓ Successfully assigned course</div>
-          )}
-          {result.alreadyEnrolled?.length > 0 && (
-            <div className={styles.resultWarning}>User is already enrolled in this course</div>
-          )}
-          {result.failed?.length > 0 && (
-            <div className={styles.resultError}>Failed to assign course</div>
-          )}
-        </div>
-      )}
-    </Modal>
+        <DialogFooter>
+          <Button
+            className="w-full"
+            onClick={handleAssign}
+            disabled={
+              !selectedCourseId ||
+              isLoading ||
+              isFetching ||
+              (emails.length === 0 && !inputValue.trim())
+            }
+            loading={isLoading}
+          >
+            {isLoading ? 'Assigning...' : 'Assign Course'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { getCourses } from '@/app/actions/course';
-import CoursesListClient from '@/components/dashboard/courses/CoursesListClient';
+import { listAvailableVideoCourses } from '@/app/actions/offering';
+import CoursesPageTabs from '@/components/dashboard/courses/CoursesPageTabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +43,18 @@ export default async function CoursesPage() {
   const subStatus = user.organization?.subscription?.status;
   const hasBilling = subStatus === 'active' || subStatus === 'trialing';
 
-  const courses = await getCourses();
+  // Fetch both data sources in parallel; a failure in available courses
+  // should never break the page — fall back to an empty list.
+  const [courses, availableCourses] = await Promise.all([
+    getCourses(),
+    listAvailableVideoCourses().catch(() => []),
+  ]);
 
-  return <CoursesListClient courses={courses} hasBilling={hasBilling} />;
+  return (
+    <CoursesPageTabs
+      courses={courses}
+      hasBilling={hasBilling}
+      availableCourses={availableCourses}
+    />
+  );
 }

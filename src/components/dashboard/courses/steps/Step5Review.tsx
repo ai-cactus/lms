@@ -5,14 +5,13 @@ import {
   generateCourseAndQuizV46,
   checkCourseGenerationJobV46,
 } from '@/app/actions/course-ai-v4.6';
-import styles from '@/components/courses/CoursePlayer.module.css';
 
 // Reusable Components
 import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui';
 import { sanitizeHtml } from '@/lib/sanitize';
-import wizardStyles from '../CourseWizard.module.css';
+import { TriangleAlert } from 'lucide-react';
 
 import {
   CourseWizardData,
@@ -536,7 +535,7 @@ export default function Step5Review({
   // Loading / Error States
   if (error && !generatedContent) {
     return (
-      <div className={`${styles.playerContainer} items-center justify-center`}>
+      <div className="flex flex-row-reverse max-md:flex-col h-screen w-full bg-background-secondary text-[#1a1a1a] overflow-hidden font-sans items-center justify-center">
         <div className="text-center">
           <h2 className="text-red-500 mb-2">Generation Failed</h2>
           <p className="text-[#6B7280] mb-4">{error}</p>
@@ -552,7 +551,7 @@ export default function Step5Review({
   // (ref is declared near the top of the component, above all early returns)
   if (isGenerating) {
     return (
-      <div className={`${styles.playerContainer} items-center justify-center`}>
+      <div className="flex flex-row-reverse max-md:flex-col h-screen w-full bg-background-secondary text-[#1a1a1a] overflow-hidden font-sans items-center justify-center">
         <div className="text-center max-w-[420px]">
           <div className="w-10 h-10 border-[3px] border-[#E5E7EB] border-t-[#1a1a1a] rounded-full animate-spin mx-auto mb-6" />
           <h2 className="text-xl font-bold text-[#1A202C] mb-2">Creating your course and quiz…</h2>
@@ -587,11 +586,11 @@ export default function Step5Review({
       : currentModule?.content || '';
 
   return (
-    <div className={styles.playerContainer}>
+    <div className="flex flex-row-reverse max-md:flex-col h-screen w-full bg-background-secondary text-[#1a1a1a] overflow-hidden font-sans">
       {/* Main Area */}
-      <div className={`${styles.main} w-full`}>
+      <div className="flex-1 flex flex-col overflow-hidden h-full w-full">
         {/* Content Stage */}
-        <div className={styles.contentArea}>
+        <div className="flex-1 overflow-hidden relative h-full bg-[#f8f7f4]">
           {viewMode === 'slides' ? (
             <CourseSlide
               lesson={{
@@ -638,25 +637,18 @@ export default function Step5Review({
 
           return (
             <div className="px-8 pb-6">
-              <div className={wizardStyles.qualityWarningCard}>
-                <div className={wizardStyles.qualityWarningHeader}>CONTENT SHORTFALL</div>
-                <div className={wizardStyles.qualityWarningBody}>
-                  <svg
-                    className={wizardStyles.qualityWarningIcon}
+              <div className="flex flex-col overflow-hidden mt-2 rounded-md border border-[#fcd34d]">
+                <div className="bg-[#fcd34d] text-black font-semibold px-3.5 py-[0.4rem] text-xs tracking-[0.04em] uppercase">
+                  CONTENT SHORTFALL
+                </div>
+                <div className="flex items-start gap-2.5 bg-[#fef2f2] px-3.5 py-3 text-black text-[0.8125rem] leading-[1.5]">
+                  <TriangleAlert
+                    className="shrink-0 mt-[0.1rem] text-[#dc2626]"
                     width="16"
                     height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-                    <line x1="12" y1="9" x2="12" y2="13" />
-                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                  </svg>
-                  <div className={wizardStyles.qualityWarningText}>
+                    strokeWidth={2.5}
+                  />
+                  <div className="m-0 [&_strong]:text-[#dc2626] [&_strong]:font-semibold">
                     <strong>Less content generated due to the uploaded document content:</strong>{' '}
                     {coverageNote}
                   </div>
