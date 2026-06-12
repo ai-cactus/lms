@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui';
+import CertificateModal from './CertificateModal';
 
 interface CertificateViewProps {
   certificateId: string;
@@ -14,6 +15,7 @@ export default function CertificateView({
   courseTitle,
   issuedAt,
 }: CertificateViewProps) {
+  const [open, setOpen] = useState(false);
   const dateStr =
     typeof issuedAt === 'string'
       ? new Date(issuedAt).toLocaleDateString()
@@ -30,26 +32,16 @@ export default function CertificateView({
       </div>
 
       <div className="mt-4 md:mt-0 flex gap-3">
-        <Button
-          variant="outline"
-          onClick={() => window.open(`/api/certificates/${certificateId}`, '_blank')}
-        >
-          View PDF
-        </Button>
-        <Button
-          variant="primary"
-          onClick={() => {
-            const a = document.createElement('a');
-            a.href = `/api/certificates/${certificateId}`;
-            a.download = `Certificate-${courseTitle.replace(/\s+/g, '-')}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-          }}
-        >
-          Download
+        <Button variant="primary" onClick={() => setOpen(true)}>
+          View Certificate
         </Button>
       </div>
+
+      <CertificateModal
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        certificateId={certificateId}
+      />
     </div>
   );
 }
