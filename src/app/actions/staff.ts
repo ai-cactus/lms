@@ -84,6 +84,7 @@ export async function getStaffDetails(userId: string) {
         courseId: e.courseId,
         courseName: e.course.title,
         courseImage: e.course.thumbnail,
+        courseType: e.course.type,
         status: e.status,
         progress: e.progress,
         score: e.score ?? 0,

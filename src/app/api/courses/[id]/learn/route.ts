@@ -103,6 +103,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       progress: 0,
       status: 'in_progress',
       score: null,
+      videoPositionSeconds: null,
       quizAttempts: [],
     };
 
@@ -249,6 +250,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
           slideContent: l.slideContent,
           duration: l.duration,
           order: l.order,
+          videoProvider: l.videoProvider,
+          videoStorageUri: l.videoStorageUri,
+          videoDurationSeconds: l.videoDurationSeconds,
         })),
         quiz,
       },
@@ -257,6 +261,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         progress: effectiveEnrollment.progress,
         status: effectiveEnrollment.status,
         score: effectiveEnrollment.score,
+        videoPositionSeconds: effectiveEnrollment.videoPositionSeconds,
         quizAttempts: effectiveEnrollment.quizAttempts,
       },
       quizResultsData,

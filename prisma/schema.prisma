@@ -30,6 +30,11 @@ enum CourseStatus {
   published
 }
 
+enum CourseType {
+  text
+  video
+}
+
 enum EnrollmentStatus {
   enrolled
   assigned
@@ -102,6 +107,7 @@ model Organization {
   subscription            Subscription?
   invoices                Invoice[]
   customCategories        CourseCategory[] // Org-specific course categories
+  offerings               OrgCourseOffering[]
 }
 
 model Invite {
@@ -225,6 +231,8 @@ model Course {
   // Audit / review fields (Figma "Confirm Course Review" modal)
   approvedByUserId   String?         // userId of the admin who reviewed the course
   approvedAt         DateTime?       // Timestamp of approval
+  type               CourseType      @default(text)
+  isGlobal           Boolean         @default(false)
   courseCategory     CourseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   approvedBy         User?           @relation("CourseApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
   creator            User            @relation(fields: [createdBy], references: [id], onDelete: Restrict)
@@ -233,10 +241,13 @@ model Course {
   lessons            Lesson[]
   artifacts          CourseArtifact[]
   certificates       Certificate[]
+  offerings          OrgCourseOffering[]
 
   @@index([createdBy])
   @@index([status])
   @@index([categoryId])
+  @@index([type])
+  @@index([isGlobal])
 }
 
 model CourseArtifact {
@@ -305,12 +316,15 @@ model Lesson {
   title        String
   content      String   // Article HTML — full prose per module
   slideContent String?  // Slide HTML — bullet-point version per module (stored separately)
-  order        Int
-  duration     Int?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  quiz         Quiz?
+  order                Int
+  duration             Int?
+  videoProvider        String?
+  videoStorageUri      String?
+  videoDurationSeconds Int?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  course               Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quiz                 Quiz?
 }
 
 model Quiz {
@@ -347,6 +361,7 @@ model Enrollment {
   courseId             String
   status               EnrollmentStatus @default(enrolled)
   progress             Int           @default(0)
+  videoPositionSeconds Int?
   score                Int?
   startedAt            DateTime      @default(now())
   completedAt          DateTime?
@@ -565,5 +580,26 @@ model Certificate {
   course         Course     @relation(fields: [courseId], references: [id], onDelete: Restrict)
 
   @@index([userId])
+  @@index([courseId])
+}
+
+// ── Video Courses ─────────────────────────────────────────────────────────────
+
+/// Maps a global course to an organization, allowing admins to offer shared
+/// video courses to their workers without duplicating course records.
+model OrgCourseOffering {
+  id                String       @id @default(uuid())
+  organizationId    String
+  courseId          String
+  addedByAdminId    String
+  customTitle       String?
+  customDescription String?
+  customIntro       String?
+  createdAt         DateTime     @default(now())
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  course            Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, courseId])
+  @@index([organizationId])
   @@index([courseId])
 }
