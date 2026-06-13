@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import styles from './ProfileForm.module.css';
-import { Button, Input } from '@/components/ui';
+import { Mail } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui';
 import {
   requestMfaSetup,
   verifyMfaSetup,
@@ -182,18 +184,18 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
   // --- RECOVERY CODES VIEW ---
   if (recoveryCodes) {
     return (
-      <div className="px-10 pb-10 max-w-[600px] w-full">
-        <h3 className="text-xl font-semibold mb-4">Save your recovery codes</h3>
-        <p className="text-slate-500 text-sm mb-6 leading-normal">
+      <div className="w-full max-w-[600px] px-10 pb-10">
+        <h3 className="mb-4 text-xl font-semibold">Save your recovery codes</h3>
+        <p className="mb-6 text-sm leading-normal text-text-secondary">
           Recovery codes can be used to access your account if you lose access to your email or
           cannot receive the verification code. <strong>Each code can only be used once.</strong>
         </p>
 
-        <div className="grid grid-cols-2 gap-3 bg-slate-50 p-6 rounded-lg border border-slate-200 mb-6">
+        <div className="mb-6 grid grid-cols-2 gap-3 rounded-[10px] border border-border bg-background-secondary p-6">
           {recoveryCodes.map((code, idx) => (
             <code
               key={idx}
-              className="font-mono text-base font-semibold text-slate-700 tracking-wide"
+              className="font-mono text-base font-semibold tracking-wide text-foreground"
             >
               {code}
             </code>
@@ -201,13 +203,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
         </div>
 
         <div className="flex justify-end">
-          <Button
-            variant="primary"
-            onClick={() => setRecoveryCodes(null)}
-            className="bg-indigo-600"
-          >
-            I have saved these codes
-          </Button>
+          <Button onClick={() => setRecoveryCodes(null)}>I have saved these codes</Button>
         </div>
       </div>
     );
@@ -216,14 +212,16 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
   // --- SETUP WIZARD VIEW ---
   if (isSetupMode) {
     return (
-      <div className="px-10 pb-10 max-w-[600px] w-full">
-        <h3 className="text-xl font-semibold mb-6">Check your email</h3>
+      <div className="w-full max-w-[600px] px-10 pb-10">
+        <h3 className="mb-6 text-xl font-semibold">Check your email</h3>
         {message && (
-          <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>
+          <Alert variant={message.type} className="mb-6">
+            {message.text}
+          </Alert>
         )}
 
         <div className="mb-8">
-          <p className="text-slate-500 text-sm mb-4 leading-normal">
+          <p className="mb-4 text-sm leading-normal text-text-secondary">
             We&apos;ve sent a 6-digit verification code to your email address. Please enter the code
             below to enable Two-Factor Authentication.
           </p>
@@ -233,11 +231,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
               setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))
             }
             placeholder="Enter code"
-            className="max-w-[240px] text-base"
-            style={{
-              letterSpacing: verificationCode ? '4px' : 'normal',
-              fontFamily: verificationCode ? 'monospace' : 'inherit',
-            }}
+            className={`max-w-[240px] text-base ${verificationCode ? 'font-mono tracking-[4px]' : ''}`}
           />
         </div>
 
@@ -252,12 +246,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
           >
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            onClick={handleVerify}
-            loading={isActionLoading}
-            className="bg-indigo-600 min-w-[100px]"
-          >
+          <Button onClick={handleVerify} loading={isActionLoading} className="min-w-[100px]">
             Enable 2FA
           </Button>
         </div>
@@ -268,16 +257,18 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
   // --- DISABLE CONFIRMATION VIEW ---
   if (isDisableMode) {
     return (
-      <div className="px-10 pb-10 max-w-[600px] w-full">
-        <h3 className="text-xl font-semibold mb-2">Disable Two-Factor Authentication</h3>
-        <p className="text-slate-500 text-sm mb-6 leading-normal">
+      <div className="w-full max-w-[600px] px-10 pb-10">
+        <h3 className="mb-2 text-xl font-semibold">Disable Two-Factor Authentication</h3>
+        <p className="mb-6 text-sm leading-normal text-text-secondary">
           {disableCodeSent
             ? "We've sent a verification code to your email. Enter it below to confirm."
             : 'Enter your verification code to confirm.'}
         </p>
 
         {message && (
-          <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>
+          <Alert variant={message.type} className="mb-6">
+            {message.text}
+          </Alert>
         )}
 
         <Input
@@ -286,14 +277,10 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
             setDisableCode(e.target.value.toUpperCase())
           }
           placeholder="Enter code or recovery code"
-          className="max-w-[240px] text-base mb-4"
-          style={{
-            letterSpacing: disableCode ? '4px' : 'normal',
-            fontFamily: disableCode ? 'monospace' : 'inherit',
-          }}
+          className={`mb-4 max-w-[240px] text-base ${disableCode ? 'font-mono tracking-[4px]' : ''}`}
         />
 
-        <div className="flex gap-3 items-center mb-4">
+        <div className="mb-4 flex items-center gap-3">
           <Button
             variant="outline"
             onClick={() => {
@@ -306,15 +293,16 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
             Cancel
           </Button>
           <Button
+            variant="destructive"
             onClick={handleDisableConfirm}
             loading={isActionLoading}
-            className="bg-red-600 text-white min-w-[120px]"
+            className="min-w-[120px]"
           >
             Disable 2FA
           </Button>
         </div>
 
-        <div className="text-[13px] text-slate-400">
+        <div className="text-[13px] text-text-tertiary">
           {disableCooldown > 0 ? (
             <span>Resend code in {disableCooldown}s</span>
           ) : (
@@ -322,7 +310,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
               type="button"
               onClick={handleResendDisableCode}
               disabled={isActionLoading}
-              className="bg-transparent border-none text-indigo-600 text-[13px] cursor-pointer p-0 underline"
+              className="cursor-pointer border-none bg-transparent p-0 text-[13px] text-primary underline"
             >
               Resend code
             </button>
@@ -334,27 +322,29 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
 
   // --- ENABLED / DISABLED DEFAULT VIEW ---
   return (
-    <div className="px-10 pb-10 max-w-[600px] w-full">
-      {message && <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>}
+    <div className="w-full max-w-[600px] px-10 pb-10">
+      {message && (
+        <Alert variant={message.type} className="mb-6">
+          {message.text}
+        </Alert>
+      )}
 
       {isEnabled ? (
         <div>
-          <div className="flex items-center gap-4 mb-4">
+          <div className="mb-4 flex items-center gap-4">
             {/* Toggle Switch UI */}
             <div
               onClick={handleDisableInit}
-              className="w-11 h-6 rounded-xl bg-indigo-600 relative cursor-pointer transition-colors duration-200"
-              style={{ opacity: isActionLoading ? 0.7 : 1 }}
+              className={`relative h-6 w-11 cursor-pointer rounded-xl bg-primary transition-colors duration-200 ${
+                isActionLoading ? 'opacity-70' : 'opacity-100'
+              }`}
             >
-              <div
-                className="w-5 h-5 rounded-full bg-white absolute top-0.5 left-[22px] transition-left duration-200 shadow-sm"
-                style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}
-              />
+              <div className="absolute top-0.5 left-[22px] size-5 rounded-full bg-white shadow-sm transition-all duration-200" />
             </div>
-            <span className="text-[15px] font-semibold text-slate-800">On</span>
+            <span className="text-[15px] font-semibold text-foreground">On</span>
           </div>
 
-          <div className="text-sm text-slate-500 mb-6 flex gap-2 items-center">
+          <div className="mb-6 flex items-center gap-2 text-sm text-text-secondary">
             <span>2FA is enabled on your Theraptly account.</span>
             <button
               onClick={() => {
@@ -362,52 +352,36 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
                   'For security reasons, recovery codes are only shown once during setup. If you lost them, you must disable and re-enable 2FA.',
                 );
               }}
-              className="bg-transparent border-none text-indigo-600 cursor-pointer p-0"
+              className="cursor-pointer border-none bg-transparent p-0 text-primary"
             >
               See your recovery codes.
             </button>
           </div>
 
-          <p className="text-sm text-slate-800">
+          <p className="text-sm text-foreground">
             We&apos;ll send a verification code to your email anytime you log in on a device we
             don&apos;t recognize.
           </p>
         </div>
       ) : (
         <div>
-          <div className="border border-slate-200 rounded-lg p-6 flex items-center justify-between mb-6">
+          <div className="mb-6 flex items-center justify-between rounded-[10px] border border-border p-6">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500">
-                {/* Email icon */}
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="2" y="4" width="20" height="16" rx="2" />
-                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-                </svg>
+              <div className="flex size-10 items-center justify-center rounded-[10px] bg-background-secondary text-text-secondary">
+                <Mail className="size-5" aria-hidden="true" />
               </div>
               <div>
                 <h4 className="m-0 mb-1 text-[15px] font-semibold">Email Verification</h4>
-                <p className="m-0 text-[13px] text-slate-500">One-time code sent to your email</p>
+                <p className="m-0 text-[13px] text-text-secondary">
+                  One-time code sent to your email
+                </p>
               </div>
             </div>
-            <Button
-              variant="primary"
-              onClick={handleSetupInit}
-              loading={isActionLoading}
-              className="bg-indigo-600"
-            >
+            <Button onClick={handleSetupInit} loading={isActionLoading}>
               Set up 2FA
             </Button>
           </div>
-          <p className="text-sm text-slate-500">2FA is disabled on your Theraptly account.</p>
+          <p className="text-sm text-text-secondary">2FA is disabled on your Theraptly account.</p>
         </div>
       )}
     </div>

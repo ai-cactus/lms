@@ -1,8 +1,17 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import styles from './ProfileForm.module.css';
-import { Button, Input, Modal } from '@/components/ui';
+import { ArrowLeft, Check, Pencil } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field, Alert } from '@/components/ui';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { updateProfile, uploadAvatar } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -48,6 +57,13 @@ interface ProfileFormProps {
   initialData: ProfileData;
   organizationData?: OrganizationData | null;
 }
+
+const TABS = [
+  { key: 'profile', label: 'EDIT PROFILE' },
+  { key: 'organization', label: 'YOUR ORGANIZATION' },
+  { key: 'password', label: 'CHANGE PASSWORD' },
+  { key: '2fa', label: 'TWO FACTOR AUTH (2FA)' },
+] as const;
 
 export default function ProfileForm({ initialData, organizationData }: ProfileFormProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'organization' | 'password' | '2fa'>(
@@ -166,71 +182,47 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
   const isAdmin = initialData.role === 'admin';
 
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <Link href="/dashboard" className={styles.backLink}>
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-          </svg>
+    <div className="flex min-h-[calc(100vh-100px)] flex-col items-center justify-center p-6">
+      <div className="mb-6 w-full max-w-[900px]">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-primary"
+        >
+          <ArrowLeft className="size-5" aria-hidden="true" />
           Back to dashboard
         </Link>
       </div>
 
-      <div className={styles.card}>
-        <div style={{ padding: '0 40px' }}>
-          <div className={styles.tabs}>
-            <div
-              className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('profile')}
-            >
-              EDIT PROFILE
-            </div>
-            <div
-              className={`${styles.tab} ${activeTab === 'organization' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('organization')}
-            >
-              YOUR ORGANIZATION
-            </div>
-            <div
-              className={`${styles.tab} ${activeTab === 'password' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('password')}
-            >
-              CHANGE PASSWORD
-            </div>
-            <div
-              className={`${styles.tab} ${activeTab === '2fa' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('2fa')}
-            >
-              TWO FACTOR AUTH (2FA)
-            </div>
+      <div className="flex min-h-[600px] w-full max-w-[900px] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
+        <div className="px-6 sm:px-10">
+          <div className="flex items-center gap-8 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`relative -bottom-px shrink-0 cursor-pointer border-b-2 px-1 py-3 text-[13px] font-semibold whitespace-nowrap uppercase tracking-[0.05em] transition-all ${
+                  activeTab === tab.key
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-text-secondary'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
 
         {activeTab === 'profile' && (
-          <div className={styles.profileWrapper}>
-            <div className={styles.avatarSection}>
-              <div className={styles.avatarLarge}>
+          <div className="flex flex-col items-center gap-8 p-6 md:flex-row md:items-start md:gap-16 md:p-10">
+            <div className="flex w-auto shrink-0 justify-center pt-2 md:w-[120px]">
+              <div className="relative flex size-[120px] items-center justify-center rounded-full bg-background-secondary text-[48px] font-semibold text-text-secondary shadow-md">
                 {avatarDisplayUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={avatarDisplayUrl}
                     alt="Profile Avatar"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      borderRadius: '50%',
-                    }}
+                    className="size-full rounded-full object-cover"
                   />
                 ) : formData.first_name || formData.last_name ? (
                   `${formData.first_name?.[0] || ''}${formData.last_name?.[0] || ''}`.toUpperCase()
@@ -238,162 +230,132 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                   'U'
                 )}
                 <Button
-                  variant="primary"
                   size="icon-sm"
-                  className={styles.editAvatarButton}
+                  className="absolute right-0 bottom-0 size-8 rounded-full border-[3px] border-white"
                   type="button"
                   onClick={handleAvatarClick}
                 >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 20h9"></path>
-                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                  </svg>
+                  <Pencil className="size-3.5" aria-hidden="true" />
                 </Button>
                 <input
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
                   accept="image/*"
-                  style={{ display: 'none' }}
+                  className="hidden"
                 />
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className={styles.form}>
-              <div className={styles.formGrid}>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>First Name</label>
+            <form onSubmit={handleSubmit} className="flex max-w-[800px] flex-1 flex-col">
+              <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <Field
+                  label="First Name"
+                  error={!formData.first_name.trim() ? 'First name is required' : undefined}
+                >
                   <Input
                     name="first_name"
                     value={formData.first_name}
                     onChange={handleChange}
                     placeholder="Jane"
-                    error={!formData.first_name.trim() ? 'First name is required' : undefined}
                   />
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>Last Name</label>
+                </Field>
+                <Field
+                  label="Last Name"
+                  error={!formData.last_name.trim() ? 'Last name is required' : undefined}
+                >
                   <Input
                     name="last_name"
                     value={formData.last_name}
                     onChange={handleChange}
                     placeholder="Doe"
-                    error={!formData.last_name.trim() ? 'Last name is required' : undefined}
                   />
-                </div>
+                </Field>
               </div>
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Company</label>
-                <Input
-                  name="company_name"
-                  value={organizationData?.name || formData.company_name || ''}
-                  onChange={isAdmin ? handleChange : undefined}
-                  disabled={!isAdmin}
-                  className={!isAdmin ? styles.readOnlyInput : undefined}
-                  placeholder="Your company name"
-                />
+              <div className="mb-6">
+                <Field label="Company">
+                  <Input
+                    name="company_name"
+                    value={organizationData?.name || formData.company_name || ''}
+                    onChange={isAdmin ? handleChange : undefined}
+                    disabled={!isAdmin}
+                    placeholder="Your company name"
+                  />
+                </Field>
               </div>
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Email Address</label>
-                <Input
-                  name="email"
-                  value={formData.email}
-                  disabled
-                  className={styles.readOnlyInput}
-                />
+              <div className="mb-6">
+                <Field label="Email Address">
+                  <Input name="email" value={formData.email} disabled />
+                </Field>
               </div>
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Job Title</label>
-                <Input
-                  name="jobTitle"
-                  value={formData.jobTitle || ''}
-                  onChange={handleChange}
-                  placeholder="e.g. Compliance Officer"
-                />
+              <div className="mb-6">
+                <Field label="Job Title">
+                  <Input
+                    name="jobTitle"
+                    value={formData.jobTitle || ''}
+                    onChange={handleChange}
+                    placeholder="e.g. Compliance Officer"
+                  />
+                </Field>
               </div>
 
               {/* Country & Phone */}
-              <div className={styles.formGrid}>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>Country</label>
+              <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <Field label="Country">
                   <Input
                     value={organizationData?.country || ''}
                     disabled
-                    className={styles.readOnlyInput}
                     placeholder="Your country"
                   />
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>Phone</label>
+                </Field>
+                <Field label="Phone">
                   <Input
                     value={organizationData?.phone || ''}
                     disabled
-                    className={styles.readOnlyInput}
                     placeholder="Your phone number"
                   />
-                </div>
+                </Field>
               </div>
 
               {/* Business Address */}
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Business Address</label>
-                <Input
-                  value={organizationData?.address || ''}
-                  disabled
-                  className={styles.readOnlyInput}
-                  placeholder="Your business address"
-                />
+              <div className="mb-6">
+                <Field label="Business Address">
+                  <Input
+                    value={organizationData?.address || ''}
+                    disabled
+                    placeholder="Your business address"
+                  />
+                </Field>
               </div>
 
               {/* City, State & Zip Code */}
-              <div className={styles.formGrid}>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>City</label>
-                  <Input
-                    value={organizationData?.city || ''}
-                    disabled
-                    className={styles.readOnlyInput}
-                    placeholder="Your city"
-                  />
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>State</label>
-                  <Input
-                    value={organizationData?.state || ''}
-                    disabled
-                    className={styles.readOnlyInput}
-                    placeholder="Your state"
-                  />
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>Zip Code</label>
+              <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
+                <Field label="City">
+                  <Input value={organizationData?.city || ''} disabled placeholder="Your city" />
+                </Field>
+                <Field label="State">
+                  <Input value={organizationData?.state || ''} disabled placeholder="Your state" />
+                </Field>
+                <Field label="Zip Code">
                   <Input
                     value={organizationData?.zipCode || ''}
                     disabled
-                    className={styles.readOnlyInput}
                     placeholder="Your zip code"
                   />
-                </div>
+                </Field>
               </div>
 
               {message && (
-                <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>
+                <Alert variant={message.type} className="mb-6">
+                  {message.text}
+                </Alert>
               )}
 
               {isDirty && (
-                <div className={styles.actions}>
+                <div className="mt-8 flex justify-end gap-4">
                   <Button
                     variant="outline"
                     type="button"
@@ -403,18 +365,18 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                       setAvatarUrl(baseAvatarUrl);
                       setAvatarDisplayUrl(initialData.avatarDisplayUrl || null);
                     }}
-                    className={styles.discardButton}
+                    className="border-primary text-primary"
                     disabled={isLoading}
                   >
                     Discard
                   </Button>
                   <Button
-                    variant="primary"
                     type="submit"
                     disabled={!isValid || isLoading}
-                    className={styles.saveButton}
+                    loading={isLoading}
+                    className="min-w-[140px]"
                   >
-                    {isLoading ? 'Saving...' : 'Save Changes'}
+                    Save Changes
                   </Button>
                 </div>
               )}
@@ -432,40 +394,37 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
       </div>
 
       {/* Confirmation Modal */}
-      <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)}>
-        <div className={styles.modalContent}>
-          <div className={styles.modalIcon}>
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-          </div>
-          <h3 className={styles.modalTitle}>Confirm profile update</h3>
-          <p className={styles.modalText}>
+      <Dialog
+        open={showConfirm}
+        onOpenChange={(open) => {
+          if (!open) setShowConfirm(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="items-center text-center sm:text-center">
+            <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-success/10 text-success">
+              <Check className="size-8" strokeWidth={3} aria-hidden="true" />
+            </div>
+            <DialogTitle className="text-center text-xl">Confirm profile update</DialogTitle>
+          </DialogHeader>
+          <p className="text-center leading-relaxed text-text-secondary">
             Are you sure you want to make these changes to your profile?
           </p>
-          <div className={styles.modalActions}>
+          <DialogFooter className="justify-center sm:justify-center">
             <Button
               variant="secondary"
+              type="button"
               onClick={() => setShowConfirm(false)}
-              className={styles.modalCancel}
+              className="min-w-[100px]"
             >
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleConfirmSave} className={styles.modalConfirm}>
+            <Button type="button" onClick={handleConfirmSave} className="min-w-[100px]">
               Confirm
             </Button>
-          </div>
-        </div>
-      </Modal>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

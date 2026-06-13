@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button } from '@/components/ui';
+import { Button } from '@/components/ui/button';
 import CertificateModal from './CertificateModal';
 
 interface CertificateViewProps {
@@ -32,7 +32,7 @@ export default function CertificateView({
       </div>
 
       <div className="mt-4 md:mt-0 flex gap-3">
-        <Button variant="primary" onClick={() => setOpen(true)}>
+        <Button variant="default" onClick={() => setOpen(true)}>
           View Certificate
         </Button>
       </div>

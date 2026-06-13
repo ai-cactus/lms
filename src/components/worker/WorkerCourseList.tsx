@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import styles from './WorkerDashboard.module.css';
 import { useRouter } from 'next/navigation';
+import { Check, CircleX, Lock, Clock, Search, Layers, AlertCircle } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 
 interface Course {
@@ -21,6 +21,9 @@ interface Course {
 interface WorkerCourseListProps {
   courses: Course[];
 }
+
+const badgeBase =
+  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold';
 
 export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
   const router = useRouter();
@@ -43,59 +46,24 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
   ) => {
     if (status === 'attested') {
       return (
-        <span className={`${styles.statusBadge} ${styles.statusAttested}`}>
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
+        <span className={`${badgeBase} bg-[#d1fae5] text-[#065f46]`}>
+          <Check className="size-3" aria-hidden="true" />
           Attested
         </span>
       );
     }
     if (status === 'completed') {
       return (
-        <span className={`${styles.statusBadge} ${styles.statusCompleted}`}>
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
+        <span className={`${badgeBase} bg-[#dbeafe] text-[#1d4ed8]`}>
+          <Check className="size-3" aria-hidden="true" />
           Completed
         </span>
       );
     }
     if (status === 'failed') {
       return (
-        <span className={`${styles.statusBadge} ${styles.statusFailed}`}>
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="15" y1="9" x2="9" y2="15"></line>
-            <line x1="9" y1="9" x2="15" y2="15"></line>
-          </svg>
+        <span className={`${badgeBase} bg-[#fee2e2] text-[#dc2626]`}>
+          <CircleX className="size-3" aria-hidden="true" />
           Failed
         </span>
       );
@@ -103,27 +71,12 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
 
     if (status === 'locked') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span
-            className={`${styles.statusBadge} ${styles.statusFailed}`}
-            style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-            </svg>
+        <div className="flex flex-col gap-1">
+          <span className={`${badgeBase} bg-[#FEE2E2] text-[#DC2626]`}>
+            <Lock className="size-3" aria-hidden="true" />
             Locked
           </span>
-          <span style={{ fontSize: '10px', color: '#EF4444' }}>Max attempts reached</span>
+          <span className="text-[10px] text-[#EF4444]">Max attempts reached</span>
         </div>
       );
     }
@@ -131,27 +84,18 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
     // Default to In Progress or Assigned
     const isStarted = progress > 0 || status === 'in_progress';
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div className="flex flex-col gap-0.5">
         <span
-          className={`${styles.statusBadge} ${isStarted ? styles.statusInProgress : styles.statusAssigned}`}
+          className={[
+            badgeBase,
+            isStarted ? 'bg-[#fef3c7] text-[#b45309]' : 'bg-[#f1f5f9] text-[#64748b]',
+          ].join(' ')}
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
-          </svg>
+          <Clock className="size-3" aria-hidden="true" />
           {isStarted ? 'In progress' : 'Assigned'}
         </span>
         {isStarted && quizAttempts && (
-          <span style={{ fontSize: '10px', color: '#A0AEC0', paddingLeft: '4px' }}>
+          <span className="pl-1 text-[10px] text-[#A0AEC0]">
             Attempt{' '}
             {quizAttempts[0]
               ? quizAttempts[0].timeTaken === null
@@ -165,71 +109,54 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
   };
 
   const formatDate = (date: Date | string | null | undefined) => {
-    if (!date) return <span className={styles.noDeadline}>No deadline</span>;
+    if (!date) return <span className="text-sm text-[#cbd5e1]">No deadline</span>;
     const d = new Date(date);
     const isOverdue = d < new Date();
     const text = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     if (isOverdue) {
       return (
-        <span className={styles.deadlineRed}>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
+        <span className="flex items-center gap-1.5 font-medium text-[#dc2626]">
+          <AlertCircle className="size-3.5" aria-hidden="true" />
           Due {text}
         </span>
       );
     }
-    return <span className={styles.deadlineNormal}>{text}</span>;
+    return <span className="text-[#4a5568]">{text}</span>;
   };
 
   return (
     <section>
-      <div className={styles.courseListHeader}>
-        <h2 className={styles.sectionTitle}>My Courses</h2>
-        <div className={styles.searchBox}>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#94A3B8"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
+      <div className="mb-4 flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-0">
+        <h2 className="text-lg font-bold text-[#1a202c]">My Courses</h2>
+        <div className="flex w-full items-center gap-2 rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3.5 py-2 transition-all focus-within:border-[#4730f7] focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(71,48,247,0.08)] sm:w-auto">
+          <Search className="size-4 shrink-0 text-[#94A3B8]" aria-hidden="true" />
           <input
             type="text"
             placeholder="Search for courses..."
-            className={styles.searchInput}
+            className="w-full bg-transparent text-sm text-[#1a202c] outline-none placeholder:text-[#94a3b8] sm:w-[200px]"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
       </div>
 
-      <div className={styles.tableWrapper}>
-        <table className={styles.courseTable}>
-          <thead>
+      <div className="overflow-x-auto rounded-xl bg-white shadow-sm [-webkit-overflow-scrolling:touch]">
+        <table className="w-full border-collapse text-sm">
+          <thead className="max-md:hidden">
             <tr>
-              <th style={{ width: '35%' }}>Name</th>
-              <th style={{ width: '20%' }}>Progress</th>
-              <th style={{ width: '15%' }}>Deadline</th>
-              <th style={{ width: '15%' }}>Status</th>
+              <th className="w-[35%] border-b border-[#e2e8f0] bg-[#f1f5f9] px-6 py-4 text-left font-semibold text-[#64748b]">
+                Name
+              </th>
+              <th className="w-[20%] border-b border-[#e2e8f0] bg-[#f1f5f9] px-6 py-4 text-left font-semibold text-[#64748b]">
+                Progress
+              </th>
+              <th className="w-[15%] border-b border-[#e2e8f0] bg-[#f1f5f9] px-6 py-4 text-left font-semibold text-[#64748b]">
+                Deadline
+              </th>
+              <th className="w-[15%] border-b border-[#e2e8f0] bg-[#f1f5f9] px-6 py-4 text-left font-semibold text-[#64748b]">
+                Status
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -249,53 +176,43 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                         handleStartClick(course.id);
                       }
                     }}
-                    style={{
-                      cursor: isLocked ? 'not-allowed' : 'pointer',
-                      opacity: isLocked ? 0.7 : 1,
-                    }}
+                    className={[
+                      'border-b border-[#f1f5f9] last:border-b-0 max-md:block max-md:p-4',
+                      isLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                    ].join(' ')}
                   >
-                    <td>
-                      <div className={styles.courseInfo}>
-                        <div className={styles.courseIconSmall}>
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                          </svg>
+                    <td className="px-6 py-4 align-middle text-[#1a202c] max-md:block max-md:border-none max-md:px-0 max-md:py-1 max-md:first:mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-8 flex-shrink-0 items-center justify-center rounded-md bg-[#1e293b] text-white">
+                          <Layers className="size-4" aria-hidden="true" />
                         </div>
-                        <span className={styles.courseTitleSmall}>
+                        <span className="font-semibold text-[#1a202c]">
                           {course.retakeOf ? (
-                            <span style={{ color: '#E53E3E', fontWeight: 600, marginRight: 8 }}>
-                              Retake:
-                            </span>
+                            <span className="mr-2 font-semibold text-[#E53E3E]">Retake:</span>
                           ) : null}
                           {course.title}
                         </span>
                       </div>
                     </td>
-                    <td>
-                      <div className={styles.progressContainer}>
-                        <div className={styles.progressBarTrack}>
+                    <td className="px-6 py-4 align-middle text-[#1a202c] max-md:block max-md:border-none max-md:px-0 max-md:py-1">
+                      <div className="flex max-w-[200px] items-center gap-2.5 md:max-w-none">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#e2e8f0]">
                           <div
-                            className={styles.progressBarFill}
-                            style={{
-                              width: `${course.progress}%`,
-                              backgroundColor: '#4730F7',
-                            }}
+                            className="h-full rounded-full bg-[#4730F7] transition-[width] duration-500"
+                            style={{ width: `${course.progress}%` }}
                           />
                         </div>
-                        <span className={styles.progressText}>{course.progress}%</span>
+                        <span className="w-9 text-right text-xs font-semibold text-[#64748b]">
+                          {course.progress}%
+                        </span>
                       </div>
                     </td>
-                    <td>{formatDate(course.deadline)}</td>
-                    <td>{getStatusBadge(course.status, course.progress, course.quizAttempts)}</td>
+                    <td className="px-6 py-4 align-middle text-[#1a202c] max-md:mr-3 max-md:inline-flex max-md:border-none max-md:px-0 max-md:py-1 max-md:text-xs">
+                      {formatDate(course.deadline)}
+                    </td>
+                    <td className="px-6 py-4 align-middle text-[#1a202c] max-md:mr-3 max-md:inline-flex max-md:border-none max-md:px-0 max-md:py-1 max-md:text-xs">
+                      {getStatusBadge(course.status, course.progress, course.quizAttempts)}
+                    </td>
                   </tr>
                 );
               })

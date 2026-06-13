@@ -2,9 +2,10 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Logo, Button } from '@/components/ui';
+import { CreditCard } from 'lucide-react';
+import { Logo } from '@/components/ui';
+import { Button } from '@/components/ui/button';
 import { updateRole } from '@/app/actions/user';
-import styles from './page.module.css';
 import { logger } from '@/lib/logger';
 
 export default function RoleSelectionPage() {
@@ -34,81 +35,64 @@ export default function RoleSelectionPage() {
     }
   };
 
+  const roles: { id: 'admin' | 'worker'; name: string }[] = [
+    { id: 'admin', name: 'Admin' },
+    { id: 'worker', name: 'Worker' },
+  ];
+
   return (
-    <div className={styles.wrapper}>
-      <div className={styles.container}>
-        <div className={styles.header}>
+    <div className="flex w-full justify-center px-6 py-16 md:px-[110px] md:py-[140px]">
+      <div className="flex w-full max-w-[420px] flex-col items-center text-center">
+        <div className="mb-6">
           <Logo size="md" />
         </div>
 
-        <h1 className={styles.title}>Tell us about your role</h1>
-        <p className={styles.subtitle}>
+        <h1 className="mb-2 text-[26px] font-bold text-foreground">Tell us about your role</h1>
+        <p className="mb-10 max-w-[380px] text-base leading-relaxed text-text-secondary">
           Choose the option that best describes how you wish to use Theraptly.
         </p>
 
-        <div className={styles.roleCards}>
-          {/* Admin Card */}
-          <div
-            className={`${styles.roleCard} ${selectedRole === 'admin' ? styles.selected : ''}`}
-            onClick={() => setSelectedRole('admin')}
-          >
-            <div className={styles.cardHeader}>
-              <div className={styles.iconWrapper}>
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+        <div className="mb-10 flex w-full flex-col gap-4">
+          {roles.map((role) => {
+            const isSelected = selectedRole === role.id;
+            return (
+              <div
+                key={role.id}
+                className={`flex cursor-pointer flex-col gap-5 rounded-xl border p-5 text-left transition-all ${
+                  isSelected
+                    ? 'border-primary bg-primary/5 shadow-[0_0_0_1px_var(--primary)]'
+                    : 'border-border bg-background hover:border-border'
+                }`}
+                onClick={() => setSelectedRole(role.id)}
+              >
+                <div className="flex items-start justify-between">
+                  <CreditCard
+                    className={`size-6 ${isSelected ? 'text-primary' : 'text-text-secondary'}`}
+                    aria-hidden="true"
+                  />
+                  <div
+                    className={`flex size-5 items-center justify-center rounded-full border-[1.5px] ${
+                      isSelected ? 'border-primary' : 'border-border'
+                    }`}
+                  >
+                    {isSelected && <div className="size-2.5 rounded-full bg-primary" />}
+                  </div>
+                </div>
+                <h3
+                  className={`text-lg font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}
                 >
-                  <rect x="2" y="5" width="20" height="14" rx="2" />
-                  <line x1="2" y1="10" x2="22" y2="10" />
-                </svg>
+                  {role.name}
+                </h3>
               </div>
-              <div className={styles.radio}>
-                {selectedRole === 'admin' && <div className={styles.radioInner} />}
-              </div>
-            </div>
-            <h3 className={styles.roleName}>Admin</h3>
-          </div>
-
-          {/* Worker Card */}
-          <div
-            className={`${styles.roleCard} ${selectedRole === 'worker' ? styles.selected : ''}`}
-            onClick={() => setSelectedRole('worker')}
-          >
-            <div className={styles.cardHeader}>
-              <div className={styles.iconWrapper}>
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="2" y="5" width="20" height="14" rx="2" />
-                  <line x1="2" y1="10" x2="22" y2="10" />
-                </svg>
-              </div>
-              <div className={styles.radio}>
-                {selectedRole === 'worker' && <div className={styles.radioInner} />}
-              </div>
-            </div>
-            <h3 className={styles.roleName}>Worker</h3>
-          </div>
+            );
+          })}
         </div>
 
-        {error && <p className={styles.error}>{error}</p>}
+        {error && <p className="mb-4 text-sm text-error">{error}</p>}
 
         <Button
           size="lg"
-          fullWidth
+          className="w-full"
           onClick={handleContinue}
           loading={isLoading}
           disabled={!selectedRole}

@@ -1,7 +1,7 @@
 import { auth } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
-import styles from '@/components/worker/WorkerDashboard.module.css';
+import { AlertCircle } from 'lucide-react';
 import WorkerWelcomeModal from '@/components/dashboard/learner/WorkerWelcomeModal';
 import WorkerDashboardMetrics from '@/components/worker/WorkerDashboardMetrics';
 import WorkerCourseList from '@/components/worker/WorkerCourseList';
@@ -106,36 +106,27 @@ export default async function LearnerDashboard() {
   );
 
   return (
-    <div className={styles.container}>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-8 max-md:gap-5">
       {profileIncomplete && (
-        <div className={styles.profileWarningBanner}>
-          <div className={styles.profileWarningIcon}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
+        <div className="mb-2 mt-4 flex items-center gap-4 rounded-lg border border-[#fef3c7] border-l-4 border-l-[#f59e0b] bg-[#fffbeb] px-5 py-4 shadow-sm">
+          <div className="flex flex-shrink-0 items-center text-[#d97706]">
+            <AlertCircle className="size-5" aria-hidden="true" />
           </div>
-          <div className={styles.profileWarningText}>
-            Please <Link href="/worker/profile">update your profile</Link> with your official first
-            and last name. This is required for your certificates to generate correctly.
+          <div className="text-sm font-medium leading-relaxed text-[#b45309]">
+            Please{' '}
+            <Link href="/worker/profile" className="font-bold underline hover:text-[#78350f]">
+              update your profile
+            </Link>{' '}
+            with your official first and last name. This is required for your certificates to
+            generate correctly.
           </div>
         </div>
       )}
 
-      <header className={styles.header}>
+      <header className="flex items-center justify-between">
         <div>
-          <h1 className={styles.welcome}>Dashboard</h1>
-          <p className={styles.sub}>Here is an overview of your courses</p>
+          <h1 className="mb-1 text-2xl font-bold text-[#1a202c] max-md:text-xl">Dashboard</h1>
+          <p className="text-[#718096]">Here is an overview of your courses</p>
         </div>
       </header>
 

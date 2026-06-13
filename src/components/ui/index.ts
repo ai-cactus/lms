@@ -1,9 +1,4 @@
-// Legacy custom components (CSS Module-based) — will be migrated to shadcn incrementally
-export { default as Button } from './legacy/Button';
-export { default as Input } from './legacy/Input';
-export * from './legacy/Modal';
-export * from './legacy/Select';
-export { default as Checkbox } from './legacy/Checkbox';
+// Modal-coordination context (priority-based; functional logic, not styling) — kept post-migration.
 export { useModalContext } from './legacy/ModalContext';
 
 // Custom components (no shadcn equivalent)

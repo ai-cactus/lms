@@ -1,12 +1,12 @@
 'use client';
 
-import styles from './auditor-pack.module.css';
 import type { AuditorOverviewStats, AuditorCourseRow } from '@/app/actions/auditor';
 import AuditorOverviewTab from './AuditorOverviewTab';
 import AuditorCoursesTab from './AuditorCoursesTab';
 import AuditorStaffTab from './AuditorStaffTab';
 import AuditorExportTab from './AuditorExportTab';
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
 
 type TabKey = 'overview' | 'courses' | 'staff' | 'export';
 
@@ -31,11 +31,16 @@ export default function AuditorPackClient({
   return (
     <div>
       {/* Tab Navigation */}
-      <nav className={styles.tabNav} aria-label="Auditor Pack tabs">
+      <nav className="mb-7 flex gap-0 border-b-2 border-border" aria-label="Auditor Pack tabs">
         {TABS.map((tab) => (
           <button
             key={tab.key}
-            className={`${styles.tabBtn} ${activeTab === tab.key ? styles.tabBtnActive : ''}`}
+            className={cn(
+              '-mb-0.5 cursor-pointer border-b-2 px-5 py-3 text-sm transition-colors',
+              activeTab === tab.key
+                ? 'border-primary font-semibold text-primary'
+                : 'border-transparent font-medium text-text-secondary hover:text-foreground',
+            )}
             onClick={() => setActiveTab(tab.key)}
             aria-current={activeTab === tab.key ? 'page' : undefined}
           >

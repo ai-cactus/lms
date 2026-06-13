@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import styles from './ProfileForm.module.css';
-import { Button, Input } from '@/components/ui';
+import { CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { PasswordInput } from '@/components/ui/password-input';
+import { Field, Alert } from '@/components/ui';
 import { changePassword } from '@/app/actions/user';
 
 interface ChangePasswordTabProps {
@@ -15,18 +17,15 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   if (authProvider && authProvider !== 'credentials') {
     return (
-      <div className={styles.emptyState}>
-        <h3 className={styles.emptyStateTitle}>Password Managed Externally</h3>
-        <p className={styles.emptyStateText}>
+      <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+        <h3 className="mb-2 text-xl font-semibold text-foreground">Password Managed Externally</h3>
+        <p className="max-w-[400px] text-sm leading-relaxed text-text-secondary">
           Your account is linked using a third-party provider (e.g., Microsoft). You cannot change
           your password here.
         </p>
@@ -89,107 +88,50 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
     setMessage(null);
   };
 
-  const EyeIcon = ({
-    show,
-    onClick,
-  }: {
-    show: boolean;
-    onClick: React.MouseEventHandler<HTMLButtonElement>;
-  }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className="bg-transparent border-none cursor-pointer px-2 text-slate-500"
-    >
-      {show ? (
-        // Eye off icon
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-          <line x1="1" y1="1" x2="23" y2="23"></line>
-        </svg>
-      ) : (
-        // Eye icon
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-          <circle cx="12" cy="12" r="3"></circle>
-        </svg>
-      )}
-    </button>
-  );
-
   return (
-    <div className="max-w-[600px] w-full px-10 pb-10">
-      {message && <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>}
+    <div className="w-full max-w-[600px] px-10 pb-10">
+      {message && (
+        <Alert variant={message.type} className="mb-6">
+          {message.text}
+        </Alert>
+      )}
 
       <div className="mb-6">
-        <label className={styles.label}>Current Password</label>
-        <div className="relative">
-          <Input
-            type={showCurrent ? 'text' : 'password'}
+        <Field label="Current Password">
+          <PasswordInput
             value={currentPassword}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setCurrentPassword(e.target.value)
             }
             placeholder="•••••••••"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2">
-            <EyeIcon show={showCurrent} onClick={() => setShowCurrent(!showCurrent)} />
-          </div>
-        </div>
+        </Field>
       </div>
 
       <div className="mb-6">
-        <label className={styles.label}>New Password</label>
-        <div className="relative">
-          <Input
-            type={showNew ? 'text' : 'password'}
+        <Field label="New Password">
+          <PasswordInput
             value={newPassword}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
             placeholder="•••••••••"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2">
-            <EyeIcon show={showNew} onClick={() => setShowNew(!showNew)} />
-          </div>
-        </div>
+        </Field>
       </div>
 
       <div className="mb-6">
-        <label className={styles.label}>Confirm New Password</label>
-        <div className="relative">
-          <Input
-            type={showConfirm ? 'text' : 'password'}
+        <Field label="Confirm New Password">
+          <PasswordInput
             value={confirmPassword}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setConfirmPassword(e.target.value)
             }
             placeholder="•••••••••"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2">
-            <EyeIcon show={showConfirm} onClick={() => setShowConfirm(!showConfirm)} />
-          </div>
-        </div>
+        </Field>
       </div>
 
       {/* Password Requirements Checklist */}
-      <div className="flex flex-col gap-2 mb-8">
+      <div className="mb-8 flex flex-col gap-2">
         {[
           { text: 'At least 12 characters', valid: newPassword.length >= 12 },
           { text: 'At least one uppercase letter', valid: /[A-Z]/.test(newPassword) },
@@ -201,16 +143,11 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
           },
         ].map((req, i) => (
           <div key={i} className="flex items-center gap-2">
-            {req.valid ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="#22c55e" stroke="#22c55e">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"></path>
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="#cbd5e1" stroke="#cbd5e1">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"></path>
-              </svg>
-            )}
-            <span className="text-[13px] text-slate-500">{req.text}</span>
+            <CheckCircle2
+              className={`size-4 shrink-0 ${req.valid ? 'text-success' : 'text-text-tertiary'}`}
+              aria-hidden="true"
+            />
+            <span className="text-[13px] text-text-secondary">{req.text}</span>
           </div>
         ))}
       </div>
@@ -218,20 +155,19 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
       <div className="flex justify-end gap-4">
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           onClick={handleDiscard}
           disabled={isLoading}
-          className="border-transparent text-indigo-600"
+          className="text-primary"
         >
           Discard
         </Button>
         <Button
           type="button"
-          variant="primary"
           onClick={handleSave}
           disabled={isLoading}
           loading={isLoading}
-          className="bg-indigo-600 min-w-[140px]"
+          className="min-w-[140px]"
         >
           Save Changes
         </Button>

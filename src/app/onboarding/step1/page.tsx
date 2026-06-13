@@ -3,8 +3,17 @@
 import React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Select, PhoneInput } from '@/components/ui';
-import styles from '@/app/onboarding/onboarding.module.css';
+import { PhoneInput } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import Stepper from '@/components/onboarding/Stepper';
 import { logger } from '@/lib/logger';
 
@@ -22,6 +31,60 @@ interface Step1FormData {
   city: string;
   state: string;
 }
+
+const US_STATES = [
+  { label: 'Alabama', value: 'AL' },
+  { label: 'Alaska', value: 'AK' },
+  { label: 'Arizona', value: 'AZ' },
+  { label: 'Arkansas', value: 'AR' },
+  { label: 'California', value: 'CA' },
+  { label: 'Colorado', value: 'CO' },
+  { label: 'Connecticut', value: 'CT' },
+  { label: 'Delaware', value: 'DE' },
+  { label: 'District of Columbia', value: 'DC' },
+  { label: 'Florida', value: 'FL' },
+  { label: 'Georgia', value: 'GA' },
+  { label: 'Hawaii', value: 'HI' },
+  { label: 'Idaho', value: 'ID' },
+  { label: 'Illinois', value: 'IL' },
+  { label: 'Indiana', value: 'IN' },
+  { label: 'Iowa', value: 'IA' },
+  { label: 'Kansas', value: 'KS' },
+  { label: 'Kentucky', value: 'KY' },
+  { label: 'Louisiana', value: 'LA' },
+  { label: 'Maine', value: 'ME' },
+  { label: 'Maryland', value: 'MD' },
+  { label: 'Massachusetts', value: 'MA' },
+  { label: 'Michigan', value: 'MI' },
+  { label: 'Minnesota', value: 'MN' },
+  { label: 'Mississippi', value: 'MS' },
+  { label: 'Missouri', value: 'MO' },
+  { label: 'Montana', value: 'MT' },
+  { label: 'Nebraska', value: 'NE' },
+  { label: 'Nevada', value: 'NV' },
+  { label: 'New Hampshire', value: 'NH' },
+  { label: 'New Jersey', value: 'NJ' },
+  { label: 'New Mexico', value: 'NM' },
+  { label: 'New York', value: 'NY' },
+  { label: 'North Carolina', value: 'NC' },
+  { label: 'North Dakota', value: 'ND' },
+  { label: 'Ohio', value: 'OH' },
+  { label: 'Oklahoma', value: 'OK' },
+  { label: 'Oregon', value: 'OR' },
+  { label: 'Pennsylvania', value: 'PA' },
+  { label: 'Rhode Island', value: 'RI' },
+  { label: 'South Carolina', value: 'SC' },
+  { label: 'South Dakota', value: 'SD' },
+  { label: 'Tennessee', value: 'TN' },
+  { label: 'Texas', value: 'TX' },
+  { label: 'Utah', value: 'UT' },
+  { label: 'Vermont', value: 'VT' },
+  { label: 'Virginia', value: 'VA' },
+  { label: 'Washington', value: 'WA' },
+  { label: 'West Virginia', value: 'WV' },
+  { label: 'Wisconsin', value: 'WI' },
+  { label: 'Wyoming', value: 'WY' },
+];
 
 export default function OnboardingStep1() {
   const router = useRouter();
@@ -69,138 +132,127 @@ export default function OnboardingStep1() {
   };
 
   return (
-    <div className={styles.stepContainer}>
+    <div className="w-full max-w-[1000px]">
       <Stepper currentStep={1} />
 
-      <h1 className={styles.stepTitle}>Tell us about your organization</h1>
-      <p className={styles.stepDescription}>
+      <h1 className="mb-2 text-center text-[22px] font-bold text-foreground md:text-[28px]">
+        Tell us about your organization
+      </h1>
+      <p className="mb-6 text-center text-sm text-text-secondary md:mb-12 md:text-base">
         Tell us about your organization so we can tailor the compliance analysis to your needs.
       </p>
 
-      <form onSubmit={handleSubmit(onSubmit)} className={styles.form}>
-        <div className={styles.formGroup}>
-          <label className={styles.label}>
-            Legal Business Name <span className={styles.required}>*</span>
-          </label>
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="flex flex-col gap-4 rounded-2xl bg-background p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] md:gap-6 md:p-10"
+      >
+        <Field label="Legal Business Name" required error={getError('legalName')}>
           <Input
             {...register('legalName', { required: 'Legal Business Name is required' })}
             placeholder="e.g. Acme Healthcare Ltd"
-            error={getError('legalName')}
           />
-        </div>
+        </Field>
 
-        <div className={styles.formGroup}>
-          <label className={styles.label}>
-            Doing Business As (DBA) <span className={styles.required}>*</span>
-          </label>
+        <Field label="Doing Business As (DBA)" required error={getError('dba')}>
           <Input
             {...register('dba', { required: 'DBA is required' })}
             placeholder="Enter business name (if applicable)"
-            error={getError('dba')}
           />
-        </div>
+        </Field>
 
-        <div className={styles.row}>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Employer Identification Number (EIN){' '}
-              <span className={styles.helperText}>(optional)</span>
-            </label>
-            <Controller
-              name="ein"
-              control={control}
-              render={({ field }) => (
-                <Input
-                  value={field.value || ''}
-                  onChange={(e) => {
-                    const rawValue = e.target.value;
-                    const digits = rawValue.replace(/\D/g, '').slice(0, 9);
-                    let formatted = '';
-                    if (digits.length > 2) {
-                      formatted = `${digits.substring(0, 2)}-${digits.substring(2)}`;
-                    } else if (digits.length === 2) {
-                      if (field.value === `${digits}-` && rawValue === digits) {
-                        formatted = digits.substring(0, 1);
+        <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Field label="Employer Identification Number (EIN)" helperText="(optional)">
+              <Controller
+                name="ein"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    value={field.value || ''}
+                    onChange={(e) => {
+                      const rawValue = e.target.value;
+                      const digits = rawValue.replace(/\D/g, '').slice(0, 9);
+                      let formatted = '';
+                      if (digits.length > 2) {
+                        formatted = `${digits.substring(0, 2)}-${digits.substring(2)}`;
+                      } else if (digits.length === 2) {
+                        if (field.value === `${digits}-` && rawValue === digits) {
+                          formatted = digits.substring(0, 1);
+                        } else {
+                          formatted = `${digits}-`;
+                        }
                       } else {
-                        formatted = `${digits}-`;
+                        formatted = digits;
                       }
-                    } else {
-                      formatted = digits;
-                    }
-                    field.onChange(formatted);
-                  }}
-                  placeholder="XX-XXXXXXX"
-                  maxLength={10}
-                />
-              )}
-            />
+                      field.onChange(formatted);
+                    }}
+                    placeholder="XX-XXXXXXX"
+                    maxLength={10}
+                  />
+                )}
+              />
+            </Field>
           </div>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Number of Staff <span className={styles.required}>*</span>
-            </label>
+          <div className="flex flex-1 flex-col gap-1.5">
             <Controller
               name="staffCount"
               control={control}
               rules={{ required: 'Staff Count is required' }}
               render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onChange={field.onChange}
-                  options={[
-                    { label: '1-10', value: '1-10' },
-                    { label: '11-49', value: '11-49' },
-                    { label: '50-499', value: '50-499' },
-                    { label: '500+', value: '500+' },
-                  ]}
-                  placeholder="Select an option"
-                  error={getError('staffCount')}
-                />
+                <Field label="Number of Staff" required error={getError('staffCount')}>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-14 w-full rounded-[10px]">
+                      <SelectValue placeholder="Select an option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1-10">1-10</SelectItem>
+                      <SelectItem value="11-49">11-49</SelectItem>
+                      <SelectItem value="50-499">50-499</SelectItem>
+                      <SelectItem value="500+">500+</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
               )}
             />
           </div>
         </div>
 
-        <div className={styles.row}>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Primary Contact Name <span className={styles.required}>*</span>
-            </label>
-            <Input
-              {...register('primaryContactName', { required: 'Primary Contact Name is required' })}
-              placeholder="Enter the full name of the main contact"
-              error={getError('primaryContactName')}
-            />
+        <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Field label="Primary Contact Name" required error={getError('primaryContactName')}>
+              <Input
+                {...register('primaryContactName', {
+                  required: 'Primary Contact Name is required',
+                })}
+                placeholder="Enter the full name of the main contact"
+              />
+            </Field>
           </div>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Primary Contact Email <span className={styles.required}>*</span>
-            </label>
-            <Input
-              {...register('primaryContactEmail', {
-                required: 'Primary Contact Email is required',
-                pattern: {
-                  value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                  message: 'Invalid email address',
-                },
-              })}
-              type="email"
-              placeholder="Enter the email address of the main contact"
-              error={getError('primaryContactEmail')}
-            />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Field label="Primary Contact Email" required error={getError('primaryContactEmail')}>
+              <Input
+                {...register('primaryContactEmail', {
+                  required: 'Primary Contact Email is required',
+                  pattern: {
+                    value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                    message: 'Invalid email address',
+                  },
+                })}
+                type="email"
+                placeholder="Enter the email address of the main contact"
+              />
+            </Field>
           </div>
         </div>
 
-        <div className={styles.row}>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>Country</label>
+        <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+          <div className="flex flex-1 flex-col gap-1.5">
             <input type="hidden" {...register('country')} />
-            <Input value="United States" readOnly tabIndex={-1} />
+            <Field label="Country">
+              <Input value="United States" readOnly tabIndex={-1} />
+            </Field>
           </div>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Phone Number <span className={styles.required}>*</span>
-            </label>
+          <div className="flex flex-1 flex-col gap-1.5">
             <Controller
               name="phone"
               control={control}
@@ -213,129 +265,78 @@ export default function OnboardingStep1() {
                 },
               }}
               render={({ field }) => (
-                <PhoneInput
-                  value={field.value}
-                  onChange={field.onChange}
-                  placeholder="(XXX) XXX-XXXX"
-                  error={getError('phone')}
-                  allowedCountries={['US']}
-                />
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-semibold text-foreground">
+                    Phone Number <span className="text-primary">*</span>
+                  </label>
+                  <PhoneInput
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="(XXX) XXX-XXXX"
+                    error={getError('phone')}
+                    allowedCountries={['US']}
+                  />
+                </div>
               )}
             />
           </div>
         </div>
 
-        <div className={styles.row}>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Street Address <span className={styles.required}>*</span>
-            </label>
-            <Input
-              {...register('streetAddress', { required: 'Street Address is required' })}
-              placeholder="Enter business street address"
-              error={getError('streetAddress')}
-            />
+        <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Field label="Street Address" required error={getError('streetAddress')}>
+              <Input
+                {...register('streetAddress', { required: 'Street Address is required' })}
+                placeholder="Enter business street address"
+              />
+            </Field>
           </div>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Zip Code <span className={styles.required}>*</span>
-            </label>
-            <Input
-              {...register('zipCode', { required: 'Zip Code is required' })}
-              placeholder="e.g. 27601"
-              error={getError('zipCode')}
-            />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Field label="Zip Code" required error={getError('zipCode')}>
+              <Input
+                {...register('zipCode', { required: 'Zip Code is required' })}
+                placeholder="e.g. 27601"
+              />
+            </Field>
           </div>
         </div>
 
-        <div className={styles.row}>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              City <span className={styles.required}>*</span>
-            </label>
-            <Input
-              {...register('city', { required: 'City is required' })}
-              placeholder="Enter city"
-              error={getError('city')}
-            />
+        <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Field label="City" required error={getError('city')}>
+              <Input
+                {...register('city', { required: 'City is required' })}
+                placeholder="Enter city"
+              />
+            </Field>
           </div>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              State <span className={styles.required}>*</span>
-            </label>
+          <div className="flex flex-1 flex-col gap-1.5">
             <Controller
               name="state"
               control={control}
               rules={{ required: 'State is required' }}
               render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onChange={field.onChange}
-                  options={[
-                    { label: 'Alabama', value: 'AL' },
-                    { label: 'Alaska', value: 'AK' },
-                    { label: 'Arizona', value: 'AZ' },
-                    { label: 'Arkansas', value: 'AR' },
-                    { label: 'California', value: 'CA' },
-                    { label: 'Colorado', value: 'CO' },
-                    { label: 'Connecticut', value: 'CT' },
-                    { label: 'Delaware', value: 'DE' },
-                    { label: 'District of Columbia', value: 'DC' },
-                    { label: 'Florida', value: 'FL' },
-                    { label: 'Georgia', value: 'GA' },
-                    { label: 'Hawaii', value: 'HI' },
-                    { label: 'Idaho', value: 'ID' },
-                    { label: 'Illinois', value: 'IL' },
-                    { label: 'Indiana', value: 'IN' },
-                    { label: 'Iowa', value: 'IA' },
-                    { label: 'Kansas', value: 'KS' },
-                    { label: 'Kentucky', value: 'KY' },
-                    { label: 'Louisiana', value: 'LA' },
-                    { label: 'Maine', value: 'ME' },
-                    { label: 'Maryland', value: 'MD' },
-                    { label: 'Massachusetts', value: 'MA' },
-                    { label: 'Michigan', value: 'MI' },
-                    { label: 'Minnesota', value: 'MN' },
-                    { label: 'Mississippi', value: 'MS' },
-                    { label: 'Missouri', value: 'MO' },
-                    { label: 'Montana', value: 'MT' },
-                    { label: 'Nebraska', value: 'NE' },
-                    { label: 'Nevada', value: 'NV' },
-                    { label: 'New Hampshire', value: 'NH' },
-                    { label: 'New Jersey', value: 'NJ' },
-                    { label: 'New Mexico', value: 'NM' },
-                    { label: 'New York', value: 'NY' },
-                    { label: 'North Carolina', value: 'NC' },
-                    { label: 'North Dakota', value: 'ND' },
-                    { label: 'Ohio', value: 'OH' },
-                    { label: 'Oklahoma', value: 'OK' },
-                    { label: 'Oregon', value: 'OR' },
-                    { label: 'Pennsylvania', value: 'PA' },
-                    { label: 'Rhode Island', value: 'RI' },
-                    { label: 'South Carolina', value: 'SC' },
-                    { label: 'South Dakota', value: 'SD' },
-                    { label: 'Tennessee', value: 'TN' },
-                    { label: 'Texas', value: 'TX' },
-                    { label: 'Utah', value: 'UT' },
-                    { label: 'Vermont', value: 'VT' },
-                    { label: 'Virginia', value: 'VA' },
-                    { label: 'Washington', value: 'WA' },
-                    { label: 'West Virginia', value: 'WV' },
-                    { label: 'Wisconsin', value: 'WI' },
-                    { label: 'Wyoming', value: 'WY' },
-                  ]}
-                  placeholder="Select an option"
-                  error={getError('state')}
-                />
+                <Field label="State" required error={getError('state')}>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-14 w-full rounded-[10px]">
+                      <SelectValue placeholder="Select an option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {US_STATES.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
               )}
             />
           </div>
         </div>
 
-        <div className={styles.actions} style={{ justifyContent: 'flex-end' }}>
-          <Button variant="primary" type="submit">
-            Next
-          </Button>
+        <div className="mt-6 flex justify-end gap-4">
+          <Button type="submit">Next</Button>
         </div>
       </form>
     </div>

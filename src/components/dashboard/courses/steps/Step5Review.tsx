@@ -9,7 +9,7 @@ import {
 // Reusable Components
 import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
-import { Button } from '@/components/ui';
+import { Button } from '@/components/ui/button';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { TriangleAlert } from 'lucide-react';
 
@@ -539,7 +539,7 @@ export default function Step5Review({
         <div className="text-center">
           <h2 className="text-red-500 mb-2">Generation Failed</h2>
           <p className="text-[#6B7280] mb-4">{error}</p>
-          <Button variant="primary" size="md" onClick={() => window.location.reload()}>
+          <Button variant="default" onClick={() => window.location.reload()}>
             Try Again
           </Button>
         </div>

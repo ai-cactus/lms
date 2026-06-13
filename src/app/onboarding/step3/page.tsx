@@ -3,8 +3,16 @@
 import React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import { Button, Select, Checkbox } from '@/components/ui';
-import styles from '@/app/onboarding/onboarding.module.css';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Field } from '@/components/ui/field';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import Stepper from '@/components/onboarding/Stepper';
 import { logger } from '@/lib/logger';
 
@@ -54,71 +62,80 @@ export default function OnboardingStep3() {
   };
 
   return (
-    <div className={styles.stepContainer}>
+    <div className="w-full max-w-[1000px]">
       <Stepper currentStep={3} />
 
-      <h1 className={styles.stepTitle}>Help us understand your Services</h1>
-      <p className={styles.stepDescription}>
+      <h1 className="mb-2 text-center text-[22px] font-bold text-foreground md:text-[28px]">
+        Help us understand your Services
+      </h1>
+      <p className="mb-6 text-center text-sm text-text-secondary md:mb-12 md:text-base">
         Choose the services that reflect the people you service
       </p>
 
-      <form onSubmit={handleSubmit(onSubmit)} className={styles.form}>
-        <div className={styles.row}>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Primary Business Type <span className={styles.required}>*</span>
-            </label>
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="flex flex-col gap-4 rounded-2xl bg-background p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] md:gap-6 md:p-10"
+      >
+        <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+          <div className="flex flex-1 flex-col gap-1.5">
             <Controller
               name="primaryBusinessType"
               control={control}
               rules={{ required: 'Primary Business Type is required' }}
               render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onChange={field.onChange}
-                  options={[
-                    { label: 'Solo / Independent Provider', value: 'solo' },
-                    { label: 'Group Practice', value: 'group' },
-                    { label: 'Clinic', value: 'clinic' },
-                    { label: 'Hospital', value: 'hospital' },
-                  ]}
-                  placeholder="Select an option"
+                <Field
+                  label="Primary Business Type"
+                  required
                   error={getError('primaryBusinessType')}
-                />
+                >
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-14 w-full rounded-[10px]">
+                      <SelectValue placeholder="Select an option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="solo">Solo / Independent Provider</SelectItem>
+                      <SelectItem value="group">Group Practice</SelectItem>
+                      <SelectItem value="clinic">Clinic</SelectItem>
+                      <SelectItem value="hospital">Hospital</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
               )}
             />
           </div>
-          <div className={`${styles.formGroup} ${styles.col}`}>
-            <label className={styles.label}>
-              Additional Business Type <span className={styles.required}>*</span>
-            </label>
+          <div className="flex flex-1 flex-col gap-1.5">
             <Controller
               name="additionalBusinessType"
               control={control}
               rules={{ required: 'Additional Business Type is required' }}
               render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onChange={field.onChange}
-                  options={[
-                    { label: 'None', value: 'none' },
-                    { label: 'Non-Profit', value: 'non-profit' },
-                    { label: 'Private', value: 'private' },
-                    { label: 'Public', value: 'public' },
-                  ]}
-                  placeholder="Select an option"
+                <Field
+                  label="Additional Business Type"
+                  required
                   error={getError('additionalBusinessType')}
-                />
+                >
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-14 w-full rounded-[10px]">
+                      <SelectValue placeholder="Select an option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="non-profit">Non-Profit</SelectItem>
+                      <SelectItem value="private">Private</SelectItem>
+                      <SelectItem value="public">Public</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
               )}
             />
           </div>
         </div>
 
-        <div className={styles.formGroup}>
-          <label className={styles.label} style={{ marginBottom: '16px', display: 'block' }}>
+        <div className="flex flex-col gap-2">
+          <label className="mb-4 block text-sm font-semibold text-foreground">
             Program Services
           </label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {PROGRAM_SERVICES.map((service) => (
               <Controller
                 key={service.id}
@@ -127,34 +144,41 @@ export default function OnboardingStep3() {
                 render={({ field }) => {
                   const isChecked = field.value.includes(service.id);
                   return (
-                    <Checkbox
-                      label={service.label}
-                      checked={isChecked}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          field.onChange([...field.value, service.id]);
-                        } else {
-                          field.onChange(field.value.filter((v) => v !== service.id));
-                        }
-                      }}
-                    />
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={(c) => {
+                          if (c === true) {
+                            field.onChange([...field.value, service.id]);
+                          } else {
+                            field.onChange(field.value.filter((v) => v !== service.id));
+                          }
+                        }}
+                      />
+                      {service.label}
+                    </label>
                   );
                 }}
               />
             ))}
           </div>
           {errors.services && (
-            <span className={styles.error} style={{ marginTop: '8px', display: 'block' }}>
+            <span className="mt-2 block text-sm text-error">
               Please select at least one service/although optional for logic check
             </span>
           )}
         </div>
 
-        <div className={styles.actions}>
-          <Button variant="outline" type="button" onClick={() => router.push('/onboarding/step2')}>
+        <div className="mt-6 flex flex-col-reverse gap-3 md:flex-row md:justify-between md:gap-4">
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => router.push('/onboarding/step2')}
+            className="w-full md:w-auto"
+          >
             Back
           </Button>
-          <Button variant="primary" type="submit">
+          <Button type="submit" className="w-full md:w-auto">
             Next
           </Button>
         </div>

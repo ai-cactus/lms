@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import styles from './auditor-pack.module.css';
+import { Search, UserPlus } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 import { getAuditorStaff } from '@/app/actions/auditor';
 import type { AuditorStaffRow } from '@/app/actions/auditor';
 
@@ -21,106 +30,69 @@ export default function AuditorStaffTab() {
   }, [search]);
 
   return (
-    <div className={styles.sectionCard}>
-      <div className={styles.sectionHeader}>
-        <h2 className={styles.sectionTitle}>Staff Progress</h2>
-        <div className={styles.sectionControls}>
-          <div className={styles.searchWrapper}>
-            <span className={styles.searchIcon}>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            </span>
-            <input
-              className={styles.searchInput}
-              type="search"
-              placeholder="Search staff..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search staff members"
-            />
-          </div>
+    <div className="rounded-xl border border-border bg-background p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-base font-bold text-foreground">Staff Progress</h2>
+        <div className="flex items-center gap-2.5">
+          <Input
+            type="search"
+            className="h-11 w-full sm:w-[220px]"
+            placeholder="Search staff..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search staff members"
+            startIcon={<Search aria-hidden="true" />}
+          />
         </div>
       </div>
 
       {isPending && staff.length === 0 ? (
-        <div className={styles.emptyState}>
-          <p className={styles.emptyDesc}>Loading staff&hellip;</p>
+        <div className="px-5 py-16 text-center">
+          <p className="text-sm text-text-tertiary">Loading staff&hellip;</p>
         </div>
       ) : staff.length === 0 ? (
-        <div className={styles.emptyState}>
-          <div className={styles.emptyIllustration}>
-            <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
-              <circle cx="20" cy="16" r="8" stroke="#C7D2FE" strokeWidth="3" fill="none" />
-              <path
-                d="M4 40c0-8.837 7.163-16 16-16"
-                stroke="#C7D2FE"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <line
-                x1="38"
-                y1="32"
-                x2="38"
-                y2="42"
-                stroke="#4731F7"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              <line
-                x1="33"
-                y1="37"
-                x2="43"
-                y2="37"
-                stroke="#4731F7"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-            </svg>
+        <div className="px-5 py-16 text-center">
+          <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-primary/10">
+            <UserPlus className="size-10 text-primary" aria-hidden="true" />
           </div>
-          <p className={styles.emptyTitle}>No staff found.</p>
-          <p className={styles.emptyDesc}>
+          <p className="mb-1.5 text-base font-semibold text-foreground">No staff found.</p>
+          <p className="text-sm text-text-tertiary">
             {search ? 'No staff match your search.' : 'No staff members in your organization yet.'}
           </p>
         </div>
       ) : (
-        <div className={styles.tableWrapper}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Courses Assigned</th>
-                <th>Completed</th>
-                <th>Last Activity</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="overflow-x-auto">
+          <Table className="min-w-[600px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent border-0">
+                <TableHead>Name</TableHead>
+                <TableHead>Courses Assigned</TableHead>
+                <TableHead>Completed</TableHead>
+                <TableHead>Last Activity</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {staff.map((member) => (
-                <tr key={member.id}>
-                  <td>
-                    <div className={styles.staffCell}>
-                      <div className={styles.staffAvatar} aria-hidden>
+                <TableRow key={member.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-primary/10 text-[13px] font-bold text-primary"
+                        aria-hidden
+                      >
                         {member.name[0].toUpperCase()}
                       </div>
                       <div>
-                        <div className={styles.staffName}>{member.name}</div>
-                        <div className={styles.staffEmail}>{member.email}</div>
+                        <div className="text-sm font-semibold text-foreground">{member.name}</div>
+                        <div className="text-xs text-text-tertiary">{member.email}</div>
                       </div>
                     </div>
-                  </td>
-                  <td>{member.coursesAssigned}</td>
-                  <td className={styles.completionRate}>{member.coursesCompleted}</td>
-                  <td className={styles.dateText}>
+                  </TableCell>
+                  <TableCell>{member.coursesAssigned}</TableCell>
+                  <TableCell className="font-bold text-foreground">
+                    {member.coursesCompleted}
+                  </TableCell>
+                  <TableCell className="text-[13px] text-text-secondary">
                     {member.lastActivity
                       ? member.lastActivity.toLocaleDateString('en-US', {
                           month: 'short',
@@ -128,11 +100,11 @@ export default function AuditorStaffTab() {
                           year: 'numeric',
                         })
                       : '—'}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

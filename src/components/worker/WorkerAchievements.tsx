@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import styles from './WorkerDashboard.module.css';
+import { ChevronRight, Award } from 'lucide-react';
 
 interface RecentCertificate {
   id: string;
@@ -28,39 +28,25 @@ export default function WorkerAchievements({
   recentCertificates = [],
 }: WorkerAchievementsProps) {
   return (
-    <section className={styles.achievementsSection}>
+    <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className={styles.sectionTitle}>Courses Completed</h2>
+        <h2 className="text-lg font-bold text-[#1a202c]">Courses Completed</h2>
         {badgeCount > 0 && (
           <Link
             href="/worker/certificates"
-            className="text-sm font-semibold text-[#4C6EF5] flex items-center gap-1 hover:underline"
+            className="flex items-center gap-1 text-sm font-semibold text-[#4C6EF5] hover:underline"
           >
             View all certificates
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
+            <ChevronRight className="size-4" aria-hidden="true" />
           </Link>
         )}
       </div>
 
-      <div
-        className={styles.achievementsCard}
-        style={{ alignItems: 'flex-start', justifyContent: 'flex-start', padding: '28px 32px' }}
-      >
+      <div className="flex min-h-[200px] items-start justify-start rounded-xl border border-[#e2e8f0] bg-white px-8 py-7">
         {recentCertificates.length > 0 ? (
-          <div className="w-full flex flex-col gap-3">
+          <div className="flex w-full flex-col gap-3">
             {/* Summary line */}
-            <p className={styles.achievementsText}>
+            <p className="text-base text-[#1a202c]">
               You have earned{' '}
               <strong>
                 {badgeCount} certificate{badgeCount !== 1 ? 's' : ''}
@@ -68,51 +54,37 @@ export default function WorkerAchievements({
             </p>
 
             {/* Certificate cards */}
-            <div className="flex flex-col gap-3 mt-1">
+            <div className="mt-1 flex flex-col gap-3">
               {recentCertificates.map((cert, index) => (
                 <div
                   key={cert.id}
-                  className="flex items-center gap-4 p-4 rounded-xl border border-[#e2e8f0] bg-[#f8faff] hover:border-[#4C6EF5]/40 hover:bg-[#eef2ff] transition-colors duration-150"
+                  className="flex items-center gap-4 rounded-xl border border-[#e2e8f0] bg-[#f8faff] p-4 transition-colors duration-150 hover:border-[#4C6EF5]/40 hover:bg-[#eef2ff]"
                 >
                   {/* Medal / rank indicator */}
                   <div
-                    className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
-                    style={{
-                      background:
-                        index === 0
-                          ? 'linear-gradient(135deg, #fbbf24, #f59e0b)'
-                          : index === 1
-                            ? 'linear-gradient(135deg, #94a3b8, #64748b)'
-                            : 'linear-gradient(135deg, #cd7c3c, #a85a23)',
-                      color: 'white',
-                    }}
+                    className={[
+                      'flex size-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white',
+                      index === 0
+                        ? 'bg-gradient-to-br from-[#fbbf24] to-[#f59e0b]'
+                        : index === 1
+                          ? 'bg-gradient-to-br from-[#94a3b8] to-[#64748b]'
+                          : 'bg-gradient-to-br from-[#cd7c3c] to-[#a85a23]',
+                    ].join(' ')}
                   >
                     {index + 1}
                   </div>
 
                   {/* Certificate icon */}
-                  <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-white border border-[#e2e8f0] flex items-center justify-center shadow-sm">
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#4C6EF5"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="8" r="6" />
-                      <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
-                    </svg>
+                  <div className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg border border-[#e2e8f0] bg-white shadow-sm">
+                    <Award className="size-[18px] text-[#4C6EF5]" aria-hidden="true" />
                   </div>
 
                   {/* Course details */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#1a202c] truncate">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[#1a202c]">
                       {cert.courseTitle}
                     </p>
-                    <p className="text-xs text-[#718096] mt-0.5">
+                    <p className="mt-0.5 text-xs text-[#718096]">
                       Issued on {formatDate(cert.issuedAt)}
                     </p>
                   </div>
@@ -120,7 +92,7 @@ export default function WorkerAchievements({
                   {/* View link */}
                   <Link
                     href="/worker/certificates"
-                    className="flex-shrink-0 text-xs font-semibold text-[#4C6EF5] px-3 py-1.5 rounded-lg border border-[#4C6EF5]/30 hover:bg-[#4C6EF5] hover:text-white transition-colors duration-150 whitespace-nowrap"
+                    className="flex-shrink-0 whitespace-nowrap rounded-lg border border-[#4C6EF5]/30 px-3 py-1.5 text-xs font-semibold text-[#4C6EF5] transition-colors duration-150 hover:bg-[#4C6EF5] hover:text-white"
                   >
                     View
                   </Link>
@@ -136,35 +108,24 @@ export default function WorkerAchievements({
                   className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#4C6EF5] hover:underline"
                 >
                   +{badgeCount - 3} more certificate{badgeCount - 4 !== 0 ? 's' : ''} — see all
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+                  <ChevronRight className="size-3.5" aria-hidden="true" />
                 </Link>
               </div>
             )}
           </div>
         ) : (
           /* Empty state */
-          <div className={styles.achievementsContent}>
-            <p className={styles.achievementsText}>
+          <div className="max-w-[800px]">
+            <p className="mb-2 text-base text-[#1a202c]">
               You have earned <strong>0 certificates</strong>
             </p>
-            <p className={styles.achievementsSubtext}>
+            <p className="text-sm leading-relaxed text-[#718096]">
               Currently, there are no certificates on your profile. Complete a course to earn your
               first certificate and showcase your accomplishments.
             </p>
             <Link
               href="/worker/trainings"
-              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-lg bg-[#4C6EF5] text-white text-sm font-semibold hover:bg-[#3b5de0] transition-colors"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#4C6EF5] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#3b5de0]"
             >
               Browse Courses
             </Link>

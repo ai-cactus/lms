@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Button, Input, Modal } from '@/components/ui';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field, Alert } from '@/components/ui';
 import { updateStaffDetails } from '@/app/actions/staff';
 import { useRouter } from 'next/navigation';
 import type { UserRole } from '@prisma/client';
@@ -89,121 +98,72 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Edit Staff Details" size="md">
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
-      >
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <div style={{ flex: 1 }}>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#4A5568',
-              }}
-            >
-              First Name
-            </label>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Staff Details</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex gap-3">
+            <Field label="First Name" error={errors.firstName} className="flex-1">
+              <Input
+                value={firstName}
+                onChange={(e) => {
+                  setFirstName(e.target.value);
+                  if (errors.firstName) setErrors((prev) => ({ ...prev, firstName: '' }));
+                }}
+                placeholder="First Name"
+                required
+              />
+            </Field>
+            <Field label="Last Name" error={errors.lastName} className="flex-1">
+              <Input
+                value={lastName}
+                onChange={(e) => {
+                  setLastName(e.target.value);
+                  if (errors.lastName) setErrors((prev) => ({ ...prev, lastName: '' }));
+                }}
+                placeholder="Last Name"
+                required
+              />
+            </Field>
+          </div>
+
+          <Field label="Email (Read Only)">
             <Input
-              value={firstName}
-              onChange={(e) => {
-                setFirstName(e.target.value);
-                if (errors.firstName) setErrors((prev) => ({ ...prev, firstName: '' }));
-              }}
-              placeholder="First Name"
-              required
-              error={errors.firstName}
+              value={staff.email}
+              disabled
+              className="bg-background-secondary text-text-secondary"
             />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#4A5568',
-              }}
-            >
-              Last Name
-            </label>
+          </Field>
+
+          <Field label="Job Title">
             <Input
-              value={lastName}
-              onChange={(e) => {
-                setLastName(e.target.value);
-                if (errors.lastName) setErrors((prev) => ({ ...prev, lastName: '' }));
-              }}
-              placeholder="Last Name"
-              required
-              error={errors.lastName}
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              placeholder="e.g. Direct Support Professional"
             />
-          </div>
-        </div>
+          </Field>
 
-        <div>
-          <label
-            style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: '#4A5568',
-            }}
-          >
-            Email (Read Only)
-          </label>
-          <Input
-            value={staff.email}
-            disabled
-            style={{ backgroundColor: '#F7FAFC', color: '#718096' }}
-          />
-        </div>
+          {message && (
+            <Alert variant={message.type === 'success' ? 'success' : 'error'}>{message.text}</Alert>
+          )}
 
-        <div>
-          <label
-            style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: '#4A5568',
-            }}
-          >
-            Job Title
-          </label>
-          <Input
-            value={jobTitle}
-            onChange={(e) => setJobTitle(e.target.value)}
-            placeholder="e.g. Direct Support Professional"
-          />
-        </div>
-
-        {message && (
-          <div
-            style={{
-              padding: '10px',
-              borderRadius: '6px',
-              fontSize: '14px',
-              backgroundColor: message.type === 'success' ? '#F0FDF4' : '#FEF2F2',
-              color: message.type === 'success' ? '#166534' : '#991B1B',
-            }}
-          >
-            {message.text}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
-          <Button variant="outline" type="button" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" type="submit" loading={isLoading}>
-            Save Changes
-          </Button>
-        </div>
-      </form>
-    </Modal>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="default" type="submit" loading={isLoading}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
