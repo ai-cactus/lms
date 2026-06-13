@@ -532,6 +532,9 @@ export default function LearnPage() {
 
   // VIDEO lesson detection + watch-gate. Text lessons (no videoStorageUri) are unaffected.
   const isVideoLesson = Boolean(currentLesson?.videoStorageUri);
+  // A video course = any lesson carries a video. Used to hide the article/slide
+  // toggle ("View on Slides") which is meaningless for video content.
+  const isVideoCourse = course.lessons.some((l) => Boolean(l.videoStorageUri));
   // For video lessons, the quiz stays locked until the watch-gate is met.
   // Admins bypass the gate; text lessons keep their existing (non-video) gating.
   const isVideoGateBlocked =
@@ -911,7 +914,7 @@ export default function LearnPage() {
                   });
                 }
               }}
-              onToggleView={() => setViewMode('slides')}
+              onToggleView={isVideoCourse ? undefined : () => setViewMode('slides')}
               onProceedToQuiz={() => {
                 // Video watch-gate: block quiz entry until the gate is met.
                 if (isVideoGateBlocked) return;
