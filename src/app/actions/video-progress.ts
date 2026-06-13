@@ -3,7 +3,6 @@
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
-import { resolveVideoSource } from '@/lib/video';
 import { isQuizUnlocked } from '@/lib/video/gating';
 
 /**
@@ -16,11 +15,16 @@ async function currentUserId(): Promise<string | null> {
 }
 
 /**
- * Returns a time-limited signed playback URL for the given lesson.
+ * Returns the same-origin playback URL for the given lesson's video.
  *
- * Access is granted when the caller is:
- *  - the creator of the lesson's course, OR
- *  - enrolled in the lesson's course.
+ * This is NOT the raw storage signed URL — the browser can't use that directly
+ * (MinIO presigns against the internal Docker host `minio:9000`, which is both
+ * unresolvable and plain http → Mixed Content). Instead we return the app proxy
+ * `/api/video/[lessonId]`, which resolves + streams the bytes server-side over
+ * same-origin HTTPS (mirrors the document preview proxy).
+ *
+ * The access check here is a fast pre-flight so the client gets a clear error;
+ * the proxy route re-checks access as the real gatekeeper (defense in depth).
  *
  * Throws 'Unauthorized' when no session is present.
  * Throws 'Forbidden'    when the caller has no access.
@@ -49,7 +53,7 @@ export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
 
   if (!allowed) throw new Error('Forbidden');
 
-  return resolveVideoSource(lesson.videoProvider ?? 'self').resolvePlaybackUrl(lesson);
+  return `/api/video/${lessonId}`;
 }
 
 /**

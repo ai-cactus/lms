@@ -83,6 +83,7 @@ const globalVideoCourse = {
 
 const adminUser = {
   id: ADMIN_ID,
+  role: 'admin',
   organizationId: ORG_ID,
   organization: { id: ORG_ID, name: 'Acme Corp' },
 };
@@ -208,5 +209,31 @@ describe('enrollUsers — course-ownership guard', () => {
     mockWorkerAuth.mockResolvedValue(null);
 
     await expect(enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }])).rejects.toThrow('Unauthorized');
+  });
+
+  // -------------------------------------------------------------------------
+  // Non-admin (worker) caller → Forbidden, even with a valid session.
+  // -------------------------------------------------------------------------
+  it('throws Forbidden when the caller is not an admin', async () => {
+    prismaMock.course.findUnique.mockResolvedValue({
+      id: 'own-course-001',
+      title: 'My Training',
+      createdBy: ADMIN_ID,
+      isGlobal: false,
+      type: 'document',
+    });
+    // currentUser fetch resolves a worker-role user
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: ADMIN_ID,
+      role: 'worker',
+      organizationId: ORG_ID,
+      organization: { id: ORG_ID, name: 'Acme Corp' },
+    });
+
+    await expect(enrollUsers('own-course-001', [{ email: STAFF_EMAIL }])).rejects.toThrow(
+      'Forbidden',
+    );
+    // No enrollment work should have happened.
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
   });
 });

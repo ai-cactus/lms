@@ -92,6 +92,80 @@ export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabili
 }
 
 // ---------------------------------------------------------------------------
+// 1b. listOfferedVideoCourses
+//     Returns ONLY the global video courses this org has adopted (offered),
+//     with the org's rebrand overrides + this org's staff enrollment count.
+//     Powers the dedicated "Video Courses" tab on the Courses page.
+// ---------------------------------------------------------------------------
+export interface OfferedVideoCourseRow {
+  courseId: string;
+  offeringId: string;
+  title: string; // customTitle ?? course.title
+  baseTitle: string; // the global course's original title
+  description: string | null;
+  customTitle: string | null;
+  customDescription: string | null;
+  customIntro: string | null;
+  durationSeconds: number | null;
+  durationMinutes: number | null;
+  questionCount: number;
+  enrolledCount: number; // staff in THIS org enrolled in the course
+}
+
+export async function listOfferedVideoCourses(): Promise<OfferedVideoCourseRow[]> {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const userId = session.user.id;
+  const organizationId = await resolveOrg(userId);
+
+  const offerings = await prisma.orgCourseOffering.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      course: {
+        include: {
+          lessons: {
+            include: { quiz: { include: { _count: { select: { questions: true } } } } },
+          },
+        },
+      },
+    },
+  });
+
+  // Per-course enrollment counts scoped to THIS org's staff (one grouped query).
+  const courseIds = offerings.map((o) => o.courseId);
+  const counts = courseIds.length
+    ? await prisma.enrollment.groupBy({
+        by: ['courseId'],
+        where: { courseId: { in: courseIds }, user: { organizationId } },
+        _count: { _all: true },
+      })
+    : [];
+  const countMap = new Map(counts.map((c) => [c.courseId, c._count._all]));
+
+  return offerings.map((o) => {
+    const firstLesson = o.course.lessons[0];
+    return {
+      courseId: o.courseId,
+      offeringId: o.id,
+      title: o.customTitle ?? o.course.title,
+      baseTitle: o.course.title,
+      description: o.customDescription ?? o.course.description,
+      customTitle: o.customTitle,
+      customDescription: o.customDescription,
+      customIntro: o.customIntro,
+      durationSeconds: firstLesson?.videoDurationSeconds ?? null,
+      durationMinutes: o.course.duration ?? null,
+      questionCount: firstLesson?.quiz?._count?.questions ?? 0,
+      enrolledCount: countMap.get(o.courseId) ?? 0,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // 2. offerCourseToOrg
 //    Upsert an OrgCourseOffering keyed by [organizationId, courseId].
 // ---------------------------------------------------------------------------

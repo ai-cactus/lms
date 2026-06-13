@@ -8,7 +8,8 @@ import { getDashboardData } from '@/app/actions/course';
 import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
 import DashboardCreateCourseButton from '@/components/dashboard/DashboardCreateCourseButton';
 import AvailableCoursesTable from '@/components/dashboard/courses/AvailableCoursesTable';
-import { listAvailableVideoCourses } from '@/app/actions/offering';
+import OfferedCoursesTable from '@/components/dashboard/courses/OfferedCoursesTable';
+import { listAvailableVideoCourses, listOfferedVideoCourses } from '@/app/actions/offering';
 import { BookOpen, Users, Activity } from 'lucide-react';
 
 export default async function DashboardPage() {
@@ -20,7 +21,7 @@ export default async function DashboardPage() {
 
   // Fetch billing status alongside dashboard data so the Create Course button
   // can apply the same billing gate as the Courses list page.
-  const [{ courses, stats }, user, availableVideoCourses] = await Promise.all([
+  const [{ courses, stats }, user, availableVideoCourses, offeredVideoCourses] = await Promise.all([
     getDashboardData(),
     prisma.user.findUnique({
       where: { id: session.user.id },
@@ -31,6 +32,7 @@ export default async function DashboardPage() {
       },
     }),
     listAvailableVideoCourses().catch(() => []),
+    listOfferedVideoCourses().catch(() => []),
   ]);
 
   const subStatus = user?.organization?.subscription?.status;
@@ -94,7 +96,10 @@ export default async function DashboardPage() {
       {/* My Courses Table */}
       <MyCoursesTable courses={courses} maxItems={5} />
 
-      {/* Available Video Courses */}
+      {/* Video courses this org has offered to its staff (hidden when none) */}
+      <OfferedCoursesTable courses={offeredVideoCourses} maxItems={5} />
+
+      {/* Available Video Courses (global catalog to offer from) */}
       <AvailableCoursesTable courses={availableVideoCourses} />
 
       {/* Empty State Modal */}

@@ -98,6 +98,20 @@ export default function CoursePreview({
 }: CoursePreviewProps) {
   const [activeTab, setActiveTab] = useState('About');
 
+  // Video courses show "watch" time from the video's length; text courses keep "read" time.
+  const videoLesson = course.lessons?.find(
+    (l) => (l as { videoStorageUri?: string | null }).videoStorageUri,
+  );
+  const isVideoCourse =
+    (course as { type?: string | null }).type === 'video' || Boolean(videoLesson);
+  const videoSeconds =
+    (videoLesson as { videoDurationSeconds?: number | null } | undefined)?.videoDurationSeconds ??
+    null;
+  const watchMinutes =
+    videoSeconds != null && videoSeconds > 0
+      ? Math.max(1, Math.round(videoSeconds / 60))
+      : (course.duration ?? null);
+
   return (
     <div className="min-h-screen bg-[#f9fafb]">
       {/* Dark Header Section */}
@@ -128,7 +142,9 @@ export default function CoursePreview({
             </span>
             <span className="flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[13px] text-white/85">
               <Clock className="mr-1.5 size-3.5" />
-              {course.duration || 10} min read
+              {isVideoCourse
+                ? `${watchMinutes ?? course.duration ?? 0} min watch`
+                : `${course.duration || 10} min read`}
             </span>
             <span className="flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[13px] text-white/85">
               <Calendar className="mr-1.5 size-3.5" />

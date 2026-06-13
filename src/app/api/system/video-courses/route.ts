@@ -22,7 +22,23 @@ export async function POST(req: NextRequest) {
     const allowedAttempts = Number(form.get('allowedAttempts') ?? 1);
     const description = String(form.get('description') ?? '').trim() || undefined;
     const category = String(form.get('category') ?? '').trim() || undefined;
-    const duration = form.get('duration') ? Number(form.get('duration')) : undefined;
+    const inputDuration = form.get('duration') ? Number(form.get('duration')) : undefined;
+
+    // Browser-probed actual video length (seconds). Validate it's a sane number.
+    const rawProbed = form.get('videoDurationSeconds');
+    const probedSeconds =
+      rawProbed != null && Number.isFinite(Number(rawProbed)) && Number(rawProbed) > 0
+        ? Math.round(Number(rawProbed))
+        : undefined;
+
+    // Duration in MINUTES: the admin's entry wins; otherwise derive from the
+    // probed length so the course always has a sensible duration.
+    const duration =
+      inputDuration && inputDuration > 0
+        ? inputDuration
+        : probedSeconds
+          ? Math.max(1, Math.round(probedSeconds / 60))
+          : undefined;
 
     if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     if (!(video instanceof File))
@@ -52,6 +68,7 @@ export async function POST(req: NextRequest) {
       passingScore,
       allowedAttempts,
       videoStorageUri: storageUri,
+      videoDurationSeconds: probedSeconds,
       quiz,
     });
 
