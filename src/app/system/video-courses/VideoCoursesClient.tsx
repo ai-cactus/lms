@@ -49,6 +49,33 @@ function formatDuration(seconds: number | null, fallbackMinutes: number | null):
   return '—';
 }
 
+/**
+ * Reads a video file's duration (seconds) in the browser by loading just its
+ * metadata into a detached <video> element. Works for MP4/WebM without any
+ * server dependency. Resolves null if the browser can't decode it.
+ */
+function probeVideoDuration(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    try {
+      const url = URL.createObjectURL(file);
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      const done = (val: number | null) => {
+        URL.revokeObjectURL(url);
+        resolve(val);
+      };
+      video.onloadedmetadata = () => {
+        const d = video.duration;
+        done(Number.isFinite(d) && d > 0 ? Math.round(d) : null);
+      };
+      video.onerror = () => done(null);
+      video.src = url;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function VideoCoursesClient({ courses }: Props) {
@@ -60,6 +87,7 @@ export default function VideoCoursesClient({ courses }: Props) {
   // Upload form state
   const [title, setTitle] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoDurationSeconds, setVideoDurationSeconds] = useState<number | null>(null);
   const [quizFile, setQuizFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadAlert, setUploadAlert] = useState<{
@@ -102,6 +130,11 @@ export default function VideoCoursesClient({ courses }: Props) {
 
     const form = e.currentTarget;
     const fd = new FormData(form);
+    // Send the browser-probed length so the server can store the real video
+    // duration (and derive "minutes" when the admin left the field blank).
+    if (videoDurationSeconds != null) {
+      fd.set('videoDurationSeconds', String(videoDurationSeconds));
+    }
 
     try {
       const res = await fetch('/api/system/video-courses', {
@@ -134,6 +167,7 @@ export default function VideoCoursesClient({ courses }: Props) {
       // Reset form
       setTitle('');
       setVideoFile(null);
+      setVideoDurationSeconds(null);
       setQuizFile(null);
       formRef.current?.reset();
       router.refresh();
@@ -240,6 +274,11 @@ export default function VideoCoursesClient({ courses }: Props) {
               <VideoIcon className="size-5 shrink-0 text-text-secondary" aria-hidden="true" />
               <span className="flex-1 truncate text-sm text-text-secondary">
                 {videoFile ? videoFile.name : 'MP4 or WebM'}
+                {videoFile && videoDurationSeconds != null && (
+                  <span className="ml-2 text-xs text-text-muted">
+                    ({formatDuration(videoDurationSeconds, null)})
+                  </span>
+                )}
               </span>
               <input
                 ref={videoInputRef}
@@ -250,7 +289,12 @@ export default function VideoCoursesClient({ courses }: Props) {
                 required
                 disabled={isSubmitting}
                 className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setVideoFile(f);
+                  setVideoDurationSeconds(null);
+                  if (f) probeVideoDuration(f).then(setVideoDurationSeconds);
+                }}
               />
               <Button
                 type="button"

@@ -70,6 +70,13 @@ export async function enrollUsers(courseId: string, staffEntries: StaffEntry[]) 
     include: { organization: true },
   });
 
+  // Enrolling staff is an admin-only action. The session check above only
+  // proves *someone* is logged in (a worker session would pass it); require
+  // the admin role explicitly (mirrors assertOrgAdmin in offering.ts).
+  if (currentUser?.role !== 'admin') {
+    throw new Error('Forbidden');
+  }
+
   const isOwnCourse = course?.createdBy === session.user.id;
 
   // An org admin may also enroll staff into a global course that their

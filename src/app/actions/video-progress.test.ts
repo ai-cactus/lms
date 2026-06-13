@@ -10,22 +10,13 @@ const {
   mockLessonFindUnique,
   mockEnrollmentFindUnique,
   mockEnrollmentUpdate,
-  mockResolvePlaybackUrl,
-  mockResolveVideoSource,
 } = vi.hoisted(() => {
-  const mockResolvePlaybackUrl = vi.fn();
-  const mockResolveVideoSource = vi.fn(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (_provider: string) => ({ resolvePlaybackUrl: mockResolvePlaybackUrl }),
-  );
   return {
     mockAdminAuth: vi.fn(),
     mockWorkerAuth: vi.fn(),
     mockLessonFindUnique: vi.fn(),
     mockEnrollmentFindUnique: vi.fn(),
     mockEnrollmentUpdate: vi.fn(),
-    mockResolvePlaybackUrl,
-    mockResolveVideoSource,
   };
 });
 
@@ -40,11 +31,10 @@ vi.mock('@/lib/prisma', () => ({
     },
   },
 }));
-vi.mock('@/lib/video', () => ({
-  resolveVideoSource: (provider: string) => mockResolveVideoSource(provider),
-}));
-// gating is a real module — import it for isQuizUnlocked used in assertions
-// but the action also imports it directly, which we do NOT need to mock.
+// gating is a real module — isQuizUnlocked is used directly by the action.
+// Note: signed-URL resolution now lives in the /api/video/[lessonId] proxy
+// route (see its test); getVideoPlaybackUrl only does the access pre-check and
+// returns the same-origin proxy path.
 
 import { getVideoPlaybackUrl, saveVideoProgress } from './video-progress';
 
@@ -72,7 +62,6 @@ beforeEach(() => {
   // Default: no session
   mockAdminAuth.mockResolvedValue(null);
   mockWorkerAuth.mockResolvedValue(null);
-  mockResolvePlaybackUrl.mockResolvedValue('https://signed.example.com/video.mp4');
   mockEnrollmentUpdate.mockResolvedValue({});
 });
 
@@ -80,25 +69,21 @@ beforeEach(() => {
 // getVideoPlaybackUrl
 // ---------------------------------------------------------------------------
 describe('getVideoPlaybackUrl', () => {
-  it('returns resolved URL when caller is enrolled in the course', async () => {
+  it('returns the same-origin proxy URL when caller is enrolled in the course', async () => {
     mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
     mockLessonFindUnique.mockResolvedValue(makeLesson({ enrollments: [{ id: 'enr-1' }] }));
 
     const url = await getVideoPlaybackUrl('lesson-1');
 
-    expect(url).toBe('https://signed.example.com/video.mp4');
-    expect(mockResolveVideoSource).toHaveBeenCalledWith('self');
-    expect(mockResolvePlaybackUrl).toHaveBeenCalledWith(
-      expect.objectContaining({ videoStorageUri: 'gcs://bucket/video.mp4' }),
-    );
+    expect(url).toBe('/api/video/lesson-1');
   });
 
-  it('returns resolved URL when caller is the course creator (no enrollment needed)', async () => {
+  it('returns the proxy URL when caller is the course creator (no enrollment needed)', async () => {
     mockAdminAuth.mockResolvedValue(makeAdminSession('creator-1'));
     mockLessonFindUnique.mockResolvedValue(makeLesson({ createdBy: 'creator-1', enrollments: [] }));
 
     const url = await getVideoPlaybackUrl('lesson-1');
-    expect(url).toBe('https://signed.example.com/video.mp4');
+    expect(url).toBe('/api/video/lesson-1');
   });
 
   it('uses worker session when admin session is absent', async () => {
@@ -107,7 +92,7 @@ describe('getVideoPlaybackUrl', () => {
     mockLessonFindUnique.mockResolvedValue(makeLesson({ enrollments: [{ id: 'enr-w' }] }));
 
     const url = await getVideoPlaybackUrl('lesson-1');
-    expect(url).toBe('https://signed.example.com/video.mp4');
+    expect(url).toBe('/api/video/lesson-1');
     // prisma query must have been filtered by worker-1's uid
     expect(mockLessonFindUnique).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -137,18 +122,6 @@ describe('getVideoPlaybackUrl', () => {
     );
 
     await expect(getVideoPlaybackUrl('lesson-1')).rejects.toThrow('Forbidden');
-    expect(mockResolveVideoSource).not.toHaveBeenCalled();
-  });
-
-  it('falls back to "self" provider when lesson.videoProvider is null', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
-    const lesson = makeLesson({ enrollments: [{ id: 'enr-1' }] });
-    // @ts-expect-error — intentionally testing null coalesce
-    lesson.videoProvider = null;
-    mockLessonFindUnique.mockResolvedValue(lesson);
-
-    await getVideoPlaybackUrl('lesson-1');
-    expect(mockResolveVideoSource).toHaveBeenCalledWith('self');
   });
 });
 
