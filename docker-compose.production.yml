@@ -19,7 +19,10 @@ services:
     image: ${APP_IMAGE:?APP_IMAGE must be set. Run via the deploy workflow or set manually.}
     restart: unless-stopped
     ports:
-      - '3000:3000'
+      # Bind to loopback only: traffic must enter via the host nginx reverse proxy
+      # (Cloudflare Tunnel -> nginx -> 127.0.0.1:3000), never directly off the VM's
+      # public interfaces (which would bypass Cloudflare/WAF and real-IP handling).
+      - '127.0.0.1:3000:3000'
     env_file:
       - .env.production
     environment:

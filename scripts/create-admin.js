@@ -4,8 +4,21 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    const adminEmail = 'admin@theraptly.com';
-    const hashedPassword = await bcrypt.hash('AdminPassword123!', 10);
+    const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@theraptly.com';
+
+    // SECURITY: never ship a hardcoded admin password. The password MUST be
+    // supplied via the environment (reuses SYSTEM_ADMIN_PASSWORD, or override
+    // with SEED_ADMIN_PASSWORD). Refuse to run otherwise.
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD || process.env.SYSTEM_ADMIN_PASSWORD;
+    if (!adminPassword) {
+      console.error(
+        'Refusing to seed admin: set SEED_ADMIN_PASSWORD (or SYSTEM_ADMIN_PASSWORD) in the environment.',
+      );
+      process.exitCode = 1;
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
     const admin = await prisma.user.upsert({
       where: { email: adminEmail },

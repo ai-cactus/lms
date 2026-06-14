@@ -1,5 +1,6 @@
 'use server';
 
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -80,7 +81,7 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
     return { success: false, error: 'Too many code requests. Please try again later.' };
   }
 
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const code = crypto.randomInt(100000, 1000000).toString();
   const encryptedSecret = encryptOtpPayload(code);
 
   await prisma.mfaFactor.create({
@@ -427,7 +428,7 @@ export async function sendLoginMfaCode(userId: string): Promise<MfaActionResult>
   const factor = user.mfaFactors[0];
   if (!factor) return { success: false, error: 'No email MFA factor found' };
 
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const code = crypto.randomInt(100000, 1000000).toString();
   const encryptedSecret = encryptOtpPayload(code);
 
   await prisma.mfaFactor.update({
@@ -475,7 +476,7 @@ export async function sendDisableMfaCode(): Promise<MfaActionResult> {
   const factor = user.mfaFactors[0];
   if (!factor) return { success: false, error: 'No email MFA factor found' };
 
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const code = crypto.randomInt(100000, 1000000).toString();
   const encryptedSecret = encryptOtpPayload(code);
 
   await prisma.mfaFactor.update({

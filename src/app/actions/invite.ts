@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { sendInviteEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
@@ -25,14 +26,23 @@ interface InviteResult {
   };
 }
 
-export async function createInvites(
-  emails: string[],
-  role: string,
-  organizationId: string,
-  inviterId?: string,
-): Promise<InviteResult> {
+export async function createInvites(emails: string[]): Promise<InviteResult> {
+  // SECURITY: `role`, `organizationId`, and `inviterId` are intentionally NOT
+  // accepted from the client. They are derived from the authenticated admin
+  // session below to prevent cross-org invite injection / privilege escalation.
   if (!emails.length) return { success: false, results: [], error: 'No emails provided' };
-  if (!organizationId) return { success: false, results: [], error: 'Organization ID is required' };
+
+  // ── Authorization: only an authenticated org admin may create invites, and the
+  //    target organization + inviter are taken from the session — never the client.
+  const session = await auth();
+  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
+    return { success: false, results: [], error: 'Unauthorized' };
+  }
+  const organizationId = session.user.organizationId;
+  const inviterId = session.user.id;
+  // This self-service path only ever provisions workers. Admin role is granted
+  // exclusively through onboarding/signup, not via invite.
+  const role: UserRole = 'worker';
 
   const results: InviteResultItem[] = [];
 
