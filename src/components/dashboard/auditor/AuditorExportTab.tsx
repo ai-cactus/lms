@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import styles from './auditor-pack.module.css';
+import { FileText, Download, Loader2, Mail, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 import { logger } from '@/lib/logger';
 import { generateAndEmailAuditorPackPdf } from '@/app/actions/auditor';
 
@@ -90,226 +92,109 @@ export default function AuditorExportTab() {
   }, [exportState, jobId]);
 
   return (
-    <div className={styles.sectionCard}>
-      <div className={styles.sectionHeader}>
-        <h2 className={styles.sectionTitle}>System Bulk Export</h2>
+    <div className="rounded-xl border border-border bg-background p-6">
+      <div className="mb-5">
+        <h2 className="text-base font-bold text-foreground">System Bulk Export</h2>
       </div>
 
-      <div className={styles.exportTabContent}>
+      <div className="flex flex-col items-center justify-center px-6 py-20">
         {exportState === 'idle' && (
-          <div className={styles.idleState}>
+          <div className="flex flex-col items-center justify-center gap-3 text-center">
             {/* ── Existing: Full DOCX/CSV bulk export ── */}
-            <div className={styles.exportIllustration}>
-              <svg
-                width="40"
-                height="40"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--indigo)"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-                <polyline points="10 9 9 9 8 9" />
-              </svg>
+            <div className="flex size-20 items-center justify-center rounded-full bg-primary/10">
+              <FileText className="size-10 text-primary" aria-hidden="true" />
             </div>
-            <p className={styles.exportLabel}>Generate Full Auditor Extract</p>
-            <p className={styles.exportOptionDesc}>
+            <p className="text-lg font-bold text-foreground">Generate Full Auditor Extract</p>
+            <p className="text-sm text-text-secondary">
               Compiles all structural, staffing, compliance, and material evidence into formatted
               documents.
             </p>
-            <button className={styles.startExportBtn} onClick={startExport}>
+            <Button className="mt-3" onClick={startExport}>
               Start Export (DOCX / CSV)
-            </button>
+            </Button>
 
             {/* ── New: PDF via Email ── */}
-            <div
-              style={{
-                marginTop: '24px',
-                paddingTop: '24px',
-                borderTop: '1px solid #E2E8F0',
-                width: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#3182CE"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                  <polyline points="22,6 12,13 2,6" />
-                </svg>
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#2D3748' }}>
+            <div className="mt-6 flex w-full flex-col items-center gap-2 border-t border-border pt-6">
+              <div className="flex items-center gap-2">
+                <Mail className="size-[22px] text-[#3182CE]" aria-hidden="true" />
+                <span className="text-sm font-semibold text-foreground">
                   Export as PDF &amp; Email to me
                 </span>
               </div>
-              <p style={{ fontSize: '13px', color: '#718096', margin: '0', textAlign: 'center' }}>
+              <p className="m-0 text-center text-[13px] text-text-secondary">
                 Generates a formatted PDF of all staff learning activity and sends it to your admin
                 email address.
               </p>
               <button
                 onClick={handlePdfExport}
                 disabled={pdfExporting}
-                style={{
-                  marginTop: '4px',
-                  padding: '9px 24px',
-                  background: pdfExporting ? '#93C5FD' : '#3182CE',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontWeight: 600,
-                  fontSize: '14px',
-                  cursor: pdfExporting ? 'not-allowed' : 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  transition: 'background 0.2s',
-                }}
+                className="mt-1 inline-flex items-center gap-2 rounded-lg bg-[#3182CE] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#2c6cb0] disabled:cursor-not-allowed disabled:bg-[#93C5FD]"
               >
                 {pdfExporting ? (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ animation: 'spin 1s linear infinite' }}
-                  >
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg>
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
                 ) : (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
+                  <Download className="size-3.5" aria-hidden="true" />
                 )}
                 {pdfExporting ? 'Generating PDF…' : 'Send PDF to Email'}
               </button>
               {pdfFeedback && (
-                <p
-                  style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: pdfFeedback.ok ? '#276749' : '#C53030',
-                    margin: '0',
-                    textAlign: 'center',
-                  }}
+                <Alert
+                  variant={pdfFeedback.ok ? 'success' : 'error'}
+                  className="mt-1 w-full max-w-[480px] text-left"
                 >
-                  {pdfFeedback.ok ? '✓ ' : '✗ '}
                   {pdfFeedback.msg}
-                </p>
+                </Alert>
               )}
             </div>
           </div>
         )}
 
         {exportState === 'processing' && (
-          <div className={styles.progressSection}>
-            <div className={styles.progressHeader}>
-              <span className={styles.progressLabel}>Status</span>
-              <span className={styles.progressMessage}>{message}</span>
+          <div className="w-full max-w-[480px] rounded-xl border border-border bg-background p-6 text-left">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-semibold text-primary">Status</span>
+              <span className="text-sm text-foreground">{message}</span>
             </div>
-            <div className={styles.percentContainer}>
-              <span className={styles.percentText}>{progress}%</span>
+            <div className="mb-2 flex justify-end">
+              <span className="text-sm font-semibold text-primary">{progress}%</span>
             </div>
-            <div className={styles.progressBarWrapper}>
-              <div className={styles.progressBarFill} style={{ width: `${progress}%` }} />
+            <div className="mb-6 h-2 w-full overflow-hidden rounded bg-muted">
+              <div
+                className="h-full rounded bg-primary transition-[width] duration-300"
+                style={{ width: `${progress}%` }}
+              />
             </div>
-            <button className={styles.cancelBtn} onClick={cancelExport}>
+            <Button variant="outline" className="w-full" onClick={cancelExport}>
               Cancel Export
-            </button>
+            </Button>
           </div>
         )}
 
         {exportState === 'completed' && (
-          <div className={styles.readySection}>
-            <div className={styles.readyIconWrapper}>
-              <svg
-                width="32"
-                height="32"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#3DA755"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
+          <div className="flex w-full max-w-[480px] flex-col items-center rounded-xl border border-success/40 bg-success/10 px-6 py-8 text-center">
+            <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-background/50">
+              <Check className="size-8 text-success" aria-hidden="true" />
             </div>
-            <h3 className={styles.readyTitle}>Export Ready</h3>
-            <p className={styles.readyDesc}>
+            <h3 className="mb-2 text-lg font-bold text-foreground">Export Ready</h3>
+            <p className="mb-6 text-sm leading-relaxed text-text-secondary">
               Your export has been successfully processed and is now available for download.
             </p>
 
-            <div className={styles.readyActions}>
+            <div className="flex w-full gap-3">
               <a
                 href={`/api/auditor/export/${jobId}/download?format=docx`}
-                className={styles.downloadDocxBtn}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
                 download
               >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
+                <Download className="size-[18px]" aria-hidden="true" />
                 Download .docx
               </a>
               <a
                 href={`/api/auditor/export/${jobId}/download?format=csv`}
-                className={styles.downloadCsvBtn}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-primary bg-background px-3 py-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
                 download
               >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
+                <Download className="size-[18px]" aria-hidden="true" />
                 Download CSV
               </a>
             </div>

@@ -2,7 +2,9 @@
 
 Living status of the Tailwind v4 + shadcn UI migration. **Update this file whenever a slice/page is migrated** — it is the single source of truth for "what's done" across sessions (we ship features between migration passes, so don't rely on memory).
 
-**Last updated:** 2026-06-11 (dashboard course/training slice ✅ COMPLETE: **Documents**, **Training** (all modals/views + onboarding), **Courses** (list + wizard subsystem + player subsystem + queue + mapping + all course modals). 64→44 modules; all course-related modules eliminated. Remaining: billing, profile/settings, auditor-pack, worker/learn, onboarding, system, marketing.)
+**Last updated:** 2026-06-14 — 🎉 **MIGRATION COMPLETE. 0 `.module.css` files remain in `src/`.** All remaining slices migrated in one pass (billing, auditor-pack, profile/settings, worker/learn, onboarding, system, marketing/landing, staff modals, shared primitives, styleguide). Legacy components (`Button`/`Input`/`Modal`/`Select`/`Checkbox` + their modules) **deleted** from `src/components/ui/legacy/`; barrel exports removed. Only `legacy/ModalContext.tsx` (priority-based modal-coordination context — functional, not styling) is intentionally kept. Gates green: `tsc --noEmit` ✓, `eslint` ✓, `npm run build` ✓, `npm test` 158/158 ✓. Public routes verified rendering (0 console/page errors) at 375/desktop via Playwright. Auth-gated routes verified via the production build + tsc/lint (not screenshot — require login).
+
+_Prior — 2026-06-11 (dashboard course/training slice ✅: Documents, Training, Courses)._
 **Branch convention:** one `feature/<slice>-ui-migration` branch per slice, PR'd against `dev`.
 **Companion docs:** conventions → [`ui-migration-pattern.md`](./ui-migration-pattern.md) · auth spec → [`superpowers/specs/2026-06-10-auth-ui-migration-design.md`](./superpowers/specs/2026-06-10-auth-ui-migration-design.md)
 
@@ -45,25 +47,32 @@ Biggest slice: ~16 page routes + ~50 components. Sub-order:
 - 🚧 **Tables** — ✅ `MyCoursesTable` (home display table: shadcn `Table` + View Course links, responsive scroll, module deleted). ✅ New reusable **`RowActionsMenu`** kebab (`src/components/ui/RowActionsMenu.tsx`, lucide `MoreVertical` + themed dropdown, on `/styleguide`) — list ports below should use it instead of inline kebabs.
 - ✅ Staff: ✅ **Staff Profile** (`StaffProfileClient` `/staff/[id]` — avatar header + 4 action buttons, 4 tinted stat cards, Courses/Certificates tabs, courses table with progress bars + multi-state quiz badges + Retake/View, quiz-result overlay, 4 modals; `StaffProfile.module.css` deleted). ✅ **Staff list** (`StaffListClient` — avatars w/ status dot + Pending badge, plan-seat badge, conditional `RowActionsMenu` kebab [pending: Revoke; active: View Profile/Export PDF/Remove], search, pagination, 5 modals; all logic preserved). NOTE: `StaffList.module.css` **kept** (still imported by `RemoveStaffModal`). Minor: staff-profile mobile action buttons get tight (table scrolls) — polish later.
 - ✅ Training — **complete**: ✅ **`TrainingDashboard`** (stats cards + bar chart + custom donut + responsive My Courses table) + ✅ **`TrainingDetails`** (breadcrumb/header/badges, 4 stat cards, Enrolled-Staff + Certificates tabs, `RowActionsMenu` kebab, 3 modals). ✅ **`TrainingClient`** onboarding/empty-state card (mint-green hero + steps; `(main)/training/page.module.css` deleted). ✅ Sub-pages `training/courses/[id]/preview` (renders migrated `CoursePreview`) + `/results/[enrollmentId]` (inline error/empty divs → Tailwind). ✅ **All `components/dashboard/training/*` modals/views migrated** (each `.module.css` deleted): `CoursePreview` (dark hero + About tab + ToC sidebar), `QuizResults` (CircularProgress gauge + per-question correct/incorrect coding via success/error tokens), `ShareCourseModal` (Dialog; CSV/email assign; gating preserved), `AttestationModal` (Dialog; signature + 2 checkbox gate preserved), `CertificateModal` (Dialog; certificate card), `CertificateCardList`, `BadgeSuccessModal` (Dialog), `AssignRetakeModal` (was inline-styled + hand-rolled overlay → Dialog). All modals standardized on shadcn `Dialog` per pattern §3b. Verified via temp `/xpreview/[c]` route (course/quiz/attest/share/onboard/certs) + screenshots at desktop.
-- ⬜ Billing: `(main)/billing` + `components/billing/*` (5 files)
-- ⬜ Profile/settings: `(main)/profile`, `ProfileForm`, `ChangePasswordTab`, `TwoFactorAuthTab`, `components/auth/MfaSettings` (legacy Button)
-- ⬜ Auditor pack: `(main)/auditor-pack` + `components/dashboard/auditor/*`
+- ✅ Billing: `components/billing/*` (BillingPage/Overview/Subscription/PaymentMethod/BillingHistory) + `BillingGateModal` — tables→shadcn `Table`, modals→`Dialog`; `billing.module.css` + `BillingGateModal.module.css` deleted.
+- ✅ Profile/settings: `ProfileForm`, `OrganizationForm` (shadcn `Select` family + `Checkbox`), `ChangePasswordTab`, `TwoFactorAuthTab`, `MfaSettings`, `profile/loading` — `ProfileForm.module.css` + `profile/loading.module.css` deleted.
+- ✅ Auditor pack: `auditor-pack/page` + `components/dashboard/auditor/*` (Overview/Courses/Staff/Export tabs) — `auditor-pack.module.css` deleted.
 
-### Worker / Learn — ⬜ not started
-`worker/*` (2/6 pages on modules), `learn/*` (1/1), `components/worker/*` (8/8 on modules), `components/learner/*`.
+### Worker / Learn — ✅ done
+`components/worker/*` (WorkerHeader/DashboardLayout/ProfileForm/EmptyState/Dashboard/Profile/Achievements/CourseList/DashboardMetrics/TrainingList) + `app/worker/*` migrated. Shell modules `Header.module.css` + dashboard `(main)/layout.module.css` (reused by worker shell) deleted; `WorkerDashboard.module.css` + `WorkerProfile.module.css` deleted.
 
-### Onboarding — ⬜ not started
-`onboarding/*` (6/8), `onboarding-worker/*` (1/2), `components/onboarding/*` (1/1).
+### Onboarding — ✅ done
+`onboarding/*` (layout, page, role-selection, step1–4, complete), `onboarding-worker/*` (layout, page), `components/onboarding/Stepper` — legacy `Modal`/`Select`/`Checkbox`/`Input`/`Button`→shadcn; 5 modules deleted.
 
-### System — ⬜ not started
-`system/*` (2/4), `components/system/*` (4/4).
+### System — ✅ done
+`system/layout`, `system/manual/page`, `components/system/*` (SystemUsersClient/SystemLoginClient/UserDetailClient/DeleteUserModal) — `system.module.css` + `manual.module.css` deleted. `video-courses` was already migrated.
 
-### Marketing / misc — ⬜ not started
-`request-demo` (1/1), `privacy`/`terms` (check), `profile` top-level (0/1 — verify).
+### Marketing / misc — ✅ done
+`app/page` + `app/_components/*` (HowItWorks/InspectorsSection/InspectorsActions/FeatureSection/FeatureAccordion/Footer/ClientTypingEffect), `request-demo`, `privacy`, `terms`, `not-found` — 12 modules deleted. (Footer LinkedIn brand glyph kept inline — no lucide equivalent.)
+
+### Shared primitives & styleguide — ✅ done
+`DatePicker` (off legacy Button), `FileUpload`, `PhoneInput`, `TagInput`, `TimePicker`, `/styleguide` — all 6 modules deleted; public APIs unchanged.
+
+### Legacy retirement — ✅ done
+`legacy/Button|Input|Modal|Select|Checkbox.tsx` + their `.module.css` **deleted**; barrel (`components/ui/index.ts`) legacy exports removed. `legacy/ModalContext.tsx` kept (functional priority-based modal coordination; consumed by Providers/DashboardEmptyState/WorkerEmptyState/OrganizationActivationModal/WorkerWelcomeModal).
 
 ---
 
 ## Overall module.css burn-down
+- **2026-06-14: 0 remaining — migration complete.** (44 → 0 this pass: 2 orphans; onboarding −5; worker/shell −4; staff −1; profile −2; billing/auditor −2 [`auditor-pack` migrated]; marketing −12; system −2; primitives −5; styleguide −1; legacy components −5. The 5 `legacy/*.module.css` went with their deleted components.) `find src -name "*.module.css" | wc -l` → 0.
 - **Start of migration:** 81 `.module.css` files.
 - **2026-06-11 (course/training slice):** 64 → **44 remaining** (−20 this pass: documents detail/upload/PdfViewer −4 [incl. orphaned parent]; all training modals/views + onboarding −8; queue/mapping/AssignUserCourseModal/ConfirmPublishModal/CourseSuccessModal −6; CoursePlayer shared −1; CourseWizard + Step1Category shared −2 — note some passes deleted 1 shared module covering many files). **All course-related modules eliminated.** Remaining 44 are worker/learn-shell, onboarding, system, billing, profile, auditor slices + intentionally-kept `StaffList.module.css` (RemoveStaffModal) and the two shell modules (worker slice). Gates green: `npm run lint` + `tsc --noEmit` + `npm test` (88/88).
 - **Earlier:** 64 remaining (auth −10; dashboard shell −1; dashboard home −1; the two shared shell modules deferred to the Worker slice). Run to refresh:
@@ -72,7 +81,7 @@ Biggest slice: ~16 page routes + ~50 components. Sub-order:
   ```
 
 ## Known follow-ups / debt
-- ⬜ `components/auth/MfaSettings.tsx` still imports legacy `Button` (migrate with the profile/settings area).
+- ✅ `components/auth/MfaSettings.tsx` migrated off legacy `Button` (profile/settings slice).
 - ⬜ Visual-regression snapshots (Playwright) deferred from auth — add once a slice stabilizes.
 - ✅ Login no longer enforces `PASSWORD_MIN_LENGTH` (fixed; existing short-password users can log in).
 - ⬜ Pre-existing: login uses a permissive email regex (`/\S+@\S+\.\S+/`) — matches signup; revisit if stricter validation is wanted.

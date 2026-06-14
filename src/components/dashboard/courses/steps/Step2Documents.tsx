@@ -2,7 +2,13 @@
 
 import React, { useRef } from 'react';
 import { Folder, FileText, Loader2, Sparkles, Trash2 } from 'lucide-react';
-import { Select } from '@/components/ui';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import Link from 'next/link';
@@ -71,7 +77,18 @@ export default function Step2Documents({
       <div className="relative z-30 flex min-h-0 w-full max-w-[500px] flex-1 flex-col">
         <label className="mb-2 block shrink-0 text-sm text-[#718096]">Select file(s) from;</label>
         <div className="mb-10">
-          <Select value={source} onChange={(val) => setSource(val)} options={sourceOptions} />
+          <Select value={source} onValueChange={(val) => setSource(val)}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {sourceOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {source === 'computer' ? (

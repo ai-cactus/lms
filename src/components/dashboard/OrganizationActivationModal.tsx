@@ -3,8 +3,9 @@
 import React, { useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import styles from './OrganizationActivationModal.module.css';
-import { Logo, Modal, Button } from '@/components/ui';
+import { Logo } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useModalContext } from '@/components/ui/legacy/ModalContext';
 
 interface OrganizationActivationModalProps {
@@ -108,53 +109,60 @@ export default function OrganizationActivationModal({
   const defaultAction = 'Activate your account';
 
   return (
-    <Modal
-      isOpen={!!isOpen}
-      onClose={handleClose}
-      size="xl"
-      className={styles.modalParams}
-      contentClassName={styles.modalContentParams}
-      preventClose={isWelcomeMode} // Force user to choose an action
-      showCloseButton={!isWelcomeMode}
+    <Dialog
+      open={!!isOpen}
+      onOpenChange={(open) => {
+        // Force user to choose an action in welcome mode
+        if (!open && !isWelcomeMode) handleClose();
+      }}
     >
-      <div className={styles.container}>
-        {/* Content Section */}
-        <div className={styles.content}>
-          <div className={styles.logoWrapper}>
-            <Logo variant="blue" size="md" />
+      <DialogContent
+        showCloseButton={!isWelcomeMode}
+        className="max-w-[calc(100%-2rem)] gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        onInteractOutside={(e) => {
+          if (isWelcomeMode) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (isWelcomeMode) e.preventDefault();
+        }}
+      >
+        <div className="flex w-full flex-col overflow-y-auto md:h-[500px] md:flex-row md:overflow-y-visible">
+          {/* Content Section */}
+          <div className="flex flex-1 flex-col justify-center px-5 py-6 md:p-12">
+            <div className="mb-5 md:mb-6">
+              <Logo variant="blue" size="md" />
+            </div>
+
+            <DialogTitle className="mb-3 text-xl font-bold leading-tight text-[#111827] md:mb-4 md:text-[30px]">
+              {title || defaultTitle}
+            </DialogTitle>
+
+            <p className="mb-6 text-[15px] leading-relaxed text-[#4b5563] md:mb-8 md:text-base">
+              {description || defaultDesc}
+            </p>
+
+            <div className="flex w-full flex-col items-stretch gap-3 md:items-start md:gap-4">
+              <Button
+                onClick={() => router.push('/onboarding')}
+                className="w-full rounded-full md:w-auto"
+              >
+                {actionLabel || defaultAction}
+              </Button>
+            </div>
           </div>
 
-          <h2 className={styles.title}>{title || defaultTitle}</h2>
-
-          <p className={styles.description}>{description || defaultDesc}</p>
-
-          <div className={styles.actions}>
-            <Button
-              variant="primary"
-              size="md"
-              pill
-              onClick={() => router.push('/onboarding')}
-              className="w-full"
-            >
-              {actionLabel || defaultAction}
-            </Button>
-            {/* <Button variant="ghost" size="md" onClick={handleClose}>
-              Skip for now
-            </Button> */}
+          {/* Visual Section - Image Right */}
+          <div className="relative hidden min-h-[400px] w-full md:block md:w-1/2">
+            <Image
+              src="/images/onboarding-welcome.png"
+              alt="Healthcare Professional Working"
+              fill
+              className="object-cover"
+              priority
+            />
           </div>
         </div>
-
-        {/* Visual Section - Image Right */}
-        <div className={styles.imageSection}>
-          <Image
-            src="/images/onboarding-welcome.png"
-            alt="Healthcare Professional Working"
-            fill
-            className={styles.image}
-            priority
-          />
-        </div>
-      </div>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 }

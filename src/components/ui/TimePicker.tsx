@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import styles from './TimePicker.module.css';
+import { Clock } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface TimePickerProps {
   value: string;
@@ -309,12 +310,19 @@ export default function TimePicker({
   const displayTime = format(h12, minutes, ampm);
 
   return (
-    <div className={styles.container} ref={wrapperRef}>
+    <div className="relative w-full" ref={wrapperRef}>
       {/* Trigger / Text field row */}
-      <div className={`${styles.inputWrapper} ${open ? styles.active : ''}`}>
+      <div
+        className={cn(
+          'flex h-14 w-full select-none items-center justify-between rounded-[10px] border bg-background px-4 transition-colors',
+          open
+            ? 'border-ring ring-[3px] ring-ring/50'
+            : 'border-input hover:border-ring/60 hover:bg-background-secondary',
+        )}
+      >
         <input
           type="text"
-          className={`${styles.inputText} bg-transparent border-none outline-none w-full text-inherit text-base`}
+          className="w-full border-none bg-transparent text-base font-medium text-foreground outline-none placeholder:font-normal placeholder:text-muted-foreground"
           placeholder={placeholder}
           value={textInput}
           onChange={(e) => setTextInput(e.target.value)}
@@ -332,65 +340,55 @@ export default function TimePicker({
           type="button"
           tabIndex={-1}
           onClick={() => setOpen((o) => !o)}
-          className="bg-transparent border-none cursor-pointer flex items-center text-slate-500 p-0"
+          className="flex cursor-pointer items-center border-none bg-transparent p-0 text-text-tertiary"
         >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
+          <Clock className="size-[18px]" aria-hidden="true" />
         </button>
       </div>
 
       {/* Clock popover */}
       {open && (
         <div
-          className={styles.clockPopover}
+          className="absolute left-0 top-[calc(100%+8px)] z-50 rounded-xl border border-border bg-background shadow-lg"
           onMouseDown={(e) => e.preventDefault()} // prevent blur on clock click
         >
           {/* Digital time display + AM/PM toggle */}
-          <div className="flex items-center justify-center gap-2 pt-4 px-4 pb-2">
+          <div className="flex items-center justify-center gap-2 px-4 pb-2 pt-4">
             <button
               onClick={() => setMode('hours')}
-              className="text-[28px] font-bold border-none rounded-lg py-1 px-2.5 cursor-pointer"
-              style={{
-                color: mode === 'hours' ? '#4C6EF5' : '#2D3748',
-                background: mode === 'hours' ? '#EBF4FF' : '#F7FAFC',
-              }}
+              className={cn(
+                'cursor-pointer rounded-lg border-none px-2.5 py-1 text-[28px] font-bold',
+                mode === 'hours'
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-background-secondary text-foreground',
+              )}
             >
               {pad(h12)}
             </button>
-            <span className="text-[28px] font-bold text-gray-800">:</span>
+            <span className="text-[28px] font-bold text-foreground">:</span>
             <button
               onClick={() => setMode('minutes')}
-              className="text-[28px] font-bold border-none rounded-lg py-1 px-2.5 cursor-pointer"
-              style={{
-                color: mode === 'minutes' ? '#4C6EF5' : '#2D3748',
-                background: mode === 'minutes' ? '#EBF4FF' : '#F7FAFC',
-              }}
+              className={cn(
+                'cursor-pointer rounded-lg border-none px-2.5 py-1 text-[28px] font-bold',
+                mode === 'minutes'
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-background-secondary text-foreground',
+              )}
             >
               {pad(minutes)}
             </button>
             {/* AM / PM */}
-            <div className="flex flex-col gap-1 ml-1">
+            <div className="ml-1 flex flex-col gap-1">
               {(['AM', 'PM'] as const).map((a) => (
                 <button
                   key={a}
                   onClick={() => handleAmpm(a)}
-                  className="text-xs font-bold py-[3px] px-2 rounded-md cursor-pointer"
-                  style={{
-                    border: ampm === a ? '2px solid #4C6EF5' : '2px solid #E2E8F0',
-                    background: ampm === a ? '#4C6EF5' : 'white',
-                    color: ampm === a ? 'white' : '#718096',
-                  }}
+                  className={cn(
+                    'cursor-pointer rounded-md border-2 px-2 py-[3px] text-xs font-bold',
+                    ampm === a
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-input bg-background text-text-secondary',
+                  )}
                 >
                   {a}
                 </button>
@@ -399,7 +397,7 @@ export default function TimePicker({
           </div>
 
           {/* Mode label */}
-          <div className="text-center text-[11px] text-slate-400 mb-1">
+          <div className="mb-1 text-center text-[11px] text-text-tertiary">
             {mode === 'hours' ? 'Select hour' : 'Select minute'}
           </div>
 
@@ -415,13 +413,13 @@ export default function TimePicker({
           </div>
 
           {/* OK button */}
-          <div className="flex justify-end py-2 px-4 pb-3">
+          <div className="flex justify-end px-4 py-2 pb-3">
             <button
               onClick={() => {
                 setOpen(false);
                 setMode('hours');
               }}
-              className="bg-[#4C6EF5] text-white border-none rounded-lg py-[7px] px-5 text-[13px] font-semibold cursor-pointer"
+              className="cursor-pointer rounded-lg border-none bg-primary px-5 py-[7px] text-[13px] font-semibold text-primary-foreground"
             >
               OK — {displayTime}
             </button>

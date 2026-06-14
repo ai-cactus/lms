@@ -3,14 +3,34 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, AlertTriangle, Trash2 } from 'lucide-react';
 import { getUserDeletePreview } from '@/app/actions/system-admin';
 import type { SystemUserDetail, DeletePreview } from '@/app/actions/system-admin';
 import DeleteUserModal from './DeleteUserModal';
-import styles from '@/app/system/system.module.css';
+import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { logger } from '@/lib/logger';
 
 interface UserDetailClientProps {
   user: SystemUserDetail;
+}
+
+function statusBadgeClass(status: string): string {
+  switch (status) {
+    case 'published':
+      return 'bg-success/10 text-success';
+    case 'draft':
+      return 'bg-warning/10 text-warning';
+    default:
+      return 'bg-background-secondary text-text-secondary';
+  }
 }
 
 export default function UserDetailClient({ user }: UserDetailClientProps) {
@@ -56,17 +76,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  function getStatusBadgeClass(status: string): string {
-    switch (status) {
-      case 'published':
-        return styles.statusBadgePublished;
-      case 'draft':
-        return styles.statusBadgeDraft;
-      default:
-        return styles.statusBadgeDefault;
-    }
-  }
-
   const displayName =
     user.profile?.fullName || user.profile?.firstName
       ? `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim()
@@ -79,332 +88,309 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
     .toUpperCase()
     .slice(0, 2);
 
+  const roleBadgeClass =
+    user.role === 'admin'
+      ? 'bg-primary/10 text-primary'
+      : 'bg-background-secondary text-text-secondary';
+
   return (
     <>
       {/* Back Link */}
-      <div className={styles.detailNav}>
-        <Link href="/system" className={styles.backLink}>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="19" y1="12" x2="5" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
-          </svg>
+      <div className="mb-6">
+        <Link
+          href="/system"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
           Back to Users
         </Link>
       </div>
 
       {/* Profile Header */}
-      <div className={styles.profileHeader}>
-        <div className={styles.profileAvatar}>{initials}</div>
-        <div className={styles.profileInfo}>
-          <div className={styles.profileName}>{displayName}</div>
-          <div className={styles.profileEmail}>{user.email}</div>
-          <div className={styles.profileMeta}>
+      <div className="mb-6 flex flex-col items-start gap-4 rounded-xl border border-border bg-background p-6 sm:flex-row sm:items-center">
+        <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xl font-semibold text-primary">
+          {initials}
+        </div>
+        <div className="min-w-0">
+          <div className="text-xl font-bold text-foreground">{displayName}</div>
+          <div className="text-sm text-text-secondary">{user.email}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <span
-              className={`${styles.roleBadge} ${user.role === 'admin' ? styles.roleBadgeAdmin : styles.roleBadgeWorker}`}
+              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${roleBadgeClass}`}
             >
               {user.role}
             </span>
-            <span className={styles.statusBadgeDefault} style={{ fontSize: '12px' }}>
+            <span className="inline-flex rounded-full bg-background-secondary px-2.5 py-0.5 text-xs font-medium text-text-secondary">
               {user.authProvider}
             </span>
             {user.emailVerified ? (
-              <span
-                style={{
-                  fontSize: '12px',
-                  color: '#166534',
-                  background: '#dcfce7',
-                  padding: '4px 10px',
-                  borderRadius: '6px',
-                }}
-              >
+              <span className="inline-flex rounded-md bg-success/10 px-2.5 py-1 text-xs text-success">
                 ✓ Verified
               </span>
             ) : (
-              <span
-                style={{
-                  fontSize: '12px',
-                  color: '#92400e',
-                  background: '#fef3c7',
-                  padding: '4px 10px',
-                  borderRadius: '6px',
-                }}
-              >
+              <span className="inline-flex rounded-md bg-warning/10 px-2.5 py-1 text-xs text-warning">
                 Unverified
               </span>
             )}
-            <span style={{ fontSize: '12px', color: '#64748b' }}>
-              Joined {formatDate(user.createdAt)}
-            </span>
+            <span className="text-xs text-text-secondary">Joined {formatDate(user.createdAt)}</span>
           </div>
         </div>
       </div>
 
       {/* Detail Cards Grid */}
-      <div className={styles.detailGrid}>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* Organization Card */}
-        <div className={styles.detailCard}>
-          <div className={styles.detailCardHeader}>
-            <h3 className={styles.detailCardTitle}>Organization</h3>
+        <div className="rounded-xl border border-border bg-background p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-foreground">Organization</h3>
           </div>
           {user.organization ? (
             <div>
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Name</span>
-                <span className={styles.detailValue}>{user.organization.name}</span>
+              <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+                <span className="text-sm text-text-secondary">Name</span>
+                <span className="text-sm font-medium text-foreground">
+                  {user.organization.name}
+                </span>
               </div>
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Slug</span>
-                <span className={styles.detailValue}>{user.organization.slug}</span>
+              <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+                <span className="text-sm text-text-secondary">Slug</span>
+                <span className="text-sm font-medium text-foreground">
+                  {user.organization.slug}
+                </span>
               </div>
             </div>
           ) : (
-            <div style={{ color: '#94a3b8', fontSize: '14px' }}>No organization assigned</div>
+            <div className="text-sm text-text-tertiary">No organization assigned</div>
           )}
         </div>
 
         {/* Profile Card */}
-        <div className={styles.detailCard}>
-          <div className={styles.detailCardHeader}>
-            <h3 className={styles.detailCardTitle}>Profile</h3>
+        <div className="rounded-xl border border-border bg-background p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-foreground">Profile</h3>
           </div>
           {user.profile ? (
             <div>
               {user.profile.jobTitle && (
-                <div className={styles.detailRow}>
-                  <span className={styles.detailLabel}>Job Title</span>
-                  <span className={styles.detailValue}>{user.profile.jobTitle}</span>
+                <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+                  <span className="text-sm text-text-secondary">Job Title</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {user.profile.jobTitle}
+                  </span>
                 </div>
               )}
               {user.profile.companyName && (
-                <div className={styles.detailRow}>
-                  <span className={styles.detailLabel}>Company</span>
-                  <span className={styles.detailValue}>{user.profile.companyName}</span>
+                <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+                  <span className="text-sm text-text-secondary">Company</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {user.profile.companyName}
+                  </span>
                 </div>
               )}
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Last Updated</span>
-                <span className={styles.detailValue}>{formatDate(user.updatedAt)}</span>
+              <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+                <span className="text-sm text-text-secondary">Last Updated</span>
+                <span className="text-sm font-medium text-foreground">
+                  {formatDate(user.updatedAt)}
+                </span>
               </div>
             </div>
           ) : (
-            <div style={{ color: '#94a3b8', fontSize: '14px' }}>No profile created</div>
+            <div className="text-sm text-text-tertiary">No profile created</div>
           )}
         </div>
 
         {/* Activity Summary Card */}
-        <div className={styles.detailCard}>
-          <div className={styles.detailCardHeader}>
-            <h3 className={styles.detailCardTitle}>Activity Summary</h3>
+        <div className="rounded-xl border border-border bg-background p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-foreground">Activity Summary</h3>
           </div>
           <div>
-            <div className={styles.detailRow}>
-              <span className={styles.detailLabel}>Courses Created</span>
-              <span className={styles.detailValue}>{user._count.courses}</span>
+            <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+              <span className="text-sm text-text-secondary">Courses Created</span>
+              <span className="text-sm font-medium text-foreground">{user._count.courses}</span>
             </div>
-            <div className={styles.detailRow}>
-              <span className={styles.detailLabel}>Enrollments</span>
-              <span className={styles.detailValue}>{user._count.enrollments}</span>
+            <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+              <span className="text-sm text-text-secondary">Enrollments</span>
+              <span className="text-sm font-medium text-foreground">{user._count.enrollments}</span>
             </div>
-            <div className={styles.detailRow}>
-              <span className={styles.detailLabel}>Documents</span>
-              <span className={styles.detailValue}>{user._count.documents}</span>
+            <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+              <span className="text-sm text-text-secondary">Documents</span>
+              <span className="text-sm font-medium text-foreground">{user._count.documents}</span>
             </div>
-            <div className={styles.detailRow}>
-              <span className={styles.detailLabel}>Notifications</span>
-              <span className={styles.detailValue}>{user._count.notifications}</span>
+            <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+              <span className="text-sm text-text-secondary">Notifications</span>
+              <span className="text-sm font-medium text-foreground">
+                {user._count.notifications}
+              </span>
             </div>
           </div>
         </div>
 
         {/* Courses Created */}
-        <div className={`${styles.detailCard} ${styles.detailCardFull}`}>
-          <div className={styles.detailCardHeader}>
-            <h3 className={styles.detailCardTitle}>Courses Created</h3>
-            <span className={styles.detailCardCount}>{user.courses.length}</span>
+        <div className="rounded-xl border border-border bg-background p-6 md:col-span-2">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-foreground">Courses Created</h3>
+            <span className="rounded-full bg-background-secondary px-2.5 py-0.5 text-xs font-medium text-text-secondary">
+              {user.courses.length}
+            </span>
           </div>
           {user.courses.length > 0 ? (
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Status</th>
-                  <th>Lessons</th>
-                  <th>Enrollments</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-0">
+                  <TableHead>Title</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Lessons</TableHead>
+                  <TableHead className="hidden md:table-cell">Enrollments</TableHead>
+                  <TableHead className="hidden md:table-cell">Created</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {user.courses.map((course) => (
-                  <tr key={course.id}>
-                    <td style={{ fontWeight: 500 }}>{course.title}</td>
-                    <td>
+                  <TableRow key={course.id}>
+                    <TableCell className="font-medium">{course.title}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <span
-                        className={`${styles.statusBadge} ${getStatusBadgeClass(course.status)}`}
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${statusBadgeClass(course.status)}`}
                       >
                         {course.status}
                       </span>
-                    </td>
-                    <td>{course._count.lessons}</td>
-                    <td>{course._count.enrollments}</td>
-                    <td>{formatDate(course.createdAt)}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">{course._count.lessons}</TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {course._count.enrollments}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {formatDate(course.createdAt)}
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           ) : (
-            <div style={{ color: '#94a3b8', fontSize: '14px' }}>No courses created</div>
+            <div className="text-sm text-text-tertiary">No courses created</div>
           )}
         </div>
 
         {/* Enrollments */}
-        <div className={`${styles.detailCard} ${styles.detailCardFull}`}>
-          <div className={styles.detailCardHeader}>
-            <h3 className={styles.detailCardTitle}>Enrollments</h3>
-            <span className={styles.detailCardCount}>{user.enrollments.length}</span>
+        <div className="rounded-xl border border-border bg-background p-6 md:col-span-2">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-foreground">Enrollments</h3>
+            <span className="rounded-full bg-background-secondary px-2.5 py-0.5 text-xs font-medium text-text-secondary">
+              {user.enrollments.length}
+            </span>
           </div>
           {user.enrollments.length > 0 ? (
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Course</th>
-                  <th>Status</th>
-                  <th>Progress</th>
-                  <th>Score</th>
-                  <th>Started</th>
-                  <th>Completed</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-0">
+                  <TableHead>Course</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Progress</TableHead>
+                  <TableHead className="hidden lg:table-cell">Score</TableHead>
+                  <TableHead className="hidden lg:table-cell">Started</TableHead>
+                  <TableHead className="hidden lg:table-cell">Completed</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {user.enrollments.map((enrollment) => (
-                  <tr key={enrollment.id}>
-                    <td style={{ fontWeight: 500 }}>{enrollment.course.title}</td>
-                    <td>
+                  <TableRow key={enrollment.id}>
+                    <TableCell className="font-medium">{enrollment.course.title}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <span
-                        className={`${styles.statusBadge} ${getStatusBadgeClass(enrollment.status)}`}
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${statusBadgeClass(enrollment.status)}`}
                       >
                         {enrollment.status}
                       </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div
-                          style={{
-                            flex: 1,
-                            height: '6px',
-                            background: '#e2e8f0',
-                            borderRadius: '3px',
-                            overflow: 'hidden',
-                          }}
-                        >
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-background-secondary">
                           <div
-                            style={{
-                              width: `${enrollment.progress}%`,
-                              height: '100%',
-                              background: enrollment.progress === 100 ? '#22c55e' : '#3b82f6',
-                              borderRadius: '3px',
-                            }}
+                            className={`h-full rounded-full ${
+                              enrollment.progress === 100 ? 'bg-success' : 'bg-primary'
+                            }`}
+                            style={{ width: `${enrollment.progress}%` }}
                           />
                         </div>
-                        <span style={{ fontSize: '12px', color: '#64748b', minWidth: '32px' }}>
+                        <span className="min-w-8 text-xs text-text-secondary">
                           {enrollment.progress}%
                         </span>
                       </div>
-                    </td>
-                    <td>{enrollment.score !== null ? `${enrollment.score}%` : '—'}</td>
-                    <td>{formatDate(enrollment.startedAt)}</td>
-                    <td>{enrollment.completedAt ? formatDate(enrollment.completedAt) : '—'}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {enrollment.score !== null ? `${enrollment.score}%` : '—'}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {formatDate(enrollment.startedAt)}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {enrollment.completedAt ? formatDate(enrollment.completedAt) : '—'}
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           ) : (
-            <div style={{ color: '#94a3b8', fontSize: '14px' }}>No enrollments</div>
+            <div className="text-sm text-text-tertiary">No enrollments</div>
           )}
         </div>
 
         {/* Documents */}
-        <div className={`${styles.detailCard} ${styles.detailCardFull}`}>
-          <div className={styles.detailCardHeader}>
-            <h3 className={styles.detailCardTitle}>Documents</h3>
-            <span className={styles.detailCardCount}>{user.documents.length}</span>
+        <div className="rounded-xl border border-border bg-background p-6 md:col-span-2">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-foreground">Documents</h3>
+            <span className="rounded-full bg-background-secondary px-2.5 py-0.5 text-xs font-medium text-text-secondary">
+              {user.documents.length}
+            </span>
           </div>
           {user.documents.length > 0 ? (
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Original Name</th>
-                  <th>Size</th>
-                  <th>Uploaded</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-0">
+                  <TableHead>Original Name</TableHead>
+                  <TableHead className="hidden sm:table-cell">Size</TableHead>
+                  <TableHead className="hidden md:table-cell">Uploaded</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {user.documents.map((doc) => (
-                  <tr key={doc.id}>
-                    <td style={{ fontWeight: 500 }}>{doc.originalName}</td>
-                    <td>{formatSize(doc.size)}</td>
-                    <td>{formatDateTime(doc.createdAt)}</td>
-                  </tr>
+                  <TableRow key={doc.id}>
+                    <TableCell className="font-medium">{doc.originalName}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{formatSize(doc.size)}</TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {formatDateTime(doc.createdAt)}
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           ) : (
-            <div style={{ color: '#94a3b8', fontSize: '14px' }}>No documents</div>
+            <div className="text-sm text-text-tertiary">No documents</div>
           )}
         </div>
       </div>
 
       {/* Delete Section */}
-      <div className={styles.deleteSection}>
-        <div className={styles.deleteSectionTitle}>
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-            <line x1="12" y1="9" x2="12" y2="13" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
+      <div className="mt-6 rounded-xl border border-error/30 bg-error/10 p-6">
+        <div className="flex items-center gap-2 font-semibold text-error">
+          <AlertTriangle className="size-5" aria-hidden="true" />
           Danger Zone
         </div>
-        <p className={styles.deleteSectionText}>
+        <p className="mt-2 text-sm text-text-secondary">
           Permanently delete this user and all associated records including courses, enrollments,
           documents, notifications, and profile data. This action cannot be undone.
         </p>
-        <button
+        <Button
+          variant="destructive"
           onClick={handleDeleteClick}
           disabled={deleteLoading}
-          className={styles.deleteButtonLarge}
+          loading={deleteLoading}
+          className="mt-4"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
-          {deleteLoading ? 'Loading...' : 'Delete This User'}
-        </button>
+          <Trash2 className="size-4" aria-hidden="true" />
+          Delete This User
+        </Button>
       </div>
 
       {/* Delete Modal */}

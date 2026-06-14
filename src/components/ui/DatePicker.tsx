@@ -2,8 +2,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import styles from './DatePicker.module.css';
-import { Button } from '@/components/ui';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface DatePickerProps {
   value: string; // YYYY-MM-DD
@@ -126,34 +127,28 @@ export default function DatePicker({
   const dayLabels = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
   return (
-    <div className={styles.container} ref={containerRef}>
+    <div className="relative w-full" ref={containerRef}>
       <button
         type="button"
-        className={`${styles.inputWrapper} ${isOpen ? styles.active : ''}`}
+        className={cn(
+          'flex h-14 w-full select-none items-center justify-between rounded-[10px] border bg-background px-4 text-left transition-colors',
+          isOpen
+            ? 'border-ring ring-[3px] ring-ring/50'
+            : 'border-input hover:border-ring/60 hover:bg-background-secondary',
+        )}
         onClick={() => setIsOpen(!isOpen)}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
       >
-        <span className={value ? styles.inputText : styles.placeholder}>
+        <span
+          className={cn(
+            'text-base',
+            value ? 'font-medium text-foreground' : 'text-muted-foreground',
+          )}
+        >
           {value ? formatDateDisplay(value) : placeholder}
         </span>
-        <div className={styles.icon}>
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
-        </div>
+        <Calendar className="size-[18px] text-text-tertiary" aria-hidden="true" />
       </button>
 
       {isOpen &&
@@ -163,67 +158,35 @@ export default function DatePicker({
             role="dialog"
             aria-modal="true"
             aria-label="Calendar"
-            className={`${styles.calendarPopover} z-[9999]`}
+            className="absolute z-[9999] w-80 max-w-[calc(100vw-32px)] rounded-xl border border-border bg-background p-4 shadow-lg"
             style={{
               position: 'absolute',
               top: position.top + 8,
               left: position.left,
             }}
           >
-            <div className={styles.header}>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={styles.navButton}
-                onClick={handlePrevMonth}
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="15 18 9 12 15 6"></polyline>
-                </svg>
+            <div className="mb-5 flex items-center justify-between">
+              <Button variant="ghost" size="icon-sm" onClick={handlePrevMonth}>
+                <ChevronLeft className="size-4" aria-hidden="true" />
               </Button>
-              <div className={styles.monthTitle}>
+              <div className="text-base font-bold text-foreground">
                 {monthNames[currentMonth]} {currentYear}
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={styles.navButton}
-                onClick={handleNextMonth}
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
+              <Button variant="ghost" size="icon-sm" onClick={handleNextMonth}>
+                <ChevronRight className="size-4" aria-hidden="true" />
               </Button>
             </div>
 
-            <div className={styles.grid}>
+            <div className="grid grid-cols-7 gap-1 text-center">
               {dayLabels.map((day) => (
-                <div key={day} className={styles.dayLabel}>
+                <div key={day} className="mb-2 text-xs font-semibold uppercase text-text-tertiary">
                   {day}
                 </div>
               ))}
 
               {/* Empty cells for prev month offset */}
               {Array.from({ length: firstDay }).map((_, i) => (
-                <div key={`empty-${i}`} className={`${styles.dayButton} ${styles.empty}`} />
+                <div key={`empty-${i}`} className="h-9" />
               ))}
 
               {/* Days */}
@@ -247,12 +210,15 @@ export default function DatePicker({
                 return (
                   <button
                     key={day}
-                    className={`
-                                        ${styles.dayButton} 
-                                        ${isSelected ? styles.selected : ''}
-                                        ${isToday && !isSelected ? styles.today : ''}
-                                        ${isPast ? styles.disabled : ''}
-                                    `}
+                    type="button"
+                    className={cn(
+                      'flex h-9 items-center justify-center rounded-lg text-sm font-medium transition-colors',
+                      isSelected && 'bg-primary font-semibold text-primary-foreground shadow-sm',
+                      isToday && !isSelected && 'font-bold text-primary',
+                      isPast
+                        ? 'cursor-not-allowed text-text-tertiary'
+                        : !isSelected && 'text-foreground hover:bg-accent hover:text-foreground',
+                    )}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (!isPast) handleDayClick(day);

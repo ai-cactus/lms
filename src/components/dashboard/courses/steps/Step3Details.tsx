@@ -5,7 +5,13 @@ import { Clock } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/legacy/Select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 import { CourseWizardData } from '@/types/course';
 
@@ -71,16 +77,17 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
         {/* No of Notes / Slides */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
           <label className="text-sm font-medium text-text-muted">No of Notes / Slides</label>
-          <Select
-            value={data.notesCount}
-            onChange={(val) => onChange('notesCount', val)}
-            options={[
-              { label: '10', value: '10' },
-              { label: '15', value: '15' },
-              { label: '20', value: '20' },
-              { label: '25', value: '25' },
-            ]}
-          />
+          <Select value={data.notesCount} onValueChange={(val) => onChange('notesCount', val)}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="10">10</SelectItem>
+              <SelectItem value="15">15</SelectItem>
+              <SelectItem value="20">20</SelectItem>
+              <SelectItem value="25">25</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <hr className="my-10 border-0 border-t border-t-[#EDF2F7]" />

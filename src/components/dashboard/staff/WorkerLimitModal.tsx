@@ -1,5 +1,12 @@
 import React from 'react';
-import { Modal, Button } from '@/components/ui';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 interface WorkerLimitModalProps {
   isOpen: boolean;
@@ -14,65 +21,46 @@ export default function WorkerLimitModal({
   planName,
   planLimit,
 }: WorkerLimitModalProps) {
-  if (!isOpen) return null;
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Worker Limit Reached">
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '16px 0',
-        }}
-      >
-        <p style={{ fontSize: '15px', color: '#4A5568', lineHeight: '1.6', marginBottom: '24px' }}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Worker Limit Reached</DialogTitle>
+        </DialogHeader>
+
+        <p className="text-[15px] leading-relaxed text-text-secondary">
           You have reached the maximum number of workers allowed on your current{' '}
           <strong>{planName}</strong> plan ({planLimit} seats).
         </p>
 
-        <div
-          style={{
-            backgroundColor: '#F7FAFC',
-            padding: '16px',
-            borderRadius: '8px',
-            border: '1px solid #E2E8F0',
-            marginBottom: '32px',
-          }}
-        >
-          <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#2D3748', marginBottom: '8px' }}>
-            Why Upgrade?
-          </h3>
-          <ul
-            style={{
-              fontSize: '14px',
-              color: '#4A5568',
-              paddingLeft: '20px',
-              margin: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-            }}
-          >
+        <div className="rounded-[10px] border border-border bg-background-secondary p-4">
+          <h3 className="mb-2 text-sm font-semibold text-foreground">Why Upgrade?</h3>
+          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-text-secondary">
             <li>Add unlimited workers to your organization</li>
             <li>Access advanced administrative controls</li>
             <li>Unlock premium features and support</li>
           </ul>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+        <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="default"
             onClick={() => {
               window.location.href = '/dashboard/billing';
             }}
           >
             Upgrade Plan
           </Button>
-        </div>
-      </div>
-    </Modal>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

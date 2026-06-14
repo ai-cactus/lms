@@ -2,9 +2,10 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, FileUpload, TagInput } from '@/components/ui';
-import { Modal } from '@/components/ui/legacy/Modal';
-import styles from '@/app/onboarding/onboarding.module.css';
+import { PlusCircle, FileSpreadsheet, Trash2 } from 'lucide-react';
+import { FileUpload, TagInput } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Stepper from '@/components/onboarding/Stepper';
 import * as XLSX from 'xlsx';
 import type { OnboardingData } from '@/app/actions/onboarding-complete';
@@ -132,18 +133,23 @@ export default function OnboardingStep4() {
   };
 
   return (
-    <div className={styles.stepContainer}>
+    <div className="w-full max-w-[1000px]">
       <Stepper currentStep={5} />
 
-      <h1 className={styles.stepTitle}>Invite your Workers/Staffs</h1>
-      <p className={styles.stepDescription}>
+      <h1 className="mb-2 text-center text-[22px] font-bold text-foreground md:text-[28px]">
+        Invite your Workers/Staffs
+      </h1>
+      <p className="mb-6 text-center text-sm text-text-secondary md:mb-12 md:text-base">
         Add your team so they can access assigned trainings and complete compliance requirements.
       </p>
 
-      <form onSubmit={handleSubmit} className={styles.form}>
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-4 rounded-2xl bg-background p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] md:gap-6 md:p-10"
+      >
         {!csvFile ? (
           <>
-            <div className={styles.formGroup}>
+            <div className="flex flex-col gap-2">
               <TagInput
                 value={emails}
                 onChange={(newEmails) => {
@@ -160,150 +166,70 @@ export default function OnboardingStep4() {
 
             <Button
               variant="ghost"
-              size="md"
+              type="button"
               onClick={() => setIsModalOpen(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                color: '#4C6EF5',
-                fontWeight: 600,
-                width: 'fit-content',
-                paddingLeft: 0,
-                paddingRight: 0,
-              }}
+              className="w-fit gap-2 px-0 font-semibold text-primary"
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="16"></line>
-                <line x1="8" y1="12" x2="16" y2="12"></line>
-              </svg>
+              <PlusCircle className="size-5" aria-hidden="true" />
               Import with .csv file instead
             </Button>
           </>
         ) : (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '16px',
-              background: 'white',
-              border: '1px solid #E2E8F0',
-              borderRadius: '8px',
-              justifyContent: 'space-between',
-              marginTop: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  background: '#10B981', // Green for Excel/CSV
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'white',
-                }}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="12" y1="18" x2="12" y2="12"></line>
-                  <line x1="9" y1="15" x2="15" y2="15"></line>
-                </svg>
+          <div className="mt-2 flex items-center justify-between rounded-lg border border-border bg-background p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex size-8 items-center justify-center rounded-md bg-success text-white">
+                <FileSpreadsheet className="size-5" aria-hidden="true" />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#2D3748' }}>
-                  {csvFile.name}
-                </span>
-                <span style={{ fontSize: '12px', color: '#10B981' }}>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-foreground">{csvFile.name}</span>
+                <span className="text-xs text-success">
                   {csvEmails.length} email{csvEmails.length !== 1 ? 's' : ''} found
                 </span>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={removeCsv} style={{ color: '#E53E3E' }}>
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={removeCsv}
+              className="text-error"
+            >
+              <Trash2 className="size-[18px]" aria-hidden="true" />
             </Button>
           </div>
         )}
 
-        <div className={styles.actions}>
-          <Button variant="outline" type="button" onClick={() => router.push('/onboarding/step3')}>
+        <div className="mt-6 flex flex-col-reverse gap-3 md:flex-row md:justify-between md:gap-4">
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => router.push('/onboarding/step3')}
+            className="w-full md:w-auto"
+          >
             Back
           </Button>
-          <Button variant="primary" type="submit" disabled={isLoading}>
+          <Button type="submit" disabled={isLoading} className="w-full md:w-auto">
             Complete Onboarding
           </Button>
         </div>
       </form>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
-        <div style={{ padding: '24px', width: '500px', maxWidth: '100%' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px',
-            }}
-          >
-            <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1A202C' }}>
-              Upload .csv file
-            </h2>
-            <Button variant="ghost" size="icon-md" onClick={() => setIsModalOpen(false)}>
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </Button>
-          </div>
+      <Dialog
+        open={isModalOpen}
+        onOpenChange={(open) => {
+          if (!open) setIsModalOpen(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Upload .csv file</DialogTitle>
+          </DialogHeader>
 
-          <p style={{ fontSize: '14px', color: '#718096', marginBottom: '16px' }}>
+          <p className="text-sm text-text-secondary">
             You can add multiple staffs from an uploaded csv file
           </p>
 
-          <div style={{ height: '240px' }}>
+          <div className="h-60">
             <FileUpload
               onFilesSelected={handleCsvUpload}
               multiple={false}
@@ -312,13 +238,11 @@ export default function OnboardingStep4() {
             />
           </div>
 
-          <div style={{ marginTop: '24px' }}>
-            <Button variant="primary" onClick={() => {}} style={{ width: '100%' }}>
-              Continue
-            </Button>
-          </div>
-        </div>
-      </Modal>
+          <Button type="button" className="w-full" onClick={() => {}}>
+            Continue
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

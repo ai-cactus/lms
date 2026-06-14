@@ -1,8 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
-import styles from './WorkerProfile.module.css';
-import { Button, Modal } from '@/components/ui';
+import { ArrowLeft, Pencil } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Alert } from '@/components/ui/alert';
 import { updateProfile, uploadAvatar } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -29,6 +38,11 @@ interface WorkerProfileProps {
     zipCode?: string | null;
   } | null;
 }
+
+const inputCls =
+  'h-10 w-full rounded-md border border-[#e2e8f0] bg-white px-3 text-sm text-[#1a202c] transition-all outline-none focus:border-[#2563eb] focus:shadow-[0_0_0_2px_rgba(37,99,235,0.1)]';
+const readOnlyCls = 'cursor-not-allowed border-[#e2e8f0] bg-[#f7fafc] text-[#718096]';
+const labelCls = 'mb-2 block text-sm font-semibold text-[#1a202c]';
 
 export default function WorkerProfileForm({ user, organization }: WorkerProfileProps) {
   const router = useRouter();
@@ -175,64 +189,52 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
         .replace(/, $/, '')
     : '';
 
+  const tabs = [
+    { key: 'profile' as const, label: 'EDIT PROFILE' },
+    { key: 'password' as const, label: 'CHANGE PASSWORD' },
+    { key: '2fa' as const, label: 'TWO FACTOR AUTH (2FA)' },
+  ];
+
   return (
-    <div className={styles.container}>
-      <Link href="/worker" className={styles.backLink}>
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="19" y1="12" x2="5" y2="12"></line>
-          <polyline points="12 19 5 12 12 5"></polyline>
-        </svg>
+    <div className="flex min-h-[calc(100vh-100px)] flex-col items-center justify-center p-6 max-[480px]:min-h-auto max-[480px]:p-3">
+      <Link
+        href="/worker"
+        className="mb-6 flex w-full max-w-[900px] items-center gap-2 text-sm font-medium text-[#4a5568] hover:text-[#2d3748]"
+      >
+        <ArrowLeft className="size-5" aria-hidden="true" />
         Back to dashboard
       </Link>
 
-      <div className={styles.card}>
-        <div style={{ padding: '0 40px' }}>
-          <div className={styles.tabs}>
-            <div
-              className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('profile')}
-            >
-              EDIT PROFILE
-            </div>
-            <div
-              className={`${styles.tab} ${activeTab === 'password' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('password')}
-            >
-              CHANGE PASSWORD
-            </div>
-            <div
-              className={`${styles.tab} ${activeTab === '2fa' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('2fa')}
-            >
-              TWO FACTOR AUTH (2FA)
-            </div>
+      <div className="flex min-h-[600px] w-full max-w-[900px] flex-col rounded-xl border border-[#e2e8f0] bg-white shadow-sm max-[480px]:min-h-auto max-[480px]:rounded-lg">
+        <div className="px-10 max-md:px-6">
+          <div className="mt-6 flex w-full items-center gap-8 overflow-x-auto border-b border-[#e2e8f0] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {tabs.map((tab) => (
+              <div
+                key={tab.key}
+                className={[
+                  'relative -bottom-px shrink-0 whitespace-nowrap border-b-2 px-1 py-3 text-[13px] font-semibold uppercase tracking-[0.05em] transition-all',
+                  activeTab === tab.key
+                    ? 'border-[#2563eb] text-[#2563eb]'
+                    : 'cursor-pointer border-transparent text-[#64748b]',
+                ].join(' ')}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </div>
+            ))}
           </div>
         </div>
 
         {activeTab === 'profile' && (
-          <div className={styles.profileWrapper}>
-            <div className={styles.avatarSection}>
-              <div className={styles.avatarLarge}>
+          <div className="flex items-start gap-16 p-10 max-md:flex-col max-md:items-center max-md:gap-8 max-md:p-6 max-[480px]:gap-5 max-[480px]:p-4">
+            <div className="flex w-30 flex-shrink-0 justify-center pt-2 max-md:w-auto">
+              <div className="relative flex size-30 items-center justify-center rounded-full bg-[#e2e8f0] text-5xl font-semibold text-[#64748b] shadow-md max-[480px]:size-20 max-[480px]:text-[32px]">
                 {avatarDisplayUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={avatarDisplayUrl}
                     alt="Profile"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      borderRadius: '50%',
-                    }}
+                    className="size-full rounded-full object-cover"
                   />
                 ) : (
                   <span>
@@ -240,130 +242,98 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                       user.email[0].toUpperCase()}
                   </span>
                 )}
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={styles.editAvatarBtn}
+                <button
+                  className="absolute bottom-0 right-0 flex size-8 items-center justify-center rounded-full border-[3px] border-white bg-[#2563eb] text-white shadow-sm transition-all hover:scale-110 hover:bg-[#1d4ed8]"
                   title="Change Avatar"
                   type="button"
                   onClick={handleAvatarClick}
                 >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
-                </Button>
+                  <Pencil className="size-3.5" aria-hidden="true" />
+                </button>
                 <input
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
                   accept="image/*"
-                  style={{ display: 'none' }}
+                  className="hidden"
                 />
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className={styles.form}>
-              <div className={styles.formGrid}>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>First Name</label>
+            <form onSubmit={handleSubmit} className="flex max-w-[800px] flex-1 flex-col">
+              <div className="mb-6 grid grid-cols-2 gap-6 max-md:grid-cols-1">
+                <div className="mb-6">
+                  <label className={labelCls}>First Name</label>
                   <input
-                    className={styles.input}
+                    className={inputCls}
                     name="first_name"
                     value={formData.first_name}
                     onChange={handleChange}
                     placeholder="First Name"
                   />
                   {errors.first_name && (
-                    <span
-                      style={{
-                        color: '#E53E3E',
-                        fontSize: '13px',
-                        marginTop: '4px',
-                        display: 'block',
-                      }}
-                    >
+                    <span className="mt-1 block text-[13px] text-[#E53E3E]">
                       {errors.first_name}
                     </span>
                   )}
                 </div>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>Last Name</label>
+                <div className="mb-6">
+                  <label className={labelCls}>Last Name</label>
                   <input
-                    className={styles.input}
+                    className={inputCls}
                     name="last_name"
                     value={formData.last_name}
                     onChange={handleChange}
                     placeholder="Last Name"
                   />
                   {errors.last_name && (
-                    <span
-                      style={{
-                        color: '#E53E3E',
-                        fontSize: '13px',
-                        marginTop: '4px',
-                        display: 'block',
-                      }}
-                    >
+                    <span className="mt-1 block text-[13px] text-[#E53E3E]">
                       {errors.last_name}
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Company</label>
+              <div className="mb-6">
+                <label className={labelCls}>Company</label>
                 <input
-                  className={`${styles.input} ${styles.readOnlyInput}`}
+                  className={`${inputCls} ${readOnlyCls}`}
                   value={organization?.name || ''}
                   disabled
                   placeholder="Company Name"
                 />
               </div>
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Email Address</label>
-                <input
-                  className={`${styles.input} ${styles.readOnlyInput}`}
-                  value={user.email}
-                  disabled
-                />
+              <div className="mb-6">
+                <label className={labelCls}>Email Address</label>
+                <input className={`${inputCls} ${readOnlyCls}`} value={user.email} disabled />
               </div>
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Job Title</label>
+              <div className="mb-6">
+                <label className={labelCls}>Job Title</label>
                 <input
                   name="jobTitle"
-                  className={styles.input}
+                  className={inputCls}
                   value={formData.jobTitle || ''}
                   onChange={handleChange}
                   placeholder="e.g. Caregiver"
                 />
               </div>
 
-              <div className={styles.formGrid}>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>State</label>
+              <div className="mb-6 grid grid-cols-2 gap-6 max-md:grid-cols-1">
+                <div className="mb-6">
+                  <label className={labelCls}>State</label>
                   <input
-                    className={`${styles.input} ${styles.readOnlyInput}`}
+                    className={`${inputCls} ${readOnlyCls}`}
                     value={organization?.state || ''}
                     disabled
                     placeholder="State"
                   />
                 </div>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>Zip Code</label>
+                <div className="mb-6">
+                  <label className={labelCls}>Zip Code</label>
                   <input
-                    className={`${styles.input} ${styles.readOnlyInput}`}
+                    className={`${inputCls} ${readOnlyCls}`}
                     value={organization?.zipCode || ''}
                     disabled
                     placeholder="Zip Code"
@@ -371,10 +341,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
                 </div>
               </div>
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Business Address</label>
+              <div className="mb-6">
+                <label className={labelCls}>Business Address</label>
                 <input
-                  className={`${styles.input} ${styles.readOnlyInput}`}
+                  className={`${inputCls} ${readOnlyCls}`}
                   value={businessAddress}
                   disabled
                   placeholder="Business Address"
@@ -382,15 +352,13 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
               </div>
 
               {message && (
-                <div
-                  className={`${styles.message} ${message.type === 'success' ? styles.success : styles.error}`}
-                >
-                  {message.text}
+                <div className="mb-6">
+                  <Alert variant={message.type}>{message.text}</Alert>
                 </div>
               )}
 
-              <div className={styles.actions}>
-                <Button type="submit" variant="primary" loading={isLoading} disabled={!isDirty}>
+              <div className="mt-8 flex justify-end gap-4 max-[480px]:flex-col">
+                <Button type="submit" loading={isLoading} disabled={!isDirty}>
                   Save Changes
                 </Button>
               </div>
@@ -403,24 +371,27 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
         {activeTab === '2fa' && <TwoFactorAuthTab userEmail={user.email} />}
       </div>
 
-      <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)}>
-        <div style={{ padding: '20px', textAlign: 'center' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '10px' }}>
-            Confirm Changes
-          </h3>
-          <p style={{ color: '#718096', marginBottom: '20px' }}>
-            Are you sure you want to update your profile?
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+      <Dialog
+        open={showConfirm}
+        onOpenChange={(open) => {
+          if (!open) setShowConfirm(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="items-center text-center">
+            <DialogTitle>Confirm Changes</DialogTitle>
+            <DialogDescription>Are you sure you want to update your profile?</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="justify-center sm:justify-center">
             <Button variant="secondary" onClick={() => setShowConfirm(false)} disabled={isLoading}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleConfirmSave} loading={isLoading}>
+            <Button onClick={handleConfirmSave} loading={isLoading}>
               Confirm
             </Button>
-          </div>
-        </div>
-      </Modal>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import styles from './PhoneInput.module.css';
+import { ChevronDown, Search } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // Country data with flags, dial codes
 const countries = [
@@ -231,35 +232,34 @@ export default function PhoneInput({
   };
 
   return (
-    <div className={styles.container} ref={dropdownRef}>
-      <div className={`${styles.inputWrapper} ${error ? styles.hasError : ''}`}>
+    <div className="relative w-full" ref={dropdownRef}>
+      <div
+        className={cn(
+          'flex h-14 w-full items-center rounded-[10px] border bg-background transition-colors',
+          'focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50',
+          error ? 'border-destructive focus-within:ring-destructive/20' : 'border-input',
+        )}
+      >
         {/* Country Selector */}
         <button
           type="button"
-          className={styles.countrySelector}
+          className="flex h-full items-center gap-1.5 rounded-l-[10px] px-3 text-text-secondary transition-colors hover:bg-background-secondary disabled:cursor-default disabled:hover:bg-transparent"
           onClick={() => !isSingleCountry && setIsOpen(!isOpen)}
           disabled={isSingleCountry}
         >
-          <span className={styles.flag}>{selectedCountry.flag}</span>
-          <svg
-            className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`}
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
+          <span className="text-xl leading-none">{selectedCountry.flag}</span>
+          <ChevronDown
+            className={cn('size-3 text-text-tertiary transition-transform', isOpen && 'rotate-180')}
+            aria-hidden="true"
+          />
         </button>
 
         {/* Divider */}
-        <div className={styles.divider} />
+        <div className="h-6 w-px bg-border" />
 
         <input
           type="tel"
-          className={styles.phoneInput}
+          className="h-full flex-1 border-none bg-transparent px-4 text-base text-foreground outline-none placeholder:text-muted-foreground"
           value={phoneNumber}
           onChange={handlePhoneChange}
           onFocus={() => {
@@ -275,25 +275,14 @@ export default function PhoneInput({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className={styles.dropdown}>
+        <div className="absolute left-0 top-[calc(100%+4px)] z-[1000] max-h-[360px] w-80 max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-border bg-background shadow-lg">
           {/* Search Input */}
-          <div className={styles.searchContainer}>
-            <svg
-              className={styles.searchIcon}
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
+          <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
+            <Search className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
             <input
               ref={searchInputRef}
               type="text"
-              className={styles.searchInput}
+              className="flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
               placeholder="Search countries..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -301,28 +290,33 @@ export default function PhoneInput({
           </div>
 
           {/* Country List */}
-          <div className={styles.countryList}>
+          <div className="max-h-[280px] overflow-y-auto py-2">
             {filteredCountries.map((country) => (
               <button
                 key={country.code}
                 type="button"
-                className={`${styles.countryOption} ${selectedCountry.code === country.code ? styles.selected : ''}`}
+                className={cn(
+                  'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-background-secondary',
+                  selectedCountry.code === country.code && 'bg-primary/10',
+                )}
                 onClick={() => handleCountrySelect(country)}
               >
-                <span className={styles.optionFlag}>{country.flag}</span>
-                <span className={styles.optionName}>{country.name}</span>
-                <span className={styles.optionDialCode}>{country.dialCode}</span>
+                <span className="text-xl leading-none">{country.flag}</span>
+                <span className="flex-1 text-sm font-medium text-foreground">{country.name}</span>
+                <span className="text-[13px] font-medium text-text-secondary">
+                  {country.dialCode}
+                </span>
               </button>
             ))}
             {filteredCountries.length === 0 && (
-              <div className={styles.noResults}>No countries found</div>
+              <div className="p-4 text-center text-sm text-text-tertiary">No countries found</div>
             )}
           </div>
         </div>
       )}
 
       {/* Error Message */}
-      {error && <span className={styles.errorMessage}>{error}</span>}
+      {error && <span className="mt-1.5 block text-[13px] text-error">{error}</span>}
     </div>
   );
 }

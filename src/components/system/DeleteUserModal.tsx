@@ -1,9 +1,29 @@
 'use client';
 
 import React, { useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { deleteUserWithRelations } from '@/app/actions/system-admin';
 import type { DeletePreview } from '@/app/actions/system-admin';
-import styles from '@/app/system/system.module.css';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import { Alert } from '@/components/ui/alert';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 interface DeleteUserModalProps {
   preview: DeletePreview;
@@ -61,63 +81,53 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
 
   if (success) {
     return (
-      <div className={styles.modalOverlay} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.modal}>
-          <div className={styles.modalBody}>
-            <div className={styles.successMessage}>
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-              User <strong>{user.email}</strong> has been permanently deleted with all related
-              records. Redirecting...
-            </div>
-          </div>
-        </div>
-      </div>
+      <Dialog open>
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <Alert variant="success" title="User deleted">
+            User <strong>{user.email}</strong> has been permanently deleted with all related
+            records. Redirecting...
+          </Alert>
+        </DialogContent>
+      </Dialog>
     );
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.modalHeader}>
-          <h2 className={styles.modalTitle}>
-            <span style={{ color: '#dc2626' }}>⚠️</span> Delete User Permanently
-          </h2>
-          <p className={styles.modalSubtitle}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !loading) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="size-5 text-error" aria-hidden="true" />
+            Delete User Permanently
+          </DialogTitle>
+          <DialogDescription>
             This action cannot be undone. All related data will be permanently removed.
-          </p>
-        </div>
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className={styles.modalBody}>
-          {error && <div className={styles.errorMessage}>{error}</div>}
+        <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
+          {error && (
+            <Alert variant="error" className="w-full">
+              {error}
+            </Alert>
+          )}
 
           {/* User Info */}
-          <div
-            style={{
-              padding: '12px 16px',
-              background: '#f8fafc',
-              borderRadius: '8px',
-              marginBottom: '16px',
-            }}
-          >
-            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
-              {user.name}
-            </div>
-            <div style={{ fontSize: '13px', color: '#64748b' }}>{user.email}</div>
-            <div style={{ marginTop: '4px' }}>
+          <div className="rounded-[10px] bg-background-secondary px-4 py-3">
+            <div className="font-semibold text-foreground">{user.name}</div>
+            <div className="text-sm text-text-secondary">{user.email}</div>
+            <div className="mt-1">
               <span
-                className={`${styles.roleBadge} ${user.role === 'admin' ? styles.roleBadgeAdmin : styles.roleBadgeWorker}`}
+                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                  user.role === 'admin'
+                    ? 'bg-primary/10 text-primary'
+                    : 'bg-background-secondary text-text-secondary'
+                }`}
               >
                 {user.role}
               </span>
@@ -126,78 +136,68 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
 
           {/* Affected enrollments warning */}
           {affectedEnrollments > 0 && (
-            <div
-              style={{
-                padding: '12px 16px',
-                background: '#fef3c7',
-                borderRadius: '8px',
-                marginBottom: '16px',
-                fontSize: '13px',
-                color: '#92400e',
-              }}
-            >
-              ⚠️ <strong>{affectedEnrollments}</strong> enrollment(s) from other users in courses
+            <Alert variant="warning" className="w-full">
+              <strong>{affectedEnrollments}</strong> enrollment(s) from other users in courses
               created by this user will also be deleted.
-            </div>
+            </Alert>
           )}
 
           {/* Impact Table */}
-          <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
-            Records to be deleted:
-          </h4>
-          <table className={styles.impactTable}>
-            <thead>
-              <tr>
-                <th>Record Type</th>
-                <th>Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {impactRows.map((row) => (
-                <tr key={row.label}>
-                  <td>{row.label}</td>
-                  <td>{row.count}</td>
-                </tr>
-              ))}
-              <tr>
-                <td style={{ fontWeight: 700 }}>Total Records</td>
-                <td style={{ fontWeight: 700 }}>
-                  {impactRows.reduce((sum, row) => sum + row.count, 0)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div>
+            <h4 className="mb-2 text-sm font-semibold text-foreground">Records to be deleted:</h4>
+            <div className="rounded-[10px] border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Record Type</TableHead>
+                    <TableHead className="text-right">Count</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {impactRows.map((row) => (
+                    <TableRow key={row.label}>
+                      <TableCell>{row.label}</TableCell>
+                      <TableCell className="text-right">{row.count}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow>
+                    <TableCell className="font-bold">Total Records</TableCell>
+                    <TableCell className="text-right font-bold">
+                      {impactRows.reduce((sum, row) => sum + row.count, 0)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </div>
 
           {/* Confirm by typing email */}
-          <div className={styles.confirmSection}>
-            <p className={styles.confirmLabel}>
-              To confirm deletion, type the email address below:
-              <span className={styles.confirmCode}>{user.email}</span>
-            </p>
-            <input
+          <Field label="To confirm deletion, type the email address below:" helperText={user.email}>
+            <Input
               type="text"
               value={confirmEmail}
               onChange={(e) => setConfirmEmail(e.target.value)}
               placeholder={`Type ${user.email} to confirm`}
-              className={styles.confirmInput}
               autoComplete="off"
             />
-          </div>
+          </Field>
         </div>
 
-        <div className={styles.modalFooter}>
-          <button onClick={onClose} className={styles.cancelButton} disabled={loading}>
+        <DialogFooter>
+          <Button variant="ghost" type="button" onClick={onClose} disabled={loading}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="destructive"
+            type="button"
             onClick={handleDelete}
             disabled={!emailMatches || loading}
-            className={styles.confirmDeleteButton}
+            loading={loading}
           >
-            {loading ? 'Deleting...' : 'Delete Permanently'}
-          </button>
-        </div>
-      </div>
-    </div>
+            Delete Permanently
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
