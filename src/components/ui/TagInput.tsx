@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef, KeyboardEvent, ChangeEvent } from 'react';
-import styles from './TagInput.module.css';
+import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface TagInputProps {
   value: string[];
@@ -98,16 +99,25 @@ export default function TagInput({ value, onChange, placeholder, validate, error
   };
 
   return (
-    <div className={styles.container}>
+    <div className="flex w-full flex-col">
       <div
-        className={`${styles.wrapper} ${error || inputError ? styles.hasError : ''}`}
+        className={cn(
+          'flex min-h-[3.5rem] w-full cursor-text flex-wrap items-center gap-2 rounded-[10px] border bg-background px-3 py-2 transition-colors',
+          'focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50',
+          error || inputError
+            ? 'border-destructive focus-within:ring-destructive/20'
+            : 'border-input',
+        )}
         onClick={handleClick}
         ref={containerRef}
       >
         {value.map((tag, index) => (
           <div
             key={index}
-            className={`${styles.tag} ${validate && !validate(tag) ? styles.invalidTag : ''}`}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium',
+              validate && !validate(tag) ? 'bg-error/15 text-error' : 'bg-accent text-foreground',
+            )}
           >
             <span>{tag}</span>
             <button
@@ -116,21 +126,9 @@ export default function TagInput({ value, onChange, placeholder, validate, error
                 e.stopPropagation();
                 removeTag(index);
               }}
-              className={styles.removeButton}
+              className="flex items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
+              <X className="size-3.5" aria-hidden="true" />
             </button>
           </div>
         ))}
@@ -142,11 +140,13 @@ export default function TagInput({ value, onChange, placeholder, validate, error
           onBlur={handleBlur}
           onPaste={handlePaste}
           placeholder={value.length === 0 ? placeholder : ''}
-          className={styles.input}
+          className="min-w-[120px] flex-1 border-none bg-transparent py-1 text-base text-foreground outline-none placeholder:text-muted-foreground"
         />
       </div>
-      {(error || inputError) && <span className={styles.errorMessage}>{inputError || error}</span>}
-      <div className={styles.hint}>Press Enter or Comma to add</div>
+      {(error || inputError) && (
+        <span className="mt-1 text-xs text-error">{inputError || error}</span>
+      )}
+      <div className="mt-1 text-xs text-text-tertiary">Press Enter or Comma to add</div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import styles from './WorkerDashboard.module.css';
+import { GraduationCap, CheckCircle2, BarChart3 } from 'lucide-react';
 
 interface WorkerDashboardMetricsProps {
   totalCourses: number;
@@ -13,75 +13,40 @@ export default function WorkerDashboardMetrics({
   averageGrade,
 }: WorkerDashboardMetricsProps) {
   return (
-    <div className={styles.metricsGrid}>
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
       {/* Total Courses - Green */}
-      <div className={styles.metricCard} style={{ background: '#ECFDF5' }}>
+      <div className="flex min-h-40 flex-col justify-between rounded-2xl bg-[#ECFDF5] p-6 shadow-sm max-[480px]:min-h-30 max-[480px]:p-4">
         <div>
-          <div className={styles.metricIcon} style={{ backgroundColor: '#10B981' }}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-            </svg>
+          <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-[#10B981] text-white max-[480px]:size-10 max-[480px]:rounded-[10px]">
+            <GraduationCap className="size-6" aria-hidden="true" />
           </div>
-          <p className={styles.metricLabel}>Total Courses</p>
+          <p className="mb-1 text-sm font-semibold text-[#4a5568]">Total Courses</p>
         </div>
-        <p className={styles.metricValue}>{totalCourses}</p>
+        <p className="text-[32px] font-bold text-[#1a202c] max-[480px]:text-2xl">{totalCourses}</p>
       </div>
 
       {/* Courses Completed - Blue */}
-      <div className={styles.metricCard} style={{ background: '#EEF2FF' }}>
+      <div className="flex min-h-40 flex-col justify-between rounded-2xl bg-[#EEF2FF] p-6 shadow-sm max-[480px]:min-h-30 max-[480px]:p-4">
         <div>
-          <div className={styles.metricIcon} style={{ backgroundColor: '#4730F7' }}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-              <polyline points="22 4 12 14.01 9 11.01"></polyline>
-            </svg>
+          <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-[#4730F7] text-white max-[480px]:size-10 max-[480px]:rounded-[10px]">
+            <CheckCircle2 className="size-6" aria-hidden="true" />
           </div>
-          <p className={styles.metricLabel}>Courses Completed</p>
+          <p className="mb-1 text-sm font-semibold text-[#4a5568]">Courses Completed</p>
         </div>
-        <p className={styles.metricValue}>{completedCourses}</p>
+        <p className="text-[32px] font-bold text-[#1a202c] max-[480px]:text-2xl">
+          {completedCourses}
+        </p>
       </div>
 
       {/* Average Grade - Red */}
-      <div className={styles.metricCard} style={{ background: '#FEF2F2' }}>
+      <div className="flex min-h-40 flex-col justify-between rounded-2xl bg-[#FEF2F2] p-6 shadow-sm max-[480px]:min-h-30 max-[480px]:p-4">
         <div>
-          <div className={styles.metricIcon} style={{ backgroundColor: '#EF4444' }}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 20V10"></path>
-              <path d="M18 20V4"></path>
-              <path d="M6 20v-4"></path>
-            </svg>
+          <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-[#EF4444] text-white max-[480px]:size-10 max-[480px]:rounded-[10px]">
+            <BarChart3 className="size-6" aria-hidden="true" />
           </div>
-          <p className={styles.metricLabel}>Average Grade</p>
+          <p className="mb-1 text-sm font-semibold text-[#4a5568]">Average Grade</p>
         </div>
-        <p className={styles.metricValue}>{averageGrade}%</p>
+        <p className="text-[32px] font-bold text-[#1a202c] max-[480px]:text-2xl">{averageGrade}%</p>
       </div>
     </div>
   );

@@ -1,11 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import styles from './ProfileForm.module.css';
+import { Copy, RefreshCw, TriangleAlert, Building2 } from 'lucide-react';
 import { updateOrganization, uploadComplianceDocument } from '@/app/actions/organization';
 import { generateOrganizationCode, getOrganizationCode } from '@/app/actions/organization-code';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Select, Checkbox, PhoneInput } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { PhoneInput, Alert } from '@/components/ui';
 import { logger } from '@/lib/logger';
 
 interface OrganizationData {
@@ -133,6 +143,45 @@ const PROGRAM_SERVICES = [
   { id: 'vision', label: 'Vision Rehabilitation Services' },
 ];
 
+const labelClass = 'mb-2 block text-sm font-medium text-foreground';
+const requiredClass = 'text-error';
+const optionalClass = 'text-text-tertiary font-normal';
+
+/** Labeled shadcn select matching the legacy Select API used across this form */
+function FormSelect({
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  disabled,
+  error,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  options: { label: string; value: string }[];
+  placeholder?: string;
+  disabled?: boolean;
+  error?: string;
+}) {
+  return (
+    <>
+      <Select value={value || undefined} onValueChange={onValueChange} disabled={disabled}>
+        <SelectTrigger className="w-full" aria-invalid={!!error}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error && <p className="mt-1 text-sm text-error">{error}</p>}
+    </>
+  );
+}
+
 function OrgCodeGenerator() {
   const [code, setCode] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
@@ -187,55 +236,35 @@ function OrgCodeGenerator() {
   };
 
   return (
-    <div className={styles.codeGenWrapper}>
+    <div className="w-full">
       {code ? (
-        <div className={`${styles.codeDisplay} ${isExpired ? styles.expired : ''}`}>
-          <div className={styles.codeBox}>
-            <span className={styles.codeValue}>{code}</span>
+        <div
+          className={`flex flex-col gap-3 rounded-[10px] border p-4 ${
+            isExpired ? 'border-error/40 bg-error/5' : 'border-border bg-background-secondary'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-mono text-2xl font-semibold tracking-[0.2em] text-foreground">
+              {code}
+            </span>
             <Button
               variant="ghost"
               size="icon-sm"
               type="button"
               onClick={copyToClipboard}
-              className={styles.copyButton}
+              aria-label="Copy code"
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
+              <Copy className="size-4" aria-hidden="true" />
             </Button>
           </div>
 
-          <div className={styles.codeMeta}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
             {isExpired ? (
-              <span className={styles.expiredBadge}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                  <line x1="12" y1="9" x2="12" y2="13"></line>
-                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                </svg>{' '}
-                Expired
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-error">
+                <TriangleAlert className="size-3.5" aria-hidden="true" /> Expired
               </span>
             ) : (
-              <span className={styles.expiresText}>
+              <span className="text-sm text-text-secondary">
                 Expires in {hoursLeft}h {minsLeft}m
               </span>
             )}
@@ -246,38 +275,27 @@ function OrgCodeGenerator() {
               size="sm"
               onClick={handleGenerate}
               disabled={loading}
-              className={styles.regenerateButton}
+              className="gap-1.5"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={loading ? styles.spinning : ''}
-              >
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
+              <RefreshCw
+                className={`size-3.5 ${loading ? 'animate-spin' : ''}`}
+                aria-hidden="true"
+              />
               {isExpired ? 'Regenerate' : 'Generate New'}
             </Button>
           </div>
         </div>
       ) : (
-        <div className={styles.generateStart}>
-          <p className={styles.generateHelp}>
+        <div className="flex flex-col items-start gap-3">
+          <p className="text-sm text-text-secondary">
             Generate a temporary 6-digit code for workers to join your organization.
           </p>
-          <Button type="button" variant="primary" onClick={handleGenerate} loading={loading}>
+          <Button type="button" onClick={handleGenerate} loading={loading}>
             Generate Code
           </Button>
         </div>
       )}
-      {error && <p className={styles.errorText}>{error}</p>}
+      {error && <p className="mt-2 text-sm text-error">{error}</p>}
     </div>
   );
 }
@@ -512,49 +530,34 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
   if (!initialData) {
     return (
-      <div className={styles.emptyState}>
-        <div className={styles.emptyStateContent}>
-          <div className={styles.emptyStateIcon}>
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3 21h18" />
-              <path d="M5 21V7l8-4 8 4v14" />
-              <path d="M9 10a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v11H9V10z" />
-            </svg>
+      <div className="flex min-h-[400px] items-center justify-center p-6">
+        <div className="flex max-w-[420px] flex-col items-center text-center">
+          <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Building2 className="size-8" aria-hidden="true" />
           </div>
-          <h3 className={styles.emptyStateTitle}>No Organization Found</h3>
-          <p className={styles.emptyStateText}>
+          <h3 className="mb-2 text-lg font-semibold text-foreground">No Organization Found</h3>
+          <p className="mb-6 text-sm leading-relaxed text-text-secondary">
             You haven&apos;t set up an organization profile yet. Complete the onboarding process to
             unlock all features.
           </p>
-          <Button onClick={() => router.push('/onboarding/step1')} style={{ marginTop: '8px' }}>
-            Complete Onboarding
-          </Button>
+          <Button onClick={() => router.push('/onboarding/step1')}>Complete Onboarding</Button>
         </div>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className={styles.orgForm}>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-10 p-6 md:p-10">
       {/* Section 1: Basic Organization Information - matches onboarding/step1 */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionNumber}>1.</span>
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <span className="text-primary">1.</span>
           <span>Basic Organization Information</span>
         </div>
 
-        <div className={styles.fieldGroup}>
-          <label className={styles.label}>
-            Legal Business Name <span className={styles.required}>*</span>
+        <div>
+          <label className={labelClass}>
+            Legal Business Name <span className={requiredClass}>*</span>
           </label>
           <Input
             name="name"
@@ -562,13 +565,14 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             onChange={handleChange}
             placeholder="e.g. Acme Healthcare Ltd"
             disabled={!isAdmin}
-            error={errors.name}
+            aria-invalid={!!errors.name}
           />
+          {errors.name && <p className="mt-1 text-sm text-error">{errors.name}</p>}
         </div>
 
-        <div className={styles.fieldGroup}>
-          <label className={styles.label}>
-            Doing Business As (DBA) <span className={styles.required}>*</span>
+        <div>
+          <label className={labelClass}>
+            Doing Business As (DBA) <span className={requiredClass}>*</span>
           </label>
           <Input
             name="dba"
@@ -576,15 +580,15 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             onChange={handleChange}
             placeholder="Enter business name (if applicable)"
             disabled={!isAdmin}
-            error={errors.dba}
+            aria-invalid={!!errors.dba}
           />
+          {errors.dba && <p className="mt-1 text-sm text-error">{errors.dba}</p>}
         </div>
 
-        <div className={styles.formGrid}>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Employer Identification Number (EIN){' '}
-              <span className={styles.optional}>(optional)</span>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <label className={labelClass}>
+              Employer Identification Number (EIN) <span className={optionalClass}>(optional)</span>
             </label>
             <Input
               name="ein"
@@ -595,13 +599,13 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               maxLength={10}
             />
           </div>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Number of Staff <span className={styles.required}>*</span>
+          <div>
+            <label className={labelClass}>
+              Number of Staff <span className={requiredClass}>*</span>
             </label>
-            <Select
+            <FormSelect
               value={formData.staffCount || ''}
-              onChange={(value) => handleSelectChange('staffCount', value)}
+              onValueChange={(value) => handleSelectChange('staffCount', value)}
               options={STAFF_COUNT_OPTIONS}
               placeholder="Select an option"
               disabled={!isAdmin}
@@ -610,10 +614,10 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
           </div>
         </div>
 
-        <div className={styles.formGrid}>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Primary Contact Name <span className={styles.required}>*</span>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <label className={labelClass}>
+              Primary Contact Name <span className={requiredClass}>*</span>
             </label>
             <Input
               name="primaryContact"
@@ -621,12 +625,15 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               onChange={handleChange}
               placeholder="Enter the full name of the main contact"
               disabled={!isAdmin}
-              error={errors.primaryContact}
+              aria-invalid={!!errors.primaryContact}
             />
+            {errors.primaryContact && (
+              <p className="mt-1 text-sm text-error">{errors.primaryContact}</p>
+            )}
           </div>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Primary Contact Email <span className={styles.required}>*</span>
+          <div>
+            <label className={labelClass}>
+              Primary Contact Email <span className={requiredClass}>*</span>
             </label>
             <Input
               name="primaryEmail"
@@ -635,28 +642,31 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               placeholder="Enter the email address of the main contact"
               type="email"
               disabled={!isAdmin}
-              error={errors.primaryEmail}
+              aria-invalid={!!errors.primaryEmail}
             />
+            {errors.primaryEmail && (
+              <p className="mt-1 text-sm text-error">{errors.primaryEmail}</p>
+            )}
           </div>
         </div>
 
-        <div className={styles.formGrid}>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Country <span className={styles.required}>*</span>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <label className={labelClass}>
+              Country <span className={requiredClass}>*</span>
             </label>
-            <Select
+            <FormSelect
               value={formData.country || ''}
-              onChange={(value) => handleSelectChange('country', value)}
+              onValueChange={(value) => handleSelectChange('country', value)}
               options={COUNTRY_OPTIONS}
               placeholder="Select an option"
               disabled={!isAdmin}
               error={errors.country}
             />
           </div>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Phone Number <span className={styles.required}>*</span>
+          <div>
+            <label className={labelClass}>
+              Phone Number <span className={requiredClass}>*</span>
             </label>
             <PhoneInput
               value={formData.phone || ''}
@@ -668,10 +678,10 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
           </div>
         </div>
 
-        <div className={styles.formGrid}>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Street Address <span className={styles.optional}>(optional)</span>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <label className={labelClass}>
+              Street Address <span className={optionalClass}>(optional)</span>
             </label>
             <Input
               name="address"
@@ -681,9 +691,9 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               disabled={!isAdmin}
             />
           </div>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Zip Code <span className={styles.optional}>(optional)</span>
+          <div>
+            <label className={labelClass}>
+              Zip Code <span className={optionalClass}>(optional)</span>
             </label>
             <Input
               name="zipCode"
@@ -695,10 +705,10 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
           </div>
         </div>
 
-        <div className={styles.formGrid}>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              City <span className={styles.optional}>(optional)</span>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <label className={labelClass}>
+              City <span className={optionalClass}>(optional)</span>
             </label>
             <Input
               name="city"
@@ -708,13 +718,13 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               disabled={!isAdmin}
             />
           </div>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              State <span className={styles.optional}>(optional)</span>
+          <div>
+            <label className={labelClass}>
+              State <span className={optionalClass}>(optional)</span>
             </label>
-            <Select
+            <FormSelect
               value={formData.state || ''}
-              onChange={(value) => handleSelectChange('state', value)}
+              onValueChange={(value) => handleSelectChange('state', value)}
               options={STATE_OPTIONS}
               placeholder="Select an option"
               disabled={!isAdmin}
@@ -724,16 +734,16 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       </div>
 
       {/* Section 2: Credentialing & Documentation - matches onboarding/step2 */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionNumber}>2.</span>
-          <span>Credentialing & Documentation</span>
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <span className="text-primary">2.</span>
+          <span>Credentialing &amp; Documentation</span>
         </div>
 
-        <div className={styles.formGrid}>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              State Healthcare License Number <span className={styles.optional}>(optional)</span>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <label className={labelClass}>
+              State Healthcare License Number <span className={optionalClass}>(optional)</span>
             </label>
             <Input
               name="licenseNumber"
@@ -743,13 +753,13 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               disabled={!isAdmin}
             />
           </div>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              HIPAA Compliance Confirmation <span className={styles.required}>*</span>
+          <div>
+            <label className={labelClass}>
+              HIPAA Compliance Confirmation <span className={requiredClass}>*</span>
             </label>
-            <Select
+            <FormSelect
               value={formData.isHipaaCompliant ? 'yes' : 'no'}
-              onChange={(value) =>
+              onValueChange={(value) =>
                 setFormData((prev) => ({ ...prev, isHipaaCompliant: value === 'yes' }))
               }
               options={HIPAA_OPTIONS}
@@ -760,22 +770,14 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         </div>
 
         {/* Uploaded documents */}
-        <div className={styles.fieldGroup}>
-          <label className={styles.label}>
-            Upload your compliance certifications{' '}
-            <span className={styles.optional}>(optional)</span>
+        <div>
+          <label className={labelClass}>
+            Upload your compliance certifications <span className={optionalClass}>(optional)</span>
           </label>
-          <div className={styles.uploadedDocsList}>
+          <div className="flex flex-col gap-2">
             {formData.complianceDocumentName ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  marginBottom: '0.5rem',
-                }}
-              >
-                <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+              <div className="mb-2 flex items-center gap-4">
+                <span className="text-sm font-medium text-foreground">
                   {formData.complianceDocumentName}
                 </span>
                 {formData.complianceDocumentUrl && (
@@ -783,18 +785,14 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                     href={formData.complianceDocumentDisplayUrl || formData.complianceDocumentUrl}
                     target="_blank"
                     rel="noreferrer"
-                    style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--primary-600)',
-                      textDecoration: 'underline',
-                    }}
+                    className="text-xs text-primary underline"
                   >
                     View
                   </a>
                 )}
               </div>
             ) : null}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="flex items-center gap-4">
               <Button
                 variant="outline"
                 type="button"
@@ -808,7 +806,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
                 id="compliance-upload"
                 type="file"
                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                style={{ display: 'none' }}
+                className="hidden"
                 onChange={handleDocumentUpload}
               />
             </div>
@@ -817,33 +815,33 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       </div>
 
       {/* Section 3: Organization Services - matches onboarding/step3 */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionNumber}>3.</span>
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <span className="text-primary">3.</span>
           <span>Organization Services</span>
         </div>
 
-        <div className={styles.formGrid}>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Primary Business Type <span className={styles.required}>*</span>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <label className={labelClass}>
+              Primary Business Type <span className={requiredClass}>*</span>
             </label>
-            <Select
+            <FormSelect
               value={formData.primaryBusinessType || ''}
-              onChange={(value) => handleSelectChange('primaryBusinessType', value)}
+              onValueChange={(value) => handleSelectChange('primaryBusinessType', value)}
               options={PRIMARY_BUSINESS_TYPES}
               placeholder="Select an option"
               disabled={!isAdmin}
               error={errors.primaryBusinessType}
             />
           </div>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
-              Additional Business Type <span className={styles.required}>*</span>
+          <div>
+            <label className={labelClass}>
+              Additional Business Type <span className={requiredClass}>*</span>
             </label>
-            <Select
+            <FormSelect
               value={(formData.additionalBusinessTypes || [])[0] || ''}
-              onChange={(value) =>
+              onValueChange={(value) =>
                 setFormData((prev) => ({ ...prev, additionalBusinessTypes: value ? [value] : [] }))
               }
               options={ADDITIONAL_BUSINESS_TYPES}
@@ -854,23 +852,28 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
           </div>
         </div>
 
-        <div className={styles.fieldGroup}>
-          <label className={styles.label} style={{ marginBottom: '16px', display: 'block' }}>
-            Program Services
-          </label>
-          <div className={styles.checkboxGrid}>
+        <div>
+          <label className={`${labelClass} mb-4`}>Program Services</label>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {PROGRAM_SERVICES.map((service) => (
-              <Checkbox
-                key={service.id}
-                label={service.label}
-                checked={(formData.programServices || []).includes(service.id)}
-                onChange={() => {
-                  if (isAdmin) {
-                    handleProgramServiceToggle(service.id);
-                  }
-                }}
-                disabled={!isAdmin}
-              />
+              <div key={service.id} className="flex items-center gap-2">
+                <Checkbox
+                  id={`program-${service.id}`}
+                  checked={(formData.programServices || []).includes(service.id)}
+                  onCheckedChange={() => {
+                    if (isAdmin) {
+                      handleProgramServiceToggle(service.id);
+                    }
+                  }}
+                  disabled={!isAdmin}
+                />
+                <label
+                  htmlFor={`program-${service.id}`}
+                  className="text-sm text-foreground select-none"
+                >
+                  {service.label}
+                </label>
+              </div>
             ))}
           </div>
         </div>
@@ -878,33 +881,35 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
       {/* Section: Worker Onboarding Code */}
       {isAdmin && (
-        <div className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <span className={styles.sectionNumber}>4.</span>
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+            <span className="text-primary">4.</span>
             <span>Worker Onboarding</span>
           </div>
 
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>
+          <div>
+            <label className={labelClass}>
               Organization Join Code
-              <span className={styles.optional}> (Share this code with your workers)</span>
+              <span className={optionalClass}> (Share this code with your workers)</span>
             </label>
 
-            <div className={styles.codeContainer}>
+            <div className="mt-2 max-w-md">
               <OrgCodeGenerator />
             </div>
           </div>
         </div>
       )}
 
-      {message && <div className={`${styles.message} ${styles[message.type]}`}>{message.text}</div>}
+      {message && (
+        <Alert variant={message.type === 'success' ? 'success' : 'error'}>{message.text}</Alert>
+      )}
 
       {isAdmin && isDirty && (
-        <div className={styles.orgActions}>
+        <div className="flex justify-end gap-4">
           <Button variant="outline" type="button" onClick={handleDiscard}>
             Discard
           </Button>
-          <Button variant="primary" type="submit" loading={isLoading}>
+          <Button type="submit" loading={isLoading}>
             Save Changes
           </Button>
         </div>

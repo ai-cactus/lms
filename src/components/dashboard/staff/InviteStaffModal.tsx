@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button, Modal } from '@/components/ui';
+import { X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui';
 import { createInvites } from '@/app/actions/invite';
 import { useRouter } from 'next/navigation';
 
@@ -119,151 +128,92 @@ export default function InviteStaffModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Invite New Staff" size="md">
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
-      >
-        <div>
-          <label
-            style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: '#4A5568',
-            }}
-          >
-            Email Addresses
-          </label>
-          <div
-            style={{
-              border: '1px solid #E2E8F0',
-              borderRadius: '6px',
-              padding: '8px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '8px',
-              minHeight: '42px',
-              alignItems: 'center',
-              background: 'white',
-            }}
-            onClick={() => document.getElementById('email-chip-input')?.focus()}
-          >
-            {emails.map((email) => (
-              <div
-                key={email}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  background: '#EBF8FF',
-                  color: '#2C5282',
-                  borderRadius: '16px',
-                  padding: '4px 12px',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                }}
-              >
-                {email}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeEmail(email);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    marginLeft: '6px',
-                    cursor: 'pointer',
-                    color: '#2C5282',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Invite New Staff</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-text-secondary">
+              Email Addresses
+            </label>
+            <div
+              className="flex min-h-[42px] flex-wrap items-center gap-2 rounded-[10px] border border-border bg-background p-2"
+              onClick={() => document.getElementById('email-chip-input')?.focus()}
+            >
+              {emails.map((email) => (
+                <div
+                  key={email}
+                  className="flex items-center rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary"
                 >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                  {email}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeEmail(email);
+                    }}
+                    className="ml-1.5 flex items-center text-primary"
                   >
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-              </div>
-            ))}
-            <input
-              id="email-chip-input"
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={emails.length === 0 ? 'Enter emails...' : ''}
-              style={{
-                border: 'none',
-                outline: 'none',
-                flex: 1,
-                fontSize: '14px',
-                minWidth: '120px',
-                color: '#2D3748',
-              }}
-            />
+                    <X className="size-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              <input
+                id="email-chip-input"
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={emails.length === 0 ? 'Enter emails...' : ''}
+                className="min-w-[120px] flex-1 border-none bg-transparent text-sm text-foreground outline-none"
+              />
+            </div>
+            <p className="mt-1 text-xs text-text-secondary">
+              Press Space or Enter to add an email.
+            </p>
           </div>
-          <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-            Press Space or Enter to add an email.
-          </p>
-        </div>
 
-        {message && (
-          <div
-            style={{
-              padding: '10px',
-              borderRadius: '6px',
-              fontSize: '14px',
-              backgroundColor: message.type === 'success' ? '#F0FDF4' : '#FEF2F2',
-              color: message.type === 'success' ? '#166534' : '#991B1B',
-            }}
-          >
-            {message.text}
-          </div>
-        )}
+          {message && (
+            <Alert variant={message.type === 'success' ? 'success' : 'error'}>{message.text}</Alert>
+          )}
 
-        {/* Seats remaining hint */}
-        {isLimitedPlan && (
-          <p
-            style={{
-              fontSize: '13px',
-              color: seatsExhausted ? '#C53030' : '#718096',
-              fontWeight: seatsExhausted ? 600 : 400,
-              margin: 0,
-            }}
-          >
-            {seatsExhausted
-              ? `Your ${planName} plan has no remaining worker seats. Please upgrade to invite more.`
-              : `${remainingSeats} seat${remainingSeats !== 1 ? 's' : ''} remaining on your ${planName} plan.`}
-          </p>
-        )}
+          {/* Seats remaining hint */}
+          {isLimitedPlan && (
+            <p
+              className={
+                seatsExhausted
+                  ? 'text-[13px] font-semibold text-error'
+                  : 'text-[13px] text-text-secondary'
+              }
+            >
+              {seatsExhausted
+                ? `Your ${planName} plan has no remaining worker seats. Please upgrade to invite more.`
+                : `${remainingSeats} seat${remainingSeats !== 1 ? 's' : ''} remaining on your ${planName} plan.`}
+            </p>
+          )}
 
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
-          <Button variant="outline" type="button" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            loading={isLoading}
-            disabled={(emails.length === 0 && !inputValue) || seatsExhausted}
-          >
-            Send Invites
-          </Button>
-        </div>
-      </form>
-    </Modal>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              type="submit"
+              loading={isLoading}
+              disabled={(emails.length === 0 && !inputValue) || seatsExhausted}
+            >
+              Send Invites
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

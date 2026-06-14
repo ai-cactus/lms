@@ -1,12 +1,19 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import styles from '@/components/dashboard/Header.module.css';
-import layoutStyles from '@/app/dashboard/(main)/layout.module.css';
 import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, Modal } from '@/components/ui';
+import { Bell, BellOff, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { getNotifications, markAsRead, markAllAsRead } from '@/app/actions/notifications';
 
 interface HeaderProps {
@@ -110,102 +117,86 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
 
   return (
     <>
-      <header className={styles.header}>
-        {/* Hamburger — visible on mobile only */}
-        <button className={layoutStyles.hamburger} onClick={onMenuClick} aria-label="Open menu">
-          <svg
-            width="22"
-            height="22"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
+      <header className="flex h-16 items-center justify-between border-b border-[#e2e8f0] bg-white px-4 lg:h-20 lg:justify-end lg:px-10">
+        {/* Hamburger — visible only on <lg */}
+        <button
+          className="flex size-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-lg border-none bg-[#f7fafc] text-[#4a5568] transition-colors hover:bg-[#edf2f7] lg:hidden"
+          onClick={onMenuClick}
+          aria-label="Open menu"
+        >
+          <Menu className="size-[22px]" />
         </button>
 
-        <div className={styles.headerEnd}>
-          <div className={styles.notificationWrapper} ref={notifRef}>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className={styles.iconButton}
+        <div className="flex items-center gap-6">
+          <div className="relative inline-flex" ref={notifRef}>
+            <button
+              className="relative rounded-full bg-[#f7fafc] p-2 text-[#718096] transition-colors hover:bg-[#edf2f7]"
               onClick={toggleNotif}
+              aria-label="Toggle notifications"
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-              </svg>
-              {unreadCount > 0 && <span className={styles.badge}>{unreadCount}</span>}
-            </Button>
+              <Bell className="size-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-white bg-[#e53e3e] px-1 text-[10px] font-bold text-white">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
 
             {isNotifOpen && (
-              <div className={styles.notificationsDropdown}>
-                <div className={styles.notificationsHeader}>
-                  <h3>Notifications</h3>
+              <div className="absolute right-0 top-[calc(100%+12px)] z-50 flex w-[340px] flex-col overflow-hidden rounded-2xl border border-[#f1f4f9] bg-white shadow-lg">
+                <div className="flex items-center justify-between border-b border-[#e2e8f0] bg-[#fafcff] px-5 py-4">
+                  <h3 className="m-0 text-base font-semibold text-[#1a202c]">Notifications</h3>
                   {unreadCount > 0 && (
-                    <button className={styles.markAllReadBtn} onClick={handleMarkAllAsRead}>
+                    <button
+                      className="cursor-pointer border-none bg-none p-0 text-[13px] font-medium text-[#3182ce] hover:text-[#2b6cb0] hover:underline"
+                      onClick={handleMarkAllAsRead}
+                    >
                       Mark all as read
                     </button>
                   )}
                 </div>
-                <div className={styles.notificationsBody}>
+                <div className="flex max-h-[400px] min-h-[200px] flex-col justify-center overflow-y-auto">
                   {isLoadingNotifs ? (
-                    <div className={styles.emptyState}>
-                      <p className={styles.emptyStateSubtext}>Loading...</p>
+                    <div className="flex flex-col items-center justify-center px-5 py-8 text-center">
+                      <p className="m-0 text-[13px] text-[#a0aec0]">Loading...</p>
                     </div>
                   ) : notifications.length === 0 ? (
-                    <div className={styles.emptyState}>
-                      <div className={styles.emptyStateIcon}>
-                        <svg
-                          width="32"
-                          height="32"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                        </svg>
+                    <div className="flex flex-col items-center justify-center px-5 py-8 text-center">
+                      <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-[#f7fafc] text-[#cbd5e0]">
+                        <BellOff className="size-8" />
                       </div>
-                      <h4 className={styles.emptyStateText}>No new notifications</h4>
-                      <p className={styles.emptyStateSubtext}>
+                      <h4 className="m-0 mb-2 text-[15px] font-semibold text-[#4a5568]">
+                        No new notifications
+                      </h4>
+                      <p className="m-0 text-[13px] leading-[1.5] text-[#a0aec0]">
                         When courses are assigned or new events happen, they will appear here.
                       </p>
                     </div>
                   ) : (
-                    <div className={styles.notificationList}>
+                    <div className="flex flex-col">
                       {notifications.map((notif) => (
                         <div
                           key={notif.id}
-                          className={`${styles.notificationItem} ${!notif.isRead ? styles.unread : ''}`}
+                          className={[
+                            'flex cursor-pointer items-start justify-between border-b border-[#edf2f7] px-5 py-4 transition-colors last:border-b-0 hover:bg-[#f7fafc]',
+                            !notif.isRead ? 'bg-[#ebf8ff]' : '',
+                          ].join(' ')}
                           onClick={() => handleMarkAsRead(notif.id, notif.linkUrl)}
                         >
-                          <div className={styles.notifContent}>
-                            <h4 className={styles.notifTitle}>{notif.title}</h4>
-                            <p className={styles.notifMessage}>{notif.message}</p>
-                            <span className={styles.notifTime}>
+                          <div className="flex flex-col gap-1 pr-4">
+                            <h4 className="m-0 text-sm font-semibold text-[#2d3748]">
+                              {notif.title}
+                            </h4>
+                            <p className="m-0 text-[13px] leading-[1.4] text-[#4a5568]">
+                              {notif.message}
+                            </p>
+                            <span className="mt-1 text-[11px] text-[#718096]">
                               {new Date(notif.createdAt).toLocaleDateString()}
                             </span>
                           </div>
-                          {!notif.isRead && <div className={styles.unreadDot} />}
+                          {!notif.isRead && (
+                            <div className="mt-1.5 size-2 flex-shrink-0 rounded-full bg-[#3182ce]" />
+                          )}
                         </div>
                       ))}
                     </div>
@@ -215,10 +206,13 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
             )}
           </div>
 
-          <div className={styles.profileWrapper} ref={dropdownRef}>
-            <div className={styles.profile} onClick={toggleDropdown}>
-              <div className={styles.avatar}>
-                <span style={{ fontSize: '12px', fontWeight: '600' }}>
+          <div className="relative" ref={dropdownRef}>
+            <div
+              className="flex cursor-pointer select-none items-center gap-3 rounded-full bg-[#f7fafc] py-1.5 pl-1.5 pr-3 transition-colors hover:bg-[#edf2f7]"
+              onClick={toggleDropdown}
+            >
+              <div className="flex size-8 items-center justify-center rounded-full bg-[#bfccfa] text-xs font-semibold text-[#2d4ddd]">
+                <span className="text-xs font-semibold">
                   {fullName
                     ? fullName
                         .split(' ')
@@ -229,111 +223,63 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
                     : 'U'}
                 </span>
               </div>
-              <span className={styles.profileName}>{fullName}</span>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{
-                  transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.2s',
-                }}
-              >
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
+              <span className="hidden text-sm font-semibold text-[#2d3748] lg:block">
+                {fullName}
+              </span>
+              <ChevronDown
+                className={[
+                  'hidden size-4 text-[#cbd5e0] transition-transform duration-200 lg:inline',
+                  isOpen ? 'rotate-180' : 'rotate-0',
+                ].join(' ')}
+              />
             </div>
 
             {isOpen && (
-              <div className={styles.dropdown}>
+              <div className="absolute right-0 top-[calc(100%+12px)] z-50 flex w-[220px] flex-col gap-1 rounded-2xl border border-[#f1f4f9] bg-white p-2 shadow-lg">
                 <Link
                   href="/worker/profile"
-                  className={styles.dropdownItem}
+                  className="flex w-full cursor-pointer items-center gap-3 rounded-xl border-none bg-none px-4 py-3 text-left text-sm font-medium text-[#718096] transition-all hover:bg-[#f7fafc] hover:text-[#2d3748] [&_svg]:text-[#a0aec0] hover:[&_svg]:text-[#4a5568]"
                   onClick={() => setIsOpen(false)}
                 >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                    <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                    <line x1="15" y1="9" x2="15.01" y2="9"></line>
-                  </svg>
+                  <Smile className="size-[18px]" />
                   Profile
                 </Link>
-                <Button
-                  variant="ghost"
-                  className={`${styles.dropdownItem} ${styles.logout}`}
+                <button
+                  className="flex w-full cursor-pointer items-center gap-3 rounded-xl border-none bg-none px-4 py-3 text-left text-sm font-medium text-[#e53e3e] transition-all hover:bg-[#fff5f5] hover:text-[#c53030] [&_svg]:text-[#e53e3e] hover:[&_svg]:text-[#c53030]"
                   onClick={handleLogout}
                 >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                    <polyline points="16 17 21 12 16 7"></polyline>
-                    <line x1="21" y1="12" x2="9" y2="12"></line>
-                  </svg>
+                  <LogOut className="size-[18px]" />
                   Logout
-                </Button>
+                </button>
               </div>
             )}
           </div>
         </div>
       </header>
 
-      <Modal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)}>
-        <div style={{ padding: '24px', textAlign: 'center' }}>
-          <div style={{ marginBottom: '16px' }}>
-            <svg
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#E53E3E"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ margin: '0 auto' }}
-            >
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-          </div>
-          <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>
-            Confirm Logout
-          </h3>
-          <p style={{ color: '#718096', marginBottom: '24px' }}>
-            Are you sure you want to log out? You will need to sign in again to access your account.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+      {/* Logout Confirmation Dialog */}
+      <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <DialogHeader className="items-center text-center">
+            <div className="mb-4">
+              <LogOut className="mx-auto size-12 text-[#e53e3e]" />
+            </div>
+            <DialogTitle>Confirm Logout</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to log out? You will need to sign in again to access your
+              account.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="justify-center sm:justify-center">
             <Button variant="outline" onClick={() => setIsLogoutModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleConfirmLogout}>
+            <Button variant="default" onClick={handleConfirmLogout}>
               Logout
             </Button>
-          </div>
-        </div>
-      </Modal>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -3,7 +3,11 @@
 import React, { useState } from 'react';
 import { verifySystemPassword } from '@/app/actions/system-admin';
 import { useRouter } from 'next/navigation';
-import styles from '@/app/system/system.module.css';
+import { Lock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { PasswordInput } from '@/components/ui/password-input';
+import { Field } from '@/components/ui/field';
+import { Alert } from '@/components/ui/alert';
 
 export default function SystemLoginClient() {
   const [password, setPassword] = useState('');
@@ -32,43 +36,35 @@ export default function SystemLoginClient() {
   }
 
   return (
-    <div className={styles.loginWrapper}>
-      <div className={styles.loginCard}>
-        <div className={styles.loginIcon}>
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#2563eb"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
+    <div className="flex min-h-screen items-center justify-center bg-background-secondary p-4">
+      <div className="w-full max-w-[440px] rounded-[10px] border border-border bg-background p-8 shadow-sm">
+        <div className="mb-4 flex size-12 items-center justify-center rounded-[10px] bg-primary/10">
+          <Lock className="size-6 text-primary" aria-hidden="true" />
         </div>
-        <h1 className={styles.loginTitle}>System Admin Access</h1>
-        <p className={styles.loginSubtitle}>
+        <h1 className="text-2xl font-bold text-foreground">System Admin Access</h1>
+        <p className="mt-2 text-sm text-text-secondary">
           Enter the system admin password to manage all users and data across organizations. This
           tool is intended for staging environment use only.
         </p>
 
-        <form onSubmit={handleSubmit} className={styles.loginForm}>
-          {error && <div className={styles.loginError}>{error}</div>}
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter system admin password"
-            className={styles.loginInput}
-            autoFocus
-            required
-          />
-          <button type="submit" disabled={loading || !password} className={styles.loginButton}>
-            {loading ? 'Verifying...' : 'Access Dashboard'}
-          </button>
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+          {error && (
+            <Alert variant="error" className="w-full">
+              {error}
+            </Alert>
+          )}
+          <Field label="Password">
+            <PasswordInput
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter system admin password"
+              autoFocus
+              required
+            />
+          </Field>
+          <Button type="submit" size="lg" className="w-full" disabled={!password} loading={loading}>
+            Access Dashboard
+          </Button>
         </form>
       </div>
     </div>

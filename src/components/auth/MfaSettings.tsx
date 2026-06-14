@@ -1,7 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui';
+import { ShieldCheck } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui';
 import {
   requestMfaSetup,
   verifyMfaSetup,
@@ -154,62 +157,29 @@ export default function MfaSettings() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (state === 'loading') {
-    return (
-      <div style={{ padding: '20px', textAlign: 'center', color: '#6B7280' }}>
-        Loading MFA settings...
-      </div>
-    );
+    return <div className="p-5 text-center text-text-secondary">Loading MFA settings...</div>;
   }
 
   return (
-    <div
-      style={{
-        border: '1px solid #E5E7EB',
-        borderRadius: '12px',
-        padding: '24px',
-        marginTop: '24px',
-      }}
-    >
-      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', color: '#111827' }}>
-        Two-Factor Authentication
-      </h3>
+    <div className="mt-6 rounded-xl border border-border p-6">
+      <h3 className="mb-4 text-base font-semibold text-foreground">Two-Factor Authentication</h3>
 
       {error && (
-        <div
-          style={{
-            backgroundColor: '#FEF2F2',
-            color: '#991B1B',
-            padding: '10px 14px',
-            borderRadius: '6px',
-            marginBottom: '16px',
-            fontSize: '14px',
-            border: '1px solid #FCA5A5',
-          }}
-        >
+        <Alert variant="error" className="mb-4">
           {error}
-        </div>
+        </Alert>
       )}
 
       {info && (
-        <div
-          style={{
-            backgroundColor: '#F0FDF4',
-            color: '#166534',
-            padding: '10px 14px',
-            borderRadius: '6px',
-            marginBottom: '16px',
-            fontSize: '14px',
-            border: '1px solid #BBF7D0',
-          }}
-        >
+        <Alert variant="success" className="mb-4">
           {info}
-        </div>
+        </Alert>
       )}
 
       {/* ── Idle: MFA not enabled ──────────────────────────────────────────── */}
       {state === 'idle' && (
         <div>
-          <p style={{ fontSize: '14px', color: '#6B7280', marginBottom: '16px' }}>
+          <p className="mb-4 text-sm text-text-secondary">
             Add an extra layer of security to your account by enabling two-factor authentication. A
             verification code will be sent to your email address each time you log in.
           </p>
@@ -222,16 +192,14 @@ export default function MfaSettings() {
       {/* ── Setup: code sent to email, enter to verify ─────────────────────── */}
       {state === 'setup' && (
         <div>
-          <p style={{ fontSize: '14px', color: '#6B7280', marginBottom: '16px' }}>
+          <p className="mb-4 text-sm text-text-secondary">
             We&apos;ve sent a 6-digit code to your email. Enter it below to activate two-factor
             authentication.
           </p>
 
           {/* Verification code input */}
-          <div
-            style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '12px' }}
-          >
-            <input
+          <div className="mb-3 flex items-start gap-2">
+            <Input
               type="text"
               value={verifyCode}
               onChange={(e) => {
@@ -239,15 +207,7 @@ export default function MfaSettings() {
                 if (error) setError('');
               }}
               placeholder="000000"
-              style={{
-                width: '120px',
-                padding: '8px 12px',
-                border: '1px solid #D1D5DB',
-                borderRadius: '6px',
-                fontSize: '16px',
-                textAlign: 'center',
-                letterSpacing: '4px',
-              }}
+              className="w-[120px] text-center text-base tracking-[4px]"
               inputMode="numeric"
               pattern="[0-9]*"
               autoFocus
@@ -263,13 +223,7 @@ export default function MfaSettings() {
               setVerifyCode('');
               setError('');
             }}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#6B7280',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
+            className="cursor-pointer border-none bg-transparent text-[13px] text-text-secondary"
           >
             Cancel
           </button>
@@ -279,42 +233,20 @@ export default function MfaSettings() {
       {/* ── Recovery Codes Display ─────────────────────────────────────────── */}
       {state === 'recovery-codes' && (
         <div>
-          <div
-            style={{
-              backgroundColor: '#FEF3C7',
-              border: '1px solid #FCD34D',
-              borderRadius: '8px',
-              padding: '12px 16px',
-              marginBottom: '16px',
-              fontSize: '14px',
-              color: '#92400E',
-            }}
-          >
-            <strong>Important:</strong> Save these recovery codes in a safe place. Each code can
-            only be used once. You won&apos;t see them again.
-          </div>
+          <Alert variant="warning" className="mb-4" title="Important">
+            Save these recovery codes in a safe place. Each code can only be used once. You
+            won&apos;t see them again.
+          </Alert>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '8px',
-              marginBottom: '16px',
-              padding: '16px',
-              backgroundColor: '#F9FAFB',
-              borderRadius: '8px',
-              fontFamily: 'monospace',
-              fontSize: '14px',
-            }}
-          >
+          <div className="mb-4 grid grid-cols-2 gap-2 rounded-lg bg-background-secondary p-4 font-mono text-sm">
             {recoveryCodes.map((code, i) => (
-              <div key={i} style={{ padding: '4px 8px', color: '#374151' }}>
+              <div key={i} className="px-2 py-1 text-foreground">
                 {code}
               </div>
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="flex gap-2">
             <Button onClick={handleDownloadCodes} variant="outline">
               Download Codes
             </Button>
@@ -333,75 +265,37 @@ export default function MfaSettings() {
       {/* ── Enabled: MFA is active ─────────────────────────────────────────── */}
       {state === 'enabled' && (
         <div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginBottom: '16px',
-              color: '#16A34A',
-              fontSize: '14px',
-              fontWeight: 500,
-            }}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
+          <div className="mb-4 flex items-center gap-2 text-sm font-medium text-success">
+            <ShieldCheck className="size-5" aria-hidden="true" />
             Two-factor authentication is enabled
           </div>
 
           {/* Disable / regenerate section */}
-          <div
-            style={{
-              borderTop: '1px solid #E5E7EB',
-              paddingTop: '16px',
-              marginTop: '16px',
-            }}
-          >
-            <p style={{ fontSize: '14px', color: '#6B7280', marginBottom: '12px' }}>
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="mb-3 text-sm text-text-secondary">
               To disable two-factor authentication or regenerate recovery codes, first request a
               verification code sent to your email:
             </p>
 
             {/* Send code button with cooldown */}
-            <div style={{ marginBottom: '12px' }}>
+            <div className="mb-3">
               {disableCooldown > 0 ? (
-                <span style={{ fontSize: '13px', color: '#94A3B8' }}>
-                  Resend in {disableCooldown}s
-                </span>
+                <span className="text-[13px] text-text-tertiary">Resend in {disableCooldown}s</span>
               ) : (
                 <button
                   onClick={handleSendDisableCode}
                   disabled={loading}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#4F46E5',
-                    fontSize: '13px',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    padding: 0,
-                    textDecoration: 'underline',
-                  }}
+                  className={`border-none bg-transparent p-0 text-[13px] text-primary underline ${
+                    loading ? 'cursor-not-allowed' : 'cursor-pointer'
+                  }`}
                 >
                   {loading ? 'Sending...' : 'Send verification code to my email'}
                 </button>
               )}
             </div>
 
-            <div
-              style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flexWrap: 'wrap' }}
-            >
-              <input
+            <div className="flex flex-wrap items-start gap-2">
+              <Input
                 type="text"
                 value={disableCode}
                 onChange={(e) => {
@@ -409,15 +303,7 @@ export default function MfaSettings() {
                   if (error) setError('');
                 }}
                 placeholder="Code or recovery code"
-                style={{
-                  width: '120px',
-                  padding: '8px 12px',
-                  border: '1px solid #D1D5DB',
-                  borderRadius: '6px',
-                  fontSize: '16px',
-                  textAlign: 'center',
-                  letterSpacing: '4px',
-                }}
+                className="w-[120px] text-center text-base tracking-[4px]"
               />
               <Button onClick={handleRegenerateCodes} variant="outline" loading={loading}>
                 New Recovery Codes

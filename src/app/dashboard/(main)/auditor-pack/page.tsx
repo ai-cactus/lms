@@ -1,10 +1,10 @@
 import { redirect } from 'next/navigation';
+import { Circle } from 'lucide-react';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { getAuditorOverviewStats, getAuditorCourses } from '@/app/actions/auditor';
 import AuditorPackClient from '@/components/dashboard/auditor/AuditorPackClient';
 import AuditorBillingGateWrapper from './AuditorBillingGateWrapper';
-import styles from '@/components/dashboard/auditor/auditor-pack.module.css';
 import { logger } from '@/lib/logger';
 
 export const metadata = {
@@ -62,28 +62,29 @@ export default async function AuditorPackPage() {
   return (
     <div>
       {/* Page Header */}
-      <div className={styles.pageHeader}>
-        <h1 className={styles.pageTitle}>Auditor Pack</h1>
-        <p className={styles.pageSubtitle}>Generate a scannable evidence document for auditors.</p>
+      <div className="mb-7">
+        <h1 className="mb-1 text-[28px] font-bold text-foreground">Auditor Pack</h1>
+        <p className="text-sm text-text-tertiary">
+          Generate a scannable evidence document for auditors.
+        </p>
       </div>
 
       {hasAccess ? (
         <>
           {/* Welcome Banner */}
           {showBanner && (
-            <div className={styles.welcomeBanner}>
+            <div className="relative mb-8 flex min-h-[180px] flex-col justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#3a2fd8] px-6 py-8 text-white sm:px-12 sm:py-10">
               {/* Decorative background shapes */}
-              <div className={styles.welcomeBannerDecoration} aria-hidden>
-                <svg width="200" height="200" viewBox="0 0 200 200" fill="none">
-                  <circle cx="120" cy="80" r="70" stroke="white" strokeWidth="40" fill="none" />
-                  <circle cx="160" cy="30" r="40" stroke="white" strokeWidth="25" fill="none" />
-                </svg>
+              <div className="pointer-events-none absolute -right-5 -top-5 opacity-15" aria-hidden>
+                <Circle className="size-48" strokeWidth={20} />
               </div>
-              <p className={styles.welcomeGreeting}>
+              <p className="mb-1.5 text-sm opacity-90">
                 {getGreeting()}, {firstName}!
               </p>
-              <h2 className={styles.welcomeHeading}>Welcome to Your Auditor Workspace!</h2>
-              <p className={styles.welcomeDesc}>
+              <h2 className="mb-2.5 max-w-[540px] text-[28px] font-bold leading-tight">
+                Welcome to Your Auditor Workspace!
+              </h2>
+              <p className="max-w-[480px] text-sm leading-relaxed opacity-85">
                 Generate scannable evidence documents for auditors based on your learning
                 management.
               </p>

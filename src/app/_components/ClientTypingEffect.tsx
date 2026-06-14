@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import styles from './ClientTypingEffect.module.css';
 
 const words = ['documentation.', 'record.'];
 
@@ -53,8 +52,8 @@ export default function ClientTypingEffect() {
   }, [currentText, isDeleting, currentWordIndex, isPaused]);
 
   return (
-    <span className={styles.highlightWrapper}>
-      <span className={styles.cursorLine}></span>
+    <span className="inline-flex items-center">
+      <span className="mx-1 inline-block h-10 w-1 animate-pulse bg-primary align-middle lg:h-12 xl:h-[60px]" />
       <span>{currentText}</span>
     </span>
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import styles from '@/app/onboarding/onboarding.module.css';
+import { Check } from 'lucide-react';
 
 const steps = [
   { id: 1, label: 'Org. details' },
@@ -15,20 +15,18 @@ interface StepperProps {
 
 export default function Stepper({ currentStep }: StepperProps) {
   return (
-    <div className={styles.stepper}>
+    <div className="relative mx-auto mb-8 flex max-w-[700px] md:mb-[60px]">
       <div
-        className={styles.connector}
+        className="absolute top-4 z-0 h-0.5 -translate-y-1/2 bg-background-secondary"
         style={{
           left: `${100 / (steps.length * 2)}%`,
           right: `${100 / (steps.length * 2)}%`,
         }}
       >
         <div
+          className="h-full bg-primary transition-[width] duration-300 ease-in-out"
           style={{
-            height: '100%',
-            background: '#4C6EF5',
             width: `${((currentStep - 1) / (steps.length - 1)) * 100}%`,
-            transition: 'width 0.3s ease',
           }}
         />
       </div>
@@ -36,31 +34,30 @@ export default function Stepper({ currentStep }: StepperProps) {
       {steps.map((step) => {
         const isActive = step.id === currentStep;
         const isCompleted = step.id < currentStep;
+        const isHighlighted = isActive || isCompleted;
 
         return (
-          <div
-            key={step.id}
-            className={`${styles.step} ${isActive ? styles.active : ''} ${isCompleted ? styles.completed : ''}`}
-          >
-            <div className={styles.stepCircle}>
+          <div key={step.id} className="relative z-[1] flex flex-1 flex-col items-center gap-2">
+            <div
+              className={`flex size-8 items-center justify-center rounded-full border text-sm font-semibold shadow-[0_0_0_6px_var(--background-secondary)] ${
+                isHighlighted
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-background text-text-tertiary'
+              } ${isActive ? 'shadow-[0_0_0_6px_var(--background-secondary),0_0_0_10px_rgba(76,110,245,0.1)]' : ''}`}
+            >
               {isCompleted ? (
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
+                <Check className="size-3.5" strokeWidth={2.5} aria-hidden="true" />
               ) : (
                 step.id
               )}
             </div>
-            <span className={styles.stepLabel}>{step.label}</span>
+            <span
+              className={`mt-1 hidden text-[11px] font-medium capitalize md:block ${
+                isHighlighted ? 'text-primary' : 'text-text-tertiary'
+              }`}
+            >
+              {step.label}
+            </span>
           </div>
         );
       })}

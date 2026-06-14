@@ -3,7 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { getCategories, createCustomCategory } from '@/app/actions/categories';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/legacy/Select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { logger } from '@/lib/logger';
 
 interface Category {
@@ -89,11 +95,20 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
           Category <span className="text-primary">*</span>
         </label>
         <Select
-          options={options}
           value={isCreating ? 'custom' : selectedCategoryId}
-          onChange={handleSelectChange}
-          placeholder="Select an option"
-        />
+          onValueChange={handleSelectChange}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select an option" />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {isCreating && (

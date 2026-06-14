@@ -1,6 +1,5 @@
 import { auth } from '@/auth.worker';
 import { prisma } from '@/lib/prisma';
-import styles from '@/components/worker/WorkerDashboard.module.css';
 import WorkerTrainingList from '@/components/worker/WorkerTrainingList';
 
 export default async function WorkerTrainingsPage() {
@@ -55,10 +54,12 @@ export default async function WorkerTrainingsPage() {
   });
 
   return (
-    <div className={styles.container}>
-      <header className={styles.header}>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-8 max-md:gap-5">
+      <header className="flex items-center justify-between">
         <div>
-          <h1 className={styles.welcome}>Assigned Courses</h1>
+          <h1 className="mb-1 text-2xl font-bold text-[#1a202c] max-md:text-xl">
+            Assigned Courses
+          </h1>
         </div>
       </header>
 

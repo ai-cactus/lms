@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useRef, useState, DragEvent, ChangeEvent } from 'react';
-import styles from './FileUpload.module.css';
+import { Upload } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface FileUploadProps {
   onFilesSelected: (files: File[]) => void;
@@ -67,9 +68,16 @@ export default function FileUpload({
   };
 
   return (
-    <div className={styles.container}>
+    <div className="flex flex-col gap-2">
       <div
-        className={`${styles.dropzone} ${isDragging ? styles.active : ''} ${error ? styles.error : ''}`}
+        className={cn(
+          'flex min-h-[200px] cursor-pointer items-center justify-center rounded-xl border border-dashed p-10 transition-all',
+          error
+            ? 'border-destructive bg-error/5'
+            : isDragging
+              ? 'scale-[0.995] border-primary bg-primary/5'
+              : 'border-input bg-background-secondary hover:border-primary hover:bg-primary/5',
+        )}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -79,38 +87,25 @@ export default function FileUpload({
         <input
           type="file"
           ref={fileInputRef}
-          className={styles.hiddenInput}
+          className="hidden"
           accept={accept}
           multiple={multiple}
           onChange={handleFileInputChange}
         />
 
-        <div className={styles.content}>
-          <div className={styles.iconWrapper}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="mb-2 flex size-12 items-center justify-center rounded-full bg-accent text-text-secondary">
+            <Upload className="size-6" aria-hidden="true" />
           </div>
-          <p className={styles.text}>
-            Drop your files here or <span className={styles.link}>Click to upload</span>
+          <p className="text-sm font-medium text-text-secondary">
+            Drop your files here or <span className="text-primary underline">Click to upload</span>
           </p>
-          <p className={styles.subtext}>
+          <p className="text-xs text-text-tertiary">
             {description || 'PDF, DOCX, JPG, PNG. You may upload multiple files.'}
           </p>
         </div>
       </div>
-      {error && <p className={styles.errorMessage}>{error}</p>}
+      {error && <p className="ml-1 text-xs text-error">{error}</p>}
     </div>
   );
 }

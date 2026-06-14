@@ -5,15 +5,13 @@ import { Logo } from '@/components/ui';
 export default function OnboardingWorkerLayout({ children }: { children: React.ReactNode }) {
   return (
     <WorkerSessionProvider>
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <header
-          style={{ padding: '24px', borderBottom: '1px solid #E5E7EB', backgroundColor: 'white' }}
-        >
-          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div className="flex min-h-screen flex-col">
+        <header className="border-b border-border bg-background p-6">
+          <div className="mx-auto max-w-[1200px]">
             <Logo variant="blue" />
           </div>
         </header>
-        <main style={{ flex: 1, backgroundColor: '#F9FAFB' }}>{children}</main>
+        <main className="flex-1 bg-background-secondary">{children}</main>
       </div>
     </WorkerSessionProvider>
   );
