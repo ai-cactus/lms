@@ -25,8 +25,18 @@ export async function getAvailableUsers() {
     throw new Error('Unauthorized');
   }
 
-  // Get all users with worker role
+  // Restrict to the caller's own organization — never return users from other tenants.
+  const caller = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { organizationId: true },
+  });
+  if (!caller?.organizationId) {
+    return [];
+  }
+
+  // Get all users within the caller's organization
   const users = await prisma.user.findMany({
+    where: { organizationId: caller.organizationId },
     include: {
       profile: true,
     },

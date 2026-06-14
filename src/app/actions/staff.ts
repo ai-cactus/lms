@@ -110,8 +110,17 @@ export async function updateStaffDetails(
   },
 ) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
     return { success: false, error: 'Unauthorized' };
+  }
+
+  // Tenant isolation: an admin may only edit users that belong to their own org.
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { organizationId: true },
+  });
+  if (!target || target.organizationId !== session.user.organizationId) {
+    return { success: false, error: 'Forbidden' };
   }
 
   try {

@@ -1,6 +1,21 @@
 import nodemailer from 'nodemailer';
 import { logger } from './logger';
 
+/**
+ * Escape a string for safe interpolation into HTML email bodies.
+ * Defense-in-depth: prevents user-supplied values (names, org names, course
+ * titles, free-text form fields, …) from injecting markup into the rendered
+ * email. Apply to HTML bodies only — never to subject lines or filenames.
+ */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const user = process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
 const pass = process.env.SMTP_PASSWORD || process.env.ZOHO_MAIL_PASSWORD;
 const host = process.env.SMTP_HOST || 'smtp.zoho.com';
@@ -36,7 +51,7 @@ export async function sendInviteEmail(
   const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #4C6EF5;">You've been invited!</h2>
-            <p><strong>${orgName}</strong> has invited you to join their team as a <strong>${role}</strong>.</p>
+            <p><strong>${escapeHtml(orgName)}</strong> has invited you to join their team as a <strong>${escapeHtml(role)}</strong>.</p>
             <p>Click the link below to accept the invitation and set up your account:</p>
             <a href="${inviteLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 16px;">Accept Invitation</a>
             <p style="margin-top: 24px; font-size: 12px; color: #718096;">Link expires in 7 days.</p>
@@ -186,14 +201,14 @@ export const sendCourseInviteEmail = async (
                 <h1 style="color: #4C6EF5; font-size: 28px; margin: 0;">You've been assigned a course!</h1>
             </div>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
-                <strong>${orgName}</strong> has assigned you the course: <strong>${courseName}</strong>
+                <strong>${escapeHtml(orgName)}</strong> has assigned you the course: <strong>${escapeHtml(courseName)}</strong>
             </p>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
                 An account has been created for you. Use the credentials below to log in and start your training:
             </p>
             <div style="background: #f7fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
-                <p style="margin: 0 0 8px 0; color: #4a5568;"><strong>Email:</strong> ${email}</p>
-                <p style="margin: 0; color: #4a5568;"><strong>Temporary Password:</strong> <code style="background: #edf2f7; padding: 4px 8px; border-radius: 4px;">${password}</code></p>
+                <p style="margin: 0 0 8px 0; color: #4a5568;"><strong>Email:</strong> ${escapeHtml(email)}</p>
+                <p style="margin: 0; color: #4a5568;"><strong>Temporary Password:</strong> <code style="background: #edf2f7; padding: 4px 8px; border-radius: 4px;">${escapeHtml(password)}</code></p>
             </div>
             <p style="color: #718096; font-size: 14px;">
                 We recommend changing your password after your first login.
@@ -239,13 +254,13 @@ export const sendCourseEnrollmentEmail = async (
                 <h1 style="color: #4C6EF5; font-size: 28px; margin: 0;">You've been assigned a new course!</h1>
             </div>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
-                Hi <strong>${userName}</strong>,
+                Hi <strong>${escapeHtml(userName)}</strong>,
             </p>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
-                <strong>${orgName}</strong> has assigned you a new training course:
+                <strong>${escapeHtml(orgName)}</strong> has assigned you a new training course:
             </p>
             <div style="background: #f7fafc; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center;">
-                <h3 style="margin: 0; color: #2D3748; font-size: 20px;">${courseName}</h3>
+                <h3 style="margin: 0; color: #2D3748; font-size: 20px;">${escapeHtml(courseName)}</h3>
             </div>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
                 Please log in to your account to start this course.
@@ -291,10 +306,10 @@ export async function sendQuizLockedEmail(
                 A worker has exhausted all quiz attempts and requires a retake assignment:
             </p>
             <div style="background: #FFF5F5; border-left: 4px solid #E53E3E; border-radius: 8px; padding: 20px; margin: 24px 0;">
-                <p style="margin: 4px 0;"><strong>Worker:</strong> ${workerName}</p>
-                <p style="margin: 4px 0;"><strong>Course:</strong> ${courseName}</p>
-                <p style="margin: 4px 0;"><strong>Quiz:</strong> ${quizTitle}</p>
-                <p style="margin: 4px 0;"><strong>Attempts Used:</strong> ${attemptsUsed}</p>
+                <p style="margin: 4px 0;"><strong>Worker:</strong> ${escapeHtml(workerName)}</p>
+                <p style="margin: 4px 0;"><strong>Course:</strong> ${escapeHtml(courseName)}</p>
+                <p style="margin: 4px 0;"><strong>Quiz:</strong> ${escapeHtml(quizTitle)}</p>
+                <p style="margin: 4px 0;"><strong>Attempts Used:</strong> ${escapeHtml(attemptsUsed)}</p>
             </div>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
                 Please review and assign a retake if appropriate.
@@ -386,9 +401,9 @@ export async function sendEnterpriseInquiryEmail({
         <h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Contact Details</h2>
         <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
           <tbody>
-            ${row('Full Name', contactName)}
-            ${row('Work Email', `<a href="mailto:${workEmail}" style="color: #4C6EF5;">${workEmail}</a>`)}
-            ${row('Job Title', jobTitle)}
+            ${row('Full Name', escapeHtml(contactName))}
+            ${row('Work Email', `<a href="mailto:${encodeURIComponent(workEmail)}" style="color: #4C6EF5;">${escapeHtml(workEmail)}</a>`)}
+            ${row('Job Title', escapeHtml(jobTitle))}
           </tbody>
         </table>
 
@@ -396,11 +411,11 @@ export async function sendEnterpriseInquiryEmail({
         <h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Organization Details</h2>
         <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
           <tbody>
-            ${row('Organization', organizationName)}
-            ${row('DB Org (session)', orgName !== organizationName ? orgName : '')}
-            ${row('Facility Type', facilityType)}
-            ${row('No. of Facilities', numberOfFacilities)}
-            ${row('No. of Staff', numberOfStaff)}
+            ${row('Organization', escapeHtml(organizationName))}
+            ${row('DB Org (session)', orgName !== organizationName ? escapeHtml(orgName) : '')}
+            ${row('Facility Type', escapeHtml(facilityType))}
+            ${row('No. of Facilities', escapeHtml(numberOfFacilities))}
+            ${row('No. of Staff', escapeHtml(numberOfStaff))}
           </tbody>
         </table>
 
@@ -408,8 +423,8 @@ export async function sendEnterpriseInquiryEmail({
         <h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Training Context</h2>
         <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
           <tbody>
-            ${row('Current Accreditation', currentAccreditation)}
-            ${row('Current Training Method', currentTrainingMethod)}
+            ${row('Current Accreditation', escapeHtml(currentAccreditation))}
+            ${row('Current Training Method', escapeHtml(currentTrainingMethod))}
           </tbody>
         </table>
 
@@ -418,16 +433,16 @@ export async function sendEnterpriseInquiryEmail({
           primaryPainPoint
             ? `<h2 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; margin: 0 0 12px 0;">Primary Pain Point</h2>
                <div style="background: #f8fafc; border-left: 4px solid #4C6EF5; border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 24px;">
-                 <p style="margin: 0; color: #2d3748; line-height: 1.6;">${primaryPainPoint}</p>
+                 <p style="margin: 0; color: #2d3748; line-height: 1.6;">${escapeHtml(primaryPainPoint)}</p>
                </div>`
             : ''
         }
 
         <!-- CTA -->
         <div style="text-align: center; margin-top: 8px;">
-          <a href="mailto:${replyToEmail}"
+          <a href="mailto:${encodeURIComponent(replyToEmail)}"
              style="display: inline-block; background: #4C6EF5; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">
-            Reply to ${contactName}
+            Reply to ${escapeHtml(contactName)}
           </a>
         </div>
       </div>
@@ -460,13 +475,13 @@ export async function sendStaffRemovedEmail(email: string, orgName: string) {
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
       <h2 style="color: #4C6EF5;">Account Update</h2>
       <p style="color: #333; font-size: 16px; line-height: 1.6;">
-        This is to inform you that your account has been disconnected from <strong>${orgName}</strong> on ${appName}.
+        This is to inform you that your account has been disconnected from <strong>${escapeHtml(orgName)}</strong> on ${appName}.
       </p>
       <p style="color: #333; font-size: 16px; line-height: 1.6;">
         You will no longer be able to access the courses or dashboard associated with this organization.
       </p>
       <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
-        If you believe this was a mistake, please contact your administrator at ${orgName}.
+        If you believe this was a mistake, please contact your administrator at ${escapeHtml(orgName)}.
       </p>
     </div>
   `;
@@ -495,7 +510,7 @@ export async function sendStaffRemovalConfirmationEmail(
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
       <h2 style="color: #4C6EF5;">Staff Removal Confirmed</h2>
       <p style="color: #333; font-size: 16px; line-height: 1.6;">
-        This email confirms that <strong>${staffName}</strong> has been successfully removed from your organization, <strong>${orgName}</strong>.
+        This email confirms that <strong>${escapeHtml(staffName)}</strong> has been successfully removed from your organization, <strong>${escapeHtml(orgName)}</strong>.
       </p>
       <p style="color: #718096; font-size: 12px; margin-top: 32px;">
         This is an automated confirmation from ${appName}.
@@ -547,12 +562,12 @@ export async function sendDemoRequestEmail(data: {
         </p>
         <table style="width: 100%; border-collapse: collapse; margin-top: 24px;">
           <tbody>
-            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568; width: 35%;">Name</td><td style="padding: 8px 0; color: #2d3748;">${data.fullName}</td></tr>
-            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Email</td><td style="padding: 8px 0;"><a href="mailto:${data.email}" style="color: #4C6EF5;">${data.email}</a></td></tr>
-            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Organization</td><td style="padding: 8px 0; color: #2d3748;">${data.organizationName}</td></tr>
-            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Role</td><td style="padding: 8px 0; color: #2d3748;">${data.role}</td></tr>
-            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568; vertical-align: top;">Challenges</td><td style="padding: 8px 0; color: #2d3748;">${data.helpUs}</td></tr>
-            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Preferred Time</td><td style="padding: 8px 0; color: #2d3748;">${data.demoTime}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568; width: 35%;">Name</td><td style="padding: 8px 0; color: #2d3748;">${escapeHtml(data.fullName)}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Email</td><td style="padding: 8px 0;"><a href="mailto:${encodeURIComponent(data.email)}" style="color: #4C6EF5;">${escapeHtml(data.email)}</a></td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Organization</td><td style="padding: 8px 0; color: #2d3748;">${escapeHtml(data.organizationName)}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Role</td><td style="padding: 8px 0; color: #2d3748;">${escapeHtml(data.role)}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568; vertical-align: top;">Challenges</td><td style="padding: 8px 0; color: #2d3748;">${escapeHtml(data.helpUs)}</td></tr>
+            <tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568;">Preferred Time</td><td style="padding: 8px 0; color: #2d3748;">${escapeHtml(data.demoTime)}</td></tr>
           </tbody>
         </table>
       </div>
@@ -604,7 +619,7 @@ export async function sendUserActivityReportEmail(
       </div>
       <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; padding: 28px 32px;">
         <p style="color: #333; font-size: 15px; line-height: 1.6; margin-top: 0;">
-          Please find attached the learning activity report for <strong>${staffName}</strong> from <strong>${orgName}</strong>.
+          Please find attached the learning activity report for <strong>${escapeHtml(staffName)}</strong> from <strong>${escapeHtml(orgName)}</strong>.
         </p>
         <p style="color: #333; font-size: 15px; line-height: 1.6;">
           The report contains course assignments, grades, and completion dates for all enrolled courses.
@@ -662,7 +677,7 @@ export async function sendAuditorPackPdfEmail(
       </div>
       <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; padding: 28px 32px;">
         <p style="color: #333; font-size: 15px; line-height: 1.6; margin-top: 0;">
-          Your auditor pack export for <strong>${orgName}</strong> is attached.
+          Your auditor pack export for <strong>${escapeHtml(orgName)}</strong> is attached.
         </p>
         <p style="color: #333; font-size: 15px; line-height: 1.6;">
           The document contains all staff learning activity, grades, completion dates, and course categories

@@ -20,9 +20,40 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Missing jobId' }, { status: 400 });
     }
 
+    // ── Authorization: caller must be an admin of an org with the paid auditor
+    //    feature enabled (mirrors POST /api/auditor/export).
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true, organizationId: true },
+    });
+    if (!user || user.role !== 'admin' || !user.organizationId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const org = await prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { name: true, hasAuditorAccess: true },
+    });
+    if (!org?.hasAuditorAccess) {
+      return NextResponse.json({ error: 'Auditor access not enabled' }, { status: 403 });
+    }
+
     const job = await prisma.job.findUnique({ where: { id: jobId } });
     if (!job || job.status !== 'completed') {
       return NextResponse.json({ error: 'Job not ready or not found' }, { status: 404 });
+    }
+
+    // Tenant isolation: the job must belong to a user in the caller's org.
+    if (job.userId) {
+      const jobOwner = await prisma.user.findUnique({
+        where: { id: job.userId },
+        select: { organizationId: true },
+      });
+      if (jobOwner?.organizationId !== user.organizationId) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     let compiledData: Record<string, unknown>[] = [];
@@ -32,10 +63,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Invalid job result formatting' }, { status: 500 });
     }
 
-    const org = await prisma.organization.findFirst({
-      where: { users: { some: { id: session.user.id } } },
-    });
-    const orgName = org?.name || 'Organization';
+    const orgName = org.name || 'Organization';
     const timestamp = new Date().toISOString().split('T')[0];
 
     if (format === 'csv') {

@@ -17,7 +17,11 @@ import { useRouter } from 'next/navigation';
 interface InviteStaffModalProps {
   isOpen: boolean;
   onClose: () => void;
-  organizationId: string;
+  /**
+   * @deprecated No longer used — the target organization is derived server-side
+   * from the authenticated admin session. Kept optional for caller compatibility.
+   */
+  organizationId?: string;
   /** Seats remaining under the current plan. null = unlimited (enterprise). */
   remainingSeats: number | null;
   planName: string;
@@ -26,7 +30,6 @@ interface InviteStaffModalProps {
 export default function InviteStaffModal({
   isOpen,
   onClose,
-  organizationId,
   remainingSeats,
   planName,
 }: InviteStaffModalProps) {
@@ -82,7 +85,7 @@ export default function InviteStaffModal({
     setMessage(null);
 
     try {
-      const result = await createInvites(finalEmails, 'worker', organizationId);
+      const result = await createInvites(finalEmails);
 
       if (result.success) {
         // Analyze results
