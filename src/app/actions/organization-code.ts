@@ -1,15 +1,18 @@
 'use server';
 
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { logger } from '@/lib/logger';
+import { headers } from 'next/headers';
+import { checkRateLimit } from '@/lib/rate-limit';
 
-// Helper to generate a random 6-digit code
+// Helper to generate a cryptographically-random 6-digit code
 function generateCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
 export async function generateOrganizationCode() {
@@ -93,6 +96,16 @@ export async function getOrganizationCode() {
 
 export async function verifyOrganizationCode(code: string) {
   try {
+    // Throttle code-guessing: 10 attempts per 15 minutes per client IP.
+    // Prevents brute-forcing the 6-digit join code space.
+    const hdrs = await headers();
+    const ip =
+      hdrs.get('x-forwarded-for')?.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown';
+    const { allowed } = await checkRateLimit(`org-code-verify:${ip}`, 10, 900);
+    if (!allowed) {
+      return { success: false, error: 'Too many attempts. Please try again later.' };
+    }
+
     const org = await prisma.organization.findUnique({
       where: { joinCode: code },
       select: {

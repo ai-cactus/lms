@@ -39,10 +39,17 @@ export async function GET(
       return new Response('Failed to fetch document from storage', { status: response.status });
     }
 
+    // Sanitize the user-controlled filename before placing it in the header so a
+    // quote / control char can't break out of the Content-Disposition value.
+    // Provide an RFC 5987 filename* for full-fidelity names and an ASCII fallback.
+    const rawName = version.document.filename || 'document';
+    const asciiName = rawName.replace(/[^\w.\- ]/g, '_');
+    const encodedName = encodeURIComponent(rawName);
+
     return new Response(response.body, {
       headers: {
         'Content-Type': version.document.mimeType,
-        'Content-Disposition': `inline; filename="${version.document.filename}"`,
+        'Content-Disposition': `inline; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
       },
     });
   } catch (err: unknown) {
