@@ -58,6 +58,7 @@ export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabili
 
   const courses = await prisma.course.findMany({
     where: { type: 'video', isGlobal: true, status: 'published' },
+    orderBy: { createdAt: 'desc' },
     include: {
       lessons: {
         include: {

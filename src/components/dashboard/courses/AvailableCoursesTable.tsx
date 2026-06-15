@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Table,
@@ -17,7 +18,7 @@ import ShareCourseModal from '@/components/dashboard/training/ShareCourseModal';
 import { offerCourseToOrg } from '@/app/actions/offering';
 import type { VideoCourseAvailabilityRow } from '@/app/actions/offering';
 import { logger } from '@/lib/logger';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronRight } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -167,6 +168,17 @@ export default function AvailableCoursesTable({ courses }: AvailableCoursesTable
             })}
           </TableBody>
         </Table>
+      </div>
+
+      {/* View all → deep-link to the "Available Video Courses" tab */}
+      <div className="flex justify-end">
+        <Link
+          href="/dashboard/courses?tab=available"
+          className="flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+        >
+          View all
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </Link>
       </div>
 
       {/* Assign staff modal */}
