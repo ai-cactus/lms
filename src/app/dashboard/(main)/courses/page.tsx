@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
@@ -52,11 +52,13 @@ export default async function CoursesPage() {
   ]);
 
   return (
-    <CoursesPageTabs
-      courses={courses}
-      hasBilling={hasBilling}
-      availableCourses={availableCourses}
-      offeredCourses={offeredCourses}
-    />
+    <Suspense fallback={null}>
+      <CoursesPageTabs
+        courses={courses}
+        hasBilling={hasBilling}
+        availableCourses={availableCourses}
+        offeredCourses={offeredCourses}
+      />
+    </Suspense>
   );
 }
