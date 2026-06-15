@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import ShareCourseModal from '@/components/dashboard/training/ShareCourseModal';
 import type { OfferedVideoCourseRow } from '@/app/actions/offering';
-import { Users } from 'lucide-react';
+import { Users, ChevronRight } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,14 +59,6 @@ export default function OfferedCoursesTable({ courses, maxItems = 5 }: OfferedCo
             Global training you&apos;ve offered to your staff
           </p>
         </div>
-        {courses.length > maxItems && (
-          <Link
-            href="/dashboard/courses"
-            className="shrink-0 text-sm font-medium text-primary hover:underline"
-          >
-            View all
-          </Link>
-        )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
@@ -115,6 +107,17 @@ export default function OfferedCoursesTable({ courses, maxItems = 5 }: OfferedCo
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      {/* View all → deep-link to the "Offered Video Courses" tab */}
+      <div className="flex justify-end">
+        <Link
+          href="/dashboard/courses?tab=video"
+          className="flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+        >
+          View all
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </Link>
       </div>
 
       {shareModal.courseId && (
