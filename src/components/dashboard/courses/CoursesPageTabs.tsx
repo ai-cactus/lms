@@ -5,25 +5,22 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import CoursesListClient from '@/components/dashboard/courses/CoursesListClient';
 import AvailableCoursesClient from '@/components/dashboard/courses/AvailableCoursesClient';
-import OfferedCoursesClient from '@/components/dashboard/courses/OfferedCoursesClient';
 import type { CourseWithStats } from '@/types/course';
-import type { VideoCourseAvailabilityRow, OfferedVideoCourseRow } from '@/app/actions/offering';
+import type { VideoCourseAvailabilityRow } from '@/app/actions/offering';
 
 interface CoursesPageTabsProps {
   courses: CourseWithStats[];
   hasBilling: boolean;
   availableCourses: VideoCourseAvailabilityRow[];
-  offeredCourses: OfferedVideoCourseRow[];
 }
 
 // Tab values are kept stable for deep-linking (?tab=...) even though the
 // visible labels are more descriptive.
-const TAB_VALUES = ['mine', 'video', 'available'] as const;
+const TAB_VALUES = ['mine', 'available'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 const TAB_LABELS: { value: TabValue; label: string }[] = [
   { value: 'mine', label: 'My Courses' },
-  { value: 'video', label: 'Offered Video Courses' },
   { value: 'available', label: 'Available Video Courses' },
 ];
 
@@ -35,7 +32,6 @@ export default function CoursesPageTabs({
   courses,
   hasBilling,
   availableCourses,
-  offeredCourses,
 }: CoursesPageTabsProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -76,10 +72,6 @@ export default function CoursesPageTabs({
 
       <TabsContent value="mine">
         <CoursesListClient courses={courses} hasBilling={hasBilling} />
-      </TabsContent>
-
-      <TabsContent value="video">
-        <OfferedCoursesClient courses={offeredCourses} />
       </TabsContent>
 
       <TabsContent value="available">

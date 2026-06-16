@@ -24,16 +24,51 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     throw new Error('Unauthorized');
   }
 
-  const courses = await prisma.course.findMany({
-    where: { createdBy: session.user.id },
-    include: {
-      lessons: { select: { id: true } },
-      enrollments: { select: { status: true } },
-    },
-    orderBy: { createdAt: 'desc' },
+  const currentUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { organizationId: true },
   });
 
-  return courses.map((course) => ({
+  const [ownCourses, offerings] = await Promise.all([
+    prisma.course.findMany({
+      where: { createdBy: session.user.id },
+      include: {
+        lessons: { select: { id: true } },
+        enrollments: { select: { status: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    currentUser?.organizationId
+      ? prisma.orgCourseOffering.findMany({
+          where: { organizationId: currentUser.organizationId },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            course: {
+              include: {
+                lessons: { select: { id: true } },
+                enrollments: {
+                  where: { user: { organizationId: currentUser.organizationId } },
+                  select: { status: true },
+                },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const toStats = (course: {
+    id: string;
+    title: string;
+    description: string | null;
+    thumbnail: string | null;
+    status: string;
+    duration: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+    lessons: { id: string }[];
+    enrollments: { status: string }[];
+  }): CourseWithStats => ({
     id: course.id,
     title: course.title,
     description: course.description,
@@ -53,7 +88,14 @@ export async function getCourses(): Promise<CourseWithStats[]> {
               100,
           )
         : 0,
-  }));
+  });
+
+  const own = ownCourses.map(toStats);
+  const adopted = offerings.map((o) => toStats(o.course));
+
+  // De-dupe in case the admin both created and adopted the same course id.
+  const seen = new Set(own.map((c) => c.id));
+  return [...own, ...adopted.filter((c) => !seen.has(c.id))];
 }
 
 // Get single course by ID with lessons
@@ -66,6 +108,22 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   const course = await prisma.course.findUnique({
     where: { id: courseId },
     include: {
+      modules: {
+        orderBy: { order: 'asc' },
+        include: {
+          lessons: {
+            orderBy: { order: 'asc' },
+            include: {
+              quiz: {
+                include: { questions: { orderBy: { order: 'asc' } } },
+              },
+            },
+          },
+        },
+      },
+      quiz: {
+        include: { questions: { orderBy: { order: 'asc' } } },
+      },
       lessons: {
         orderBy: { order: 'asc' },
         include: {

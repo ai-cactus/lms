@@ -8,6 +8,13 @@ import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
+import type { RenewalCycle } from '@prisma/client';
+
+export interface AssignmentSettingsInput {
+  scheduleAt?: string | Date | null;
+  renewalCycle?: RenewalCycle;
+  reminders?: { offsetMinutes: number; channel?: string }[];
+}
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -63,7 +70,11 @@ export async function getAvailableUsers() {
  * - New users: account is created (with profile hydrated from CSV fields),
  *   a temporary password is issued, and a course invite email is sent.
  */
-export async function enrollUsers(courseId: string, staffEntries: StaffEntry[]) {
+export async function enrollUsers(
+  courseId: string,
+  staffEntries: StaffEntry[],
+  assignmentSettings?: AssignmentSettingsInput,
+) {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -102,6 +113,33 @@ export async function enrollUsers(courseId: string, staffEntries: StaffEntry[]) 
 
   if (!course || (!isOwnCourse && !isOfferedGlobal)) {
     throw new Error('Course not found');
+  }
+
+  // Create a CourseAssignment batch to hold this assignment's schedule /
+  // renewal / reminder settings. Workers in this call share these settings;
+  // a later assignment creates a separate batch.
+  const scheduleAt =
+    assignmentSettings?.scheduleAt != null ? new Date(assignmentSettings.scheduleAt) : null;
+  let assignmentId: string | null = null;
+  if (organizationId) {
+    const assignment = await prisma.courseAssignment.create({
+      data: {
+        organizationId,
+        courseId,
+        assignedByAdminId: session.user.id,
+        scheduleAt,
+        renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
+        reminders: assignmentSettings?.reminders?.length
+          ? {
+              create: assignmentSettings.reminders.map((r) => ({
+                offsetMinutes: r.offsetMinutes,
+                channel: r.channel ?? 'email',
+              })),
+            }
+          : undefined,
+      },
+    });
+    assignmentId = assignment.id;
   }
 
   const results = {
@@ -250,6 +288,8 @@ export async function enrollUsers(courseId: string, staffEntries: StaffEntry[]) 
         courseId,
         status: 'enrolled',
         progress: 0,
+        assignmentId: assignmentId ?? undefined,
+        accessAt: scheduleAt ?? undefined,
       },
     });
 

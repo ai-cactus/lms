@@ -49,7 +49,9 @@ RUN npm run build
 # ──────────────────────────────────────────────────────────────────────────────
 FROM node:20-slim AS runner
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl curl poppler-utils \
+# ffmpeg: required by the video-transcode worker to normalize uploaded course
+# videos to a web-safe, faststart MP4 (scripts/transcode-worker.mjs).
+RUN apt-get update && apt-get install -y --no-install-recommends openssl curl poppler-utils ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

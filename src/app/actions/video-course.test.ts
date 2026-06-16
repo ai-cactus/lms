@@ -1,93 +1,136 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Use vi.hoisted so these are available inside the hoisted vi.mock factories.
-const { tx, mockTransaction, mockVerify, mockGetSystemUser, mockRevalidate } = vi.hoisted(() => {
-  const courseCreate = vi.fn();
-  const lessonCreate = vi.fn();
-  const quizCreate = vi.fn();
-  const questionCreateMany = vi.fn();
-  const tx = {
-    course: { create: courseCreate },
-    lesson: { create: lessonCreate },
-    quiz: { create: quizCreate },
-    question: { createMany: questionCreateMany },
-  };
-  const mockTransaction = vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx));
-  const mockVerify = vi.fn().mockResolvedValue(true);
-  const mockGetSystemUser = vi.fn().mockResolvedValue({ id: 'sys-1' });
-  const mockRevalidate = vi.fn();
-  return { tx, mockTransaction, mockVerify, mockGetSystemUser, mockRevalidate };
-});
+const {
+  mockVerify,
+  mockGetSystemUser,
+  mockTransaction,
+  mockRevalidate,
+  mockEnqueueTranscode,
+  txCourseCreate,
+  txModuleCreate,
+  txLessonCreate,
+  txQuizCreate,
+  txQuestionCreateMany,
+} = vi.hoisted(() => ({
+  mockVerify: vi.fn(),
+  mockGetSystemUser: vi.fn(),
+  mockTransaction: vi.fn(),
+  mockRevalidate: vi.fn(),
+  mockEnqueueTranscode: vi.fn(),
+  txCourseCreate: vi.fn(),
+  txModuleCreate: vi.fn(),
+  txLessonCreate: vi.fn(),
+  txQuizCreate: vi.fn(),
+  txQuestionCreateMany: vi.fn(),
+}));
 
-vi.mock('@/lib/prisma', () => ({ prisma: { $transaction: mockTransaction } }));
+// Mock the transcode queue so the dynamic import in createVideoCourse never
+// touches Redis during unit tests.
+vi.mock('@/lib/queue/video-transcode-queue', () => ({
+  enqueueVideoTranscode: mockEnqueueTranscode,
+}));
+
+vi.mock('@/lib/prisma', () => ({
+  prisma: { $transaction: mockTransaction },
+}));
 vi.mock('@/lib/system-auth', () => ({ verifySystemAdminCookie: mockVerify }));
 vi.mock('@/lib/video/system-user', () => ({ getOrCreateSystemUser: mockGetSystemUser }));
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));
+vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
 
 import { createVideoCourse } from './video-course';
 
 beforeEach(() => {
-  tx.course.create.mockReset();
-  tx.lesson.create.mockReset();
-  tx.quiz.create.mockReset();
-  tx.question.createMany.mockReset();
-  mockTransaction.mockClear();
+  vi.clearAllMocks();
   mockVerify.mockResolvedValue(true);
-  mockGetSystemUser.mockResolvedValue({ id: 'sys-1' });
-  mockRevalidate.mockClear();
+  mockGetSystemUser.mockResolvedValue({ id: 'system-user' });
+  txCourseCreate.mockResolvedValue({ id: 'course-1' });
+  txModuleCreate.mockResolvedValue({ id: 'module-1' });
+  txLessonCreate.mockResolvedValue({ id: 'lesson-1' });
+  txQuizCreate.mockResolvedValue({ id: 'quiz-1' });
+  mockTransaction.mockImplementation(async (cb) =>
+    cb({
+      course: { create: txCourseCreate },
+      courseModule: { create: txModuleCreate },
+      lesson: { create: txLessonCreate },
+      quiz: { create: txQuizCreate },
+      question: { createMany: txQuestionCreateMany },
+    }),
+  );
 });
 
 describe('createVideoCourse', () => {
-  it('creates a global video Course owned by the System user with a video lesson + quiz', async () => {
-    tx.course.create.mockResolvedValue({ id: 'c1' });
-    tx.lesson.create.mockResolvedValue({ id: 'l1' });
-    tx.quiz.create.mockResolvedValue({ id: 'qz1' });
-
-    const res = await createVideoCourse({
-      title: 'HIPAA',
+  it('persists modules, lectures, and a course-level quiz', async () => {
+    const result = await createVideoCourse({
+      title: 'Health & Safety',
+      overview: 'Long overview',
+      skillLevel: 'beginner',
       passingScore: 80,
-      allowedAttempts: 2,
-      videoStorageUri: 'gcs://b/v.mp4',
-      videoDurationSeconds: 600,
-      quiz: {
-        questions: [{ text: 'Q', options: ['a', 'b'], correctAnswer: 'a', order: 0 }],
-      },
+      allowedAttempts: 1,
+      previewVideoStorageUri: 'minio://preview.mp4',
+      previewVideoDurationSeconds: 45,
+      modules: [
+        {
+          title: 'Chapter 1',
+          order: 0,
+          lectures: [
+            {
+              title: 'Intro',
+              order: 0,
+              videoStorageUri: 'minio://l1.mp4',
+              videoDurationSeconds: 90,
+            },
+          ],
+        },
+      ],
+      quiz: { questions: [{ text: 'Q1', options: ['a', 'b'], correctAnswer: 'a', order: 0 }] },
     });
 
-    expect(res.courseId).toBe('c1');
+    expect(result).toEqual({ courseId: 'course-1' });
+    expect(txCourseCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          overview: 'Long overview',
+          skillLevel: 'beginner',
+          previewVideoStorageUri: 'minio://preview.mp4',
+          type: 'video',
+          isGlobal: true,
+        }),
+      }),
+    );
+    expect(txModuleCreate).toHaveBeenCalledTimes(1);
+    expect(txLessonCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ moduleId: 'module-1' }) }),
+    );
+    expect(txQuizCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ courseId: 'course-1' }) }),
+    );
 
-    const courseArg = tx.course.create.mock.calls[0][0].data;
-    expect(courseArg).toMatchObject({
-      type: 'video',
-      isGlobal: true,
-      createdBy: 'sys-1',
-      status: 'published',
+    // A transcode job is enqueued for each source video: the one lecture + the preview.
+    expect(mockEnqueueTranscode).toHaveBeenCalledWith({
+      targetType: 'lesson',
+      targetId: 'lesson-1',
+      storageUri: 'minio://l1.mp4',
     });
-
-    const lessonArg = tx.lesson.create.mock.calls[0][0].data;
-    expect(lessonArg).toMatchObject({
-      courseId: 'c1',
-      videoProvider: 'self',
-      videoStorageUri: 'gcs://b/v.mp4',
-      order: 1,
+    expect(mockEnqueueTranscode).toHaveBeenCalledWith({
+      targetType: 'course-preview',
+      targetId: 'course-1',
+      storageUri: 'minio://preview.mp4',
     });
-
-    const quizArg = tx.quiz.create.mock.calls[0][0].data;
-    expect(quizArg).toMatchObject({ lessonId: 'l1', passingScore: 80 });
-
-    expect(tx.question.createMany).toHaveBeenCalled();
   });
 
   it('prefers quiz.passingScore/allowedAttempts from the parsed quiz file when present', async () => {
-    tx.course.create.mockResolvedValue({ id: 'c2' });
-    tx.lesson.create.mockResolvedValue({ id: 'l2' });
-    tx.quiz.create.mockResolvedValue({ id: 'qz2' });
-
     await createVideoCourse({
       title: 'HIPAA 2',
       passingScore: 70, // form value — should be overridden
       allowedAttempts: 1, // form value — should be overridden
-      videoStorageUri: 'gcs://b/v2.mp4',
+      modules: [
+        {
+          title: 'Chapter 1',
+          order: 0,
+          lectures: [{ title: 'Intro', order: 0, videoStorageUri: 'minio://v2.mp4' }],
+        },
+      ],
       quiz: {
         passingScore: 90,
         allowedAttempts: 3,
@@ -95,7 +138,7 @@ describe('createVideoCourse', () => {
       },
     });
 
-    const quizArg = tx.quiz.create.mock.calls[0][0].data;
+    const quizArg = txQuizCreate.mock.calls[0][0].data;
     expect(quizArg.passingScore).toBe(90); // from quiz file
     expect(quizArg.allowedAttempts).toBe(3); // from quiz file
   });
@@ -108,7 +151,7 @@ describe('createVideoCourse', () => {
         title: 'x',
         passingScore: 80,
         allowedAttempts: 1,
-        videoStorageUri: 'gcs://b/v',
+        modules: [],
         quiz: { questions: [] },
       }),
     ).rejects.toThrow();
