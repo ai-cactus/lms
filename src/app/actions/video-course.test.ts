@@ -11,6 +11,14 @@ const {
   txLessonCreate,
   txQuizCreate,
   txQuestionCreateMany,
+  courseUpdate,
+  txModuleUpdate,
+  txModuleDelete,
+  txLessonUpdate,
+  txLessonDelete,
+  txCourseUpdate,
+  txQuizUpdateMany,
+  txCourseFindUnique,
 } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
   mockGetSystemUser: vi.fn(),
@@ -22,6 +30,14 @@ const {
   txLessonCreate: vi.fn(),
   txQuizCreate: vi.fn(),
   txQuestionCreateMany: vi.fn(),
+  courseUpdate: vi.fn(),
+  txModuleUpdate: vi.fn(),
+  txModuleDelete: vi.fn(),
+  txLessonUpdate: vi.fn(),
+  txLessonDelete: vi.fn(),
+  txCourseUpdate: vi.fn(),
+  txQuizUpdateMany: vi.fn(),
+  txCourseFindUnique: vi.fn(),
 }));
 
 // Mock the transcode queue so the dynamic import in createVideoCourse never
@@ -31,7 +47,11 @@ vi.mock('@/lib/queue/video-transcode-queue', () => ({
 }));
 
 vi.mock('@/lib/prisma', () => ({
-  prisma: { $transaction: mockTransaction },
+  prisma: {
+    $transaction: mockTransaction,
+    course: { update: courseUpdate },
+    lesson: { update: vi.fn() },
+  },
 }));
 vi.mock('@/lib/system-auth', () => ({ verifySystemAdminCookie: mockVerify }));
 vi.mock('@/lib/video/system-user', () => ({ getOrCreateSystemUser: mockGetSystemUser }));
@@ -155,5 +175,161 @@ describe('createVideoCourse', () => {
         quiz: { questions: [] },
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe('setVideoCourseStatus', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVerify.mockResolvedValue(true);
+    courseUpdate.mockResolvedValue({ id: 'c1', status: 'inactive' });
+  });
+
+  it('sets a course inactive (soft delete) without deleting the row', async () => {
+    const { setVideoCourseStatus } = await import('./video-course');
+    await setVideoCourseStatus('c1', 'inactive');
+    expect(courseUpdate).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: { status: 'inactive' },
+    });
+    expect(mockRevalidate).toHaveBeenCalledWith('/system/video-courses');
+  });
+
+  it('reactivates a course back to published', async () => {
+    const { setVideoCourseStatus } = await import('./video-course');
+    await setVideoCourseStatus('c1', 'published');
+    expect(courseUpdate).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: { status: 'published' },
+    });
+  });
+
+  it('rejects when not a system admin', async () => {
+    mockVerify.mockResolvedValue(false);
+    const { setVideoCourseStatus } = await import('./video-course');
+    await expect(setVideoCourseStatus('c1', 'inactive')).rejects.toThrow('Unauthorized');
+  });
+});
+
+describe('updateVideoCourse', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVerify.mockResolvedValue(true);
+    mockTransaction.mockImplementation(async (cb) =>
+      cb({
+        course: { update: txCourseUpdate, findUnique: txCourseFindUnique },
+        courseModule: { create: txModuleCreate, update: txModuleUpdate, delete: txModuleDelete },
+        lesson: {
+          create: txLessonCreate,
+          update: txLessonUpdate,
+          delete: txLessonDelete,
+        },
+        quiz: { updateMany: txQuizUpdateMany },
+      }),
+    );
+    txCourseFindUnique.mockResolvedValue({
+      id: 'c1',
+      previewVideoStorageUri: 'minio://old-preview.mp4',
+      modules: [
+        {
+          id: 'm1',
+          lessons: [
+            { id: 'l1', videoStorageUri: 'minio://l1.mp4' },
+            { id: 'l2', videoStorageUri: 'minio://l2.mp4' },
+          ],
+        },
+      ],
+    });
+    txModuleCreate.mockResolvedValue({ id: 'm-new' });
+    txLessonCreate.mockResolvedValue({ id: 'l-new' });
+    txCourseUpdate.mockResolvedValue({ id: 'c1' });
+  });
+
+  it('updates fields, creates/updates/deletes lectures, and enqueues only the changed video', async () => {
+    const { updateVideoCourse } = await import('./video-course');
+    await updateVideoCourse('c1', {
+      title: 'New title',
+      passingScore: 80,
+      allowedAttempts: 2,
+      modules: [
+        {
+          id: 'm1',
+          title: 'Chapter 1',
+          order: 0,
+          lectures: [
+            { id: 'l1', title: 'Lecture 1 renamed', order: 0 }, // video unchanged
+            {
+              title: 'Lecture new',
+              order: 1,
+              videoStorageUri: 'minio://new.mp4',
+              videoDurationSeconds: 120,
+            },
+          ],
+        },
+      ],
+    });
+    expect(txLessonDelete).toHaveBeenCalledWith({ where: { id: 'l2' } }); // l2 removed from kept chapter
+    expect(txLessonUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'l1' } }));
+    expect(txLessonCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          mediaStatus: 'processing',
+          videoStorageUri: 'minio://new.mp4',
+        }),
+      }),
+    );
+    expect(txCourseUpdate).toHaveBeenCalled();
+    expect(txQuizUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { courseId: 'c1' },
+        data: expect.objectContaining({ passingScore: 80, allowedAttempts: 2 }),
+      }),
+    );
+    expect(mockEnqueueTranscode).toHaveBeenCalledTimes(1); // only the one new video
+    expect(mockRevalidate).toHaveBeenCalledWith('/system/video-courses');
+  });
+
+  it('deletes a removed chapter and its lessons exactly once (no orphans, no double-delete)', async () => {
+    const { updateVideoCourse } = await import('./video-course');
+    await updateVideoCourse('c1', { title: 'x', modules: [] });
+    expect(txLessonDelete).toHaveBeenCalledWith({ where: { id: 'l1' } });
+    expect(txLessonDelete).toHaveBeenCalledWith({ where: { id: 'l2' } });
+    expect(txLessonDelete).toHaveBeenCalledTimes(2); // exactly once each, no double-delete
+    expect(txModuleDelete).toHaveBeenCalledWith({ where: { id: 'm1' } });
+  });
+
+  it('rejects a module id that does not belong to the course', async () => {
+    const { updateVideoCourse } = await import('./video-course');
+    await expect(
+      updateVideoCourse('c1', {
+        title: 'x',
+        modules: [{ id: 'm-foreign', title: 'X', order: 0, lectures: [] }],
+      }),
+    ).rejects.toThrow('Module does not belong to this course');
+  });
+
+  it('rejects a lecture id that does not belong to the course', async () => {
+    const { updateVideoCourse } = await import('./video-course');
+    await expect(
+      updateVideoCourse('c1', {
+        title: 'x',
+        modules: [
+          {
+            id: 'm1',
+            title: 'C1',
+            order: 0,
+            lectures: [{ id: 'l-foreign', title: 'L', order: 0 }],
+          },
+        ],
+      }),
+    ).rejects.toThrow('Lecture does not belong to this course');
+  });
+
+  it('rejects when not a system admin', async () => {
+    mockVerify.mockResolvedValue(false);
+    const { updateVideoCourse } = await import('./video-course');
+    await expect(updateVideoCourse('c1', { title: 'x', modules: [] })).rejects.toThrow(
+      'Unauthorized',
+    );
   });
 });

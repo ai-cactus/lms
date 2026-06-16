@@ -80,6 +80,7 @@ const globalVideoCourse = {
   createdBy: SYSTEM_USER_ID, // NOT the admin — created by the system user
   isGlobal: true,
   type: 'video',
+  status: 'published', // active course — required by the Task 3 status guard
 };
 
 const adminUser = {
@@ -213,6 +214,50 @@ describe('enrollUsers — course-ownership guard', () => {
     mockWorkerAuth.mockResolvedValue(null);
 
     await expect(enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }])).rejects.toThrow('Unauthorized');
+  });
+
+  // -------------------------------------------------------------------------
+  // Task 3 regression: inactive (soft-deleted) global course must be blocked
+  // even when the org still has a valid OrgCourseOffering row.
+  // -------------------------------------------------------------------------
+  it('blocks enrollment into an inactive global course even when the org has an offering', async () => {
+    const inactiveGlobalCourse = {
+      ...globalVideoCourse,
+      status: 'inactive', // soft-deleted / deactivated
+    };
+
+    prismaMock.course.findUnique.mockResolvedValue(inactiveGlobalCourse);
+    prismaMock.user.findUnique.mockResolvedValueOnce(adminUser);
+
+    // OrgCourseOffering row EXISTS — the org was offered this course before
+    // it was deactivated. The guard must still reject new enrollments.
+    prismaMock.orgCourseOffering.findUnique.mockResolvedValue({ id: 'offering-001' });
+
+    await expect(enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }])).rejects.toThrow(
+      'Course not found',
+    );
+
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Confirm the complement: a published global course with an offering is
+  // still allowed (regression guard for the happy path).
+  // -------------------------------------------------------------------------
+  it('allows enrollment into a published global course when the org has an offering', async () => {
+    const publishedGlobalCourse = {
+      ...globalVideoCourse,
+      status: 'published',
+    };
+
+    prismaMock.course.findUnique.mockResolvedValue(publishedGlobalCourse);
+    prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(staffUser);
+    prismaMock.orgCourseOffering.findUnique.mockResolvedValue({ id: 'offering-001' });
+
+    const result = await enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }]);
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalled();
+    expect(result.success).toContain(STAFF_EMAIL);
   });
 
   // -------------------------------------------------------------------------

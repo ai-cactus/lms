@@ -36,6 +36,7 @@ export default async function VideoCoursesPage() {
       enrollmentsCount: row._count.enrollments,
       createdAt: row.createdAt.toISOString(),
       mediaStatus,
+      status: row.status,
     };
   });
 
