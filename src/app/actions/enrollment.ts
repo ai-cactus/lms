@@ -115,6 +115,13 @@ export async function enrollUsers(
     throw new Error('Course not found');
   }
 
+  // A soft-deleted (inactive) global course must not accept NEW enrollments,
+  // even if the org still has an existing offering row. Existing enrollments
+  // are unaffected — they do not pass through this action.
+  if (!isOwnCourse && course.isGlobal === true && course.status !== 'published') {
+    throw new Error('Course not found');
+  }
+
   // Create a CourseAssignment batch to hold this assignment's schedule /
   // renewal / reminder settings. Workers in this call share these settings;
   // a later assignment creates a separate batch.

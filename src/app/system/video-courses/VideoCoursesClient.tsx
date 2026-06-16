@@ -1,11 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Trash2, Upload, VideoIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Field } from '@/components/ui/field';
+import { Loader2, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { RowActionsMenu } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
@@ -17,8 +14,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { deleteVideoCourse } from '@/app/actions/video-course';
+import { setVideoCourseStatus } from '@/app/actions/video-course';
 import { logger } from '@/lib/logger';
+import VideoCourseForm, { type VideoCourseFormValues } from './VideoCourseForm';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -34,6 +32,7 @@ export interface VideoCourseRow {
   enrollmentsCount: number;
   createdAt: string;
   mediaStatus: MediaStatus;
+  status: 'draft' | 'published' | 'inactive';
 }
 
 interface Props {
@@ -64,6 +63,21 @@ function MediaStatusBadge({ status }: { status: MediaStatus }) {
   );
 }
 
+function CourseStatusBadge({ status }: { status: VideoCourseRow['status'] }) {
+  if (status === 'inactive') {
+    return (
+      <span className="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-600">
+        Inactive
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+      Active
+    </span>
+  );
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function formatDuration(seconds: number | null, fallbackMinutes: number | null): string {
@@ -76,39 +90,10 @@ function formatDuration(seconds: number | null, fallbackMinutes: number | null):
   return '—';
 }
 
-/**
- * Reads a video file's duration (seconds) in the browser by loading just its
- * metadata into a detached <video> element. Works for MP4/WebM without any
- * server dependency. Resolves null if the browser can't decode it.
- */
-function probeVideoDuration(file: File): Promise<number | null> {
-  return new Promise((resolve) => {
-    try {
-      const url = URL.createObjectURL(file);
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      const done = (val: number | null) => {
-        URL.revokeObjectURL(url);
-        resolve(val);
-      };
-      video.onloadedmetadata = () => {
-        const d = video.duration;
-        done(Number.isFinite(d) && d > 0 ? Math.round(d) : null);
-      };
-      video.onerror = () => done(null);
-      video.src = url;
-    } catch {
-      resolve(null);
-    }
-  });
-}
-
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function VideoCoursesClient({ courses }: Props) {
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
-  const quizInputRef = useRef<HTMLInputElement>(null);
 
   // While any course is still normalizing its videos, poll the server so the
   // status flips to "Ready" on its own without a manual reload.
@@ -119,131 +104,78 @@ export default function VideoCoursesClient({ courses }: Props) {
     return () => clearInterval(id);
   }, [anyProcessing, router]);
 
-  // Upload form state
-  const [title, setTitle] = useState('');
-  const [overview, setOverview] = useState('');
-  const [skillLevel, setSkillLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(
-    'beginner',
-  );
-
-  const [previewFile, setPreviewFile] = useState<File | null>(null);
-  const [previewDurationSeconds, setPreviewDurationSeconds] = useState<number | null>(null);
-  const previewInputRef = useRef<HTMLInputElement>(null);
-
-  type LectureDraft = { title: string; file: File | null; durationSeconds: number | null };
-  type ChapterDraft = { title: string; lectures: LectureDraft[] };
-  const [chapters, setChapters] = useState<ChapterDraft[]>([
-    { title: '', lectures: [{ title: '', file: null, durationSeconds: null }] },
-  ]);
-
-  const [quizFile, setQuizFile] = useState<File | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Bumping this key remounts the create form, resetting it after a successful
+  // create — the simplest reliable reset for an uncontrolled file-heavy form.
+  const [formKey, setFormKey] = useState(0);
   const [uploadAlert, setUploadAlert] = useState<{
     variant: 'success' | 'error';
     title: string;
     message: string;
   } | null>(null);
 
-  // Delete transition
-  const [, startDeleteTransition] = useTransition();
-
-  // ── Chapter / lecture builder helpers ─────────────────────────────────────────
-
-  const addChapter = () =>
-    setChapters((cs) => [
-      ...cs,
-      { title: '', lectures: [{ title: '', file: null, durationSeconds: null }] },
-    ]);
-  const removeChapter = (ci: number) => setChapters((cs) => cs.filter((_, i) => i !== ci));
-  const setChapterTitle = (ci: number, value: string) =>
-    setChapters((cs) => cs.map((c, i) => (i === ci ? { ...c, title: value } : c)));
-
-  const addLecture = (ci: number) =>
-    setChapters((cs) =>
-      cs.map((c, i) =>
-        i === ci
-          ? { ...c, lectures: [...c.lectures, { title: '', file: null, durationSeconds: null }] }
-          : c,
-      ),
-    );
-  const removeLecture = (ci: number, li: number) =>
-    setChapters((cs) =>
-      cs.map((c, i) => (i === ci ? { ...c, lectures: c.lectures.filter((_, j) => j !== li) } : c)),
-    );
-  const setLecture = (ci: number, li: number, patch: Partial<LectureDraft>) =>
-    setChapters((cs) =>
-      cs.map((c, i) =>
-        i === ci
-          ? { ...c, lectures: c.lectures.map((l, j) => (j === li ? { ...l, ...patch } : l)) }
-          : c,
-      ),
-    );
-
-  async function uploadVideo(file: File): Promise<string> {
-    const fd = new FormData();
-    fd.set('video', file);
-    const res = await fetch('/api/system/video-courses/upload', { method: 'POST', body: fd });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(data.error ?? 'Video upload failed');
-    }
-    const data = (await res.json()) as { storageUri: string };
-    return data.storageUri;
-  }
+  // Status transition
+  const [, startStatusTransition] = useTransition();
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const canSubmit =
-    title.trim().length > 0 &&
-    quizFile !== null &&
-    chapters.some((c) => c.lectures.some((l) => l.file !== null));
-
-  const handleDelete = (course: VideoCourseRow) => {
+  const handleDeactivate = (course: VideoCourseRow) => {
     if (
       !confirm(
-        `Delete "${course.title}"?\n\nThis will permanently remove the video course and cannot be undone.`,
+        `Deactivate "${course.title}"?\n\nIt will be hidden from organizations and can no longer be enrolled in, but all enrollment and certificate records are kept. You can reactivate it later.`,
       )
     ) {
       return;
     }
-    startDeleteTransition(async () => {
+    startStatusTransition(async () => {
       try {
-        await deleteVideoCourse(course.id);
+        await setVideoCourseStatus(course.id, 'inactive');
         router.refresh();
       } catch (err) {
-        logger.error({ msg: '[VideoCoursesClient] delete failed', err, courseId: course.id });
+        logger.error({ msg: '[VideoCoursesClient] deactivate failed', err, courseId: course.id });
       }
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!canSubmit) return;
-    setIsSubmitting(true);
+  const handleReactivate = (course: VideoCourseRow) => {
+    startStatusTransition(async () => {
+      try {
+        await setVideoCourseStatus(course.id, 'published');
+        router.refresh();
+      } catch (err) {
+        logger.error({ msg: '[VideoCoursesClient] reactivate failed', err, courseId: course.id });
+      }
+    });
+  };
+
+  const handleCreate = async (
+    values: VideoCourseFormValues,
+    uploadVideo: (file: File) => Promise<string>,
+  ) => {
     setUploadAlert(null);
 
     try {
-      // Read the remaining (uncontrolled) form fields so they make it into the
-      // JSON payload alongside the controlled title/overview/skill-level state.
-      const fd = new FormData(formRef.current ?? undefined);
-      const description = String(fd.get('description') ?? '').trim() || undefined;
-      const category = String(fd.get('category') ?? '').trim() || undefined;
-      const passingScoreRaw = Number(fd.get('passingScore'));
+      const description = values.description.trim() || undefined;
+      const category = values.category.trim() || undefined;
       const passingScore =
-        Number.isFinite(passingScoreRaw) && passingScoreRaw > 0 ? passingScoreRaw : undefined;
-      const allowedAttemptsRaw = Number(fd.get('allowedAttempts'));
-      const allowedAttempts =
-        Number.isFinite(allowedAttemptsRaw) && allowedAttemptsRaw > 0
-          ? allowedAttemptsRaw
+        Number.isFinite(values.passingScore) && values.passingScore > 0
+          ? values.passingScore
           : undefined;
-      const durationRaw = Number(fd.get('duration'));
-      const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : undefined;
+      const allowedAttempts =
+        Number.isFinite(values.allowedAttempts) && values.allowedAttempts > 0
+          ? values.allowedAttempts
+          : undefined;
+      const duration =
+        values.duration != null && Number.isFinite(values.duration) && values.duration > 0
+          ? values.duration
+          : undefined;
 
-      const previewVideoStorageUri = previewFile ? await uploadVideo(previewFile) : undefined;
+      const previewVideoStorageUri = values.previewFile
+        ? await uploadVideo(values.previewFile)
+        : undefined;
 
       const modules = [];
-      for (let ci = 0; ci < chapters.length; ci++) {
-        const chapter = chapters[ci];
+      for (let ci = 0; ci < values.chapters.length; ci++) {
+        const chapter = values.chapters[ci];
         const lectures = [];
         for (let li = 0; li < chapter.lectures.length; li++) {
           const lecture = chapter.lectures[li];
@@ -261,23 +193,25 @@ export default function VideoCoursesClient({ courses }: Props) {
         }
       }
 
-      const quizFileText = await quizFile!.text();
+      const quizFile = values.quizFile;
+      if (!quizFile) throw new Error('[VideoCoursesClient] quizFile missing on create');
+      const quizFileText = await quizFile.text();
       const res = await fetch('/api/system/video-courses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: title.trim(),
+          title: values.title.trim(),
           description,
-          overview: overview.trim() || undefined,
-          skillLevel,
+          overview: values.overview.trim() || undefined,
+          skillLevel: values.skillLevel,
           category,
           passingScore,
           allowedAttempts,
           duration,
           previewVideoStorageUri,
-          previewVideoDurationSeconds: previewDurationSeconds ?? undefined,
+          previewVideoDurationSeconds: values.previewDurationSeconds ?? undefined,
           modules,
-          quizFileName: quizFile!.name,
+          quizFileName: quizFile.name,
           quizFileText,
         }),
       });
@@ -299,14 +233,8 @@ export default function VideoCoursesClient({ courses }: Props) {
         message:
           'The video course was created. Videos are now being processed for cross-browser playback — the course shows "Processing" in the list below until it\'s ready.',
       });
-      setTitle('');
-      setOverview('');
-      setSkillLevel('beginner');
-      setPreviewFile(null);
-      setPreviewDurationSeconds(null);
-      setChapters([{ title: '', lectures: [{ title: '', file: null, durationSeconds: null }] }]);
-      setQuizFile(null);
-      formRef.current?.reset();
+      // Remount the form to reset all fields back to empty.
+      setFormKey((k) => k + 1);
       router.refresh();
     } catch (err) {
       logger.error({ msg: '[VideoCoursesClient] upload failed', err });
@@ -315,8 +243,6 @@ export default function VideoCoursesClient({ courses }: Props) {
         title: 'Error',
         message: err instanceof Error ? err.message : 'Request failed',
       });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -342,276 +268,21 @@ export default function VideoCoursesClient({ courses }: Props) {
           </p>
         </div>
 
-        <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-5">
-          {/* Title */}
-          <Field label="Title">
-            <Input
-              name="title"
-              placeholder="e.g. Fire Safety Fundamentals"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              disabled={isSubmitting}
-            />
-          </Field>
-
-          {/* Description */}
-          <Field label="Description">
-            <Input
-              name="description"
-              placeholder="Short description (optional)"
-              disabled={isSubmitting}
-            />
-          </Field>
-
-          {/* Overview */}
-          <Field label="Overview">
-            <textarea
-              name="overview"
-              className="min-h-[120px] w-full rounded-[10px] border border-border p-3 text-sm"
-              placeholder="Long-form course overview"
-              value={overview}
-              onChange={(e) => setOverview(e.target.value)}
-              disabled={isSubmitting}
-            />
-          </Field>
-
-          {/* Skill level */}
-          <Field label="Skill level">
-            <select
-              name="skillLevel"
-              className="h-11 w-full rounded-[10px] border border-border px-3 text-sm"
-              value={skillLevel}
-              onChange={(e) => setSkillLevel(e.target.value as typeof skillLevel)}
-              disabled={isSubmitting}
-            >
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
-            </select>
-          </Field>
-
-          {/* Two-column row: Category + Passing score + Allowed attempts */}
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-            <Field label="Category">
-              <Input name="category" placeholder="e.g. Safety" disabled={isSubmitting} />
-            </Field>
-
-            <Field label="Passing score (%)">
-              <Input
-                name="passingScore"
-                type="number"
-                min={1}
-                max={100}
-                defaultValue={70}
-                disabled={isSubmitting}
-              />
-            </Field>
-
-            <Field label="Allowed attempts">
-              <Input
-                name="allowedAttempts"
-                type="number"
-                min={1}
-                defaultValue={1}
-                disabled={isSubmitting}
-              />
-            </Field>
-          </div>
-
-          {/* Duration */}
-          <Field label="Duration (minutes, optional)">
-            <Input
-              name="duration"
-              type="number"
-              min={1}
-              placeholder="e.g. 30"
-              disabled={isSubmitting}
-            />
-          </Field>
-
-          {/* Preview video (optional) */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground" htmlFor="previewVideo">
-              Preview video (optional)
-            </label>
-            <div className="relative flex items-center gap-3 rounded-[10px] border border-dashed border-border p-4">
-              <VideoIcon className="size-5 shrink-0 text-text-secondary" aria-hidden="true" />
-              <span className="flex-1 truncate text-sm text-text-secondary">
-                {previewFile ? previewFile.name : 'MP4 or WebM'}
-                {previewFile && previewDurationSeconds != null && (
-                  <span className="ml-2 text-xs text-text-muted">
-                    ({formatDuration(previewDurationSeconds, null)})
-                  </span>
-                )}
-              </span>
-              <input
-                ref={previewInputRef}
-                id="previewVideo"
-                type="file"
-                accept="video/mp4,video/webm"
-                disabled={isSubmitting}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  setPreviewFile(f);
-                  setPreviewDurationSeconds(null);
-                  if (f) probeVideoDuration(f).then(setPreviewDurationSeconds);
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => previewInputRef.current?.click()}
-                disabled={isSubmitting}
-              >
-                Choose file
-              </Button>
-            </div>
-          </div>
-
-          {/* Chapters & lectures builder */}
-          <div className="flex flex-col gap-4">
-            <label className="text-sm font-medium text-foreground">Chapters &amp; lectures</label>
-            {chapters.map((chapter, ci) => (
-              <div key={ci} className="rounded-[10px] border border-border p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <Input
-                    placeholder={`Chapter ${ci + 1} title`}
-                    value={chapter.title}
-                    onChange={(e) => setChapterTitle(ci, e.target.value)}
-                    disabled={isSubmitting}
-                  />
-                  {chapters.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeChapter(ci)}
-                      disabled={isSubmitting}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </div>
-                {chapter.lectures.map((lecture, li) => (
-                  <div key={li} className="mb-2 flex items-center gap-2">
-                    <Input
-                      className="flex-1"
-                      placeholder={`Lecture ${li + 1} title`}
-                      value={lecture.title}
-                      onChange={(e) => setLecture(ci, li, { title: e.target.value })}
-                      disabled={isSubmitting}
-                    />
-                    <input
-                      type="file"
-                      accept="video/mp4,video/webm"
-                      disabled={isSubmitting}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] ?? null;
-                        setLecture(ci, li, { file: f, durationSeconds: null });
-                        if (f)
-                          probeVideoDuration(f).then((d) =>
-                            setLecture(ci, li, { durationSeconds: d }),
-                          );
-                      }}
-                    />
-                    {chapter.lectures.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeLecture(ci, li)}
-                        disabled={isSubmitting}
-                      >
-                        ×
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => addLecture(ci)}
-                  disabled={isSubmitting}
-                >
-                  + Add lecture
-                </Button>
-              </div>
-            ))}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={addChapter}
-              disabled={isSubmitting}
-            >
-              + Add chapter
-            </Button>
-          </div>
-
-          {/* Quiz file */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground" htmlFor="quizFile">
-              Quiz file (CSV or JSON) <span className="text-error">*</span>
-            </label>
-            <div className="relative flex items-center gap-3 rounded-[10px] border border-dashed border-border p-4">
-              <Upload className="size-5 shrink-0 text-text-secondary" aria-hidden="true" />
-              <span className="flex-1 truncate text-sm text-text-secondary">
-                {quizFile ? quizFile.name : '.csv or .json'}
-              </span>
-              <input
-                ref={quizInputRef}
-                id="quizFile"
-                type="file"
-                name="quiz"
-                accept=".csv,.json"
-                required
-                disabled={isSubmitting}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                onChange={(e) => setQuizFile(e.target.files?.[0] ?? null)}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => quizInputRef.current?.click()}
-                disabled={isSubmitting}
-              >
-                Choose file
-              </Button>
-            </div>
-            <div className="flex gap-4 text-xs text-text-secondary">
-              <a
-                href="/api/system/video-courses/sample?format=csv"
-                className="underline hover:text-foreground"
-              >
-                Download CSV sample
-              </a>
-              <a
-                href="/api/system/video-courses/sample?format=json"
-                className="underline hover:text-foreground"
-              >
-                Download JSON sample
-              </a>
-            </div>
-          </div>
-
-          {/* Alerts */}
-          {uploadAlert && (
+        {uploadAlert && (
+          <div className="mb-5">
             <Alert variant={uploadAlert.variant} title={uploadAlert.title}>
               {uploadAlert.message}
             </Alert>
-          )}
-
-          <div>
-            <Button type="submit" loading={isSubmitting} disabled={!canSubmit || isSubmitting}>
-              Upload course
-            </Button>
           </div>
-        </form>
+        )}
+
+        <VideoCourseForm
+          key={formKey}
+          mode="create"
+          showQuizPicker
+          submitLabel="Upload course"
+          onSubmit={handleCreate}
+        />
       </div>
 
       {/* ── Table ─────────────────────────────────────────────────────────────── */}
@@ -628,6 +299,7 @@ export default function VideoCoursesClient({ courses }: Props) {
             <TableRow className="hover:bg-transparent border-0">
               <TableHead>Title</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Active</TableHead>
               <TableHead className="hidden md:table-cell">Duration</TableHead>
               <TableHead className="hidden md:table-cell">Questions</TableHead>
               <TableHead className="hidden md:table-cell">Orgs</TableHead>
@@ -650,6 +322,9 @@ export default function VideoCoursesClient({ courses }: Props) {
                   <TableCell>
                     <MediaStatusBadge status={course.mediaStatus} />
                   </TableCell>
+                  <TableCell>
+                    <CourseStatusBadge status={course.status} />
+                  </TableCell>
                   <TableCell className="hidden md:table-cell">
                     {formatDuration(course.durationSeconds, course.duration)}
                   </TableCell>
@@ -667,11 +342,22 @@ export default function VideoCoursesClient({ courses }: Props) {
                     <RowActionsMenu
                       actions={[
                         {
-                          label: 'Delete',
-                          icon: <Trash2 className="size-4" />,
-                          variant: 'destructive',
-                          onSelect: () => handleDelete(course),
+                          label: 'Edit',
+                          icon: <Pencil className="size-4" />,
+                          onSelect: () => router.push(`/system/video-courses/${course.id}/edit`),
                         },
+                        course.status === 'inactive'
+                          ? {
+                              label: 'Reactivate',
+                              icon: <RotateCcw className="size-4" />,
+                              onSelect: () => handleReactivate(course),
+                            }
+                          : {
+                              label: 'Deactivate',
+                              icon: <Trash2 className="size-4" />,
+                              variant: 'destructive' as const,
+                              onSelect: () => handleDeactivate(course),
+                            },
                       ]}
                     />
                   </TableCell>
@@ -681,7 +367,7 @@ export default function VideoCoursesClient({ courses }: Props) {
               <EmptyTableState
                 message="No video courses yet."
                 subMessage="Upload a video course using the form above."
-                colSpan={8}
+                colSpan={9}
                 asTableRow
               />
             )}

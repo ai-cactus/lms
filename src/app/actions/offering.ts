@@ -123,7 +123,9 @@ export async function listOfferedVideoCourses(): Promise<OfferedVideoCourseRow[]
   const organizationId = await resolveOrg(userId);
 
   const offerings = await prisma.orgCourseOffering.findMany({
-    where: { organizationId },
+    // Exclude soft-deleted (inactive) courses so a deactivated course drops out
+    // of the org's offered list, mirroring listAvailableVideoCourses.
+    where: { organizationId, course: { status: 'published' } },
     orderBy: { createdAt: 'desc' },
     include: {
       course: {

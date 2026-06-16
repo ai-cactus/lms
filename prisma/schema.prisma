@@ -28,6 +28,7 @@ enum JobStatus {
 enum CourseStatus {
   draft
   published
+  inactive
 }
 
 enum CourseType {
