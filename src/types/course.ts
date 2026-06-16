@@ -6,6 +6,7 @@ export type CourseWithStats = {
   description: string | null;
   thumbnail: string | null;
   status: string;
+  type: string; // 'video' | 'text'
   duration: number | null;
   createdAt: Date;
   updatedAt: Date;

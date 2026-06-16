@@ -63,6 +63,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     description: string | null;
     thumbnail: string | null;
     status: string;
+    type: string;
     duration: number | null;
     createdAt: Date;
     updatedAt: Date;
@@ -74,6 +75,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     description: course.description,
     thumbnail: course.thumbnail,
     status: course.status,
+    type: course.type,
     duration: course.duration,
     createdAt: course.createdAt,
     updatedAt: course.updatedAt,
@@ -153,6 +155,64 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   const isEnrolled = course.enrollments.some((e) => e.userId === session.user.id);
 
   if (!isCreator && !isEnrolled) {
+    throw new Error('Course not found');
+  }
+
+  return course;
+}
+
+/**
+ * Fetch a GLOBAL, published video course for an org admin to view, even when
+ * the org hasn't enrolled/offered it yet (the browse → "View" flow from the
+ * available-courses list).
+ *
+ * Access is allowed to any org admin since the global catalog is public to
+ * orgs, but enrollments are scoped to the CALLER'S organization so one org can
+ * never see another org's enrolled staff. The creator/enrolled path stays in
+ * getCourseById — this is only used as a fallback for global browse.
+ */
+export async function getCourseForOrgView(courseId: string): Promise<CourseWithRelations> {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { organizationId: true },
+  });
+  if (!currentUser?.organizationId) {
+    throw new Error('Course not found');
+  }
+  const organizationId = currentUser.organizationId;
+
+  const course = await prisma.course.findFirst({
+    where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
+    include: {
+      modules: {
+        orderBy: { order: 'asc' },
+        include: {
+          lessons: {
+            orderBy: { order: 'asc' },
+            include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
+          },
+        },
+      },
+      quiz: { include: { questions: { orderBy: { order: 'asc' } } } },
+      lessons: {
+        orderBy: { order: 'asc' },
+        include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
+      },
+      // Scope enrolled staff to the caller's org — never leak other orgs' users.
+      enrollments: {
+        where: { user: { organizationId } },
+        include: { user: { include: { profile: true } }, certificate: true },
+      },
+      creator: { include: { profile: true } },
+    },
+  });
+
+  if (!course) {
     throw new Error('Course not found');
   }
 
@@ -321,6 +381,7 @@ export async function getDashboardData() {
     description: course.description,
     thumbnail: course.thumbnail,
     status: course.status,
+    type: course.type,
     duration: course.duration,
     createdAt: course.createdAt,
     updatedAt: course.updatedAt,

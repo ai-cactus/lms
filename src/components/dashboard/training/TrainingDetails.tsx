@@ -13,7 +13,6 @@ import {
 } from '@/components/ui/table';
 import { RowActionsMenu } from '@/components/ui';
 import Link from 'next/link';
-import ShareCourseModal from './ShareCourseModal';
 import CertificateModal from './CertificateModal';
 import AssignRetakeModal from './AssignRetakeModal';
 import {
@@ -46,7 +45,6 @@ interface TrainingDetailsProps {
 export default function TrainingDetails({ course }: TrainingDetailsProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'staff' | 'certificates'>('staff');
   const [selectedCertId, setSelectedCertId] = useState<string | null>(null);
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
@@ -137,7 +135,11 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
             <Link href={`/dashboard/training/courses/${course.id}/preview`}>
               <Button size="lg">Preview</Button>
             </Link>
-            <Button variant="outline" size="lg" onClick={() => setIsShareModalOpen(true)}>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => router.push(`/dashboard/training/courses/${course.id}/assign`)}
+            >
               <Share2 className="size-4" />
               Assign
             </Button>
@@ -428,12 +430,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
       </div>
 
       {/* Modals */}
-      <ShareCourseModal
-        isOpen={isShareModalOpen}
-        onClose={() => setIsShareModalOpen(false)}
-        courseId={course.id}
-      />
-
       {selectedCertId && (
         <CertificateModal
           isOpen={true}
