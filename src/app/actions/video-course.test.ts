@@ -7,15 +7,11 @@ const {
   mockRevalidate,
   mockEnqueueTranscode,
   txCourseCreate,
-  txModuleCreate,
   txLessonCreate,
   txQuizCreate,
   txQuestionCreateMany,
   courseUpdate,
-  txModuleUpdate,
-  txModuleDelete,
   txLessonUpdate,
-  txLessonDelete,
   txCourseUpdate,
   txQuizUpdateMany,
   txCourseFindUnique,
@@ -26,15 +22,11 @@ const {
   mockRevalidate: vi.fn(),
   mockEnqueueTranscode: vi.fn(),
   txCourseCreate: vi.fn(),
-  txModuleCreate: vi.fn(),
   txLessonCreate: vi.fn(),
   txQuizCreate: vi.fn(),
   txQuestionCreateMany: vi.fn(),
   courseUpdate: vi.fn(),
-  txModuleUpdate: vi.fn(),
-  txModuleDelete: vi.fn(),
   txLessonUpdate: vi.fn(),
-  txLessonDelete: vi.fn(),
   txCourseUpdate: vi.fn(),
   txQuizUpdateMany: vi.fn(),
   txCourseFindUnique: vi.fn(),
@@ -56,7 +48,7 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/system-auth', () => ({ verifySystemAdminCookie: mockVerify }));
 vi.mock('@/lib/video/system-user', () => ({ getOrCreateSystemUser: mockGetSystemUser }));
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));
-vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
+vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 
 import { createVideoCourse } from './video-course';
 
@@ -65,13 +57,11 @@ beforeEach(() => {
   mockVerify.mockResolvedValue(true);
   mockGetSystemUser.mockResolvedValue({ id: 'system-user' });
   txCourseCreate.mockResolvedValue({ id: 'course-1' });
-  txModuleCreate.mockResolvedValue({ id: 'module-1' });
   txLessonCreate.mockResolvedValue({ id: 'lesson-1' });
   txQuizCreate.mockResolvedValue({ id: 'quiz-1' });
   mockTransaction.mockImplementation(async (cb) =>
     cb({
       course: { create: txCourseCreate },
-      courseModule: { create: txModuleCreate },
       lesson: { create: txLessonCreate },
       quiz: { create: txQuizCreate },
       question: { createMany: txQuestionCreateMany },
@@ -80,7 +70,7 @@ beforeEach(() => {
 });
 
 describe('createVideoCourse', () => {
-  it('persists modules, lectures, and a course-level quiz', async () => {
+  it('persists the single course video (module-less lesson) and a course-level quiz', async () => {
     const result = await createVideoCourse({
       title: 'Health & Safety',
       overview: 'Long overview',
@@ -89,20 +79,7 @@ describe('createVideoCourse', () => {
       allowedAttempts: 1,
       previewVideoStorageUri: 'minio://preview.mp4',
       previewVideoDurationSeconds: 45,
-      modules: [
-        {
-          title: 'Chapter 1',
-          order: 0,
-          lectures: [
-            {
-              title: 'Intro',
-              order: 0,
-              videoStorageUri: 'minio://l1.mp4',
-              videoDurationSeconds: 90,
-            },
-          ],
-        },
-      ],
+      courseVideo: { storageUri: 'minio://l1.mp4', durationSeconds: 90 },
       quiz: { questions: [{ text: 'Q1', options: ['a', 'b'], correctAnswer: 'a', order: 0 }] },
     });
 
@@ -118,15 +95,22 @@ describe('createVideoCourse', () => {
         }),
       }),
     );
-    expect(txModuleCreate).toHaveBeenCalledTimes(1);
+    // One module-less lesson holds the course video.
+    expect(txLessonCreate).toHaveBeenCalledTimes(1);
     expect(txLessonCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ moduleId: 'module-1' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          moduleId: null,
+          videoStorageUri: 'minio://l1.mp4',
+          mediaStatus: 'processing',
+        }),
+      }),
     );
     expect(txQuizCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ courseId: 'course-1' }) }),
     );
 
-    // A transcode job is enqueued for each source video: the one lecture + the preview.
+    // A transcode job is enqueued for each source video: the course video + the preview.
     expect(mockEnqueueTranscode).toHaveBeenCalledWith({
       targetType: 'lesson',
       targetId: 'lesson-1',
@@ -139,18 +123,25 @@ describe('createVideoCourse', () => {
     });
   });
 
+  it('allows an unspecified skill level', async () => {
+    await createVideoCourse({
+      title: 'No level',
+      passingScore: 70,
+      allowedAttempts: 1,
+      courseVideo: { storageUri: 'minio://v.mp4' },
+      quiz: { questions: [{ text: 'Q', options: ['x', 'y'], correctAnswer: 'x', order: 0 }] },
+    });
+    expect(txCourseCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ skillLevel: null }) }),
+    );
+  });
+
   it('prefers quiz.passingScore/allowedAttempts from the parsed quiz file when present', async () => {
     await createVideoCourse({
       title: 'HIPAA 2',
       passingScore: 70, // form value — should be overridden
       allowedAttempts: 1, // form value — should be overridden
-      modules: [
-        {
-          title: 'Chapter 1',
-          order: 0,
-          lectures: [{ title: 'Intro', order: 0, videoStorageUri: 'minio://v2.mp4' }],
-        },
-      ],
+      courseVideo: { storageUri: 'minio://v2.mp4' },
       quiz: {
         passingScore: 90,
         allowedAttempts: 3,
@@ -171,7 +162,7 @@ describe('createVideoCourse', () => {
         title: 'x',
         passingScore: 80,
         allowedAttempts: 1,
-        modules: [],
+        courseVideo: { storageUri: 'minio://v.mp4' },
         quiz: { questions: [] },
       }),
     ).rejects.toThrow();
@@ -218,66 +209,26 @@ describe('updateVideoCourse', () => {
     mockTransaction.mockImplementation(async (cb) =>
       cb({
         course: { update: txCourseUpdate, findUnique: txCourseFindUnique },
-        courseModule: { create: txModuleCreate, update: txModuleUpdate, delete: txModuleDelete },
-        lesson: {
-          create: txLessonCreate,
-          update: txLessonUpdate,
-          delete: txLessonDelete,
-        },
+        lesson: { create: txLessonCreate, update: txLessonUpdate },
         quiz: { updateMany: txQuizUpdateMany },
       }),
     );
     txCourseFindUnique.mockResolvedValue({
       id: 'c1',
       previewVideoStorageUri: 'minio://old-preview.mp4',
-      modules: [
-        {
-          id: 'm1',
-          lessons: [
-            { id: 'l1', videoStorageUri: 'minio://l1.mp4' },
-            { id: 'l2', videoStorageUri: 'minio://l2.mp4' },
-          ],
-        },
-      ],
+      lessons: [{ id: 'l1', videoStorageUri: 'minio://l1.mp4' }],
     });
-    txModuleCreate.mockResolvedValue({ id: 'm-new' });
     txLessonCreate.mockResolvedValue({ id: 'l-new' });
     txCourseUpdate.mockResolvedValue({ id: 'c1' });
   });
 
-  it('updates fields, creates/updates/deletes lectures, and enqueues only the changed video', async () => {
+  it('updates course fields and quiz scoring without touching the video when none is provided', async () => {
     const { updateVideoCourse } = await import('./video-course');
     await updateVideoCourse('c1', {
       title: 'New title',
       passingScore: 80,
       allowedAttempts: 2,
-      modules: [
-        {
-          id: 'm1',
-          title: 'Chapter 1',
-          order: 0,
-          lectures: [
-            { id: 'l1', title: 'Lecture 1 renamed', order: 0 }, // video unchanged
-            {
-              title: 'Lecture new',
-              order: 1,
-              videoStorageUri: 'minio://new.mp4',
-              videoDurationSeconds: 120,
-            },
-          ],
-        },
-      ],
     });
-    expect(txLessonDelete).toHaveBeenCalledWith({ where: { id: 'l2' } }); // l2 removed from kept chapter
-    expect(txLessonUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'l1' } }));
-    expect(txLessonCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          mediaStatus: 'processing',
-          videoStorageUri: 'minio://new.mp4',
-        }),
-      }),
-    );
     expect(txCourseUpdate).toHaveBeenCalled();
     expect(txQuizUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -285,51 +236,82 @@ describe('updateVideoCourse', () => {
         data: expect.objectContaining({ passingScore: 80, allowedAttempts: 2 }),
       }),
     );
-    expect(mockEnqueueTranscode).toHaveBeenCalledTimes(1); // only the one new video
+    // No new video → the existing lesson is untouched and nothing is transcoded.
+    expect(txLessonUpdate).not.toHaveBeenCalled();
+    expect(txLessonCreate).not.toHaveBeenCalled();
+    expect(mockEnqueueTranscode).not.toHaveBeenCalled();
     expect(mockRevalidate).toHaveBeenCalledWith('/system/video-courses');
   });
 
-  it('deletes a removed chapter and its lessons exactly once (no orphans, no double-delete)', async () => {
+  it('replaces the course video and enqueues a transcode for it', async () => {
     const { updateVideoCourse } = await import('./video-course');
-    await updateVideoCourse('c1', { title: 'x', modules: [] });
-    expect(txLessonDelete).toHaveBeenCalledWith({ where: { id: 'l1' } });
-    expect(txLessonDelete).toHaveBeenCalledWith({ where: { id: 'l2' } });
-    expect(txLessonDelete).toHaveBeenCalledTimes(2); // exactly once each, no double-delete
-    expect(txModuleDelete).toHaveBeenCalledWith({ where: { id: 'm1' } });
+    await updateVideoCourse('c1', {
+      title: 'New title',
+      courseVideo: { storageUri: 'minio://new.mp4', durationSeconds: 120 },
+    });
+    expect(txLessonUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'l1' },
+        data: expect.objectContaining({
+          videoStorageUri: 'minio://new.mp4',
+          mediaStatus: 'processing',
+        }),
+      }),
+    );
+    expect(mockEnqueueTranscode).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueTranscode).toHaveBeenCalledWith({
+      targetType: 'lesson',
+      targetId: 'l1',
+      storageUri: 'minio://new.mp4',
+    });
   });
 
-  it('rejects a module id that does not belong to the course', async () => {
+  it('does not re-process when the same video uri is submitted', async () => {
     const { updateVideoCourse } = await import('./video-course');
-    await expect(
-      updateVideoCourse('c1', {
-        title: 'x',
-        modules: [{ id: 'm-foreign', title: 'X', order: 0, lectures: [] }],
+    await updateVideoCourse('c1', {
+      title: 'New title',
+      courseVideo: { storageUri: 'minio://l1.mp4', durationSeconds: 90 },
+    });
+    // Lesson is still updated (title/duration) but media is not re-flagged or transcoded.
+    expect(txLessonUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'l1' },
+        data: expect.not.objectContaining({ mediaStatus: 'processing' }),
       }),
-    ).rejects.toThrow('Module does not belong to this course');
+    );
+    expect(mockEnqueueTranscode).not.toHaveBeenCalled();
   });
 
-  it('rejects a lecture id that does not belong to the course', async () => {
+  it('creates a module-less lesson when the course has no video lesson yet', async () => {
+    txCourseFindUnique.mockResolvedValueOnce({
+      id: 'c1',
+      previewVideoStorageUri: null,
+      lessons: [],
+    });
     const { updateVideoCourse } = await import('./video-course');
-    await expect(
-      updateVideoCourse('c1', {
-        title: 'x',
-        modules: [
-          {
-            id: 'm1',
-            title: 'C1',
-            order: 0,
-            lectures: [{ id: 'l-foreign', title: 'L', order: 0 }],
-          },
-        ],
+    await updateVideoCourse('c1', {
+      title: 'New title',
+      courseVideo: { storageUri: 'minio://first.mp4', durationSeconds: 60 },
+    });
+    expect(txLessonCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          moduleId: null,
+          videoStorageUri: 'minio://first.mp4',
+          mediaStatus: 'processing',
+        }),
       }),
-    ).rejects.toThrow('Lecture does not belong to this course');
+    );
+    expect(mockEnqueueTranscode).toHaveBeenCalledWith({
+      targetType: 'lesson',
+      targetId: 'l-new',
+      storageUri: 'minio://first.mp4',
+    });
   });
 
   it('rejects when not a system admin', async () => {
     mockVerify.mockResolvedValue(false);
     const { updateVideoCourse } = await import('./video-course');
-    await expect(updateVideoCourse('c1', { title: 'x', modules: [] })).rejects.toThrow(
-      'Unauthorized',
-    );
+    await expect(updateVideoCourse('c1', { title: 'x' })).rejects.toThrow('Unauthorized');
   });
 });

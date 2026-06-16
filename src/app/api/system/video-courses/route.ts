@@ -3,7 +3,6 @@ import { verifySystemAdminCookie } from '@/lib/system-auth';
 import { parseQuizFile } from '@/lib/video/quiz-import';
 import { QuizImportError } from '@/lib/video/types';
 import { createVideoCourse } from '@/app/actions/video-course';
-import type { CreateVideoModuleInput } from '@/app/actions/video-course';
 import { logger } from '@/lib/logger';
 
 interface VideoCoursePayload {
@@ -18,7 +17,7 @@ interface VideoCoursePayload {
   allowedAttempts?: number;
   previewVideoStorageUri?: string;
   previewVideoDurationSeconds?: number;
-  modules?: CreateVideoModuleInput[];
+  courseVideo?: { storageUri?: string; durationSeconds?: number };
   quizFileName?: string;
   quizFileText?: string;
 }
@@ -33,12 +32,9 @@ export async function POST(req: NextRequest) {
     const title = (body.title ?? '').trim();
     if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 });
 
-    if (!Array.isArray(body.modules) || body.modules.length === 0) {
-      return NextResponse.json({ error: 'At least one chapter is required' }, { status: 400 });
-    }
-    const hasLecture = body.modules.some((m) => Array.isArray(m.lectures) && m.lectures.length > 0);
-    if (!hasLecture) {
-      return NextResponse.json({ error: 'At least one lecture is required' }, { status: 400 });
+    const courseVideoStorageUri = body.courseVideo?.storageUri;
+    if (!courseVideoStorageUri) {
+      return NextResponse.json({ error: 'A course video is required' }, { status: 400 });
     }
 
     if (!body.quizFileName || !body.quizFileText) {
@@ -58,7 +54,10 @@ export async function POST(req: NextRequest) {
       allowedAttempts: Number(body.allowedAttempts ?? 1),
       previewVideoStorageUri: body.previewVideoStorageUri,
       previewVideoDurationSeconds: body.previewVideoDurationSeconds,
-      modules: body.modules,
+      courseVideo: {
+        storageUri: courseVideoStorageUri,
+        durationSeconds: body.courseVideo?.durationSeconds,
+      },
       quiz,
     });
 

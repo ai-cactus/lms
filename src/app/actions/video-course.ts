@@ -7,19 +7,6 @@ import type { ParsedQuiz } from '@/lib/video/types';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
 
-export interface CreateVideoLectureInput {
-  title: string;
-  order: number;
-  videoStorageUri: string;
-  videoDurationSeconds?: number;
-}
-
-export interface CreateVideoModuleInput {
-  title: string;
-  order: number;
-  lectures: CreateVideoLectureInput[];
-}
-
 export interface CreateVideoCourseInput {
   title: string;
   description?: string;
@@ -32,23 +19,9 @@ export interface CreateVideoCourseInput {
   allowedAttempts: number;
   previewVideoStorageUri?: string;
   previewVideoDurationSeconds?: number;
-  modules: CreateVideoModuleInput[];
+  // The single course video, stored as one module-less lesson.
+  courseVideo: { storageUri: string; durationSeconds?: number };
   quiz: ParsedQuiz;
-}
-
-export interface UpdateVideoLectureInput {
-  id?: string;
-  title: string;
-  order: number;
-  videoStorageUri?: string; // new/replacement; omit = keep existing
-  videoDurationSeconds?: number;
-}
-
-export interface UpdateVideoModuleInput {
-  id?: string;
-  title: string;
-  order: number;
-  lectures: UpdateVideoLectureInput[];
 }
 
 export interface UpdateVideoCourseInput {
@@ -62,7 +35,8 @@ export interface UpdateVideoCourseInput {
   allowedAttempts?: number;
   previewVideoStorageUri?: string; // new/replacement; omit = keep existing
   previewVideoDurationSeconds?: number;
-  modules: UpdateVideoModuleInput[];
+  // The single course video. `storageUri` omitted = keep existing video.
+  courseVideo?: { storageUri?: string; durationSeconds?: number };
 }
 
 async function assertSystemAdmin() {
@@ -78,13 +52,11 @@ export async function createVideoCourse(
   const passingScore = input.quiz.passingScore ?? input.passingScore;
   const allowedAttempts = input.quiz.allowedAttempts ?? input.allowedAttempts;
 
-  // Derive total duration (minutes) from lecture seconds when not provided.
-  const totalLectureSeconds = input.modules
-    .flatMap((m) => m.lectures)
-    .reduce((sum, l) => sum + (l.videoDurationSeconds ?? 0), 0);
+  // Derive total duration (minutes) from the course video seconds when not provided.
+  const courseVideoSeconds = input.courseVideo.durationSeconds ?? 0;
   const duration =
     input.duration ??
-    (totalLectureSeconds > 0 ? Math.max(1, Math.round(totalLectureSeconds / 60)) : null);
+    (courseVideoSeconds > 0 ? Math.max(1, Math.round(courseVideoSeconds / 60)) : null);
 
   // Collected inside the transaction so we can enqueue a transcode job per
   // source video once the rows exist.
@@ -115,43 +87,30 @@ export async function createVideoCourse(
       },
     });
 
-    for (const moduleInput of input.modules) {
-      const courseModule = await tx.courseModule.create({
-        data: {
-          courseId: course.id,
-          title: moduleInput.title,
-          order: moduleInput.order,
-        },
-      });
-
-      for (const lecture of moduleInput.lectures) {
-        const lessonRow = await tx.lesson.create({
-          data: {
-            courseId: course.id,
-            moduleId: courseModule.id,
-            title: lecture.title,
-            content: '',
-            order: lecture.order,
-            duration:
-              lecture.videoDurationSeconds != null
-                ? Math.max(1, Math.round(lecture.videoDurationSeconds / 60))
-                : null,
-            videoProvider: 'self',
-            videoStorageUri: lecture.videoStorageUri,
-            videoDurationSeconds: lecture.videoDurationSeconds ?? null,
-            // A lecture with a video starts "processing" until normalized.
-            mediaStatus: lecture.videoStorageUri ? 'processing' : 'ready',
-          },
-        });
-        if (lecture.videoStorageUri) {
-          videoTargets.push({
-            targetType: 'lesson',
-            targetId: lessonRow.id,
-            storageUri: lecture.videoStorageUri,
-          });
-        }
-      }
-    }
+    // The course video is stored as a single module-less lesson (no chapters).
+    const lessonRow = await tx.lesson.create({
+      data: {
+        courseId: course.id,
+        moduleId: null,
+        title: input.title,
+        content: '',
+        order: 0,
+        duration:
+          input.courseVideo.durationSeconds != null
+            ? Math.max(1, Math.round(input.courseVideo.durationSeconds / 60))
+            : null,
+        videoProvider: 'self',
+        videoStorageUri: input.courseVideo.storageUri,
+        videoDurationSeconds: input.courseVideo.durationSeconds ?? null,
+        // The video starts "processing" until the transcode job normalizes it.
+        mediaStatus: 'processing',
+      },
+    });
+    videoTargets.push({
+      targetType: 'lesson',
+      targetId: lessonRow.id,
+      storageUri: input.courseVideo.storageUri,
+    });
 
     const quiz = await tx.quiz.create({
       data: {
@@ -235,15 +194,17 @@ export async function updateVideoCourse(
       select: {
         id: true,
         previewVideoStorageUri: true,
-        modules: { select: { id: true, lessons: { select: { id: true, videoStorageUri: true } } } },
+        // The course video is the first lesson by order (the module-less lesson
+        // created for single-video courses; for legacy multi-lecture courses we
+        // treat the first lecture as the course video and leave the rest intact).
+        lessons: {
+          orderBy: { order: 'asc' },
+          take: 1,
+          select: { id: true, videoStorageUri: true },
+        },
       },
     });
     if (!existing) throw new Error('Course not found');
-
-    const existingModuleIds = new Set(existing.modules.map((m) => m.id));
-    const existingLessonsById = new Map(
-      existing.modules.flatMap((m) => m.lessons.map((l) => [l.id, l] as const)),
-    );
 
     // ── Course fields ─────────────────────────────────────────────
     const previewChanged =
@@ -287,107 +248,47 @@ export async function updateVideoCourse(
       });
     }
 
-    // ── 1. Reconcile input modules/lessons; collect kept ids ──────
-    const keptModuleIds = new Set<string>();
-    const keptLessonIds = new Set<string>();
+    // ── Course video (single module-less lesson) ─────────────────
+    // Only touched when a new video was uploaded. Any other lessons/chapters
+    // belonging to legacy multi-lecture courses are intentionally left intact.
+    if (input.courseVideo?.storageUri) {
+      const newUri = input.courseVideo.storageUri;
+      const durationSeconds = input.courseVideo.durationSeconds ?? null;
+      const lessonDuration =
+        durationSeconds != null ? Math.max(1, Math.round(durationSeconds / 60)) : null;
+      const primary = existing.lessons[0];
 
-    for (const moduleInput of input.modules) {
-      let moduleId: string;
-      if (moduleInput.id) {
-        if (!existingModuleIds.has(moduleInput.id)) {
-          throw new Error('Module does not belong to this course');
-        }
-        await tx.courseModule.update({
-          where: { id: moduleInput.id },
-          data: { title: moduleInput.title, order: moduleInput.order },
+      if (primary) {
+        const videoChanged = newUri !== primary.videoStorageUri;
+        await tx.lesson.update({
+          where: { id: primary.id },
+          data: {
+            title: input.title,
+            videoStorageUri: newUri,
+            videoDurationSeconds: durationSeconds,
+            duration: lessonDuration,
+            ...(videoChanged ? { mediaStatus: 'processing' as const } : {}),
+          },
         });
-        moduleId = moduleInput.id;
+        if (videoChanged) {
+          videoTargets.push({ targetType: 'lesson', targetId: primary.id, storageUri: newUri });
+        }
       } else {
-        const created = await tx.courseModule.create({
-          data: { courseId, title: moduleInput.title, order: moduleInput.order },
+        const created = await tx.lesson.create({
+          data: {
+            courseId,
+            moduleId: null,
+            title: input.title,
+            content: '',
+            order: 0,
+            videoProvider: 'self',
+            videoStorageUri: newUri,
+            videoDurationSeconds: durationSeconds,
+            duration: lessonDuration,
+            mediaStatus: 'processing',
+          },
         });
-        moduleId = created.id;
-      }
-      keptModuleIds.add(moduleId);
-
-      for (const lecture of moduleInput.lectures) {
-        if (lecture.id) {
-          if (!existingLessonsById.has(lecture.id)) {
-            throw new Error('Lecture does not belong to this course');
-          }
-          keptLessonIds.add(lecture.id);
-          const videoChanged =
-            lecture.videoStorageUri != null &&
-            lecture.videoStorageUri !== existingLessonsById.get(lecture.id)?.videoStorageUri;
-          await tx.lesson.update({
-            where: { id: lecture.id },
-            data: {
-              moduleId,
-              title: lecture.title,
-              order: lecture.order,
-              ...(videoChanged
-                ? {
-                    videoStorageUri: lecture.videoStorageUri,
-                    videoDurationSeconds: lecture.videoDurationSeconds ?? null,
-                    duration:
-                      lecture.videoDurationSeconds != null
-                        ? Math.max(1, Math.round(lecture.videoDurationSeconds / 60))
-                        : null,
-                    mediaStatus: 'processing',
-                  }
-                : {}),
-            },
-          });
-          if (videoChanged) {
-            videoTargets.push({
-              targetType: 'lesson',
-              targetId: lecture.id,
-              storageUri: lecture.videoStorageUri!,
-            });
-          }
-        } else {
-          const created = await tx.lesson.create({
-            data: {
-              courseId,
-              moduleId,
-              title: lecture.title,
-              content: '',
-              order: lecture.order,
-              videoProvider: 'self',
-              videoStorageUri: lecture.videoStorageUri ?? null,
-              videoDurationSeconds: lecture.videoDurationSeconds ?? null,
-              duration:
-                lecture.videoDurationSeconds != null
-                  ? Math.max(1, Math.round(lecture.videoDurationSeconds / 60))
-                  : null,
-              mediaStatus: lecture.videoStorageUri ? 'processing' : 'ready',
-            },
-          });
-          keptLessonIds.add(created.id);
-          if (lecture.videoStorageUri) {
-            videoTargets.push({
-              targetType: 'lesson',
-              targetId: created.id,
-              storageUri: lecture.videoStorageUri,
-            });
-          }
-        }
-      }
-    }
-
-    // ── 2. Delete existing lessons that weren't kept ──────────────
-    // Covers lessons removed from kept chapters AND all lessons of removed
-    // chapters — each deleted exactly once. (Moved lessons are in keptLessonIds.)
-    for (const [lessonId] of existingLessonsById) {
-      if (!keptLessonIds.has(lessonId)) {
-        await tx.lesson.delete({ where: { id: lessonId } });
-      }
-    }
-
-    // ── 3. Delete removed chapters (now empty) ────────────────────
-    for (const existingModule of existing.modules) {
-      if (!keptModuleIds.has(existingModule.id)) {
-        await tx.courseModule.delete({ where: { id: existingModule.id } });
+        videoTargets.push({ targetType: 'lesson', targetId: created.id, storageUri: newUri });
       }
     }
   });

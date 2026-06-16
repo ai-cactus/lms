@@ -9,27 +9,14 @@ import { logger } from '@/lib/logger';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export type LectureDraft = {
-  id?: string; // present when editing an existing lecture
-  title: string;
-  file: File | null; // a newly chosen replacement/new video
-  durationSeconds: number | null;
-  existingVideoStorageUri?: string | null; // current video when editing
-  _key?: string; // stable render key (client-only, never sent to server)
-};
-
-export type ChapterDraft = {
-  id?: string; // present when editing an existing chapter
-  title: string;
-  lectures: LectureDraft[];
-  _key?: string; // stable render key (client-only, never sent to server)
-};
+// Skill level is optional — '' means "not specified".
+export type SkillLevelValue = 'beginner' | 'intermediate' | 'advanced' | '';
 
 export interface VideoCourseFormValues {
   title: string;
   description: string;
   overview: string;
-  skillLevel: 'beginner' | 'intermediate' | 'advanced';
+  skillLevel: SkillLevelValue;
   category: string;
   passingScore: number;
   allowedAttempts: number;
@@ -37,7 +24,11 @@ export interface VideoCourseFormValues {
   previewExistingUri: string | null; // current preview when editing
   previewFile: File | null; // newly chosen preview
   previewDurationSeconds: number | null;
-  chapters: ChapterDraft[];
+  // The single course video. `courseVideoExistingUri` is the current video when
+  // editing; `courseVideoFile` is a newly chosen/replacement upload.
+  courseVideoExistingUri: string | null;
+  courseVideoFile: File | null;
+  courseVideoDurationSeconds: number | null;
   quizFile?: File | null; // create-only; set by the form when showQuizPicker is true
 }
 
@@ -102,34 +93,6 @@ async function uploadVideo(file: File): Promise<string> {
   return data.storageUri;
 }
 
-// ── Initial state seeding ──────────────────────────────────────────────────────
-
-function emptyLecture(): LectureDraft {
-  return { title: '', file: null, durationSeconds: null, _key: crypto.randomUUID() };
-}
-
-function seedChapters(initial?: Partial<VideoCourseFormValues>): ChapterDraft[] {
-  if (initial?.chapters && initial.chapters.length > 0) {
-    return initial.chapters.map((c) => ({
-      id: c.id,
-      title: c.title,
-      _key: crypto.randomUUID(),
-      lectures:
-        c.lectures.length > 0
-          ? c.lectures.map((l) => ({
-              id: l.id,
-              title: l.title,
-              file: l.file ?? null,
-              durationSeconds: l.durationSeconds ?? null,
-              existingVideoStorageUri: l.existingVideoStorageUri ?? null,
-              _key: crypto.randomUUID(),
-            }))
-          : [emptyLecture()],
-    }));
-  }
-  return [{ title: '', lectures: [emptyLecture()], _key: crypto.randomUUID() }];
-}
-
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function VideoCourseForm({
@@ -141,14 +104,13 @@ export default function VideoCourseForm({
 }: VideoCourseFormProps) {
   const quizInputRef = useRef<HTMLInputElement>(null);
   const previewInputRef = useRef<HTMLInputElement>(null);
+  const courseVideoInputRef = useRef<HTMLInputElement>(null);
 
   // Controlled field state, initialized from props.initialValues.
   const [title, setTitle] = useState(initialValues?.title ?? '');
   const [description, setDescription] = useState(initialValues?.description ?? '');
   const [overview, setOverview] = useState(initialValues?.overview ?? '');
-  const [skillLevel, setSkillLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(
-    initialValues?.skillLevel ?? 'beginner',
-  );
+  const [skillLevel, setSkillLevel] = useState<SkillLevelValue>(initialValues?.skillLevel ?? '');
   const [category, setCategory] = useState(initialValues?.category ?? '');
   const [passingScore, setPassingScore] = useState<number>(initialValues?.passingScore ?? 70);
   const [allowedAttempts, setAllowedAttempts] = useState<number>(
@@ -164,63 +126,31 @@ export default function VideoCourseForm({
     initialValues?.previewDurationSeconds ?? null,
   );
 
-  const [chapters, setChapters] = useState<ChapterDraft[]>(() => seedChapters(initialValues));
+  // The single course video.
+  const [courseVideoExistingUri] = useState<string | null>(
+    initialValues?.courseVideoExistingUri ?? null,
+  );
+  const [courseVideoFile, setCourseVideoFile] = useState<File | null>(
+    initialValues?.courseVideoFile ?? null,
+  );
+  const [courseVideoDurationSeconds, setCourseVideoDurationSeconds] = useState<number | null>(
+    initialValues?.courseVideoDurationSeconds ?? null,
+  );
 
   const [quizFile, setQuizFile] = useState<File | null>(initialValues?.quizFile ?? null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ── Chapter / lecture builder helpers ─────────────────────────────────────────
-
-  const addChapter = () =>
-    setChapters((cs) => [
-      ...cs,
-      { title: '', lectures: [emptyLecture()], _key: crypto.randomUUID() },
-    ]);
-  const removeChapter = (ci: number) => setChapters((cs) => cs.filter((_, i) => i !== ci));
-  const setChapterTitle = (ci: number, value: string) =>
-    setChapters((cs) => cs.map((c, i) => (i === ci ? { ...c, title: value } : c)));
-
-  const addLecture = (ci: number) =>
-    setChapters((cs) =>
-      cs.map((c, i) => (i === ci ? { ...c, lectures: [...c.lectures, emptyLecture()] } : c)),
-    );
-  const removeLecture = (ci: number, li: number) =>
-    setChapters((cs) =>
-      cs.map((c, i) => (i === ci ? { ...c, lectures: c.lectures.filter((_, j) => j !== li) } : c)),
-    );
-  const setLecture = (
-    ci: number,
-    li: number,
-    patchOrUpdater: Partial<LectureDraft> | ((prev: LectureDraft) => Partial<LectureDraft>),
-  ) =>
-    setChapters((cs) =>
-      cs.map((c, i) =>
-        i === ci
-          ? {
-              ...c,
-              lectures: c.lectures.map((l, j) =>
-                j === li
-                  ? {
-                      ...l,
-                      ...(typeof patchOrUpdater === 'function'
-                        ? patchOrUpdater(l)
-                        : patchOrUpdater),
-                    }
-                  : l,
-              ),
-            }
-          : c,
-      ),
-    );
-
   // ── Submit gating ─────────────────────────────────────────────────────────────
 
+  // A course video is always required. On create that means a freshly chosen
+  // file; on edit either the existing video is kept or a replacement is chosen.
+  const hasCourseVideo =
+    mode === 'create'
+      ? courseVideoFile !== null
+      : Boolean(courseVideoExistingUri) || courseVideoFile !== null;
+
   const canSubmit =
-    title.trim().length > 0 &&
-    (!showQuizPicker || quizFile !== null) &&
-    (mode === 'create'
-      ? chapters.some((c) => c.lectures.some((l) => l.file !== null))
-      : chapters.some((c) => c.lectures.some((l) => Boolean(l.id) || l.file !== null)));
+    title.trim().length > 0 && (!showQuizPicker || quizFile !== null) && hasCourseVideo;
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -239,7 +169,9 @@ export default function VideoCourseForm({
         previewExistingUri,
         previewFile,
         previewDurationSeconds,
-        chapters,
+        courseVideoExistingUri,
+        courseVideoFile,
+        courseVideoDurationSeconds,
         quizFile: showQuizPicker ? quizFile : null,
       };
       await onSubmit(values, uploadVideo);
@@ -289,15 +221,16 @@ export default function VideoCourseForm({
         />
       </Field>
 
-      {/* Skill level */}
-      <Field label="Skill level">
+      {/* Skill level (optional) */}
+      <Field label="Skill level (optional)">
         <select
           name="skillLevel"
           className="h-11 w-full rounded-[10px] border border-border px-3 text-sm"
           value={skillLevel}
-          onChange={(e) => setSkillLevel(e.target.value as typeof skillLevel)}
+          onChange={(e) => setSkillLevel(e.target.value as SkillLevelValue)}
           disabled={isSubmitting}
         >
+          <option value="">Not specified</option>
           <option value="beginner">Beginner</option>
           <option value="intermediate">Intermediate</option>
           <option value="advanced">Advanced</option>
@@ -406,127 +339,54 @@ export default function VideoCourseForm({
         </div>
       </div>
 
-      {/* Chapters & lectures builder */}
-      <div className="flex flex-col gap-4">
-        <label className="text-sm font-medium text-foreground">Chapters &amp; lectures</label>
-        {chapters.map((chapter, ci) => (
-          <div
-            key={chapter._key ?? chapter.id ?? ci}
-            className="rounded-[10px] border border-border p-4"
+      {/* Course video (required) */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-foreground" htmlFor="courseVideo">
+          Course video <span className="text-error">*</span>
+        </label>
+        {mode === 'edit' && courseVideoExistingUri && !courseVideoFile && (
+          <p className="text-xs text-text-muted">Current video: a course video is attached.</p>
+        )}
+        <div className="relative flex items-center gap-3 rounded-[10px] border border-dashed border-border p-4">
+          <VideoIcon className="size-5 shrink-0 text-text-secondary" aria-hidden="true" />
+          <span className="flex-1 truncate text-sm text-text-secondary">
+            {courseVideoFile
+              ? courseVideoFile.name
+              : courseVideoExistingUri
+                ? 'Current video attached'
+                : 'MP4 or WebM'}
+            {courseVideoFile && courseVideoDurationSeconds != null && (
+              <span className="ml-2 text-xs text-text-muted">
+                ({formatDuration(courseVideoDurationSeconds)})
+              </span>
+            )}
+          </span>
+          <input
+            ref={courseVideoInputRef}
+            id="courseVideo"
+            type="file"
+            accept="video/mp4,video/webm"
+            disabled={isSubmitting}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setCourseVideoFile(f);
+              setCourseVideoDurationSeconds(null);
+              if (f) probeVideoDuration(f).then(setCourseVideoDurationSeconds);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => courseVideoInputRef.current?.click()}
+            disabled={isSubmitting}
           >
-            <div className="mb-3 flex items-center gap-2">
-              <Input
-                placeholder={`Chapter ${ci + 1} title`}
-                value={chapter.title}
-                onChange={(e) => setChapterTitle(ci, e.target.value)}
-                disabled={isSubmitting}
-              />
-              {chapters.length > 1 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => removeChapter(ci)}
-                  disabled={isSubmitting}
-                >
-                  Remove
-                </Button>
-              )}
-            </div>
-            {chapter.lectures.map((lecture, li) => {
-              const hasExisting = Boolean(lecture.existingVideoStorageUri) && !lecture.file;
-              return (
-                <div
-                  key={lecture._key ?? lecture.id ?? li}
-                  className="mb-2 flex items-center gap-2"
-                >
-                  <Input
-                    className="flex-1"
-                    placeholder={`Lecture ${li + 1} title`}
-                    value={lecture.title}
-                    onChange={(e) => setLecture(ci, li, { title: e.target.value })}
-                    disabled={isSubmitting}
-                  />
-                  {mode === 'edit' && hasExisting ? (
-                    <>
-                      <span className="text-xs text-text-muted whitespace-nowrap">
-                        Current video
-                      </span>
-                      <label className="cursor-pointer text-xs underline text-text-secondary hover:text-foreground">
-                        Replace video
-                        <input
-                          type="file"
-                          accept="video/mp4,video/webm"
-                          disabled={isSubmitting}
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0] ?? null;
-                            setLecture(ci, li, { file: f, durationSeconds: null });
-                            if (f) {
-                              const chosen = f;
-                              probeVideoDuration(f).then((d) =>
-                                setLecture(ci, li, (prev) =>
-                                  prev.file === chosen ? { durationSeconds: d } : {},
-                                ),
-                              );
-                            }
-                          }}
-                        />
-                      </label>
-                    </>
-                  ) : (
-                    <input
-                      type="file"
-                      accept="video/mp4,video/webm"
-                      disabled={isSubmitting}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] ?? null;
-                        setLecture(ci, li, { file: f, durationSeconds: null });
-                        if (f) {
-                          const chosen = f;
-                          probeVideoDuration(f).then((d) =>
-                            setLecture(ci, li, (prev) =>
-                              prev.file === chosen ? { durationSeconds: d } : {},
-                            ),
-                          );
-                        }
-                      }}
-                    />
-                  )}
-                  {chapter.lectures.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeLecture(ci, li)}
-                      disabled={isSubmitting}
-                    >
-                      ×
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => addLecture(ci)}
-              disabled={isSubmitting}
-            >
-              + Add lecture
-            </Button>
-          </div>
-        ))}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={addChapter}
-          disabled={isSubmitting}
-        >
-          + Add chapter
-        </Button>
+            {mode === 'edit' && (courseVideoExistingUri || courseVideoFile)
+              ? 'Replace video'
+              : 'Choose file'}
+          </Button>
+        </div>
       </div>
 
       {/* Quiz file (create-only) */}

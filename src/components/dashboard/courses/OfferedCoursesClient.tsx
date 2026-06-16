@@ -25,7 +25,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import ShareCourseModal from '@/components/dashboard/training/ShareCourseModal';
 import { updateOffering, withdrawOffering } from '@/app/actions/offering';
 import type { OfferedVideoCourseRow } from '@/app/actions/offering';
 import { logger } from '@/lib/logger';
@@ -59,10 +58,6 @@ export default function OfferedCoursesClient({ courses }: OfferedCoursesClientPr
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [assignModal, setAssignModal] = useState<{ isOpen: boolean; courseId: string | null }>({
-    isOpen: false,
-    courseId: null,
-  });
   const [editTarget, setEditTarget] = useState<OfferedVideoCourseRow | null>(null);
 
   const filteredCourses = useMemo(() => {
@@ -165,7 +160,7 @@ export default function OfferedCoursesClient({ courses }: OfferedCoursesClientPr
                           size="sm"
                           variant="outline"
                           onClick={() =>
-                            setAssignModal({ isOpen: true, courseId: course.courseId })
+                            router.push(`/dashboard/training/courses/${course.courseId}/assign`)
                           }
                         >
                           {isThisPending ? (
@@ -213,15 +208,6 @@ export default function OfferedCoursesClient({ courses }: OfferedCoursesClientPr
           </TableBody>
         </Table>
       </div>
-
-      {/* Assign staff modal — reuses the existing enrollment flow */}
-      {assignModal.courseId && (
-        <ShareCourseModal
-          isOpen={assignModal.isOpen}
-          onClose={() => setAssignModal({ isOpen: false, courseId: null })}
-          courseId={assignModal.courseId}
-        />
-      )}
 
       {/* Rebrand / edit-details modal */}
       <EditOfferingDialog

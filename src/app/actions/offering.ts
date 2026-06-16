@@ -37,8 +37,10 @@ export interface VideoCourseAvailabilityRow {
   id: string;
   title: string;
   description: string | null;
+  category: string | null;
   durationSeconds: number | null;
   questionCount: number;
+  hasPreview: boolean; // true when a preview video exists (drives the card thumbnail)
   isOffered: boolean;
   offeringId: string | null;
 }
@@ -84,8 +86,10 @@ export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabili
       id: course.id,
       title: course.title,
       description: course.description,
+      category: course.category,
       durationSeconds,
       questionCount,
+      hasPreview: Boolean(course.previewVideoStorageUri),
       isOffered: course.offerings.length > 0,
       offeringId: course.offerings[0]?.id ?? null,
     };

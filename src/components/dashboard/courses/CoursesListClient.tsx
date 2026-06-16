@@ -27,7 +27,17 @@ import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
-import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Pencil,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Video,
+  FileText,
+} from 'lucide-react';
 
 const PENDING_KEY = 'lms_pending_generation';
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -384,7 +394,18 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                           className="object-cover"
                         />
                       </div>
-                      <div>
+                      <div className="flex items-center gap-2">
+                        {course.type === 'video' ? (
+                          <Video
+                            className="size-4 shrink-0 text-primary"
+                            aria-label="Video course"
+                          />
+                        ) : (
+                          <FileText
+                            className="size-4 shrink-0 text-text-secondary"
+                            aria-label="Text course"
+                          />
+                        )}
                         <span className="font-semibold text-[#1a202c]">{course.title}</span>
                       </div>
                     </div>
