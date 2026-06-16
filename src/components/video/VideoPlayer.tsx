@@ -163,6 +163,11 @@ export function VideoPlayer({
     <video
       src={src}
       controls
+      // playsInline is REQUIRED for inline playback on iOS Safari — without it
+      // iOS hijacks the video into its native fullscreen player. preload only
+      // metadata so mobile data isn't spent until the user presses play.
+      playsInline
+      preload="metadata"
       className="w-full rounded-lg bg-black shadow-md"
       onLoadedMetadata={handleLoadedMetadata}
       onTimeUpdate={handleTimeUpdate}

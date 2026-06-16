@@ -140,7 +140,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
     }
 
-    if (quiz.lesson.courseId !== enrollment.courseId) {
+    // A quiz attaches to either a lesson (per-lesson quiz) or directly to a
+    // course (course-level video-course quiz). Resolve its course id from
+    // whichever relation is set.
+    const quizCourseId = quiz.courseId ?? quiz.lesson?.courseId ?? null;
+    if (quizCourseId !== enrollment.courseId) {
       return NextResponse.json(
         { error: 'Quiz does not belong to the enrolled course' },
         { status: 403 },

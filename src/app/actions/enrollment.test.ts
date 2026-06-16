@@ -18,6 +18,7 @@ const { prismaMock, mockAdminAuth, mockWorkerAuth } = vi.hoisted(() => {
     user: { findUnique: vi.fn(), create: vi.fn() },
     profile: { upsert: vi.fn() },
     orgCourseOffering: { findUnique: vi.fn() },
+    courseAssignment: { create: vi.fn() },
     enrollment: { findFirst: vi.fn(), create: vi.fn() },
   };
   const mockAdminAuth = vi.fn();
@@ -109,6 +110,9 @@ describe('enrollUsers — course-ownership guard', () => {
     // Default: no existing enrollment (so we reach the create path).
     prismaMock.enrollment.findFirst.mockResolvedValue(null);
     prismaMock.enrollment.create.mockResolvedValue({});
+
+    // Org-scoped enrollment now creates a CourseAssignment batch first.
+    prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
   });
 
   // -------------------------------------------------------------------------

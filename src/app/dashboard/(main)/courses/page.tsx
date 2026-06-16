@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { getCourses } from '@/app/actions/course';
-import { listAvailableVideoCourses, listOfferedVideoCourses } from '@/app/actions/offering';
+import { listAvailableVideoCourses } from '@/app/actions/offering';
 import CoursesPageTabs from '@/components/dashboard/courses/CoursesPageTabs';
 
 export const dynamic = 'force-dynamic';
@@ -45,10 +45,9 @@ export default async function CoursesPage() {
 
   // Fetch both data sources in parallel; a failure in available courses
   // should never break the page — fall back to an empty list.
-  const [courses, availableCourses, offeredCourses] = await Promise.all([
+  const [courses, availableCourses] = await Promise.all([
     getCourses(),
     listAvailableVideoCourses().catch(() => []),
-    listOfferedVideoCourses().catch(() => []),
   ]);
 
   return (
@@ -57,7 +56,6 @@ export default async function CoursesPage() {
         courses={courses}
         hasBilling={hasBilling}
         availableCourses={availableCourses}
-        offeredCourses={offeredCourses}
       />
     </Suspense>
   );
