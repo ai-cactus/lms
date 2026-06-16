@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Table,
   TableBody,
@@ -11,7 +12,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import ShareCourseModal from '@/components/dashboard/training/ShareCourseModal';
 import type { OfferedVideoCourseRow } from '@/app/actions/offering';
 import { Users, ChevronRight } from 'lucide-react';
 
@@ -40,10 +40,7 @@ interface OfferedCoursesTableProps {
 // ---------------------------------------------------------------------------
 
 export default function OfferedCoursesTable({ courses, maxItems = 5 }: OfferedCoursesTableProps) {
-  const [shareModal, setShareModal] = useState<{ isOpen: boolean; courseId: string | null }>({
-    isOpen: false,
-    courseId: null,
-  });
+  const router = useRouter();
 
   // Nothing offered yet → render nothing (the Available table below handles discovery).
   if (courses.length === 0) return null;
@@ -97,7 +94,9 @@ export default function OfferedCoursesTable({ courses, maxItems = 5 }: OfferedCo
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setShareModal({ isOpen: true, courseId: course.courseId })}
+                    onClick={() =>
+                      router.push(`/dashboard/training/courses/${course.courseId}/assign`)
+                    }
                   >
                     <Users className="mr-1.5 size-4" aria-hidden="true" />
                     Assign staff
@@ -119,14 +118,6 @@ export default function OfferedCoursesTable({ courses, maxItems = 5 }: OfferedCo
           <ChevronRight className="size-4" aria-hidden="true" />
         </Link>
       </div>
-
-      {shareModal.courseId && (
-        <ShareCourseModal
-          isOpen={shareModal.isOpen}
-          onClose={() => setShareModal({ isOpen: false, courseId: null })}
-          courseId={shareModal.courseId}
-        />
-      )}
     </section>
   );
 }

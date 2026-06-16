@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Search, ChevronRight } from 'lucide-react';
+import { Search, ChevronRight, Video, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
@@ -20,6 +20,7 @@ interface Course {
   id: string;
   title: string;
   thumbnail?: string | null;
+  type?: string; // 'video' | 'text'
   level?: string | null;
   enrollmentsCount: number;
   completionRate: number;
@@ -90,7 +91,22 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                       />
                     </div>
                     <div className="flex min-w-0 flex-col">
-                      <span className="truncate font-semibold text-[#0f172a]">{course.title}</span>
+                      <span className="flex items-center gap-2">
+                        {course.type === 'video' ? (
+                          <Video
+                            className="size-4 shrink-0 text-primary"
+                            aria-label="Video course"
+                          />
+                        ) : (
+                          <FileText
+                            className="size-4 shrink-0 text-text-secondary"
+                            aria-label="Text course"
+                          />
+                        )}
+                        <span className="truncate font-semibold text-[#0f172a]">
+                          {course.title}
+                        </span>
+                      </span>
                       {course.level && (
                         <span className="text-xs font-normal text-text-secondary md:hidden">
                           {course.level}

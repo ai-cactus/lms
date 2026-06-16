@@ -49,7 +49,11 @@ export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
 
   if (!lesson) throw new Error('Lesson not found');
 
-  const allowed = lesson.course.createdBy === uid || lesson.course.enrollments.length > 0;
+  // Global published video courses are a shared catalog any signed-in user may
+  // watch (e.g. an org admin previewing before assigning).
+  const c = lesson.course;
+  const isGlobalCatalog = c.isGlobal && c.status === 'published' && c.type === 'video';
+  const allowed = c.createdBy === uid || c.enrollments.length > 0 || isGlobalCatalog;
 
   if (!allowed) throw new Error('Forbidden');
 

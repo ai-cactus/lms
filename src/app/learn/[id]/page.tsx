@@ -11,6 +11,7 @@ import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
+import AdminCourseReview from '@/components/courses/AdminCourseReview';
 import { Button } from '@/components/ui/button';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { isQuizUnlocked } from '@/lib/video/gating';
@@ -36,6 +37,7 @@ interface Question {
   type: string;
   options: string[];
   correctAnswer: string;
+  explanation?: string;
 }
 
 interface Quiz {
@@ -526,6 +528,38 @@ export default function LearnPage() {
       </div>
     );
   if (!course) return null;
+
+  // Admins opening a VIDEO course get a clean read-only review: the course
+  // video + an answer-key walkthrough of the quiz + an Assign action. (Text
+  // courses keep the existing editable admin flow below.)
+  if (userData?.role === 'admin' && course.lessons.some((l) => l.videoStorageUri)) {
+    const reviewVideoLesson = course.lessons.find((l) => l.videoStorageUri) ?? null;
+    return (
+      <AdminCourseReview
+        courseId={courseId}
+        title={course.title}
+        videoLesson={
+          reviewVideoLesson ? { id: reviewVideoLesson.id, title: reviewVideoLesson.title } : null
+        }
+        enrollmentId={enrollment?.id || 'preview-mode'}
+        quiz={
+          course.quiz
+            ? {
+                title: course.quiz.title,
+                passingScore: course.quiz.passingScore,
+                questions: course.quiz.questions.map((q) => ({
+                  id: q.id,
+                  text: q.text,
+                  options: q.options,
+                  correctAnswer: q.correctAnswer,
+                  explanation: q.explanation,
+                })),
+              }
+            : null
+        }
+      />
+    );
+  }
 
   const isQuizIndex = activeIndex >= course.lessons.length;
   const currentLesson = !isQuizIndex ? course.lessons[activeIndex] : null;

@@ -173,25 +173,10 @@ export default function VideoCoursesClient({ courses }: Props) {
         ? await uploadVideo(values.previewFile)
         : undefined;
 
-      const modules = [];
-      for (let ci = 0; ci < values.chapters.length; ci++) {
-        const chapter = values.chapters[ci];
-        const lectures = [];
-        for (let li = 0; li < chapter.lectures.length; li++) {
-          const lecture = chapter.lectures[li];
-          if (!lecture.file) continue;
-          const videoStorageUri = await uploadVideo(lecture.file);
-          lectures.push({
-            title: lecture.title.trim() || `Lecture ${li + 1}`,
-            order: li,
-            videoStorageUri,
-            videoDurationSeconds: lecture.durationSeconds ?? undefined,
-          });
-        }
-        if (lectures.length > 0) {
-          modules.push({ title: chapter.title.trim() || `Chapter ${ci + 1}`, order: ci, lectures });
-        }
+      if (!values.courseVideoFile) {
+        throw new Error('[VideoCoursesClient] course video missing on create');
       }
+      const courseVideoStorageUri = await uploadVideo(values.courseVideoFile);
 
       const quizFile = values.quizFile;
       if (!quizFile) throw new Error('[VideoCoursesClient] quizFile missing on create');
@@ -203,14 +188,17 @@ export default function VideoCoursesClient({ courses }: Props) {
           title: values.title.trim(),
           description,
           overview: values.overview.trim() || undefined,
-          skillLevel: values.skillLevel,
+          skillLevel: values.skillLevel || undefined,
           category,
           passingScore,
           allowedAttempts,
           duration,
           previewVideoStorageUri,
           previewVideoDurationSeconds: values.previewDurationSeconds ?? undefined,
-          modules,
+          courseVideo: {
+            storageUri: courseVideoStorageUri,
+            durationSeconds: values.courseVideoDurationSeconds ?? undefined,
+          },
           quizFileName: quizFile.name,
           quizFileText,
         }),
@@ -263,8 +251,8 @@ export default function VideoCoursesClient({ courses }: Props) {
         <div className="mb-5">
           <h2 className="text-base font-semibold text-foreground">Upload video course</h2>
           <p className="mt-0.5 text-sm text-text-secondary">
-            Build chapters and lectures, optionally add a preview, and attach a quiz file (CSV or
-            JSON) to create a new global course.
+            Add the course video, optionally a preview, and attach a quiz file (CSV or JSON) to
+            create a new global course.
           </p>
         </div>
 

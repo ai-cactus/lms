@@ -55,7 +55,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
 
   if (!lesson) return new Response('Not found', { status: 404 });
 
-  const allowed = lesson.course.createdBy === uid || lesson.course.enrollments.length > 0;
+  // Global published video courses are a shared catalog any signed-in user may
+  // watch (e.g. an org admin previewing before assigning).
+  const c = lesson.course;
+  const isGlobalCatalog = c.isGlobal && c.status === 'published' && c.type === 'video';
+  const allowed = c.createdBy === uid || c.enrollments.length > 0 || isGlobalCatalog;
   if (!allowed) return new Response('Forbidden', { status: 403 });
 
   if (!lesson.videoStorageUri) return new Response('No video for this lesson', { status: 404 });

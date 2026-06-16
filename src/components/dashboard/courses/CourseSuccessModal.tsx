@@ -6,7 +6,6 @@ import Image from 'next/image';
 import { FileText } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import ShareCourseModal from '../training/ShareCourseModal';
 
 interface CourseSuccessModalProps {
   isOpen: boolean;
@@ -22,16 +21,16 @@ export default function CourseSuccessModal({
   courseTitle,
 }: CourseSuccessModalProps) {
   const router = useRouter();
-  const [showShareModal, setShowShareModal] = React.useState(false);
 
   const handleFinish = () => {
     onClose();
     router.push('/dashboard/training');
   };
 
-  if (showShareModal) {
-    return <ShareCourseModal isOpen={true} onClose={handleFinish} courseId={courseId} />;
-  }
+  const handleAssign = () => {
+    onClose();
+    router.push(`/dashboard/training/courses/${courseId}/assign`);
+  };
 
   return (
     <Dialog
@@ -85,7 +84,7 @@ export default function CourseSuccessModal({
         </p>
 
         <div className="relative z-10 flex flex-col gap-3 px-4">
-          <Button variant="default" className="w-full" onClick={() => setShowShareModal(true)}>
+          <Button variant="default" className="w-full" onClick={handleAssign}>
             Assign to Workers
           </Button>
           <Button variant="outline" className="w-full" onClick={handleFinish}>

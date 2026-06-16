@@ -13,7 +13,7 @@ interface Props {
     title: string;
     description: string;
     overview: string;
-    skillLevel: 'beginner' | 'intermediate' | 'advanced';
+    skillLevel: 'beginner' | 'intermediate' | 'advanced' | '';
     category: string;
     duration: number | null;
     passingScore: number;
@@ -21,17 +21,8 @@ interface Props {
     questionCount: number;
     previewExistingUri: string | null;
     previewDurationSeconds: number | null;
-    chapters: {
-      id: string;
-      title: string;
-      lectures: {
-        id: string;
-        title: string;
-        file: File | null;
-        durationSeconds: number | null;
-        existingVideoStorageUri: string | null;
-      }[];
-    }[];
+    courseVideoExistingUri: string | null;
+    courseVideoDurationSeconds: number | null;
   };
 }
 
@@ -53,45 +44,27 @@ export default function EditVideoCourseClient({ initial }: Props) {
         ? await uploadVideo(values.previewFile)
         : undefined;
 
-      const modules = [];
-      for (let ci = 0; ci < values.chapters.length; ci++) {
-        const chapter = values.chapters[ci];
-        const lectures = [];
-        for (let li = 0; li < chapter.lectures.length; li++) {
-          const lecture = chapter.lectures[li];
-          // Skip a brand-new lecture that has no video (existing lectures carry
-          // an id and are kept even without a re-upload). Avoids persisting an
-          // empty, video-less lesson.
-          if (!lecture.id && !lecture.file) continue;
-          const videoStorageUri = lecture.file ? await uploadVideo(lecture.file) : undefined;
-          lectures.push({
-            id: lecture.id,
-            title: lecture.title.trim() || `Lecture ${li + 1}`,
-            order: li,
-            videoStorageUri,
-            videoDurationSeconds: lecture.durationSeconds ?? undefined,
-          });
-        }
-        modules.push({
-          id: chapter.id,
-          title: chapter.title.trim() || `Chapter ${ci + 1}`,
-          order: ci,
-          lectures,
-        });
-      }
+      // Only upload (and replace) the course video when a new file was chosen;
+      // otherwise the existing video is kept.
+      const courseVideo = values.courseVideoFile
+        ? {
+            storageUri: await uploadVideo(values.courseVideoFile),
+            durationSeconds: values.courseVideoDurationSeconds ?? undefined,
+          }
+        : undefined;
 
       await updateVideoCourse(initial.courseId, {
         title: values.title.trim(),
         description: values.description.trim() || undefined,
         overview: values.overview.trim() || undefined,
-        skillLevel: values.skillLevel,
+        skillLevel: values.skillLevel || undefined,
         category: values.category.trim() || undefined,
         duration: values.duration ?? undefined,
         passingScore: values.passingScore,
         allowedAttempts: values.allowedAttempts,
         previewVideoStorageUri,
         previewVideoDurationSeconds: values.previewDurationSeconds ?? undefined,
-        modules,
+        courseVideo,
       });
 
       router.push('/system/video-courses');
@@ -115,8 +88,8 @@ export default function EditVideoCourseClient({ initial }: Props) {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Edit video course</h1>
         <p className="mt-1 text-sm text-text-secondary">
-          Update course details, chapters, lectures and videos. Replacing a video re-processes it.
-          The quiz has {initial.questionCount} question
+          Update course details and the course video. Replacing a video re-processes it. The quiz
+          has {initial.questionCount} question
           {initial.questionCount === 1 ? '' : 's'} and is not editable here.
         </p>
       </div>
@@ -141,7 +114,9 @@ export default function EditVideoCourseClient({ initial }: Props) {
           previewExistingUri: initial.previewExistingUri,
           previewFile: null,
           previewDurationSeconds: initial.previewDurationSeconds,
-          chapters: initial.chapters,
+          courseVideoExistingUri: initial.courseVideoExistingUri,
+          courseVideoFile: null,
+          courseVideoDurationSeconds: initial.courseVideoDurationSeconds,
         }}
         onSubmit={handleSubmit}
       />
