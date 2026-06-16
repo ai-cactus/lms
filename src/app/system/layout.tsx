@@ -48,6 +48,12 @@ import('@/lib/queue/manual-indexer-worker').then(({ getManualIndexerWorker }) =>
   getManualIndexerWorker();
 });
 
+// Boot the video-transcode BullMQ worker (normalizes uploaded course videos to
+// a web-safe, faststart MP4). Same singleton lifecycle as the indexer above.
+import('@/lib/queue/video-transcode-worker').then(({ getVideoTranscodeWorker }) => {
+  getVideoTranscodeWorker();
+});
+
 export default async function SystemLayout({ children }: { children: React.ReactNode }) {
   // If env var not set, return 404 — invisible in production
   const enabled = await isSystemAdminEnabled();
