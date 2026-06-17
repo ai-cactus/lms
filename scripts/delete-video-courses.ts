@@ -27,6 +27,10 @@
  *                       a DRY RUN that only prints what would be removed.
  *   --allow-non-video   Also delete provided IDs whose type is not 'video'.
  *   --keep-files        Delete DB rows only; leave object-storage blobs in place.
+ *   --env-file=<path>   Load env vars from this file (in addition to the usual
+ *                       .env*). Useful when DATABASE_URL/storage creds aren't in
+ *                       the shell (e.g. staging injects them via PM2/systemd).
+ *                       Real environment vars always take precedence.
  *
  * Examples:
  *   # See what would happen (safe):
@@ -35,12 +39,56 @@
  *   npx tsx scripts/delete-video-courses.ts 1a2b 3c4d --yes
  */
 
-import { loadEnvConfig } from '@next/env';
+import fs from 'node:fs';
+import path from 'node:path';
 
-// Load .env* exactly like Next does, BEFORE importing anything that reads env
-// at module-init time (Prisma client, storage providers). Hence the dynamic
-// imports inside main().
-loadEnvConfig(process.cwd());
+/**
+ * Minimal .env loader (no deps) — fills process.env WITHOUT overwriting any
+ * variable already present in the real environment. Returns true if the file
+ * existed.
+ */
+function loadEnvFile(file: string): boolean {
+  if (!fs.existsSync(file)) return false;
+  for (const rawLine of fs.readFileSync(file, 'utf8').split('\n')) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line.startsWith('export ')) line = line.slice(7).trim();
+    const eq = line.indexOf('=');
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    let val = line.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = val;
+  }
+  return true;
+}
+
+/**
+ * Load env BEFORE importing anything that reads it at module-init time (Prisma
+ * client, storage providers) — hence the dynamic imports inside main(). Honors
+ * an explicit `--env-file=<path>` and otherwise tries the usual files. Vars
+ * already set in the real environment (e.g. injected by PM2/systemd on staging)
+ * always win.
+ */
+function loadEnv(): void {
+  const explicit = process.argv.find((a) => a.startsWith('--env-file='));
+  const candidates = [
+    explicit ? explicit.slice('--env-file='.length) : null,
+    '.env',
+    '.env.local',
+    '.env.production',
+    '.env.production.local',
+    '.env.staging',
+  ].filter(Boolean) as string[];
+  for (const c of candidates) loadEnvFile(path.resolve(process.cwd(), c));
+}
+
+loadEnv();
 
 async function main() {
   const { prisma } = await import('../src/lib/prisma');
@@ -56,7 +104,16 @@ async function main() {
   if (ids.length === 0) {
     console.error(
       'Usage: npx tsx scripts/delete-video-courses.ts <courseId> [courseId...] ' +
-        '[--yes] [--allow-non-video] [--keep-files]',
+        '[--yes] [--allow-non-video] [--keep-files] [--env-file=<path>]',
+    );
+    process.exit(1);
+  }
+
+  if (!process.env.DATABASE_URL) {
+    console.error(
+      'DATABASE_URL is not set. Provide it via your environment or --env-file. Examples:\n' +
+        '  DATABASE_URL="postgresql://…" npx tsx scripts/delete-video-courses.ts <id> --yes\n' +
+        '  npx tsx scripts/delete-video-courses.ts <id> --yes --env-file=.env.production',
     );
     process.exit(1);
   }
