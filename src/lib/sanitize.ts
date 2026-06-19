@@ -35,6 +35,15 @@ const SANITIZE_CONFIG = {
   ALLOWED_ATTR: ['class', 'href', 'src', 'alt', 'target', 'rel'],
 };
 
+// Harden links that open in a new tab against tabnapping: any anchor with
+// target="_blank" must carry rel="noopener noreferrer" so the opened page
+// cannot reach back through window.opener.
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A' && node.getAttribute('target') === '_blank') {
+    node.setAttribute('rel', 'noopener noreferrer');
+  }
+});
+
 /**
  * Sanitizes HTML to prevent Cross-Site Scripting (XSS) attacks.
  * Uses isomorphic-dompurify which works on both server and client side.

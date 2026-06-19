@@ -6,6 +6,7 @@ import { Alert } from '@/components/ui/alert';
 import VideoCourseForm, { type VideoCourseFormValues } from '../../VideoCourseForm';
 import { updateVideoCourse } from '@/app/actions/video-course';
 import { logger } from '@/lib/logger';
+import { isEmptyHtml } from '@/lib/html';
 
 interface Props {
   initial: {
@@ -56,7 +57,7 @@ export default function EditVideoCourseClient({ initial }: Props) {
       await updateVideoCourse(initial.courseId, {
         title: values.title.trim(),
         description: values.description.trim() || undefined,
-        overview: values.overview.trim() || undefined,
+        overview: isEmptyHtml(values.overview) ? undefined : values.overview,
         skillLevel: values.skillLevel || undefined,
         category: values.category.trim() || undefined,
         duration: values.duration ?? undefined,

@@ -28,6 +28,7 @@ interface CoursePreviewProps {
 import { startCourse } from '@/app/actions/course';
 import { requestCourseRetry } from '@/app/actions/enrollment';
 import { logger } from '@/lib/logger';
+import { RichTextContent } from '@/components/courses/RichTextContent';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -257,9 +258,7 @@ export default function CoursePreview({
                 {(course.overview || course.description) && (
                   <>
                     <h2 className="mb-4 text-2xl font-bold text-[#1a202c]">Course Overview</h2>
-                    <p className="mb-2 whitespace-pre-line text-base leading-relaxed text-[#4a5568]">
-                      {course.overview || course.description}
-                    </p>
+                    <RichTextContent html={course.overview || course.description || ''} />
                   </>
                 )}
 
