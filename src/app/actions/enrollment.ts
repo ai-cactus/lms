@@ -111,7 +111,12 @@ export async function enrollUsers(
         })) !== null
       : false;
 
-  if (!course || (!isOwnCourse && !isOfferedGlobal)) {
+  // An org admin may assign a global published course straight from the
+  // catalog without having offered it first — the offering is created below as
+  // part of the assignment. (Non-global courses still require ownership.)
+  const isAssignableCatalog = course?.isGlobal === true && course.status === 'published';
+
+  if (!course || (!isOwnCourse && !isOfferedGlobal && !isAssignableCatalog)) {
     throw new Error('Course not found');
   }
 
@@ -129,6 +134,17 @@ export async function enrollUsers(
     assignmentSettings?.scheduleAt != null ? new Date(assignmentSettings.scheduleAt) : null;
   let assignmentId: string | null = null;
   if (organizationId) {
+    // Assigning a global catalog course also offers it to the org, so it shows
+    // up in their offered courses and future assignments pass the offering
+    // check above. Idempotent: re-assigning an already-offered course is a noop.
+    if (course.isGlobal === true && !isOwnCourse) {
+      await prisma.orgCourseOffering.upsert({
+        where: { organizationId_courseId: { organizationId, courseId } },
+        update: {},
+        create: { organizationId, courseId, addedByAdminId: session.user.id },
+      });
+    }
+
     const assignment = await prisma.courseAssignment.create({
       data: {
         organizationId,
