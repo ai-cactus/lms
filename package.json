@@ -45,7 +45,7 @@
     "mammoth": "^1.11.0",
     "minio": "^8.0.7",
     "next": "16.2.6",
-    "nodemailer": "^8.0.5",
+    "nodemailer": "^9.0.1",
     "otpauth": "^9.5.0",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.18.0",
