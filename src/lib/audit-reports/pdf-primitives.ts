@@ -25,7 +25,8 @@ export interface Column<T> {
 
 export function createDoc(title: string): Doc {
   return new PDFDocument({
-    size: [PAGE_HEIGHT, PAGE_WIDTH],
+    // PDFKit size is [width, height]; we want A4 landscape (wide).
+    size: [PAGE_WIDTH, PAGE_HEIGHT],
     margins: { top: MARGIN, bottom: 60, left: MARGIN, right: MARGIN },
     autoFirstPage: false,
     bufferPages: true,
