@@ -4,6 +4,7 @@ import { parseQuizFile } from '@/lib/video/quiz-import';
 import { QuizImportError } from '@/lib/video/types';
 import { createVideoCourse } from '@/app/actions/video-course';
 import { logger } from '@/lib/logger';
+import { isEmptyHtml } from '@/lib/html';
 
 interface VideoCoursePayload {
   title?: string;
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
     const { courseId } = await createVideoCourse({
       title,
       description: body.description?.trim() || undefined,
-      overview: body.overview?.trim() || undefined,
+      overview: isEmptyHtml(body.overview) ? undefined : body.overview,
       skillLevel: body.skillLevel,
       category: body.category?.trim() || undefined,
       objectives: body.objectives ?? [],
