@@ -31,7 +31,7 @@ export default function AuditorPackClient({
   return (
     <div>
       {/* Tab Navigation */}
-      <nav className="mb-7 flex gap-0 border-b-2 border-border" aria-label="Auditor Pack tabs">
+      <nav className="mb-7 flex gap-0 border-b-2 border-border" aria-label="Audit Reports tabs">
         {TABS.map((tab) => (
           <button
             key={tab.key}

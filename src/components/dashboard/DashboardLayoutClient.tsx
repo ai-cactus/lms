@@ -152,11 +152,11 @@ export default function DashboardLayoutClient({
               </Link>
 
               <Link
-                href="/dashboard/auditor-pack"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/auditor-pack') ? navItemActive : ''}`}
+                href="/dashboard/audit-reports"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/audit-reports') ? navItemActive : ''}`}
               >
                 <ClipboardCheck className="size-5" />
-                <span>Auditor Pack</span>
+                <span>Audit Reports</span>
               </Link>
             </div>
           )}

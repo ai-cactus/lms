@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import { Search, UserPlus } from 'lucide-react';
+import { Search, UserPlus, Download } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -11,13 +11,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { getAuditorStaff } from '@/app/actions/auditor';
+import { useExportJobs } from './ExportJobsProvider';
 import type { AuditorStaffRow } from '@/app/actions/auditor';
 
 export default function AuditorStaffTab() {
   const [staff, setStaff] = useState<AuditorStaffRow[]>([]);
   const [search, setSearch] = useState('');
   const [isPending, startTransition] = useTransition();
+  const { startExport } = useExportJobs();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -43,6 +46,15 @@ export default function AuditorStaffTab() {
             aria-label="Search staff members"
             startIcon={<Search aria-hidden="true" />}
           />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => startExport({ scope: 'org', label: 'All staff report' })}
+            title="Export all (PDF)"
+          >
+            <Download className="size-3.5" />
+            Export all
+          </Button>
         </div>
       </div>
 
@@ -69,6 +81,7 @@ export default function AuditorStaffTab() {
                 <TableHead>Courses Assigned</TableHead>
                 <TableHead>Completed</TableHead>
                 <TableHead>Last Activity</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -100,6 +113,21 @@ export default function AuditorStaffTab() {
                           year: 'numeric',
                         })
                       : '—'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        startExport({
+                          scope: 'staff',
+                          scopeId: member.id,
+                          label: `Staff: ${member.name}`,
+                        })
+                      }
+                      className="text-sm font-semibold text-primary hover:underline"
+                    >
+                      Export
+                    </button>
                   </TableCell>
                 </TableRow>
               ))}
