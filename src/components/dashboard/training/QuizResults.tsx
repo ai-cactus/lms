@@ -144,14 +144,14 @@ export default function QuizResults({
 
         <div className="relative z-[2] flex flex-col items-center gap-6 sm:flex-row">
           {/* Grade Circle */}
-          <div className="flex size-[120px] flex-col items-center justify-center">
+          <div className="flex size-[120px] shrink-0 items-center justify-center">
             <CircularProgress
               percentage={stats.score}
               size={120}
               strokeWidth={8}
               color={strokeColor}
+              label="Grade"
             />
-            <div className="-mt-2 text-xs text-text-tertiary">Grade</div>
           </div>
 
           {/* Stats Cards */}
