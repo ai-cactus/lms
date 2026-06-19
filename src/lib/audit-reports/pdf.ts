@@ -19,7 +19,6 @@ import type {
   StaffReportResult,
   StaffPerformanceRow,
   QuizRuleRow,
-  DocumentEvidenceRow,
   StaffTranscriptRow,
   OrgActivityRow,
 } from './types';
@@ -57,8 +56,6 @@ async function renderCourse(r: CourseReportResult): Promise<Buffer> {
     [
       ['Category', r.course.category || '—'],
       ['Type', r.course.type],
-      ['Skill Level', r.course.skillLevel || '—'],
-      ['Status', r.course.status],
       ['Duration (min)', r.course.duration != null ? String(r.course.duration) : '—'],
       ['Objectives', r.course.objectives.length ? r.course.objectives.join('; ') : '—'],
     ],
@@ -87,17 +84,6 @@ async function renderCourse(r: CourseReportResult): Promise<Buffer> {
   y = r.quizRules.length
     ? drawTable(doc, quizCols, r.quizRules, y) + 12
     : drawKeyValues(doc, [['', 'No quizzes configured for this course.']], y);
-
-  y = ensureSpace(doc, y, 80);
-  y = drawSectionHeading(doc, 'Documents Used (Evidence)', y);
-  const docCols: Column<DocumentEvidenceRow>[] = [
-    { label: 'Document', width: 360, align: 'left', value: (d) => truncate(d.name, 70) },
-    { label: 'Version', width: 90, align: 'right', value: (d) => String(d.version) },
-    { label: 'Hash', width: 195, align: 'left', value: (d) => truncate(d.hash, 38) },
-  ];
-  y = r.documents.length
-    ? drawTable(doc, docCols, r.documents, y) + 12
-    : drawKeyValues(doc, [['', 'No source documents recorded.']], y);
 
   y = ensureSpace(doc, y, 80);
   y = drawSectionHeading(doc, 'Staff Performance', y);
