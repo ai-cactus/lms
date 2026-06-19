@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { getAuditorCourses } from '@/app/actions/auditor';
 import type { AuditorCourseRow } from '@/app/actions/auditor';
+import { useExportJobs } from './ExportJobsProvider';
 
 export default function AuditorCoursesTab() {
   const [courses, setCourses] = useState<AuditorCourseRow[]>([]);
@@ -31,8 +32,9 @@ export default function AuditorCoursesTab() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const handleExport = () => {
-    window.location.href = '/api/auditor/export';
+  const { startExport } = useExportJobs();
+  const handleExportAll = () => {
+    startExport({ scope: 'org', label: 'All courses report' });
   };
 
   return (
@@ -49,9 +51,9 @@ export default function AuditorCoursesTab() {
             aria-label="Search courses"
             startIcon={<Search aria-hidden="true" />}
           />
-          <Button variant="outline" size="sm" onClick={handleExport} title="Download CSV export">
+          <Button variant="outline" size="sm" onClick={handleExportAll} title="Export all (PDF)">
             <Download className="size-3.5" />
-            Export
+            Export all
           </Button>
         </div>
       </div>
@@ -81,6 +83,7 @@ export default function AuditorCoursesTab() {
                 <TableHead>Assigned Staff</TableHead>
                 <TableHead>Completion Rate</TableHead>
                 <TableHead>Assigned Date</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -116,6 +119,21 @@ export default function AuditorCoursesTab() {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        startExport({
+                          scope: 'course',
+                          scopeId: course.id,
+                          label: `Course: ${course.title}`,
+                        })
+                      }
+                      className="text-sm font-semibold text-primary hover:underline"
+                    >
+                      Export
+                    </button>
                   </TableCell>
                 </TableRow>
               ))}
