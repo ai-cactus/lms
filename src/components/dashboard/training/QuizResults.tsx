@@ -151,7 +151,7 @@ export default function QuizResults({
               strokeWidth={8}
               color={strokeColor}
             />
-            <div className="-mt-5 text-xs text-text-tertiary">Grade</div>
+            <div className="-mt-2 text-xs text-text-tertiary">Grade</div>
           </div>
 
           {/* Stats Cards */}

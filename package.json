@@ -34,7 +34,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "docx": "^9.6.1",
-    "dompurify": "^3.4.8",
+    "dompurify": "^3.4.11",
     "framer-motion": "^12.33.0",
     "google-auth-library": "^10.6.2",
     "html-to-image": "^1.11.13",

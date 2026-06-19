@@ -1,11 +1,25 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Upload, VideoIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/field';
 import { logger } from '@/lib/logger';
+import 'react-quill-new/dist/quill.snow.css';
+
+const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
+
+const overviewQuillModules = {
+  toolbar: [
+    [{ header: [2, 3, false] }],
+    ['bold', 'italic', 'underline'],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['link'],
+    ['clean'],
+  ],
+};
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -211,14 +225,16 @@ export default function VideoCourseForm({
 
       {/* Overview */}
       <Field label="Overview">
-        <textarea
-          name="overview"
-          className="min-h-[120px] w-full rounded-[10px] border border-border p-3 text-sm"
-          placeholder="Long-form course overview"
-          value={overview}
-          onChange={(e) => setOverview(e.target.value)}
-          disabled={isSubmitting}
-        />
+        <div className="rounded-[10px] border border-border [&_.ql-container]:!border-none [&_.ql-container]:min-h-[160px] [&_.ql-container]:text-sm [&_.ql-toolbar]:!border-none [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-b-border">
+          <ReactQuill
+            theme="snow"
+            value={overview}
+            onChange={setOverview}
+            modules={overviewQuillModules}
+            readOnly={isSubmitting}
+            placeholder="Long-form course overview"
+          />
+        </div>
       </Field>
 
       {/* Skill level (optional) */}
