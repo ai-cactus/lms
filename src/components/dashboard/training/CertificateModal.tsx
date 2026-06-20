@@ -56,7 +56,7 @@ export default function CertificateModal({
         setData(res);
         setLoading(false);
         try {
-          const verifyValue = `${window.location.origin}/api/certificates/${certificateId}`;
+          const verifyValue = `${window.location.origin}/verify-certificate/${certificateId}`;
           const qr = await generateQrDataUrl(verifyValue);
           if (!cancelled) setQrDataUrl(qr);
         } catch {
