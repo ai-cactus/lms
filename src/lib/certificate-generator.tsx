@@ -126,8 +126,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Buf
       .fillColor(COLORS.body)
       .text(', showcasing your commitment to excellence, innovation, and teamwork.');
 
-    // ── Footer — metadata (left) ───────────────────────────────────────────────
+    // ── Footer — metadata ──────────────────────────────────────────────────────
+    // "Presented on" sits bottom-left; "Valid certificate ID" bottom-right.
     const footY = H - pad - 52;
+    const idColW = 240;
+
     doc
       .font('Helvetica-Bold')
       .fontSize(9)
@@ -143,12 +146,16 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Buf
       .font('Helvetica-Bold')
       .fontSize(9)
       .fillColor(COLORS.gold)
-      .text('VALID CERTIFICATE ID', pad + 200, footY, { characterSpacing: 1 });
+      .text('VALID CERTIFICATE ID', W - pad - idColW, footY, {
+        width: idColW,
+        align: 'right',
+        characterSpacing: 1,
+      });
     doc
       .font('Helvetica')
       .fontSize(15)
       .fillColor(COLORS.ink)
-      .text(data.certificateId, pad + 200, footY + 14);
+      .text(data.certificateId, W - pad - idColW, footY + 14, { width: idColW, align: 'right' });
 
     doc.end();
   });

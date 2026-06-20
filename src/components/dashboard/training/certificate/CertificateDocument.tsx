@@ -208,7 +208,7 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           </p>
         </div>
 
-        {/* footer — meta (left) */}
+        {/* footer — QR + "presented on" (bottom-left) */}
         <div style={{ position: 'absolute', left: 64, bottom: 60 }}>
           {qrDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -222,38 +222,38 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           ) : (
             <div style={{ width: 88, height: 88, marginBottom: 22 }} />
           )}
-          <div style={{ display: 'flex', gap: 56 }}>
-            <div>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 12,
-                  letterSpacing: 1,
-                  textTransform: 'uppercase',
-                  color: COLORS.gold,
-                  fontWeight: 600,
-                }}
-              >
-                Presented on
-              </p>
-              <p style={{ margin: '6px 0 0', fontSize: 22, color: COLORS.ink }}>{issueDate}</p>
-            </div>
-            <div>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 12,
-                  letterSpacing: 1,
-                  textTransform: 'uppercase',
-                  color: COLORS.gold,
-                  fontWeight: 600,
-                }}
-              >
-                Valid certificate ID
-              </p>
-              <p style={{ margin: '6px 0 0', fontSize: 22, color: COLORS.ink }}>{certificateId}</p>
-            </div>
+          <div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 12,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                color: COLORS.gold,
+                fontWeight: 600,
+              }}
+            >
+              Presented on
+            </p>
+            <p style={{ margin: '6px 0 0', fontSize: 22, color: COLORS.ink }}>{issueDate}</p>
           </div>
+        </div>
+
+        {/* footer — "valid certificate ID" (bottom-right) */}
+        <div style={{ position: 'absolute', right: 64, bottom: 60, textAlign: 'right' }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              letterSpacing: 1,
+              textTransform: 'uppercase',
+              color: COLORS.gold,
+              fontWeight: 600,
+            }}
+          >
+            Valid certificate ID
+          </p>
+          <p style={{ margin: '6px 0 0', fontSize: 22, color: COLORS.ink }}>{certificateId}</p>
         </div>
       </div>
     );
