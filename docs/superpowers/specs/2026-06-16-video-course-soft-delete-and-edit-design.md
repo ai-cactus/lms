@@ -24,7 +24,7 @@ These `Restrict` rules are deliberate: they protect worker completion/attestatio
 
 - **No hard delete.** "Delete" becomes a **soft delete**: the course `status` is set to `inactive`.
 - An inactive course **disappears from the platform's available courses** and is no longer offerable/enrollable, but **still shows on the system page** (where it can be reactivated). Existing enrollments and certificates are untouched.
-- Admins can **edit** a video course — any field plus chapter/lecture structure and videos (preview + lecture). **Quiz editing is out of scope** for this round (Option 3).
+- Admins can **edit** a video course — any field plus chapter/lecture structure and videos (preview + lecture). **Quiz editing was out of scope** for this round (Option 3). _(Superseded 2026-06-21: quiz re-upload now supported — see `docs/superpowers/specs/2026-06-21-video-course-quiz-update-design.md`.)_
 - Edit lives on a **dedicated page** (`/system/video-courses/[courseId]/edit`).
 - Save uses **Approach A**: one server action reconciling the full desired course tree in a transaction.
 - The system list uses a **toggle** action: Deactivate ⇄ Reactivate, inactive courses stay visible with an "Inactive" badge.
@@ -77,7 +77,7 @@ This relies on existing platform filters (already in place) and one new guard:
 - **Server component** loads the course with `modules → lessons` (ordered) and the course-level `quiz` (with question count), then renders the client edit form. 404 if not a `type: 'video'`, `isGlobal: true` course.
 - The large create form is **extracted into a shared `VideoCourseForm` component** used by both create and edit (`mode: 'create' | 'edit'` + `initialValues`). This removes ~300 lines of duplication (chapter/lecture builder, video pickers, `probeVideoDuration`, `uploadVideo`) and is the targeted cleanup that serves this work.
 - In edit mode, existing chapters/lectures are pre-filled. Each existing lecture shows its current video as "current" with a "Replace video" control; choosing a new file marks that lecture's video as changed.
-- The **quiz section is read-only** in edit mode, showing the current question count and passing score.
+- The quiz section was originally **read-only** in edit mode (count + passing score only). **Superseded 2026-06-21:** the edit page now offers an optional "Replace quiz file" picker that fully replaces the quiz from a new CSV/JSON upload — see `docs/superpowers/specs/2026-06-21-video-course-quiz-update-design.md`.
 
 ## `updateVideoCourse` server action (Approach A)
 
@@ -115,6 +115,6 @@ Extend `src/app/actions/video-course.test.ts`:
 
 ## Out of scope (this round)
 
-- Quiz editing (questions / re-upload).
+- Quiz editing (questions / re-upload). **Resolved 2026-06-21:** quiz re-upload (full replace) shipped — see `docs/superpowers/specs/2026-06-21-video-course-quiz-update-design.md`.
 - Drag-and-drop reordering (order is derived from array position).
 - Revoking existing org offerings or enrollments on deactivation (intentionally preserved for compliance).

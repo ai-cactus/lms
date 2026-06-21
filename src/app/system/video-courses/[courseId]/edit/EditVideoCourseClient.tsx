@@ -5,6 +5,8 @@ import { useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import VideoCourseForm, { type VideoCourseFormValues } from '../../VideoCourseForm';
 import { updateVideoCourse } from '@/app/actions/video-course';
+import { parseQuizFile } from '@/lib/video/quiz-import';
+import { QuizImportError } from '@/lib/video/types';
 import { logger } from '@/lib/logger';
 import { isEmptyHtml } from '@/lib/html';
 
@@ -54,6 +56,13 @@ export default function EditVideoCourseClient({ initial }: Props) {
           }
         : undefined;
 
+      // Parse a replacement quiz file (if one was chosen) up front so format
+      // errors surface here with row numbers — before any DB write happens.
+      // Omitting the file keeps the existing quiz untouched.
+      const quiz = values.quizFile
+        ? parseQuizFile(values.quizFile.name, await values.quizFile.text())
+        : undefined;
+
       await updateVideoCourse(initial.courseId, {
         title: values.title.trim(),
         description: values.description.trim() || undefined,
@@ -66,6 +75,7 @@ export default function EditVideoCourseClient({ initial }: Props) {
         previewVideoStorageUri,
         previewVideoDurationSeconds: values.previewDurationSeconds ?? undefined,
         courseVideo,
+        quiz,
       });
 
       router.push('/system/video-courses');
@@ -76,10 +86,12 @@ export default function EditVideoCourseClient({ initial }: Props) {
         err,
         courseId: initial.courseId,
       });
+      const rowsInfo =
+        err instanceof QuizImportError && err.rows?.length ? ` (rows: ${err.rows.join(', ')})` : '';
       setAlert({
         variant: 'error',
         title: 'Update failed',
-        message: err instanceof Error ? err.message : 'Request failed',
+        message: (err instanceof Error ? err.message : 'Request failed') + rowsInfo,
       });
     }
   };
@@ -89,9 +101,10 @@ export default function EditVideoCourseClient({ initial }: Props) {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Edit video course</h1>
         <p className="mt-1 text-sm text-text-secondary">
-          Update course details and the course video. Replacing a video re-processes it. The quiz
-          has {initial.questionCount} question
-          {initial.questionCount === 1 ? '' : 's'} and is not editable here.
+          Update course details, the course video, and the quiz. Replacing a video re-processes it.
+          The quiz has {initial.questionCount} question
+          {initial.questionCount === 1 ? '' : 's'}; upload a new CSV or JSON file below to replace
+          it.
         </p>
       </div>
       {alert && (
@@ -101,7 +114,9 @@ export default function EditVideoCourseClient({ initial }: Props) {
       )}
       <VideoCourseForm
         mode="edit"
-        showQuizPicker={false}
+        showQuizPicker
+        quizRequired={false}
+        currentQuestionCount={initial.questionCount}
         submitLabel="Save changes"
         initialValues={{
           title: initial.title,
