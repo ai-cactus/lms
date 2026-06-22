@@ -1,7 +1,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import AssignPublishClient from '@/components/dashboard/training/AssignPublishClient';
 
 export const dynamic = 'force-dynamic';

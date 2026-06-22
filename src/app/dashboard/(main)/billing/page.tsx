@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import BillingPage from '@/components/billing/BillingPage';
 

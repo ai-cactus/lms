@@ -1,7 +1,7 @@
 'use server';
 
 import crypto from 'crypto';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
 

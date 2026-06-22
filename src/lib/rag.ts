@@ -11,7 +11,7 @@
  *   - An active StandardManual record in the database.
  */
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { generateEmbedding } from './ai-client';
 import { logger } from '@/lib/logger';
 
@@ -71,10 +71,10 @@ export async function retrieveRelevantChunks(
     >`
       SELECT
         content,
-        "pageNumber",
+        page_number AS "pageNumber",
         embedding <=> ${embeddingString}::vector AS distance
-      FROM "ManualChunk"
-      WHERE "manualId" = ${activeManual.id}
+      FROM manual_chunks
+      WHERE manual_id = ${activeManual.id}
         AND embedding IS NOT NULL
       ORDER BY embedding <=> ${embeddingString}::vector ASC
       LIMIT ${k};

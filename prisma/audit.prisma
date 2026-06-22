@@ -1,0 +1,11 @@
+// ── Audit & Reporting ────────────────────────────────────────────────────────
+
+model AuditorPack {
+  id          String   @id @default(uuid())
+  generatedBy String   @map("generated_by")
+  scope       String
+  downloadUrl String?  @map("download_url")
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  @@map("auditor_packs")
+}

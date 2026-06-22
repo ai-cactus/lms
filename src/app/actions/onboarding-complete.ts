@@ -2,9 +2,9 @@
 
 import { auth } from '@/auth';
 import crypto from 'crypto';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { sendInviteEmail } from '@/lib/email';
-import type { UserRole } from '@prisma/client';
+import type { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
 
 // Define types for the data we expect

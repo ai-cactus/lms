@@ -1,5 +1,5 @@
 import { auth } from '@/auth.worker';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import WorkerTrainingList from '@/components/worker/WorkerTrainingList';
 
 export default async function WorkerTrainingsPage() {

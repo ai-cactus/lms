@@ -1,0 +1,63 @@
+// ── Enrollment & Certificates ───────────────────────────────────────────────
+
+enum EnrollmentStatus {
+  enrolled
+  assigned
+  in_progress
+  lessons_complete
+  completed
+  attested
+  locked
+  failed
+  retry_requested
+}
+
+model Enrollment {
+  id                   String            @id @default(uuid())
+  userId               String            @map("user_id")
+  courseId             String            @map("course_id")
+  status               EnrollmentStatus  @default(enrolled)
+  progress             Int               @default(0)
+  videoPositionSeconds Int?              @map("video_position_seconds")
+  score                Int?
+  startedAt            DateTime          @default(now()) @map("started_at")
+  completedAt          DateTime?         @map("completed_at")
+  attestedAt           DateTime?         @map("attested_at")
+  attestationSignature String?           @map("attestation_signature")
+  attestationRole      String?           @map("attestation_role")
+  assignedByAdminId    String?           @map("assigned_by_admin_id")
+  lockedAt             DateTime?         @map("locked_at")
+  retakeOf             String?           @map("retake_of")
+  retakeReason         String?           @map("retake_reason")
+  assignmentId         String?           @map("assignment_id")
+  accessAt             DateTime?         @map("access_at")
+  assignment           CourseAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  course               Course            @relation(fields: [courseId], references: [id])
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quizAttempts         QuizAttempt[]
+  certificate          Certificate?
+
+  @@index([userId, courseId])
+  @@index([courseId])
+  @@index([completedAt])
+  @@index([assignmentId])
+  @@map("enrollments")
+}
+
+model Certificate {
+  id             String     @id @default(uuid())
+  enrollmentId   String     @unique @map("enrollment_id")
+  userId         String     @map("user_id")
+  courseId       String     @map("course_id")
+  issuedAt       DateTime   @default(now()) @map("issued_at")
+  score          Int
+  pdfStoragePath String?    @map("pdf_storage_path")
+  pdfGeneratedAt DateTime?  @map("pdf_generated_at")
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enrollment     Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  course         Course     @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([courseId])
+  @@map("certificates")
+}

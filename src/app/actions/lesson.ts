@@ -1,9 +1,9 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
+import { Prisma } from '@/generated/prisma/client';
 
 // Create a new lesson
 export async function createLesson(data: {

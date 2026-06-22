@@ -1,8 +1,7 @@
 import { Worker } from 'bullmq';
 import { redis } from './redis';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { AUDITOR_EXPORT_QUEUE_NAME } from './auditor-export-queue';
-import { Prisma } from '@prisma/client';
 import { logger } from '@/lib/logger';
 
 export function getExportWorker() {
@@ -104,7 +103,7 @@ export function getExportWorker() {
           data: {
             status: 'completed',
             payload: { progress: 100, message: 'Export Ready' },
-            result: compiledData as unknown as Prisma.InputJsonValue,
+            result: compiledData,
           },
         });
       }

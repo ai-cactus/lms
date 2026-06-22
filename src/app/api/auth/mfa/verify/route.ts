@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { verifyUserMfaCode } from '@/app/actions/mfa';
 import { redeemMfaChallenge } from '@/lib/mfa-challenge';
 import { markSessionMfaVerified } from '@/lib/session-mfa';

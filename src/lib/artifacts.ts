@@ -10,7 +10,7 @@
  * first, then fall back to raw JSON columns.
  */
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { uploadFile } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 

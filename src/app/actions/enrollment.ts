@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -8,7 +8,7 @@ import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
-import type { RenewalCycle } from '@prisma/client';
+import { RenewalCycle } from '@/generated/prisma/enums';
 
 export interface AssignmentSettingsInput {
   scheduleAt?: string | Date | null;

@@ -1,0 +1,58 @@
+// ── Document Management ──────────────────────────────────────────────────────
+
+model Document {
+  id           String            @id @default(uuid())
+  userId       String            @map("user_id")
+  filename     String
+  originalName String            @map("original_name")
+  mimeType     String            @map("mime_type")
+  size         Int
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions     DocumentVersion[]
+
+  @@index([userId])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id             String            @id @default(uuid())
+  documentId     String            @map("document_id")
+  version        Int               @default(1)
+  storagePath    String            @map("storage_path")
+  hash           String
+  content        String?
+  createdAt      DateTime          @default(now()) @map("created_at")
+  courseVersions CourseVersion[]
+  document       Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  mapping        MappingEvidence[]
+  phiReport      PhiReport?
+
+  @@map("document_versions")
+}
+
+model PhiReport {
+  id                String          @id @default(uuid())
+  documentVersionId String          @unique @map("document_version_id")
+  hasPHI            Boolean         @default(false) @map("has_phi")
+  detectedEntities  Json?           @map("detected_entities")
+  scannedAt         DateTime        @default(now()) @map("scanned_at")
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+
+  @@map("phi_reports")
+}
+
+model MappingEvidence {
+  id                String          @id @default(uuid())
+  documentVersionId String          @map("document_version_id")
+  standardId        String          @map("standard_id")
+  snippet           String
+  justification     String?
+  status            String          @default("pending")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+
+  @@map("mapping_evidence")
+}

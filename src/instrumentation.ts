@@ -1,4 +1,5 @@
 import { logger } from '@/lib/logger';
+import prisma from '@/lib/prisma';
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
@@ -6,7 +7,6 @@ export async function register() {
       logger.info({ msg: `Received ${signal}, shutting down gracefully...` });
 
       try {
-        const { prisma } = await import('@/lib/prisma');
         await prisma.$disconnect();
         logger.info({ msg: 'Database disconnected' });
       } catch (err) {

@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Field, Alert } from '@/components/ui';
 import { updateStaffDetails } from '@/app/actions/staff';
 import { useRouter } from 'next/navigation';
-import type { UserRole } from '@prisma/client';
+import { UserRole } from '@/generated/prisma/enums';
 
 interface EditStaffModalProps {
   isOpen: boolean;

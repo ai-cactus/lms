@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { sendEmailVerification } from '@/lib/email';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';

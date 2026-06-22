@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import UploadSection from './upload-section';
 import DocumentListClient from './DocumentListClient';
 

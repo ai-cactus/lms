@@ -1,16 +1,12 @@
 'use server';
 
-import { PrismaClient } from '@prisma/client';
 import JoinPageClient from '@/app/join/[token]/JoinPageClient';
 import { notFound } from 'next/navigation';
-
-const prisma = new PrismaClient();
+import prisma from '@/lib/prisma';
 
 export default async function JoinPage({ params }: { params: { token: string } }) {
-  const { token } = await params;
-
   const invite = await prisma.invite.findFirst({
-    where: { token, status: 'pending' },
+    where: { token: params.token, status: 'pending' },
     include: { organization: true },
   });
 

@@ -15,10 +15,9 @@
  * the migration, run with --cleanup to null out the legacy columns.
  */
 
-import { PrismaClient, Prisma } from '@prisma/client';
+import { prisma } from '@/db/index';
 import { uploadFile } from '../src/lib/storage';
-
-const prisma = new PrismaClient();
+import { Prisma } from '@/generated/prisma/client';
 
 const JSON_FIELDS: { column: string; artifactType: string }[] = [
   { column: 'rawCourseJson', artifactType: 'course_json' },
@@ -120,9 +119,7 @@ async function migrateCourseJsonToStorage(
           });
 
           stats.artifactsCreated++;
-          console.log(
-            `✓ Migrated ${field.artifactType} for course ${course.id} → ${storageUri}`,
-          );
+          console.log(`✓ Migrated ${field.artifactType} for course ${course.id} → ${storageUri}`);
         } catch (error) {
           const msg = `Failed to migrate ${field.artifactType} for course ${course.id}: ${error instanceof Error ? error.message : String(error)}`;
           console.error(msg);

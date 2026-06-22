@@ -24,15 +24,16 @@ const {
   mockNotificationCreate: vi.fn(),
 }));
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  const prisma = {
     course: { findUnique: mockCourseFindUnique },
     user: { findUnique: mockUserFindUnique },
     orgCourseOffering: { findUnique: mockOfferingFindUnique },
     courseAssignment: { create: mockAssignmentCreate },
     enrollment: { findFirst: mockEnrollmentFindFirst, create: mockEnrollmentCreate },
-  },
-}));
+  };
+  return { prisma, default: prisma };
+});
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));

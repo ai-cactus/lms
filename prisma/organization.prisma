@@ -1,0 +1,98 @@
+// ── Organization & Billing ───────────────────────────────────────────────────
+
+enum SubscriptionPlan {
+  starter
+  professional
+  enterprise
+}
+
+enum SubscriptionBillingCycle {
+  monthly
+  quarterly
+  yearly
+}
+
+enum SubscriptionStatus {
+  active
+  past_due
+  canceled
+  trialing
+}
+
+model Organization {
+  id                       String              @id @default(uuid())
+  name                     String
+  slug                     String              @unique
+  dba                      String?
+  ein                      String?
+  staffCount               String?             @map("staff_count")
+  primaryContact           String?             @map("primary_contact")
+  primaryEmail             String?             @map("primary_email")
+  phone                    String?
+  address                  String?
+  city                     String?
+  country                  String?
+  state                    String?
+  zipCode                  String?             @map("zip_code")
+  licenseNumber            String?             @map("license_number")
+  isHipaaCompliant         Boolean             @default(false) @map("is_hipaa_compliant")
+  hasAuditorAccess         Boolean             @default(false) @map("has_auditor_access")
+  primaryBusinessType      String?             @map("primary_business_type")
+  additionalBusinessTypes  String[]            @default([]) @map("additional_business_types")
+  programServices          String[]            @default([]) @map("program_services")
+  joinCode                 String?             @unique @map("join_code")
+  joinCodeExpiresAt        DateTime?           @map("join_code_expires_at")
+  stripeCustomerId         String?             @unique @map("stripe_customer_id")
+  inactivityTimeoutMinutes Int                 @default(15) @map("inactivity_timeout_minutes")
+  requireMfa               Boolean             @default(false) @map("require_mfa")
+  complianceDocumentUrl    String?             @map("compliance_document_url")
+  complianceDocumentName   String?             @map("compliance_document_name")
+  users                    User[]
+  createdAt                DateTime            @default(now()) @map("created_at")
+  updatedAt                DateTime            @updatedAt @map("updated_at")
+  invites                  Invite[]
+  subscription             Subscription?
+  invoices                 Invoice[]
+  customCategories         CourseCategory[]
+  offerings                OrgCourseOffering[]
+  courseAssignments        CourseAssignment[]
+
+  @@map("organizations")
+}
+
+model Subscription {
+  id                   String                   @id @default(uuid())
+  organizationId       String                   @unique @map("organization_id")
+  organization         Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String                   @unique @map("stripe_subscription_id")
+  stripePriceId        String                   @map("stripe_price_id")
+  plan                 SubscriptionPlan
+  billingCycle         SubscriptionBillingCycle @map("billing_cycle")
+  status               SubscriptionStatus
+  currentPeriodStart   DateTime                 @map("current_period_start")
+  currentPeriodEnd     DateTime                 @map("current_period_end")
+  cancelAtPeriodEnd    Boolean                  @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+
+  @@map("subscriptions")
+}
+
+model Invoice {
+  id              String       @id @default(uuid())
+  organizationId  String       @map("organization_id")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeInvoiceId String       @unique @map("stripe_invoice_id")
+  invoiceNumber   String       @map("invoice_number")
+  amountPaid      Int          @map("amount_paid")
+  currency        String       @default("usd")
+  status          String
+  invoiceUrl      String?      @map("invoice_url")
+  pdfUrl          String?      @map("pdf_url")
+  periodStart     DateTime     @map("period_start")
+  periodEnd       DateTime     @map("period_end")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  @@index([organizationId])
+  @@map("invoices")
+}

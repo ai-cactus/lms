@@ -28,10 +28,10 @@ import type {
   QuizDifficulty,
 } from '@/lib/prompt-types-v4.6';
 import { extractTextFromFile } from '@/lib/file-parser';
-import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { JobResponse } from '@/types/job';
+import { Prisma } from '@/generated/prisma/client';
 
 // Token budget for source content
 const MAX_SOURCE_TOKENS = 100000;
