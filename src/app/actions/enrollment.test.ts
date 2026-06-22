@@ -17,7 +17,7 @@ const { prismaMock, mockAdminAuth, mockWorkerAuth } = vi.hoisted(() => {
     course: { findUnique: vi.fn() },
     user: { findUnique: vi.fn(), create: vi.fn() },
     profile: { upsert: vi.fn() },
-    orgCourseOffering: { findUnique: vi.fn() },
+    orgCourseOffering: { findUnique: vi.fn(), upsert: vi.fn() },
     courseAssignment: { create: vi.fn() },
     enrollment: { findFirst: vi.fn(), create: vi.fn() },
   };
@@ -114,6 +114,9 @@ describe('enrollUsers — course-ownership guard', () => {
 
     // Org-scoped enrollment now creates a CourseAssignment batch first.
     prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
+
+    // Assigning a global catalog course upserts an OrgCourseOffering.
+    prismaMock.orgCourseOffering.upsert.mockResolvedValue({ id: 'offering-001' });
   });
 
   // -------------------------------------------------------------------------
@@ -151,20 +154,33 @@ describe('enrollUsers — course-ownership guard', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Guard intact: global course NOT offered by the admin's org → should throw.
+  // Catalog assignment: a global PUBLISHED course the org has not offered yet
+  // is assignable straight from the catalog — enrollUsers creates the offering
+  // as part of the assignment, then enrolls.
   // -------------------------------------------------------------------------
-  it('blocks enrollment into a global course not offered by the admin org', async () => {
+  it('offers and enrolls into a global published course the org has not offered yet', async () => {
     prismaMock.course.findUnique.mockResolvedValue(globalVideoCourse);
-    prismaMock.user.findUnique.mockResolvedValueOnce(adminUser);
+    prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(staffUser);
 
-    // OrgCourseOffering lookup → org has NOT offered this course
+    // OrgCourseOffering lookup → org has NOT offered this course yet
     prismaMock.orgCourseOffering.findUnique.mockResolvedValue(null);
 
-    await expect(enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }])).rejects.toThrow(
-      'Course not found',
-    );
+    const result = await enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }]);
 
-    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    // The org now has an offering for the catalog course...
+    expect(prismaMock.orgCourseOffering.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId_courseId: { organizationId: ORG_ID, courseId: COURSE_ID } },
+        create: expect.objectContaining({
+          organizationId: ORG_ID,
+          courseId: COURSE_ID,
+          addedByAdminId: ADMIN_ID,
+        }),
+      }),
+    );
+    // ...and the staff member is enrolled.
+    expect(prismaMock.enrollment.create).toHaveBeenCalled();
+    expect(result.success).toContain(STAFF_EMAIL);
   });
 
   // -------------------------------------------------------------------------

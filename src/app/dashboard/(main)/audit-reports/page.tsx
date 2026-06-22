@@ -8,7 +8,7 @@ import AuditorBillingGateWrapper from './AuditorBillingGateWrapper';
 import { logger } from '@/lib/logger';
 
 export const metadata = {
-  title: 'Auditor Pack | Theraptly LMS',
+  title: 'Audit Reports | Theraptly LMS',
   description: 'Real-time compliance monitoring and audit reporting for your organization.',
 };
 
@@ -63,7 +63,7 @@ export default async function AuditorPackPage() {
     <div>
       {/* Page Header */}
       <div className="mb-7">
-        <h1 className="mb-1 text-[28px] font-bold text-foreground">Auditor Pack</h1>
+        <h1 className="mb-1 text-[28px] font-bold text-foreground">Audit Reports</h1>
         <p className="text-sm text-text-tertiary">
           Generate a scannable evidence document for auditors.
         </p>

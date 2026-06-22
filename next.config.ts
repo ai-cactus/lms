@@ -10,6 +10,15 @@ const nextConfig: NextConfig = {
     qualities: [75, 100],
   },
   serverExternalPackages: ['pdf-parse', 'pdfkit', '@google-cloud/storage'],
+  async redirects() {
+    return [
+      {
+        source: '/dashboard/auditor-pack',
+        destination: '/dashboard/audit-reports',
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

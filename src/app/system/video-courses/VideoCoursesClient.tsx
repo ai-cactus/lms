@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table';
 import { setVideoCourseStatus } from '@/app/actions/video-course';
 import { logger } from '@/lib/logger';
+import { isEmptyHtml } from '@/lib/html';
 import VideoCourseForm, { type VideoCourseFormValues } from './VideoCourseForm';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -187,7 +188,7 @@ export default function VideoCoursesClient({ courses }: Props) {
         body: JSON.stringify({
           title: values.title.trim(),
           description,
-          overview: values.overview.trim() || undefined,
+          overview: isEmptyHtml(values.overview) ? undefined : values.overview,
           skillLevel: values.skillLevel || undefined,
           category,
           passingScore,

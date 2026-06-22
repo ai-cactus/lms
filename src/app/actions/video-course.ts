@@ -37,6 +37,10 @@ export interface UpdateVideoCourseInput {
   previewVideoDurationSeconds?: number;
   // The single course video. `storageUri` omitted = keep existing video.
   courseVideo?: { storageUri?: string; durationSeconds?: number };
+  // A replacement quiz (parsed from a new CSV/JSON file). When provided, every
+  // existing question is deleted and recreated from this file (full replace).
+  // Omit = keep the existing quiz untouched.
+  quiz?: ParsedQuiz;
 }
 
 async function assertSystemAdmin() {
@@ -237,14 +241,58 @@ export async function updateVideoCourse(
       });
     }
 
+    // A replacement quiz file may carry its own passing score / attempts; when
+    // present those win over the form fields (parity with createVideoCourse).
+    const passingScore = input.quiz?.passingScore ?? input.passingScore;
+    const allowedAttempts = input.quiz?.allowedAttempts ?? input.allowedAttempts;
+
     // Course-level quiz scoring (updateMany never throws if the row is absent).
-    if (input.passingScore != null || input.allowedAttempts != null) {
+    if (passingScore != null || allowedAttempts != null) {
       await tx.quiz.updateMany({
         where: { courseId },
         data: {
-          ...(input.passingScore != null ? { passingScore: input.passingScore } : {}),
-          ...(input.allowedAttempts != null ? { allowedAttempts: input.allowedAttempts } : {}),
+          ...(passingScore != null ? { passingScore } : {}),
+          ...(allowedAttempts != null ? { allowedAttempts } : {}),
         },
+      });
+    }
+
+    // ── Quiz questions (full replace) ─────────────────────────────
+    // When a new quiz file is uploaded we wipe and recreate every question.
+    // Past QuizAttempt rows reference the quiz (not individual questions) and
+    // are preserved, so attempt history and certificates stay intact.
+    if (input.quiz) {
+      const quizRow = await tx.quiz.findUnique({
+        where: { courseId },
+        select: { id: true },
+      });
+      const quizId =
+        quizRow?.id ??
+        (
+          await tx.quiz.create({
+            data: {
+              courseId,
+              title: `${input.title} Quiz`,
+              passingScore: passingScore ?? 70,
+              allowedAttempts: allowedAttempts ?? 1,
+            },
+            select: { id: true },
+          })
+        ).id;
+
+      if (quizRow) {
+        await tx.question.deleteMany({ where: { quizId } });
+      }
+      await tx.question.createMany({
+        data: input.quiz.questions.map((q) => ({
+          quizId,
+          text: q.text,
+          type: 'multiple-choice',
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          explanation: q.explanation ?? null,
+          order: q.order,
+        })),
       });
     }
 

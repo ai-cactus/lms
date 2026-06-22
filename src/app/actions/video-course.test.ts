@@ -14,6 +14,8 @@ const {
   txLessonUpdate,
   txCourseUpdate,
   txQuizUpdateMany,
+  txQuizFindUnique,
+  txQuestionDeleteMany,
   txCourseFindUnique,
 } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
@@ -29,6 +31,8 @@ const {
   txLessonUpdate: vi.fn(),
   txCourseUpdate: vi.fn(),
   txQuizUpdateMany: vi.fn(),
+  txQuizFindUnique: vi.fn(),
+  txQuestionDeleteMany: vi.fn(),
   txCourseFindUnique: vi.fn(),
 }));
 
@@ -211,7 +215,12 @@ describe('updateVideoCourse', () => {
       cb({
         course: { update: txCourseUpdate, findUnique: txCourseFindUnique },
         lesson: { create: txLessonCreate, update: txLessonUpdate },
-        quiz: { updateMany: txQuizUpdateMany },
+        quiz: {
+          updateMany: txQuizUpdateMany,
+          findUnique: txQuizFindUnique,
+          create: txQuizCreate,
+        },
+        question: { deleteMany: txQuestionDeleteMany, createMany: txQuestionCreateMany },
       }),
     );
     txCourseFindUnique.mockResolvedValue({
@@ -219,6 +228,8 @@ describe('updateVideoCourse', () => {
       previewVideoStorageUri: 'minio://old-preview.mp4',
       lessons: [{ id: 'l1', videoStorageUri: 'minio://l1.mp4' }],
     });
+    txQuizFindUnique.mockResolvedValue({ id: 'quiz-1' });
+    txQuizCreate.mockResolvedValue({ id: 'quiz-new' });
     txLessonCreate.mockResolvedValue({ id: 'l-new' });
     txCourseUpdate.mockResolvedValue({ id: 'c1' });
   });
@@ -308,6 +319,75 @@ describe('updateVideoCourse', () => {
       targetId: 'l-new',
       storageUri: 'minio://first.mp4',
     });
+  });
+
+  it('leaves the quiz untouched when no replacement file is provided', async () => {
+    const { updateVideoCourse } = await import('./video-course');
+    await updateVideoCourse('c1', { title: 'New title', passingScore: 75 });
+    expect(txQuestionDeleteMany).not.toHaveBeenCalled();
+    expect(txQuestionCreateMany).not.toHaveBeenCalled();
+  });
+
+  it('fully replaces quiz questions when a parsed quiz is provided', async () => {
+    const { updateVideoCourse } = await import('./video-course');
+    await updateVideoCourse('c1', {
+      title: 'New title',
+      quiz: {
+        questions: [
+          { text: 'Q1', options: ['a', 'b'], correctAnswer: 'a', order: 0 },
+          { text: 'Q2', options: ['c', 'd'], correctAnswer: 'd', order: 1 },
+        ],
+      },
+    });
+    // Old questions wiped, new ones recreated against the existing quiz row.
+    expect(txQuestionDeleteMany).toHaveBeenCalledWith({ where: { quizId: 'quiz-1' } });
+    expect(txQuestionCreateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ quizId: 'quiz-1', text: 'Q1', correctAnswer: 'a', order: 0 }),
+          expect.objectContaining({ quizId: 'quiz-1', text: 'Q2', correctAnswer: 'd', order: 1 }),
+        ]),
+      }),
+    );
+  });
+
+  it('prefers passing score / attempts from the replacement quiz file', async () => {
+    const { updateVideoCourse } = await import('./video-course');
+    await updateVideoCourse('c1', {
+      title: 'New title',
+      passingScore: 70, // form value — overridden by the file
+      allowedAttempts: 1,
+      quiz: {
+        passingScore: 95,
+        allowedAttempts: 4,
+        questions: [{ text: 'Q', options: ['a', 'b'], correctAnswer: 'a', order: 0 }],
+      },
+    });
+    expect(txQuizUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { courseId: 'c1' },
+        data: expect.objectContaining({ passingScore: 95, allowedAttempts: 4 }),
+      }),
+    );
+  });
+
+  it('creates a quiz row when replacing questions on a course that has none', async () => {
+    txQuizFindUnique.mockResolvedValueOnce(null);
+    const { updateVideoCourse } = await import('./video-course');
+    await updateVideoCourse('c1', {
+      title: 'New title',
+      quiz: { questions: [{ text: 'Q', options: ['a', 'b'], correctAnswer: 'a', order: 0 }] },
+    });
+    expect(txQuizCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ courseId: 'c1' }) }),
+    );
+    // Nothing to delete on a fresh quiz; questions are just created.
+    expect(txQuestionDeleteMany).not.toHaveBeenCalled();
+    expect(txQuestionCreateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([expect.objectContaining({ quizId: 'quiz-new' })]),
+      }),
+    );
   });
 
   it('rejects when not a system admin', async () => {

@@ -1,11 +1,25 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Upload, VideoIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/field';
 import { logger } from '@/lib/logger';
+import 'react-quill-new/dist/quill.snow.css';
+
+const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
+
+const overviewQuillModules = {
+  toolbar: [
+    [{ header: [2, 3, false] }],
+    ['bold', 'italic', 'underline'],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['link'],
+    ['clean'],
+  ],
+};
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -39,7 +53,13 @@ export interface VideoCourseFormProps {
     values: VideoCourseFormValues,
     uploadVideo: (file: File) => Promise<string>,
   ) => Promise<void>;
-  showQuizPicker: boolean; // create => true (quiz required); edit => false
+  showQuizPicker: boolean; // whether to render the quiz file picker at all
+  // Whether choosing a quiz file is mandatory. create => true; edit => false
+  // (on edit the existing quiz is kept unless a replacement file is chosen).
+  quizRequired?: boolean;
+  // Edit mode only: number of questions in the current quiz, shown next to the
+  // "replace quiz" picker so the admin knows what they're about to overwrite.
+  currentQuestionCount?: number;
   submitLabel: string;
 }
 
@@ -100,6 +120,8 @@ export default function VideoCourseForm({
   initialValues,
   onSubmit,
   showQuizPicker,
+  quizRequired = true,
+  currentQuestionCount,
   submitLabel,
 }: VideoCourseFormProps) {
   const quizInputRef = useRef<HTMLInputElement>(null);
@@ -149,8 +171,8 @@ export default function VideoCourseForm({
       ? courseVideoFile !== null
       : Boolean(courseVideoExistingUri) || courseVideoFile !== null;
 
-  const canSubmit =
-    title.trim().length > 0 && (!showQuizPicker || quizFile !== null) && hasCourseVideo;
+  const quizSatisfied = !showQuizPicker || !quizRequired || quizFile !== null;
+  const canSubmit = title.trim().length > 0 && quizSatisfied && hasCourseVideo;
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -211,14 +233,16 @@ export default function VideoCourseForm({
 
       {/* Overview */}
       <Field label="Overview">
-        <textarea
-          name="overview"
-          className="min-h-[120px] w-full rounded-[10px] border border-border p-3 text-sm"
-          placeholder="Long-form course overview"
-          value={overview}
-          onChange={(e) => setOverview(e.target.value)}
-          disabled={isSubmitting}
-        />
+        <div className="rounded-[10px] border border-border [&_.ql-container]:!border-none [&_.ql-container]:min-h-[160px] [&_.ql-container]:text-sm [&_.ql-toolbar]:!border-none [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-b-border">
+          <ReactQuill
+            theme="snow"
+            value={overview}
+            onChange={setOverview}
+            modules={overviewQuillModules}
+            readOnly={isSubmitting}
+            placeholder="Long-form course overview"
+          />
+        </div>
       </Field>
 
       {/* Skill level (optional) */}
@@ -389,12 +413,24 @@ export default function VideoCourseForm({
         </div>
       </div>
 
-      {/* Quiz file (create-only) */}
+      {/* Quiz file — required on create, optional replacement on edit */}
       {showQuizPicker && (
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-foreground" htmlFor="quizFile">
-            Quiz file (CSV or JSON) <span className="text-error">*</span>
+            {quizRequired ? 'Quiz file (CSV or JSON)' : 'Replace quiz file (CSV or JSON)'}
+            {quizRequired && <span className="text-error"> *</span>}
           </label>
+          {mode === 'edit' && (
+            <p className="text-xs text-text-muted">
+              {typeof currentQuestionCount === 'number'
+                ? `Current quiz: ${currentQuestionCount} question${
+                    currentQuestionCount === 1 ? '' : 's'
+                  }. `
+                : ''}
+              Uploading a new file replaces every existing question. Leave empty to keep the current
+              quiz.
+            </p>
+          )}
           <div className="relative flex items-center gap-3 rounded-[10px] border border-dashed border-border p-4">
             <Upload className="size-5 shrink-0 text-text-secondary" aria-hidden="true" />
             <span className="flex-1 truncate text-sm text-text-secondary">
@@ -406,7 +442,7 @@ export default function VideoCourseForm({
               type="file"
               name="quiz"
               accept=".csv,.json"
-              required
+              required={quizRequired}
               disabled={isSubmitting}
               className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
               onChange={(e) => setQuizFile(e.target.files?.[0] ?? null)}
@@ -418,7 +454,7 @@ export default function VideoCourseForm({
               onClick={() => quizInputRef.current?.click()}
               disabled={isSubmitting}
             >
-              Choose file
+              {mode === 'edit' && quizFile ? 'Replace file' : 'Choose file'}
             </Button>
           </div>
           <div className="flex gap-4 text-xs text-text-secondary">

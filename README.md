@@ -21,6 +21,7 @@ LMS is built on a modern, scalable stack:
 
 - **Multi-Tenant Org Management**: Complete isolation between different organizations.
 - **AI-Driven Course Authoring**: Generate rich articles, slides, and quizzes from PDF, DOCX, and XLSX files.
+- **Global Video Courses**: System admins upload self-hosted video courses with a quiz (CSV/JSON) in the back office; every organization can assign them. Course details, the video, and the quiz file can all be updated later from the edit page.
 - **PHI Scanning**: Automatic detection of Protected Health Information in uploaded documents.
 - **Interactive Learning**: Slide decks, quizzes with archetypes, and real-time progress tracking.
 - **Compliance Reporting**: Automated generation of evidence packs for auditors (e.g., CARF compliance).

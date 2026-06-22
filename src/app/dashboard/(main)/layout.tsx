@@ -5,6 +5,8 @@ import { redirect } from 'next/navigation';
 import DashboardLayoutClient from '@/components/dashboard/DashboardLayoutClient';
 import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
 import { AdminSessionProvider } from '@/components/providers/AdminSessionProvider';
+import { Toaster } from 'sonner';
+import { ExportJobsProvider } from '@/components/dashboard/auditor/ExportJobsProvider';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -37,13 +39,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <AdminSessionProvider>
       <OrganizationActivationModal hasOrganization={!!organizationId} />
-      <DashboardLayoutClient
-        userEmail={session.user.email || ''}
-        fullName={fullName}
-        role={role || undefined}
-      >
-        {children}
-      </DashboardLayoutClient>
+      <ExportJobsProvider>
+        <DashboardLayoutClient
+          userEmail={session.user.email || ''}
+          fullName={fullName}
+          role={role || undefined}
+        >
+          {children}
+        </DashboardLayoutClient>
+        <Toaster richColors position="top-right" />
+      </ExportJobsProvider>
     </AdminSessionProvider>
   );
 }

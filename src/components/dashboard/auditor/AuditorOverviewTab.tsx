@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import type { AuditorOverviewStats, AuditorCourseRow } from '@/app/actions/auditor';
+import { useExportJobs } from './ExportJobsProvider';
 
 interface Props {
   stats: AuditorOverviewStats;
@@ -19,8 +20,9 @@ interface Props {
 }
 
 export default function AuditorOverviewTab({ stats, courses }: Props) {
+  const { startExport } = useExportJobs();
   const handleExport = () => {
-    window.location.href = '/api/auditor/export';
+    startExport({ scope: 'org', label: 'Organization report' });
   };
 
   return (
@@ -80,7 +82,12 @@ export default function AuditorOverviewTab({ stats, courses }: Props) {
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-bold text-foreground">Recent Assigned Courses</h2>
           <div className="flex items-center gap-2.5">
-            <Button variant="outline" size="sm" onClick={handleExport} title="Download CSV export">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              title="Export organization activity (PDF)"
+            >
               <Download className="size-3.5" />
               Export
             </Button>
