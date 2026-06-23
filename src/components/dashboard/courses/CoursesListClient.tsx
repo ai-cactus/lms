@@ -27,17 +27,8 @@ import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
-import {
-  Plus,
-  Search,
-  Pencil,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  Video,
-  FileText,
-} from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import CourseTypeIcon from '@/components/dashboard/courses/CourseTypeIcon';
 
 const PENDING_KEY = 'lms_pending_generation';
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -224,6 +215,25 @@ interface CoursesListClientProps {
   hasBilling: boolean;
 }
 
+/**
+ * Build a compact pagination range with ellipses, e.g. [1, 2, 3, '…', 9].
+ * Always shows the first and last page plus a window around the current page.
+ */
+function buildPaginationRange(current: number, total: number): (number | 'ellipsis')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+
+  const pages: (number | 'ellipsis')[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+
+  if (start > 2) pages.push('ellipsis');
+  for (let p = start; p <= end; p++) pages.push(p);
+  if (end < total - 1) pages.push('ellipsis');
+
+  pages.push(total);
+  return pages;
+}
+
 export default function CoursesListClient({ courses, hasBilling }: CoursesListClientProps) {
   const router = useRouter();
   const [courseList, setCourseList] = useState<CourseWithStats[]>(courses);
@@ -362,17 +372,22 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
-              <TableHead style={{ width: '40%' }}>Course Name</TableHead>
-              <TableHead className="hidden md:table-cell" style={{ width: '15%' }}>
+              <TableHead style={{ width: '32%' }}>Course Name</TableHead>
+              <TableHead className="hidden md:table-cell" style={{ width: '10%' }}>
+                Type
+              </TableHead>
+              <TableHead className="hidden md:table-cell" style={{ width: '13%' }}>
                 Assigned Staff
               </TableHead>
               <TableHead className="hidden md:table-cell" style={{ width: '15%' }}>
                 Role
               </TableHead>
-              <TableHead className="hidden lg:table-cell" style={{ width: '20%' }}>
+              <TableHead className="hidden lg:table-cell" style={{ width: '18%' }}>
                 Date Created
               </TableHead>
-              <TableHead className="text-right" style={{ width: '10%' }}></TableHead>
+              <TableHead className="text-right" style={{ width: '12%' }}>
+                Action
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -394,28 +409,18 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
                           className="object-cover"
                         />
                       </div>
-                      <div className="flex items-center gap-2">
-                        {course.type === 'video' ? (
-                          <Video
-                            className="size-4 shrink-0 text-primary"
-                            aria-label="Video course"
-                          />
-                        ) : (
-                          <FileText
-                            className="size-4 shrink-0 text-text-secondary"
-                            aria-label="Text course"
-                          />
-                        )}
-                        <span className="font-semibold text-[#1a202c]">{course.title}</span>
-                      </div>
+                      <span className="font-semibold text-[#1a202c]">{course.title}</span>
                     </div>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <CourseTypeIcon type={course.type} />
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{course.enrollmentsCount}</TableCell>
                   <TableCell className="hidden md:table-cell">General</TableCell>
                   <TableCell className="hidden lg:table-cell">
                     {new Date(course.createdAt).toLocaleDateString('en-US', {
                       month: 'short',
-                      day: 'numeric',
+                      day: '2-digit',
                       year: 'numeric',
                     })}
                   </TableCell>
@@ -453,7 +458,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
               <EmptyTableState
                 message="No courses found."
                 subMessage="Try adjusting your search or create a new course."
-                colSpan={5}
+                colSpan={6}
                 asTableRow
               />
             )}
@@ -477,16 +482,26 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
               <ChevronLeft className="size-4" />
             </Button>
 
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <Button
-                key={page}
-                variant={page === currentPage ? 'default' : 'outline'}
-                size="icon-sm"
-                onClick={() => handlePageChange(page)}
-              >
-                {page}
-              </Button>
-            ))}
+            {buildPaginationRange(currentPage, totalPages).map((page, i) =>
+              page === 'ellipsis' ? (
+                <span
+                  key={`ellipsis-${i}`}
+                  className="px-1.5 text-sm text-[#718096]"
+                  aria-hidden="true"
+                >
+                  …
+                </span>
+              ) : (
+                <Button
+                  key={page}
+                  variant={page === currentPage ? 'default' : 'outline'}
+                  size="icon-sm"
+                  onClick={() => handlePageChange(page)}
+                >
+                  {page}
+                </Button>
+              ),
+            )}
 
             <Button
               variant="outline"
