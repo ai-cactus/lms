@@ -2,7 +2,7 @@ import React from 'react';
 import { getStaffUsers } from '@/app/actions/user';
 import StaffListClient from '@/components/dashboard/staff/StaffListClient';
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { BILLING_PLANS } from '@/lib/billing-plans';
 
 export const dynamic = 'force-dynamic';

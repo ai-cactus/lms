@@ -1,8 +1,6 @@
-const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
-const nodeCrypto = require('crypto');
-
-const prisma = new PrismaClient();
+import { prisma } from '@/db/index';
+import bcrypt from 'bcryptjs';
+import nodeCrypto from 'crypto';
 
 async function main() {
   console.log('Starting backfill for empty passwords...');

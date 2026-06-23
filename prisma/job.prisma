@@ -1,0 +1,29 @@
+// ── Background Jobs & Media Processing ───────────────────────────────────────
+
+enum JobStatus {
+  queued
+  processing
+  completed
+  failed
+}
+
+enum MediaStatus {
+  processing
+  ready
+  failed
+}
+
+model Job {
+  id        String    @id @default(uuid())
+  userId    String?   @map("user_id")
+  type      String
+  status    JobStatus @default(queued)
+  payload   Json?
+  result    Json?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([status])
+  @@map("jobs")
+}

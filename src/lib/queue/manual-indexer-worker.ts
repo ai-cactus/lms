@@ -26,7 +26,7 @@ import { join } from 'path';
 import { spawn } from 'child_process';
 import { Worker } from 'bullmq';
 import { redis } from './redis';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { MANUAL_INDEXER_QUEUE_NAME, type ManualIndexerJobData } from './manual-indexer-queue';
 

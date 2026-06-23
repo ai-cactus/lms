@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { Circle } from 'lucide-react';
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { getAuditorOverviewStats, getAuditorCourses } from '@/app/actions/auditor';
 import AuditorPackClient from '@/components/dashboard/auditor/AuditorPackClient';
 import AuditorBillingGateWrapper from './AuditorBillingGateWrapper';

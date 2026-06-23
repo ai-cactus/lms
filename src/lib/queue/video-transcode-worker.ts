@@ -16,7 +16,7 @@ import { join } from 'path';
 import { spawn } from 'child_process';
 import { Worker } from 'bullmq';
 import { redis } from './redis';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { VIDEO_TRANSCODE_QUEUE_NAME, type VideoTranscodeJobData } from './video-transcode-queue';
 

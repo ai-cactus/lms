@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Check, Clock, Plus, X } from 'lucide-react';
-import type { RenewalCycle } from '@prisma/client';
+import { RenewalCycle } from '@/generated/prisma/enums';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';

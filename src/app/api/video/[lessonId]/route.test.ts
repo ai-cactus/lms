@@ -21,9 +21,10 @@ const {
 
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
-vi.mock('@/lib/prisma', () => ({
-  prisma: { lesson: { findUnique: (...a: unknown[]) => mockLessonFindUnique(...a) } },
-}));
+vi.mock('@/lib/prisma', () => {
+  const prisma = { lesson: { findUnique: (...a: unknown[]) => mockLessonFindUnique(...a) } };
+  return { prisma, default: prisma };
+});
 vi.mock('@/lib/video', () => ({
   resolveVideoSource: (provider: string) => mockResolveVideoSource(provider),
 }));

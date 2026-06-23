@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Metadata } from 'next';
 import { BadgeCheck, ShieldX } from 'lucide-react';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 export const metadata: Metadata = {
   title: 'Verify Certificate · Theraptly',

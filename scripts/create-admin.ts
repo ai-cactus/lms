@@ -1,6 +1,6 @@
-const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
-const prisma = new PrismaClient();
+import { prisma } from '@/db/index';
+import { UserRole } from '@/generated/prisma/enums';
+import bcrypt from 'bcryptjs';
 
 async function main() {
   try {
@@ -26,13 +26,13 @@ async function main() {
       create: {
         email: adminEmail,
         password: hashedPassword,
+        role: UserRole.admin,
         profile: {
           create: {
             email: adminEmail,
             firstName: 'Admin',
             lastName: 'User',
             fullName: 'Admin User',
-            role: 'admin',
           },
         },
       },

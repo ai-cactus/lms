@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { verifySystemAdminCookie } from '@/lib/system-auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import EditVideoCourseClient from './EditVideoCourseClient';
 
 export const dynamic = 'force-dynamic';

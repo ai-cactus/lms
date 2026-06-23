@@ -1,12 +1,16 @@
-import { logger } from '@/lib/logger';
-
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Import Node-only modules lazily inside the runtime guard. A top-level
+    // import would pull the Prisma client (which loads `node:path`/`node:process`)
+    // into the Edge runtime bundle and trigger an unsupported-module warning,
+    // even though this code only ever runs under the Node.js runtime.
+    const { logger } = await import('@/lib/logger');
+    const { default: prisma } = await import('@/lib/prisma');
+
     const cleanup = async (signal: string) => {
       logger.info({ msg: `Received ${signal}, shutting down gracefully...` });
 
       try {
-        const { prisma } = await import('@/lib/prisma');
         await prisma.$disconnect();
         logger.info({ msg: 'Database disconnected' });
       } catch (err) {

@@ -23,7 +23,7 @@ import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { generateBatchEmbeddings } from './ai-client';
 import { logger } from '@/lib/logger';
 
@@ -215,7 +215,7 @@ export async function indexStandardManual(manualId: string, pdfBuffer: Buffer): 
             // and prevents Prisma's internal query engine from accumulating
             // intermediate ManualChunk result objects.
             await prisma.$executeRawUnsafe(
-              `INSERT INTO "ManualChunk" (id, "manualId", "chunkIndex", "pageNumber", content, embedding, "createdAt")
+              `INSERT INTO manual_chunks (id, manual_id, chunk_index, page_number, content, embedding, created_at)
                VALUES ($1, $2, $3, NULL, $4, $5::vector, NOW())`,
               randomUUID(),
               manualId,

@@ -23,12 +23,11 @@
  * Flags: --yes  --allow-non-video  --keep-files
  */
 
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import { prisma } from './prisma';
+import * as Minio from 'minio'
 
 // ── MinIO helpers (mirror src/lib/storage/minio-provider.ts) ──────────────────
 function getMinioClient() {
-  const Minio = require('minio');
   return new Minio.Client({
     endPoint: process.env.MINIO_ENDPOINT || 'localhost',
     port: parseInt(process.env.MINIO_PORT || '9000', 10),

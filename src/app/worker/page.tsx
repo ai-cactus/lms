@@ -1,5 +1,5 @@
 import { auth } from '@/auth.worker';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import Link from 'next/link';
 import { AlertCircle } from 'lucide-react';
 import WorkerWelcomeModal from '@/components/dashboard/learner/WorkerWelcomeModal';

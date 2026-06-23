@@ -1,9 +1,9 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
-import type { UserRole } from '@prisma/client';
+import type { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 

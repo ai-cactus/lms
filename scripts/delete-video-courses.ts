@@ -41,6 +41,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { prisma } from '@/db/index';
 
 /**
  * Minimal .env loader (no deps) — fills process.env WITHOUT overwriting any
@@ -57,10 +58,7 @@ function loadEnvFile(file: string): boolean {
     if (eq === -1) continue;
     const key = line.slice(0, eq).trim();
     let val = line.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
     if (!(key in process.env)) process.env[key] = val;
@@ -91,8 +89,6 @@ function loadEnv(): void {
 loadEnv();
 
 async function main() {
-  const { prisma } = await import('../src/lib/prisma');
-
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
   const ids = argv.filter((a) => !a.startsWith('--'));
@@ -246,6 +242,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    const { prisma } = await import('../src/lib/prisma');
     await prisma.$disconnect();
   });

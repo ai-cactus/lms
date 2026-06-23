@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 const statusStyles: Record<string, string> = {
   queued: 'bg-background-secondary text-text-secondary',

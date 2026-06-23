@@ -1,0 +1,70 @@
+// ── Course Categories & Standards (RAG) ──────────────────────────────────────
+
+/// System-wide course categories.
+/// isSystem = true  → seeded by Prisma/migration, visible to all orgs.
+/// isSystem = false → created by an org admin, scoped to their organization.
+model CourseCategory {
+  id             String                @id @default(uuid())
+  name           String
+  slug           String                @unique
+  description    String?
+  isSystem       Boolean               @default(true) @map("is_system")
+  organizationId String?               @map("organization_id")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  organization   Organization?         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  courses        Course[]
+  manualMappings ManualChunkCategory[]
+
+  @@index([organizationId])
+  @@index([isSystem])
+  @@map("course_categories")
+}
+
+/// Tracks the currently active standard manual PDF.
+/// Only one record should have isActive = true at any time.
+/// When a new manual is uploaded, the old one is deactivated.
+model StandardManual {
+  id          String        @id @default(uuid())
+  filename    String
+  storagePath String        @map("storage_path")
+  version     String
+  uploadedBy  String        @map("uploaded_by")
+  isActive    Boolean       @default(true) @map("is_active")
+  processedAt DateTime?     @map("processed_at")
+  chunkCount  Int           @default(0) @map("chunk_count")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  chunks      ManualChunk[]
+
+  @@index([isActive])
+  @@map("standard_manuals")
+}
+
+/// Individual text chunks extracted from the StandardManual PDF.
+/// The `embedding` column is a 768-dimensional pgvector column managed via raw SQL.
+/// All vector reads/writes use prisma.$queryRaw / prisma.$executeRaw.
+model ManualChunk {
+  id         String                @id @default(uuid())
+  manualId   String                @map("manual_id")
+  chunkIndex Int                   @map("chunk_index")
+  pageNumber Int?                  @map("page_number")
+  content    String
+  createdAt  DateTime              @default(now()) @map("created_at")
+  manual     StandardManual        @relation(fields: [manualId], references: [id], onDelete: Cascade)
+  categories ManualChunkCategory[]
+
+  @@index([manualId])
+  @@index([manualId, chunkIndex])
+  @@map("manual_chunks")
+}
+
+/// Join table: links ManualChunks to the CourseCategories they are relevant to.
+/// Populated during the indexing pipeline using keyword classification.
+model ManualChunkCategory {
+  chunkId    String         @map("chunk_id")
+  categoryId String         @map("category_id")
+  chunk      ManualChunk    @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  category   CourseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([chunkId, categoryId])
+  @@map("manual_chunk_categories")
+}

@@ -1,9 +1,9 @@
 import { Worker } from 'bullmq';
 import { redis } from './redis';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { AUDITOR_EXPORT_QUEUE_NAME } from './auditor-export-queue';
-import { Prisma } from '@prisma/client';
 import { logger } from '@/lib/logger';
+import { Prisma } from '@/generated/prisma/browser';
 
 export function getExportWorker() {
   const globalAny = globalThis as unknown as { __auditorWorker?: Worker };

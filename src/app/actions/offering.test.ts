@@ -41,8 +41,8 @@ const {
   };
 });
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  const prisma = {
     course: { findMany: mockCourseFindMany, findFirst: mockCourseFindFirst },
     user: { findUnique: mockUserFindUnique },
     orgCourseOffering: {
@@ -51,8 +51,9 @@ vi.mock('@/lib/prisma', () => ({
       update: mockOrgCourseOfferingUpdate,
       delete: mockOrgCourseOfferingDelete,
     },
-  },
-}));
+  };
+  return { prisma, default: prisma };
+});
 
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));

@@ -1,7 +1,7 @@
 'use server';
 
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { getSignedUrl, isLegacyPath } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 

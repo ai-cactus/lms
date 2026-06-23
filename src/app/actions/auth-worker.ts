@@ -2,7 +2,7 @@
 
 import { signIn } from '@/auth.worker';
 import { AuthError } from 'next-auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 export type AuthState = {
   error?: string;

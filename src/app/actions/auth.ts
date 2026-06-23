@@ -2,7 +2,7 @@
 
 import { signIn } from '@/auth';
 import { signIn as signInWorker } from '@/auth.worker';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { validatePassword } from '@/lib/password-policy';
 import { AuthError } from 'next-auth';

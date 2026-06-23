@@ -1,12 +1,12 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { sendInviteEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
 import { BILLING_PLANS } from '@/lib/billing-plans';
-import type { InviteStatus, UserRole } from '@prisma/client';
+import type { InviteStatus, UserRole } from '@/generated/prisma/enums';
 
 export interface InviteResultItem {
   email: string;

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { generateAuditorPackCsv } from '@/app/actions/auditor';
 import { logger } from '@/lib/logger';
 
