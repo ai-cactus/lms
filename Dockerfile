@@ -73,8 +73,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
 
-# Prisma schema + migrations are required for `prisma migrate deploy` at startup
+# Prisma schema + migrations are required for `prisma migrate deploy` at startup.
+# prisma.config.ts (repo root, NOT inside prisma/) now holds datasource.url — it
+# MUST be copied too, or migrate deploy fails with:
+#   "The datasource.url property is required in your Prisma config file"
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
 
 # Entrypoint: runs migrations then starts the Next.js server
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
