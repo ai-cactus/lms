@@ -117,7 +117,7 @@ export default async function VerifyCertificatePage(props: { params: Promise<{ i
         )}
 
         <p className="mt-6 text-center text-xs text-text-secondary">
-          Verified via Theraptly · Authenticity is confirmed against our records in real time.
+          Verified via Theraptly · The authenticity of this certificate is confirmed.
         </p>
       </div>
     </div>

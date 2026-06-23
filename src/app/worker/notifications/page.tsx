@@ -4,5 +4,5 @@ import NotificationsView from '@/components/notifications/NotificationsView';
 export const dynamic = 'force-dynamic';
 
 export default function WorkerNotificationsPage() {
-  return <NotificationsView backHref="/worker" />;
+  return <NotificationsView backHref="/worker" audience="worker" />;
 }

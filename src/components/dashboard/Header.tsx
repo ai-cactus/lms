@@ -13,20 +13,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { getNotifications, markAsRead, markAllAsRead } from '@/app/actions/notifications';
 import NotificationPanel from '@/components/notifications/NotificationPanel';
+import { useNotifications } from '@/components/notifications/useNotifications';
 import { Bell, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  linkUrl?: string | null;
-  isRead: boolean;
-  type?: string;
-  resolvedAt?: Date | null;
-  createdAt: Date;
-}
 
 interface HeaderProps {
   fullName: string;
@@ -38,58 +27,39 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-  // Notification state
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [isLoadingNotifs, setIsLoadingNotifs] = useState(false);
-
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  const {
+    notifications,
+    unreadCount,
+    isLoading: isLoadingNotifs,
+    refresh,
+    markRead,
+    markAll,
+  } = useNotifications({ pollMs: 60_000 });
 
   const toggleDropdown = () => {
     setIsOpen(!isOpen);
     setIsNotifOpen(false);
   };
 
-  const toggleNotif = async () => {
+  const toggleNotif = () => {
     setIsNotifOpen(!isNotifOpen);
     setIsOpen(false);
     if (!isNotifOpen) {
-      fetchNotifications();
+      refresh();
     }
   };
 
-  const fetchNotifications = async () => {
-    setIsLoadingNotifs(true);
-    const res = await getNotifications();
-    if (res.success && res.notifications !== undefined) {
-      setNotifications(res.notifications as Notification[]);
-      setUnreadCount(res.unreadCount || 0);
-    }
-    setIsLoadingNotifs(false);
-  };
-
-  const handleMarkAsRead = async (id: string, linkUrl?: string | null) => {
-    await markAsRead(id);
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
-    setUnreadCount((prev) => Math.max(0, prev - 1));
-
+  const handleItemClick = (id: string, linkUrl?: string | null) => {
+    markRead(id);
     if (linkUrl) {
       router.push(linkUrl);
       setIsNotifOpen(false);
     }
   };
-
-  const handleMarkAllAsRead = async () => {
-    await markAllAsRead();
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    setUnreadCount(0);
-  };
-
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
 
   const handleLogout = () => {
     setIsLogoutModalOpen(true);
@@ -147,8 +117,8 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
                 notifications={notifications}
                 unreadCount={unreadCount}
                 isLoading={isLoadingNotifs}
-                onMarkAllAsRead={handleMarkAllAsRead}
-                onItemClick={handleMarkAsRead}
+                onMarkAllAsRead={markAll}
+                onItemClick={handleItemClick}
                 viewAllHref="/dashboard/notifications"
                 onViewAll={() => setIsNotifOpen(false)}
               />

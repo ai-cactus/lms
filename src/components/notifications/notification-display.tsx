@@ -21,6 +21,62 @@ export interface NotificationLike {
   createdAt: Date | string;
 }
 
+export type NotificationAudience = 'admin' | 'worker' | 'all';
+
+export interface NotificationTypeMeta {
+  key: string;
+  /** Short label for filter chips. */
+  label: string;
+  /** Sentence used in the preferences panel. */
+  description: string;
+  audience: NotificationAudience;
+}
+
+/** Catalog of notification types — drives filter chips and preference toggles. */
+export const NOTIFICATION_TYPES: NotificationTypeMeta[] = [
+  {
+    key: 'COURSE_ASSIGNED',
+    label: 'Assigned',
+    description: 'When a course is assigned to you',
+    audience: 'worker',
+  },
+  {
+    key: 'RETAKE_ASSIGNED',
+    label: 'Retakes',
+    description: 'When an admin assigns you a quiz retake',
+    audience: 'worker',
+  },
+  {
+    key: 'COURSE_PASSED',
+    label: 'Completed',
+    description: 'When a worker completes a course',
+    audience: 'admin',
+  },
+  {
+    key: 'COURSE_FAILED',
+    label: 'Failed',
+    description: 'When a worker fails a quiz',
+    audience: 'admin',
+  },
+  {
+    key: 'COURSE_RETRY_REQUESTED',
+    label: 'Retry requests',
+    description: 'When a worker requests a course retry',
+    audience: 'admin',
+  },
+  {
+    key: 'QUIZ_RETRY_LIMIT_REACHED',
+    label: 'Retry limit',
+    description: 'When a worker reaches their quiz retry limit',
+    audience: 'admin',
+  },
+];
+
+/** The notification types relevant to a given audience (includes 'all'). */
+export function notificationTypesFor(audience: NotificationAudience): NotificationTypeMeta[] {
+  return NOTIFICATION_TYPES.filter((t) => t.audience === audience || t.audience === 'all');
+}
+
 /** Compact, human-friendly "time ago" — falls back to a date past a week. */
 export function formatRelativeTime(input: Date | string): string {
   const date = typeof input === 'string' ? new Date(input) : input;

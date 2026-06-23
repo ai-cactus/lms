@@ -15,7 +15,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { getNotifications, markAsRead, markAllAsRead } from '@/app/actions/notifications';
+import { useNotifications } from '@/components/notifications/useNotifications';
 
 interface HeaderProps {
   userEmail: string;
@@ -28,69 +28,39 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-  // Notification state
-  const [notifications, setNotifications] = useState<
-    {
-      id: string;
-      title: string;
-      message: string;
-      isRead: boolean;
-      linkUrl?: string | null;
-      createdAt: string | Date;
-    }[]
-  >([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [isLoadingNotifs, setIsLoadingNotifs] = useState(false);
-
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  const {
+    notifications,
+    unreadCount,
+    isLoading: isLoadingNotifs,
+    refresh,
+    markRead,
+    markAll,
+  } = useNotifications({ pollMs: 60_000 });
 
   const toggleDropdown = () => {
     setIsOpen(!isOpen);
     setIsNotifOpen(false);
   };
 
-  const toggleNotif = async () => {
+  const toggleNotif = () => {
     setIsNotifOpen(!isNotifOpen);
     setIsOpen(false);
     if (!isNotifOpen) {
-      fetchNotifications();
+      refresh();
     }
   };
 
-  const fetchNotifications = async () => {
-    setIsLoadingNotifs(true);
-    const res = await getNotifications();
-    if (res.success && res.notifications !== undefined) {
-      setNotifications(res.notifications);
-      setUnreadCount(res.unreadCount || 0);
-    }
-    setIsLoadingNotifs(false);
-  };
-
-  const handleMarkAsRead = async (id: string, linkUrl?: string | null) => {
-    await markAsRead(id);
-    // Optimistically update
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
-    setUnreadCount((prev) => Math.max(0, prev - 1));
-
+  const handleItemClick = (id: string, linkUrl?: string | null) => {
+    markRead(id);
     if (linkUrl) {
       router.push(linkUrl);
       setIsNotifOpen(false);
     }
   };
-
-  const handleMarkAllAsRead = async () => {
-    await markAllAsRead();
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    setUnreadCount(0);
-  };
-
-  // Initial fetch on mount
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
 
   const handleLogout = () => {
     setIsLogoutModalOpen(true);
@@ -148,8 +118,8 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
                 notifications={notifications}
                 unreadCount={unreadCount}
                 isLoading={isLoadingNotifs}
-                onMarkAllAsRead={handleMarkAllAsRead}
-                onItemClick={handleMarkAsRead}
+                onMarkAllAsRead={markAll}
+                onItemClick={handleItemClick}
                 viewAllHref="/worker/notifications"
                 onViewAll={() => setIsNotifOpen(false)}
               />
