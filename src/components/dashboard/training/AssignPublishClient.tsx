@@ -52,6 +52,10 @@ export default function AssignPublishClient({
 }: AssignPublishClientProps) {
   const router = useRouter();
 
+  // An already-published course is being assigned (not freshly created), so the
+  // UI should read "Assign" rather than "Assigning & Publish".
+  const isExisting = courseStatus === 'published';
+
   const [entries, setEntries] = useState<StaffEntry[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [scheduleDate, setScheduleDate] = useState('');
@@ -156,7 +160,7 @@ export default function AssignPublishClient({
           <Logo size="sm" />
         </div>
         <span className="px-6 text-base font-semibold text-foreground">
-          Assigning &amp; Publish
+          {isExisting ? 'Assign' : 'Assigning & Publish'}
         </span>
         <Link
           href="/dashboard"
@@ -168,9 +172,13 @@ export default function AssignPublishClient({
 
       <div className="mx-auto w-full max-w-[1100px] px-6 py-10">
         <div className="mb-10 text-center">
-          <h1 className="text-3xl font-bold text-foreground">Assigning &amp; Publish</h1>
+          <h1 className="text-3xl font-bold text-foreground">
+            {isExisting ? 'Assign' : 'Assigning & Publish'}
+          </h1>
           <p className="mt-2 text-sm text-text-secondary">
-            Select which staff should take this course, set deadlines, and finalize publishing.
+            {isExisting
+              ? 'Select which staff should take this course, set deadlines, and reminders.'
+              : 'Select which staff should take this course, set deadlines, and finalize publishing.'}
           </p>
         </div>
 
@@ -324,7 +332,7 @@ export default function AssignPublishClient({
             loading={submitting}
             disabled={!canPublish}
           >
-            Publish Course
+            {isExisting ? 'Assign Course' : 'Publish Course'}
           </Button>
         </div>
       </div>

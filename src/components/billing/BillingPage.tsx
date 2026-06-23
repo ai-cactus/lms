@@ -24,12 +24,18 @@ const PaymentMethodTab = dynamic(() => import('./PaymentMethodTab'), { ssr: fals
 interface BillingPageProps {
   staffCount: string | null;
   currentPlan: string | null;
+  /** ISO timestamp when billing was paused, or null when not paused. */
+  pausedAt?: string | null;
+  /** ISO timestamp when the pause window ends, or null. */
+  pauseEndsAt?: string | null;
   initialTab?: Tab;
 }
 
 export default function BillingPage({
   staffCount,
   currentPlan,
+  pausedAt = null,
+  pauseEndsAt = null,
   initialTab = 'overview',
 }: BillingPageProps) {
   const searchParams = useSearchParams();
@@ -79,6 +85,8 @@ export default function BillingPage({
         <SubscriptionTab
           orgStaffCount={parseInt(staffCount ?? '0', 10)}
           currentPlan={currentPlan}
+          pausedAt={pausedAt}
+          pauseEndsAt={pauseEndsAt}
           onChangeTab={handleTabChange}
         />
       )}

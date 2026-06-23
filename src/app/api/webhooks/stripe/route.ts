@@ -98,7 +98,20 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const periodStart = priceItem?.current_period_start ?? sub.billing_cycle_anchor;
   const periodEnd = priceItem?.current_period_end ?? sub.billing_cycle_anchor;
 
-  const hasAuditorAccess = sub.status === 'active' || sub.status === 'trialing';
+  // Stripe keeps a paused subscription's status as `active` and only sets
+  // `pause_collection`. Track that explicitly so the billing gate is restored
+  // while paused, and cleared again the moment billing resumes. Preserve the
+  // pause window (pausedAt/pauseEndsAt) set by our pause route rather than
+  // overwriting it; only initialise pausedAt if Stripe reports a pause we don't
+  // yet know about (e.g. paused directly from the Stripe portal).
+  const isPaused = !!sub.pause_collection;
+  const existing = await prisma.subscription.findUnique({
+    where: { organizationId: organization.id },
+    select: { pausedAt: true, pauseEndsAt: true },
+  });
+  const pausedAt = isPaused ? (existing?.pausedAt ?? new Date()) : null;
+  const pauseEndsAt = isPaused ? (existing?.pauseEndsAt ?? null) : null;
+  const hasAuditorAccess = (sub.status === 'active' || sub.status === 'trialing') && !isPaused;
 
   // Upsert subscription record and grant/revoke auditor access atomically
   await Promise.all([
@@ -114,6 +127,8 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         currentPeriodStart: new Date(periodStart * 1000),
         currentPeriodEnd: new Date(periodEnd * 1000),
         cancelAtPeriodEnd: sub.cancel_at_period_end,
+        pausedAt,
+        pauseEndsAt,
       },
       update: {
         stripeSubscriptionId: sub.id,
@@ -124,6 +139,8 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         currentPeriodStart: new Date(periodStart * 1000),
         currentPeriodEnd: new Date(periodEnd * 1000),
         cancelAtPeriodEnd: sub.cancel_at_period_end,
+        pausedAt,
+        pauseEndsAt,
       },
     }),
     prisma.organization.update({

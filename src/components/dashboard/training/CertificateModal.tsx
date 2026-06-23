@@ -136,8 +136,17 @@ export default function CertificateModal({
           <div className="p-12 text-center text-error">{error}</div>
         ) : data ? (
           <div className="bg-background-secondary p-4 sm:p-8">
-            <div ref={wrapRef} style={{ width: '100%', height: CERT_HEIGHT * scale }}>
-              <div style={{ transformOrigin: 'top left', transform: `scale(${scale})` }}>
+            <div
+              ref={wrapRef}
+              style={{ width: '100%', height: CERT_HEIGHT * scale, overflow: 'hidden' }}
+            >
+              <div
+                style={{
+                  width: CERT_WIDTH,
+                  transformOrigin: 'top left',
+                  transform: `scale(${scale})`,
+                }}
+              >
                 <CertificateDocument
                   ref={docRef}
                   studentName={data.user?.profile?.fullName || data.user?.email || 'Student Name'}

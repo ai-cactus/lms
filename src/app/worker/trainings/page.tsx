@@ -1,13 +1,14 @@
 import { auth } from '@/auth.worker';
 import prisma from '@/lib/prisma';
 import WorkerTrainingList from '@/components/worker/WorkerTrainingList';
+import { computeDisplayProgress } from '@/lib/enrollment-progress';
 
 export default async function WorkerTrainingsPage() {
   const session = await auth();
   const allEnrollments = await prisma.enrollment.findMany({
     where: { userId: session?.user?.id },
     include: {
-      course: true,
+      course: { include: { quiz: { select: { passingScore: true } } } },
       quizAttempts: {
         orderBy: { completedAt: 'desc' },
         take: 1,
@@ -44,7 +45,12 @@ export default async function WorkerTrainingsPage() {
       enrollmentId: picked.id,
       title: picked.course.title,
       status: picked.status,
-      progress: picked.progress,
+      progress: computeDisplayProgress({
+        status: picked.status,
+        progress: picked.progress,
+        score: picked.score,
+        passingScore: picked.course.quiz?.passingScore ?? null,
+      }),
       deadline: null,
       duration: picked.course.duration || undefined,
       category: picked.course.category,
