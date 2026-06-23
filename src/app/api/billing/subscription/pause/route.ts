@@ -1,15 +1,31 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import stripe from '@/lib/stripe';
 import { logger } from '@/lib/logger';
+import { MAX_PAUSE_MONTHS, pauseEndDate } from '@/lib/billing';
 
-// POST /api/billing/subscription/pause — pauses subscription
-export async function POST() {
+// POST /api/billing/subscription/pause — pauses subscription for 1–3 months
+export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Pause duration in months (1–3). Defaults to the max if not provided.
+    let months = MAX_PAUSE_MONTHS;
+    try {
+      const body = await request.json();
+      if (typeof body?.months === 'number') months = body.months;
+    } catch {
+      /* empty body — fall back to the default */
+    }
+    if (months < 1 || months > MAX_PAUSE_MONTHS) {
+      return NextResponse.json(
+        { error: `Pause duration must be between 1 and ${MAX_PAUSE_MONTHS} months.` },
+        { status: 400 },
+      );
     }
 
     const user = await prisma.user.findUnique({
@@ -33,22 +49,46 @@ export async function POST() {
       return NextResponse.json({ error: 'No active subscription found' }, { status: 404 });
     }
 
-    // Since a specific $9.90/mo Pause Price ID isn't available, we'll use Stripe's native pause_collection for now.
-    // In a full production implementation with a fee, you would update the subscription item to a Pause Price ID.
+    if (subscription.pausedAt) {
+      return NextResponse.json({ error: 'Subscription is already paused.' }, { status: 409 });
+    }
+
+    const pausedAt = new Date();
+    const pauseEndsAt = pauseEndDate(pausedAt, months);
+
+    // Pause collection on Stripe. The app enforces the 1–3 month limit and
+    // prompts the admin to continue or cancel once it elapses, so we deliberately
+    // do NOT set `resumes_at` (which would silently auto-resume billing).
     await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-      pause_collection: {
-        behavior: 'void',
-      },
+      pause_collection: { behavior: 'void' },
     });
+
+    // Reflect the pause locally right away so the billing gate is restored
+    // without waiting for the Stripe webhook to round-trip. Stripe keeps the
+    // status as `active` while paused, so `pausedAt` is what gates access.
+    await Promise.all([
+      prisma.subscription.update({
+        where: { organizationId: user.organizationId },
+        data: { pausedAt, pauseEndsAt },
+      }),
+      prisma.organization.update({
+        where: { id: user.organizationId },
+        data: { hasAuditorAccess: false },
+      }),
+    ]);
 
     logger.info({
       msg: '[POST /api/billing/subscription/pause] Subscription paused via native pause_collection',
       organizationId: user.organizationId,
+      months,
+      pauseEndsAt,
     });
 
     return NextResponse.json({
       message: 'Subscription has been paused.',
       success: true,
+      pausedAt,
+      pauseEndsAt,
     });
   } catch (error) {
     logger.error({ msg: '[POST /api/billing/subscription/pause]', err: error });

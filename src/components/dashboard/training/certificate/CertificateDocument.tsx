@@ -208,20 +208,19 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           </p>
         </div>
 
-        {/* footer — QR + "presented on" (bottom-left) */}
-        <div style={{ position: 'absolute', left: 64, bottom: 60 }}>
-          {qrDataUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={qrDataUrl}
-              alt="Certificate verification QR code"
-              width={88}
-              height={88}
-              style={{ display: 'block', marginBottom: 22 }}
-            />
-          ) : (
-            <div style={{ width: 88, height: 88, marginBottom: 22 }} />
-          )}
+        {/* footer row — "presented on" (left) · certificate ID (centre) · QR (far right) */}
+        <div
+          style={{
+            position: 'absolute',
+            left: 64,
+            right: 64,
+            bottom: 60,
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'space-between',
+            gap: 24,
+          }}
+        >
           <div>
             <p
               style={{
@@ -237,23 +236,35 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
             </p>
             <p style={{ margin: '6px 0 0', fontSize: 22, color: COLORS.ink }}>{issueDate}</p>
           </div>
-        </div>
 
-        {/* footer — "valid certificate ID" (bottom-right) */}
-        <div style={{ position: 'absolute', right: 64, bottom: 60, textAlign: 'right' }}>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 12,
-              letterSpacing: 1,
-              textTransform: 'uppercase',
-              color: COLORS.gold,
-              fontWeight: 600,
-            }}
-          >
-            Valid certificate ID
-          </p>
-          <p style={{ margin: '6px 0 0', fontSize: 22, color: COLORS.ink }}>{certificateId}</p>
+          <div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 12,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                color: COLORS.gold,
+                fontWeight: 600,
+              }}
+            >
+              Valid certificate ID
+            </p>
+            <p style={{ margin: '6px 0 0', fontSize: 22, color: COLORS.ink }}>{certificateId}</p>
+          </div>
+
+          {qrDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={qrDataUrl}
+              alt="Certificate verification QR code"
+              width={88}
+              height={88}
+              style={{ display: 'block', flexShrink: 0 }}
+            />
+          ) : (
+            <div style={{ width: 88, height: 88, flexShrink: 0 }} />
+          )}
         </div>
       </div>
     );

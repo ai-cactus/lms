@@ -3447,6 +3447,8 @@ export const SubscriptionScalarFieldEnum = {
   currentPeriodStart: 'currentPeriodStart',
   currentPeriodEnd: 'currentPeriodEnd',
   cancelAtPeriodEnd: 'cancelAtPeriodEnd',
+  pausedAt: 'pausedAt',
+  pauseEndsAt: 'pauseEndsAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const

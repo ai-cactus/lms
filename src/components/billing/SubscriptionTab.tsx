@@ -9,18 +9,29 @@ import {
   getEffectiveMonthlyPrice,
   canSelectPlan,
 } from '@/lib/billing-plans';
-import { Star, PauseCircle, AlertTriangle, Check } from 'lucide-react';
+import { Star, Check, Play } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
+import { MAX_PAUSE_MONTHS, getPauseState } from '@/lib/billing';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 
 interface Props {
   orgStaffCount: number;
   currentPlan: string | null;
+  pausedAt?: string | null;
+  pauseEndsAt?: string | null;
   onChangeTab: (tab: Tab) => void;
+}
+
+function formatLongDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 // ── Dropdown option sets ─────────────────────────────────────────────────────
@@ -86,18 +97,6 @@ interface EnterpriseModalState extends EnterpriseFormFields {
   error: string | null;
   /** Field-level validation errors */
   fieldErrors: Partial<Record<keyof EnterpriseFormFields, string>>;
-}
-
-interface CancelModalState {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
-}
-
-interface PauseModalState {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
 }
 
 const EMPTY_FORM: EnterpriseFormFields = {
@@ -179,8 +178,16 @@ function validateForm(
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTab }: Props) {
+export default function SubscriptionTab({
+  orgStaffCount,
+  currentPlan,
+  pausedAt = null,
+  pauseEndsAt = null,
+  onChangeTab,
+}: Props) {
   const router = useRouter();
+  const pauseState = getPauseState({ status: null, pausedAt, pauseEndsAt });
+  const isPaused = pauseState !== 'none';
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -194,17 +201,8 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
     fieldErrors: {},
   });
 
-  const [cancelModal, setCancelModal] = useState<CancelModalState>({
-    open: false,
-    loading: false,
-    error: null,
-  });
-
-  const [pauseModal, setPauseModal] = useState<PauseModalState>({
-    open: false,
-    loading: false,
-    error: null,
-  });
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   // ── Checkout ───────────────────────────────────────────────────────────────
 
@@ -313,43 +311,23 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
     [enterpriseModal, router],
   );
 
-  // ── Cancel subscription ────────────────────────────────────────────────────
+  // ── Resume subscription (Continue Plan) ────────────────────────────────────
 
-  const handleCancelSubscription = useCallback(async () => {
-    setCancelModal((s) => ({ ...s, loading: true, error: null }));
+  const handleResumeSubscription = useCallback(async () => {
+    setResuming(true);
+    setResumeError(null);
     try {
-      const res = await fetch('/api/billing/subscription/cancel', { method: 'POST' });
+      const res = await fetch('/api/billing/subscription/resume', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to cancel subscription');
-      setCancelModal({ open: false, loading: false, error: null });
+      if (!res.ok) throw new Error(data.error ?? 'Failed to resume subscription');
+      router.refresh();
       onChangeTab('overview');
     } catch (err) {
-      setCancelModal((s) => ({
-        ...s,
-        loading: false,
-        error: err instanceof Error ? err.message : 'Unexpected error',
-      }));
+      setResumeError(err instanceof Error ? err.message : 'Unexpected error');
+    } finally {
+      setResuming(false);
     }
-  }, [onChangeTab]);
-
-  // ── Pause subscription ─────────────────────────────────────────────────────
-
-  const handlePauseSubscription = useCallback(async () => {
-    setPauseModal((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const res = await fetch('/api/billing/subscription/pause', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to pause subscription');
-      setPauseModal({ open: false, loading: false, error: null });
-      onChangeTab('overview');
-    } catch (err) {
-      setPauseModal((s) => ({
-        ...s,
-        loading: false,
-        error: err instanceof Error ? err.message : 'Unexpected error',
-      }));
-    }
-  }, [onChangeTab]);
+  }, [onChangeTab, router]);
 
   // ── Billing cycle labels ───────────────────────────────────────────────────
 
@@ -501,7 +479,44 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
         })}
       </div>
 
-      {currentPlan && (
+      {currentPlan && isPaused && (
+        <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">
+                {pauseState === 'expired' ? 'Your pause has ended' : 'Your subscription is paused'}
+              </h3>
+              <p className="text-sm text-text-secondary">
+                {pauseState === 'expired'
+                  ? 'Continue your plan to restore access, or cancel your subscription.'
+                  : pauseEndsAt
+                    ? `All your data is safely stored. Paused until ${formatLongDate(pauseEndsAt)}.`
+                    : 'All your data is safely stored until you continue your plan.'}
+              </p>
+              {resumeError && (
+                <p className="mt-2 text-[13px] text-error" role="alert">
+                  {resumeError}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => router.push('/dashboard/billing/cancel')}>
+                Cancel Subscription
+              </Button>
+              <Button
+                loading={resuming}
+                disabled={resuming}
+                onClick={() => void handleResumeSubscription()}
+              >
+                <Play className="size-4" aria-hidden="true" />
+                Continue Plan
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {currentPlan && !isPaused && (
         <>
           <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
             <div className="flex items-center justify-between">
@@ -512,7 +527,7 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
                   automatically...
                 </h3>
                 <p className="text-sm text-text-secondary">
-                  If you don&apos;t want to renew, you can freeze or cancel your subscription.
+                  If you don&apos;t want to renew, you can pause or cancel your subscription.
                 </p>
               </div>
             </div>
@@ -522,26 +537,16 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
             <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div>
                 <h3 className="text-base font-semibold text-foreground">
-                  Cancel/Freeze Subscription
+                  Cancel or Pause Subscription
                 </h3>
                 <p className="text-sm text-text-secondary">
-                  You&apos;ll be able to re-activate your plan anytime at the regular price.
+                  Take a break for up to {MAX_PAUSE_MONTHS} months, or cancel anytime — you can
+                  re-activate later at the regular price.
                 </p>
               </div>
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setCancelModal({ open: true, loading: false, error: null })}
-                >
-                  Cancel Subscription
-                </Button>
-                <button
-                  className="rounded-lg bg-[#1e293b] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-foreground"
-                  onClick={() => setPauseModal({ open: true, loading: false, error: null })}
-                >
-                  Pause Subscription
-                </button>
-              </div>
+              <Button variant="outline" onClick={() => router.push('/dashboard/billing/cancel')}>
+                Cancel or Pause
+              </Button>
             </div>
           </div>
         </>
@@ -968,97 +973,6 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
               </div>
             </form>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ===== Cancel Subscription Confirmation Modal ===== */}
-      <Dialog
-        open={cancelModal.open}
-        onOpenChange={(open) => {
-          if (!open) setCancelModal((s) => ({ ...s, open: false }));
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="mx-auto mb-2 flex size-14 items-center justify-center rounded-full bg-error/10 text-error">
-              <AlertTriangle size={28} aria-hidden="true" />
-            </div>
-            <DialogTitle className="text-center">Cancel subscription?</DialogTitle>
-          </DialogHeader>
-          <p className="text-center text-sm text-text-secondary">
-            Your plan will remain active until the end of the current billing period. After that,
-            your account will lose access to premium features.
-          </p>
-
-          {cancelModal.error && (
-            <Alert variant="error" role="alert">
-              {cancelModal.error}
-            </Alert>
-          )}
-
-          <div className="flex flex-col gap-2.5">
-            <Button
-              variant="destructive"
-              className="w-full"
-              loading={cancelModal.loading}
-              disabled={cancelModal.loading}
-              onClick={() => void handleCancelSubscription()}
-            >
-              {cancelModal.loading ? 'Canceling...' : 'Yes, cancel subscription'}
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setCancelModal({ open: false, loading: false, error: null })}
-            >
-              Keep my plan
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ===== Pause Subscription Confirmation Modal ===== */}
-      <Dialog
-        open={pauseModal.open}
-        onOpenChange={(open) => {
-          if (!open) setPauseModal((s) => ({ ...s, open: false }));
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="mx-auto mb-2 flex size-14 items-center justify-center rounded-full bg-error/10 text-error">
-              <PauseCircle size={28} aria-hidden="true" />
-            </div>
-            <DialogTitle className="text-center">Taking a Break?</DialogTitle>
-          </DialogHeader>
-          <p className="text-center text-sm text-text-secondary">
-            We can pause your subscription for you at a reduced cost of $9.90/mo to keep all your
-            user progress, courses and data intact.
-          </p>
-
-          {pauseModal.error && (
-            <Alert variant="error" role="alert">
-              {pauseModal.error}
-            </Alert>
-          )}
-
-          <div className="flex flex-col gap-2.5">
-            <Button
-              className="w-full"
-              loading={pauseModal.loading}
-              disabled={pauseModal.loading}
-              onClick={() => void handlePauseSubscription()}
-            >
-              {pauseModal.loading ? 'Pausing...' : 'Yes, freeze subscription'}
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setPauseModal({ open: false, loading: false, error: null })}
-            >
-              Keep my plan
-            </Button>
-          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -9,6 +9,7 @@ import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
 import DashboardCreateCourseButton from '@/components/dashboard/DashboardCreateCourseButton';
 import AvailableCoursesTable from '@/components/dashboard/courses/AvailableCoursesTable';
 import { listAvailableVideoCourses } from '@/app/actions/offering';
+import { hasActiveBilling } from '@/lib/billing';
 import { BookOpen, Users, Activity } from 'lucide-react';
 
 export default async function DashboardPage() {
@@ -26,15 +27,14 @@ export default async function DashboardPage() {
       where: { id: session.user.id },
       select: {
         organization: {
-          select: { subscription: { select: { status: true } } },
+          select: { subscription: { select: { status: true, pausedAt: true } } },
         },
       },
     }),
     listAvailableVideoCourses().catch(() => []),
   ]);
 
-  const subStatus = user?.organization?.subscription?.status;
-  const hasBilling = subStatus === 'active' || subStatus === 'trialing';
+  const hasBilling = hasActiveBilling(user?.organization?.subscription);
 
   // Calculate real metrics from courses data
   const totalCourses = stats?.totalCourses || 0;

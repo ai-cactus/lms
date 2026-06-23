@@ -72,6 +72,12 @@ model Subscription {
   currentPeriodStart   DateTime                 @map("current_period_start")
   currentPeriodEnd     DateTime                 @map("current_period_end")
   cancelAtPeriodEnd    Boolean                  @default(false) @map("cancel_at_period_end")
+  // Set while billing is paused via Stripe `pause_collection`. Stripe keeps the
+  // status as `active` when paused, so this is what gates access while paused.
+  pausedAt             DateTime?                @map("paused_at")
+  // When the pause window ends (pausedAt + chosen months, max 3). Once reached,
+  // the admin is prompted to either continue (resume) or cancel the plan.
+  pauseEndsAt          DateTime?                @map("pause_ends_at")
   createdAt            DateTime                 @default(now()) @map("created_at")
   updatedAt            DateTime                 @updatedAt @map("updated_at")
 
