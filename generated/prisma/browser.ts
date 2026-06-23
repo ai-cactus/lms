@@ -155,6 +155,11 @@ export type Job = Prisma.JobModel
  */
 export type Notification = Prisma.NotificationModel
 /**
+ * Model NotificationPreference
+ * 
+ */
+export type NotificationPreference = Prisma.NotificationPreferenceModel
+/**
  * Model OrgCourseOffering
  * Maps a global course to an organization, allowing admins to offer shared
  * video courses to their workers without duplicating course records.

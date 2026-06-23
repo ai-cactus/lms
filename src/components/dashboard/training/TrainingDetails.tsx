@@ -108,12 +108,14 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
             <p className="text-sm text-[#718096]">
               Mandatory annual training aligned with organizational standards
             </p>
-            <div className="mt-2 mb-3">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f0fff4] px-3 py-1 text-[13px] text-[#38a169]">
-                <CheckCircle2 className="size-4 text-[#38A169]" />
-                <strong>Approved by: Admin</strong>
-              </span>
-            </div>
+            {course.type !== 'video' && (
+              <div className="mt-2 mb-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f0fff4] px-3 py-1 text-[13px] text-[#38a169]">
+                  <CheckCircle2 className="size-4 text-[#38A169]" />
+                  <strong>Approved by: Admin</strong>
+                </span>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full bg-[#c6f6d5] px-3 py-1 text-[13px] font-medium text-[#22543d]">
                 Active

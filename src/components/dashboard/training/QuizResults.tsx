@@ -158,7 +158,7 @@ export default function QuizResults({
           <div className="flex w-full flex-1 flex-col gap-4 sm:flex-row">
             <div className="relative flex min-h-20 flex-1 flex-col justify-center rounded-xl bg-background p-4 px-5 text-foreground shadow-sm">
               <span className="mb-1 block text-2xl font-bold">{stats.answered}</span>
-              <span className="text-[13px] font-semibold">Quiz Answered</span>
+              <span className="text-[13px] font-semibold">Questions Answered</span>
               <Pencil className="absolute right-4 top-4 size-4 text-text-muted" />
             </div>
             <div className="relative flex min-h-20 flex-1 flex-col justify-center rounded-xl bg-[#00c55e] p-4 px-5 text-white shadow-sm">

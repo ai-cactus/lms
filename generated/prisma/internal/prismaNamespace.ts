@@ -410,6 +410,7 @@ export const ModelName = {
   Certificate: 'Certificate',
   Job: 'Job',
   Notification: 'Notification',
+  NotificationPreference: 'NotificationPreference',
   OrgCourseOffering: 'OrgCourseOffering',
   Organization: 'Organization',
   Subscription: 'Subscription',
@@ -432,7 +433,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "auditorPack" | "user" | "profile" | "invite" | "verificationToken" | "mfaFactor" | "mfaRecoveryCode" | "courseCategory" | "standardManual" | "manualChunk" | "manualChunkCategory" | "course" | "courseModule" | "lesson" | "courseArtifact" | "courseVersion" | "courseAssignment" | "assignmentReminder" | "document" | "documentVersion" | "phiReport" | "mappingEvidence" | "enrollment" | "certificate" | "job" | "notification" | "orgCourseOffering" | "organization" | "subscription" | "invoice" | "quiz" | "question" | "quizAttempt"
+    modelProps: "auditorPack" | "user" | "profile" | "invite" | "verificationToken" | "mfaFactor" | "mfaRecoveryCode" | "courseCategory" | "standardManual" | "manualChunk" | "manualChunkCategory" | "course" | "courseModule" | "lesson" | "courseArtifact" | "courseVersion" | "courseAssignment" | "assignmentReminder" | "document" | "documentVersion" | "phiReport" | "mappingEvidence" | "enrollment" | "certificate" | "job" | "notification" | "notificationPreference" | "orgCourseOffering" | "organization" | "subscription" | "invoice" | "quiz" | "question" | "quizAttempt"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -2360,6 +2361,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    NotificationPreference: {
+      payload: Prisma.$NotificationPreferencePayload<ExtArgs>
+      fields: Prisma.NotificationPreferenceFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.NotificationPreferenceFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.NotificationPreferenceFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload>
+        }
+        findFirst: {
+          args: Prisma.NotificationPreferenceFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.NotificationPreferenceFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload>
+        }
+        findMany: {
+          args: Prisma.NotificationPreferenceFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload>[]
+        }
+        create: {
+          args: Prisma.NotificationPreferenceCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload>
+        }
+        createMany: {
+          args: Prisma.NotificationPreferenceCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.NotificationPreferenceCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload>[]
+        }
+        delete: {
+          args: Prisma.NotificationPreferenceDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload>
+        }
+        update: {
+          args: Prisma.NotificationPreferenceUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload>
+        }
+        deleteMany: {
+          args: Prisma.NotificationPreferenceDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.NotificationPreferenceUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.NotificationPreferenceUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload>[]
+        }
+        upsert: {
+          args: Prisma.NotificationPreferenceUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationPreferencePayload>
+        }
+        aggregate: {
+          args: Prisma.NotificationPreferenceAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateNotificationPreference>
+        }
+        groupBy: {
+          args: Prisma.NotificationPreferenceGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.NotificationPreferenceGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.NotificationPreferenceCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.NotificationPreferenceCountAggregateOutputType> | number
+        }
+      }
+    }
     OrgCourseOffering: {
       payload: Prisma.$OrgCourseOfferingPayload<ExtArgs>
       fields: Prisma.OrgCourseOfferingFieldRefs
@@ -3300,6 +3375,18 @@ export const NotificationScalarFieldEnum = {
 export type NotificationScalarFieldEnum = (typeof NotificationScalarFieldEnum)[keyof typeof NotificationScalarFieldEnum]
 
 
+export const NotificationPreferenceScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  type: 'type',
+  enabled: 'enabled',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type NotificationPreferenceScalarFieldEnum = (typeof NotificationPreferenceScalarFieldEnum)[keyof typeof NotificationPreferenceScalarFieldEnum]
+
+
 export const OrgCourseOfferingScalarFieldEnum = {
   id: 'id',
   organizationId: 'organizationId',
@@ -3864,6 +3951,7 @@ export type GlobalOmitConfig = {
   certificate?: Prisma.CertificateOmit
   job?: Prisma.JobOmit
   notification?: Prisma.NotificationOmit
+  notificationPreference?: Prisma.NotificationPreferenceOmit
   orgCourseOffering?: Prisma.OrgCourseOfferingOmit
   organization?: Prisma.OrganizationOmit
   subscription?: Prisma.SubscriptionOmit

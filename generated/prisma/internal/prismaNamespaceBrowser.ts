@@ -77,6 +77,7 @@ export const ModelName = {
   Certificate: 'Certificate',
   Job: 'Job',
   Notification: 'Notification',
+  NotificationPreference: 'NotificationPreference',
   OrgCourseOffering: 'OrgCourseOffering',
   Organization: 'Organization',
   Subscription: 'Subscription',
@@ -483,6 +484,18 @@ export const NotificationScalarFieldEnum = {
 } as const
 
 export type NotificationScalarFieldEnum = (typeof NotificationScalarFieldEnum)[keyof typeof NotificationScalarFieldEnum]
+
+
+export const NotificationPreferenceScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  type: 'type',
+  enabled: 'enabled',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type NotificationPreferenceScalarFieldEnum = (typeof NotificationPreferenceScalarFieldEnum)[keyof typeof NotificationPreferenceScalarFieldEnum]
 
 
 export const OrgCourseOfferingScalarFieldEnum = {

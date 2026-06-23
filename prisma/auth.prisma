@@ -28,6 +28,7 @@ model User {
   documents             Document[]
   enrollments           Enrollment[]
   notifications         Notification[]
+  notificationPrefs     NotificationPreference[]
   profile               Profile?
   organization          Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   mfaFactors            MfaFactor[]

@@ -4,8 +4,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Bell, BellOff, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
+import { Bell, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import NotificationPanel from '@/components/notifications/NotificationPanel';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { getNotifications, markAsRead, markAllAsRead } from '@/app/actions/notifications';
+import { useNotifications } from '@/components/notifications/useNotifications';
 
 interface HeaderProps {
   userEmail: string;
@@ -27,69 +28,39 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-  // Notification state
-  const [notifications, setNotifications] = useState<
-    {
-      id: string;
-      title: string;
-      message: string;
-      isRead: boolean;
-      linkUrl?: string | null;
-      createdAt: string | Date;
-    }[]
-  >([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [isLoadingNotifs, setIsLoadingNotifs] = useState(false);
-
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  const {
+    notifications,
+    unreadCount,
+    isLoading: isLoadingNotifs,
+    refresh,
+    markRead,
+    markAll,
+  } = useNotifications({ pollMs: 60_000 });
 
   const toggleDropdown = () => {
     setIsOpen(!isOpen);
     setIsNotifOpen(false);
   };
 
-  const toggleNotif = async () => {
+  const toggleNotif = () => {
     setIsNotifOpen(!isNotifOpen);
     setIsOpen(false);
     if (!isNotifOpen) {
-      fetchNotifications();
+      refresh();
     }
   };
 
-  const fetchNotifications = async () => {
-    setIsLoadingNotifs(true);
-    const res = await getNotifications();
-    if (res.success && res.notifications !== undefined) {
-      setNotifications(res.notifications);
-      setUnreadCount(res.unreadCount || 0);
-    }
-    setIsLoadingNotifs(false);
-  };
-
-  const handleMarkAsRead = async (id: string, linkUrl?: string | null) => {
-    await markAsRead(id);
-    // Optimistically update
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
-    setUnreadCount((prev) => Math.max(0, prev - 1));
-
+  const handleItemClick = (id: string, linkUrl?: string | null) => {
+    markRead(id);
     if (linkUrl) {
       router.push(linkUrl);
       setIsNotifOpen(false);
     }
   };
-
-  const handleMarkAllAsRead = async () => {
-    await markAllAsRead();
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    setUnreadCount(0);
-  };
-
-  // Initial fetch on mount
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
 
   const handleLogout = () => {
     setIsLogoutModalOpen(true);
@@ -143,66 +114,15 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
             </button>
 
             {isNotifOpen && (
-              <div className="absolute right-0 top-[calc(100%+12px)] z-50 flex w-[340px] flex-col overflow-hidden rounded-2xl border border-[#f1f4f9] bg-white shadow-lg">
-                <div className="flex items-center justify-between border-b border-[#e2e8f0] bg-[#fafcff] px-5 py-4">
-                  <h3 className="m-0 text-base font-semibold text-[#1a202c]">Notifications</h3>
-                  {unreadCount > 0 && (
-                    <button
-                      className="cursor-pointer border-none bg-none p-0 text-[13px] font-medium text-[#3182ce] hover:text-[#2b6cb0] hover:underline"
-                      onClick={handleMarkAllAsRead}
-                    >
-                      Mark all as read
-                    </button>
-                  )}
-                </div>
-                <div className="flex max-h-[400px] min-h-[200px] flex-col justify-center overflow-y-auto">
-                  {isLoadingNotifs ? (
-                    <div className="flex flex-col items-center justify-center px-5 py-8 text-center">
-                      <p className="m-0 text-[13px] text-[#a0aec0]">Loading...</p>
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center px-5 py-8 text-center">
-                      <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-[#f7fafc] text-[#cbd5e0]">
-                        <BellOff className="size-8" />
-                      </div>
-                      <h4 className="m-0 mb-2 text-[15px] font-semibold text-[#4a5568]">
-                        No new notifications
-                      </h4>
-                      <p className="m-0 text-[13px] leading-[1.5] text-[#a0aec0]">
-                        When courses are assigned or new events happen, they will appear here.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col">
-                      {notifications.map((notif) => (
-                        <div
-                          key={notif.id}
-                          className={[
-                            'flex cursor-pointer items-start justify-between border-b border-[#edf2f7] px-5 py-4 transition-colors last:border-b-0 hover:bg-[#f7fafc]',
-                            !notif.isRead ? 'bg-[#ebf8ff]' : '',
-                          ].join(' ')}
-                          onClick={() => handleMarkAsRead(notif.id, notif.linkUrl)}
-                        >
-                          <div className="flex flex-col gap-1 pr-4">
-                            <h4 className="m-0 text-sm font-semibold text-[#2d3748]">
-                              {notif.title}
-                            </h4>
-                            <p className="m-0 text-[13px] leading-[1.4] text-[#4a5568]">
-                              {notif.message}
-                            </p>
-                            <span className="mt-1 text-[11px] text-[#718096]">
-                              {new Date(notif.createdAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                          {!notif.isRead && (
-                            <div className="mt-1.5 size-2 flex-shrink-0 rounded-full bg-[#3182ce]" />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <NotificationPanel
+                notifications={notifications}
+                unreadCount={unreadCount}
+                isLoading={isLoadingNotifs}
+                onMarkAllAsRead={markAll}
+                onItemClick={handleItemClick}
+                viewAllHref="/worker/notifications"
+                onViewAll={() => setIsNotifOpen(false)}
+              />
             )}
           </div>
 
