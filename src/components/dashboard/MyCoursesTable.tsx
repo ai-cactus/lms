@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Search, ChevronRight, Video, FileText } from 'lucide-react';
+import { Search, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import CourseTypeIcon from '@/components/dashboard/courses/CourseTypeIcon';
 import {
   Table,
   TableBody,
@@ -64,7 +65,8 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
       <Table>
         <TableHeader>
           <TableRow className="border-0 hover:bg-transparent">
-            <TableHead className="w-full md:w-[40%]">Course Name</TableHead>
+            <TableHead className="w-full md:w-[34%]">Course Name</TableHead>
+            <TableHead className="hidden md:table-cell">Type</TableHead>
             <TableHead className="hidden md:table-cell">Assigned Staff</TableHead>
             <TableHead className="hidden md:table-cell">Completion Rate</TableHead>
             <TableHead className="hidden md:table-cell">Date Created</TableHead>
@@ -91,22 +93,7 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                       />
                     </div>
                     <div className="flex min-w-0 flex-col">
-                      <span className="flex items-center gap-2">
-                        {course.type === 'video' ? (
-                          <Video
-                            className="size-4 shrink-0 text-primary"
-                            aria-label="Video course"
-                          />
-                        ) : (
-                          <FileText
-                            className="size-4 shrink-0 text-text-secondary"
-                            aria-label="Text course"
-                          />
-                        )}
-                        <span className="truncate font-semibold text-[#0f172a]">
-                          {course.title}
-                        </span>
-                      </span>
+                      <span className="truncate font-semibold text-[#0f172a]">{course.title}</span>
                       {course.level && (
                         <span className="text-xs font-normal text-text-secondary md:hidden">
                           {course.level}
@@ -115,6 +102,9 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                     </div>
                   </div>
                 </TableCell>
+                <TableCell className="hidden md:table-cell">
+                  <CourseTypeIcon type={course.type} />
+                </TableCell>
                 <TableCell className="hidden md:table-cell">{course.enrollmentsCount}</TableCell>
                 <TableCell className="hidden md:table-cell">
                   <span className="font-semibold text-[#0f172a]">{course.completionRate}%</span>
@@ -122,7 +112,7 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                 <TableCell className="hidden whitespace-nowrap text-[#718096] md:table-cell">
                   {new Date(course.createdAt).toLocaleDateString('en-US', {
                     month: 'short',
-                    day: 'numeric',
+                    day: '2-digit',
                     year: 'numeric',
                   })}
                 </TableCell>
@@ -143,7 +133,7 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
             <EmptyTableState
               message="No courses found."
               subMessage="Create a course to get started."
-              colSpan={5}
+              colSpan={6}
               asTableRow
             />
           )}
