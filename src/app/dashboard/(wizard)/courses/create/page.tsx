@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
+import { hasActiveBilling } from '@/lib/billing';
 import CourseWizard from '@/components/dashboard/courses/CourseWizard';
 
 export const metadata = {
@@ -24,7 +25,7 @@ export default async function CreateCoursePage() {
       organization: {
         select: {
           subscription: {
-            select: { status: true },
+            select: { status: true, pausedAt: true },
           },
         },
       },
@@ -35,8 +36,7 @@ export default async function CreateCoursePage() {
     redirect('/dashboard');
   }
 
-  const subStatus = user.organization?.subscription?.status;
-  const hasBilling = subStatus === 'active' || subStatus === 'trialing';
+  const hasBilling = hasActiveBilling(user.organization?.subscription);
 
   if (!hasBilling) {
     // Redirect to the courses list where the billing gate UI will be shown

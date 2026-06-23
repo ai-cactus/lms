@@ -8,6 +8,7 @@ import WorkerCourseList from '@/components/worker/WorkerCourseList';
 import WorkerAchievements from '@/components/worker/WorkerAchievements';
 import WorkerEmptyState from '@/components/worker/WorkerEmptyState';
 import { getWorkerCertificates } from '@/app/actions/certificate';
+import { computeDisplayProgress } from '@/lib/enrollment-progress';
 
 export default async function LearnerDashboard() {
   const session = await auth();
@@ -17,7 +18,7 @@ export default async function LearnerDashboard() {
     prisma.enrollment.findMany({
       where: { userId },
       include: {
-        course: true,
+        course: { include: { quiz: { select: { passingScore: true } } } },
         quizAttempts: {
           orderBy: { completedAt: 'desc' },
           take: 1,
@@ -68,7 +69,12 @@ export default async function LearnerDashboard() {
       enrollmentId: picked.id,
       title: picked.course.title,
       status: picked.status,
-      progress: picked.progress,
+      progress: computeDisplayProgress({
+        status: picked.status,
+        progress: picked.progress,
+        score: picked.score,
+        passingScore: picked.course.quiz?.passingScore ?? null,
+      }),
       deadline: null,
       duration: picked.course.duration || undefined,
       quizAttempts: picked.quizAttempts,

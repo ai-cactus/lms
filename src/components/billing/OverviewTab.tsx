@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { BILLING_PLANS } from '@/lib/billing-plans';
 import {
   Users,
@@ -10,8 +11,11 @@ import {
   AlertTriangle,
   ChevronRight,
   Loader2,
+  PauseCircle,
+  Play,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getPauseState } from '@/lib/billing';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 
@@ -47,6 +51,8 @@ interface Subscription {
   status: string;
   currentPeriodEnd: string;
   cancelAtPeriodEnd: boolean;
+  pausedAt: string | null;
+  pauseEndsAt: string | null;
 }
 
 interface OverviewData {
@@ -106,9 +112,12 @@ const planLinkClass =
   'inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-primary hover:underline';
 
 export default function OverviewTab({ onChangeTab }: Props) {
+  const router = useRouter();
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   const fetchOverview = useCallback(async () => {
     try {
@@ -131,6 +140,22 @@ export default function OverviewTab({ onChangeTab }: Props) {
   useEffect(() => {
     void fetchOverview();
   }, [fetchOverview]);
+
+  const handleResume = useCallback(async () => {
+    setResuming(true);
+    setResumeError(null);
+    try {
+      const res = await fetch('/api/billing/subscription/resume', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Failed to resume subscription');
+      await fetchOverview();
+      router.refresh();
+    } catch (err) {
+      setResumeError(err instanceof Error ? err.message : 'Unexpected error');
+    } finally {
+      setResuming(false);
+    }
+  }, [fetchOverview, router]);
 
   if (loading) {
     return (
@@ -159,6 +184,9 @@ export default function OverviewTab({ onChangeTab }: Props) {
   const usagePct = staffMax ? Math.min((activeStaffCount / staffMax) * 100, 100) : 0;
   const isNearLimit = staffMax !== null && activeStaffCount / staffMax >= 0.8;
 
+  const pauseState = getPauseState(subscription);
+  const isPaused = pauseState !== 'none';
+
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       {/* Current Plan */}
@@ -171,9 +199,24 @@ export default function OverviewTab({ onChangeTab }: Props) {
         </div>
         {subscription ? (
           <>
-            <p className="mb-1.5 text-xl font-bold text-foreground">
-              {getPlanDisplayName(subscription.plan)}
-            </p>
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <p className="text-xl font-bold text-foreground">
+                {getPlanDisplayName(subscription.plan)}
+              </p>
+              {isPaused && (
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+                    pauseState === 'expired'
+                      ? 'bg-error/15 text-error'
+                      : 'bg-warning/15 text-warning',
+                  )}
+                >
+                  <PauseCircle size={13} aria-hidden="true" />
+                  {pauseState === 'expired' ? 'Pause ended' : 'Paused'}
+                </span>
+              )}
+            </div>
             <ul className="mt-4 flex flex-col gap-3">
               <li className="flex items-center gap-3 text-sm text-text-secondary">
                 <Users size={18} className="shrink-0 text-text-secondary" />
@@ -185,7 +228,7 @@ export default function OverviewTab({ onChangeTab }: Props) {
                   subscription.billingCycle.slice(1)}{' '}
                 billing cycle
               </li>
-              {!subscription.cancelAtPeriodEnd && (
+              {!subscription.cancelAtPeriodEnd && !isPaused && (
                 <li className="flex items-center gap-3 text-sm text-text-secondary">
                   <Calendar size={18} className="shrink-0 text-text-secondary" />
                   Next invoice on {formatDate(subscription.currentPeriodEnd)}
@@ -196,6 +239,58 @@ export default function OverviewTab({ onChangeTab }: Props) {
               <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-[13px] text-warning">
                 <AlertTriangle size={18} />
                 Cancels on {formatDate(subscription.currentPeriodEnd)}
+              </div>
+            )}
+
+            {isPaused && (
+              <div
+                className={cn(
+                  'mt-4 rounded-lg border p-4',
+                  pauseState === 'expired'
+                    ? 'border-error/40 bg-error/5'
+                    : 'border-border bg-background-secondary',
+                )}
+              >
+                <p className="text-sm font-semibold text-foreground">
+                  {pauseState === 'expired'
+                    ? 'Your pause has ended'
+                    : 'Your subscription is paused'}
+                </p>
+                <p className="mt-1 text-[13px] text-text-secondary">
+                  {pauseState === 'expired'
+                    ? 'Continue your plan to restore access, or cancel your subscription.'
+                    : subscription.pauseEndsAt
+                      ? `All your data is safely stored. Paused until ${formatDate(subscription.pauseEndsAt)}.`
+                      : 'All your data is safely stored until you continue your plan.'}
+                </p>
+
+                {resumeError && (
+                  <p className="mt-2 text-[13px] text-error" role="alert">
+                    {resumeError}
+                  </p>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-2.5">
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                    disabled={resuming}
+                    onClick={() => void handleResume()}
+                  >
+                    {resuming ? (
+                      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Play className="size-4" aria-hidden="true" />
+                    )}
+                    Continue Plan
+                  </button>
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-background-secondary disabled:opacity-60"
+                    disabled={resuming}
+                    onClick={() => router.push('/dashboard/billing/cancel')}
+                  >
+                    Cancel Plan
+                  </button>
+                </div>
               </div>
             )}
           </>

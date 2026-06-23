@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getCourses } from '@/app/actions/course';
 import { listAvailableVideoCourses } from '@/app/actions/offering';
+import { hasActiveBilling } from '@/lib/billing';
 import CoursesPageTabs from '@/components/dashboard/courses/CoursesPageTabs';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export default async function CoursesPage() {
       organization: {
         select: {
           subscription: {
-            select: { status: true },
+            select: { status: true, pausedAt: true },
           },
         },
       },
@@ -38,10 +39,9 @@ export default async function CoursesPage() {
     redirect('/dashboard');
   }
 
-  // Billing is "enabled" when the org has an active or trialing subscription.
-  // past_due and canceled are treated as inactive — same as no subscription.
-  const subStatus = user.organization?.subscription?.status;
-  const hasBilling = subStatus === 'active' || subStatus === 'trialing';
+  // Billing is "enabled" when the org has an active or trialing subscription
+  // that is not paused. past_due, canceled and paused are treated as inactive.
+  const hasBilling = hasActiveBilling(user.organization?.subscription);
 
   // Fetch both data sources in parallel; a failure in available courses
   // should never break the page — fall back to an empty list.

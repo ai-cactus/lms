@@ -1,15 +1,24 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import stripe from '@/lib/stripe';
 import { logger } from '@/lib/logger';
 
 // POST /api/billing/subscription/cancel — cancels subscription at end of current period
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Optional cancellation reason captured from the survey.
+    let reason: string | undefined;
+    try {
+      const body = await request.json();
+      if (typeof body?.reason === 'string' && body.reason.trim()) reason = body.reason.trim();
+    } catch {
+      /* no body — reason is optional */
     }
 
     const user = await prisma.user.findUnique({
@@ -43,6 +52,7 @@ export async function POST() {
     // Cancel at period end — does not stop service immediately
     await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
       cancel_at_period_end: true,
+      ...(reason ? { cancellation_details: { comment: reason } } : {}),
     });
 
     await prisma.subscription.update({
