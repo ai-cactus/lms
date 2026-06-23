@@ -23,17 +23,13 @@ import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentQuizResult } from '@/app/actions/staff';
 import { getAdminWorkerCertificates } from '@/app/actions/certificate';
 import CertificateCardList from '../training/CertificateCardList';
-import { Badge } from '@/components/ui/badge';
-import { courseTypeLabel, courseTypeBadgeVariant } from '@/lib/video/course-type-label';
 
 type WorkerCertificate = Awaited<ReturnType<typeof getAdminWorkerCertificates>>[number];
 import { logger } from '@/lib/logger';
-import { generateStaffActivityPdfAndEmail } from '@/app/actions/staff';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
   User,
-  FileText,
   X,
   BookOpen,
   CheckCircle2,
@@ -114,9 +110,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
   const [activeTab, setActiveTab] = useState<'courses' | 'certificates'>('courses');
   const [certificates, setCertificates] = useState<WorkerCertificate[]>([]);
   const [loadingCerts, setLoadingCerts] = useState(false);
-  // Export PDF state
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const [exportFeedback, setExportFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
 
   React.useEffect(() => {
     if (activeTab === 'certificates' && certificates.length === 0) {
@@ -144,24 +137,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
       logger.error({ msg: 'Error loading result', err });
     } finally {
       setLoadingEnrollmentId(null);
-    }
-  };
-
-  // Generate and email activity PDF report to the admin
-  const handleExportPdf = async () => {
-    setExportingPdf(true);
-    setExportFeedback(null);
-    try {
-      const result = await generateStaffActivityPdfAndEmail(user.id);
-      setExportFeedback({
-        ok: result.success,
-        msg: result.success
-          ? 'Report emailed to you successfully.'
-          : (result.error ?? 'Failed to generate report.'),
-      });
-    } finally {
-      setExportingPdf(false);
-      setTimeout(() => setExportFeedback(null), 5000);
     }
   };
 
@@ -216,7 +191,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         </div>
 
         <div className="flex flex-wrap items-start gap-3">
-          <Button variant="ghost" onClick={() => setIsEditModalOpen(true)}>
+          <Button variant="outline" onClick={() => setIsEditModalOpen(true)}>
             Edit Profile
           </Button>
           <Button
@@ -226,27 +201,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
           >
             Remove Staff
           </Button>
-          {/* Export PDF button */}
-          <div className="flex flex-col items-end gap-1">
-            <Button
-              variant="outline"
-              onClick={handleExportPdf}
-              disabled={exportingPdf}
-              loading={exportingPdf}
-            >
-              <FileText className="size-4" />
-              {exportingPdf ? 'Exporting…' : 'Export PDF'}
-            </Button>
-            {exportFeedback && (
-              <span
-                className={`text-[11px] font-medium ${
-                  exportFeedback.ok ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                {exportFeedback.msg}
-              </span>
-            )}
-          </div>
           <Button onClick={() => setIsAssignModalOpen(true)}>Assign Course</Button>
         </div>
       </div>
@@ -361,9 +315,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                             <span className="font-semibold text-[#1a202c]">
                               {enrollment.courseName}
                             </span>
-                            <Badge variant={courseTypeBadgeVariant(enrollment.courseType)}>
-                              {courseTypeLabel(enrollment.courseType)}
-                            </Badge>
                           </div>
                           <span className="text-xs text-[#718096]">
                             {enrollment.difficulty || 'Advanced'}

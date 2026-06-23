@@ -202,7 +202,7 @@ export default function CoursePreview({
             <p className="mb-4 text-base text-[#cbd5e0]">{course.description}</p>
           )}
 
-          {approver && (
+          {approver && !isVideoCourse && (
             <div className="mb-6 inline-flex items-center gap-2 text-sm text-white">
               <CircleCheck className="size-4 text-[#48bb78]" aria-hidden="true" />
               <span>
@@ -456,7 +456,8 @@ export default function CoursePreview({
                         <div className="min-w-0">
                           <p className="truncate font-semibold text-[#1a202c]">{lesson.title}</p>
                           <p className="text-xs text-[#718096]">
-                            Video{clock ? ` • ${clock}` : ''}
+                            {isVideoCourse ? 'Video' : 'Text'}
+                            {clock ? ` • ${clock}` : ''}
                           </p>
                         </div>
                       </li>
