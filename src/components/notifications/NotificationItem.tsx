@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { X } from 'lucide-react';
 import {
   formatRelativeTime,
   getNotificationVisual,
@@ -10,10 +11,12 @@ import {
 interface NotificationItemProps {
   notif: NotificationLike;
   onClick?: () => void;
+  /** When provided, renders a delete control on the row. */
+  onDelete?: () => void;
 }
 
 /** A single notification row, shared by the header dropdown and the full page. */
-export default function NotificationItem({ notif, onClick }: NotificationItemProps) {
+export default function NotificationItem({ notif, onClick, onDelete }: NotificationItemProps) {
   const { Icon, iconClass, ringClass } = getNotificationVisual(notif.type);
   const showRetake = ['QUIZ_RETRY_LIMIT_REACHED', 'COURSE_RETRY_REQUESTED'].includes(
     notif.type || '',
@@ -72,9 +75,24 @@ export default function NotificationItem({ notif, onClick }: NotificationItemPro
         )}
       </div>
 
-      {!notif.isRead && (
-        <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />
-      )}
+      <div className="flex shrink-0 flex-col items-center gap-2">
+        {!notif.isRead && (
+          <span className="mt-1.5 size-2 rounded-full bg-primary" aria-label="Unread" />
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            aria-label="Delete notification"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="rounded-md p-1 text-[#cbd5e0] transition-colors hover:bg-[#edf2f7] hover:text-[#718096]"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

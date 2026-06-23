@@ -13,6 +13,22 @@ model Notification {
   resolvedAt DateTime? @map("resolved_at")
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
+  // Ordering (newest-first) and the unread badge count are the two hot paths.
+  @@index([userId, createdAt])
+  @@index([userId, isRead])
   @@map("notifications")
+}
+
+// Per-user, per-type in-app notification opt-outs. Absence of a row = enabled.
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
 }

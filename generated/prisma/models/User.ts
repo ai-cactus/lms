@@ -242,6 +242,7 @@ export type UserWhereInput = {
   documents?: Prisma.DocumentListRelationFilter
   enrollments?: Prisma.EnrollmentListRelationFilter
   notifications?: Prisma.NotificationListRelationFilter
+  notificationPrefs?: Prisma.NotificationPreferenceListRelationFilter
   profile?: Prisma.XOR<Prisma.ProfileNullableScalarRelationFilter, Prisma.ProfileWhereInput> | null
   organization?: Prisma.XOR<Prisma.OrganizationNullableScalarRelationFilter, Prisma.OrganizationWhereInput> | null
   mfaFactors?: Prisma.MfaFactorListRelationFilter
@@ -267,6 +268,7 @@ export type UserOrderByWithRelationInput = {
   documents?: Prisma.DocumentOrderByRelationAggregateInput
   enrollments?: Prisma.EnrollmentOrderByRelationAggregateInput
   notifications?: Prisma.NotificationOrderByRelationAggregateInput
+  notificationPrefs?: Prisma.NotificationPreferenceOrderByRelationAggregateInput
   profile?: Prisma.ProfileOrderByWithRelationInput
   organization?: Prisma.OrganizationOrderByWithRelationInput
   mfaFactors?: Prisma.MfaFactorOrderByRelationAggregateInput
@@ -295,6 +297,7 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   documents?: Prisma.DocumentListRelationFilter
   enrollments?: Prisma.EnrollmentListRelationFilter
   notifications?: Prisma.NotificationListRelationFilter
+  notificationPrefs?: Prisma.NotificationPreferenceListRelationFilter
   profile?: Prisma.XOR<Prisma.ProfileNullableScalarRelationFilter, Prisma.ProfileWhereInput> | null
   organization?: Prisma.XOR<Prisma.OrganizationNullableScalarRelationFilter, Prisma.OrganizationWhereInput> | null
   mfaFactors?: Prisma.MfaFactorListRelationFilter
@@ -355,6 +358,7 @@ export type UserCreateInput = {
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
@@ -380,6 +384,7 @@ export type UserUncheckedCreateInput = {
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
@@ -403,6 +408,7 @@ export type UserUpdateInput = {
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
@@ -428,6 +434,7 @@ export type UserUncheckedUpdateInput = {
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
@@ -684,6 +691,20 @@ export type UserUpdateOneRequiredWithoutNotificationsNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutNotificationsInput, Prisma.UserUpdateWithoutNotificationsInput>, Prisma.UserUncheckedUpdateWithoutNotificationsInput>
 }
 
+export type UserCreateNestedOneWithoutNotificationPrefsInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutNotificationPrefsInput, Prisma.UserUncheckedCreateWithoutNotificationPrefsInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutNotificationPrefsInput
+  connect?: Prisma.UserWhereUniqueInput
+}
+
+export type UserUpdateOneRequiredWithoutNotificationPrefsNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutNotificationPrefsInput, Prisma.UserUncheckedCreateWithoutNotificationPrefsInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutNotificationPrefsInput
+  upsert?: Prisma.UserUpsertWithoutNotificationPrefsInput
+  connect?: Prisma.UserWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutNotificationPrefsInput, Prisma.UserUpdateWithoutNotificationPrefsInput>, Prisma.UserUncheckedUpdateWithoutNotificationPrefsInput>
+}
+
 export type UserCreateNestedManyWithoutOrganizationInput = {
   create?: Prisma.XOR<Prisma.UserCreateWithoutOrganizationInput, Prisma.UserUncheckedCreateWithoutOrganizationInput> | Prisma.UserCreateWithoutOrganizationInput[] | Prisma.UserUncheckedCreateWithoutOrganizationInput[]
   connectOrCreate?: Prisma.UserCreateOrConnectWithoutOrganizationInput | Prisma.UserCreateOrConnectWithoutOrganizationInput[]
@@ -742,6 +763,7 @@ export type UserCreateWithoutProfileInput = {
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
@@ -766,6 +788,7 @@ export type UserUncheckedCreateWithoutProfileInput = {
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateUncheckedCreateNestedManyWithoutUserInput
@@ -804,6 +827,7 @@ export type UserUpdateWithoutProfileInput = {
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
@@ -828,6 +852,7 @@ export type UserUncheckedUpdateWithoutProfileInput = {
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUncheckedUpdateManyWithoutUserNestedInput
@@ -850,6 +875,7 @@ export type UserCreateWithoutMfaFactorsInput = {
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
@@ -874,6 +900,7 @@ export type UserUncheckedCreateWithoutMfaFactorsInput = {
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateUncheckedCreateNestedManyWithoutUserInput
@@ -912,6 +939,7 @@ export type UserUpdateWithoutMfaFactorsInput = {
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
@@ -936,6 +964,7 @@ export type UserUncheckedUpdateWithoutMfaFactorsInput = {
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUncheckedUpdateManyWithoutUserNestedInput
@@ -958,6 +987,7 @@ export type UserCreateWithoutMfaRecoveryCodesInput = {
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
@@ -982,6 +1012,7 @@ export type UserUncheckedCreateWithoutMfaRecoveryCodesInput = {
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateUncheckedCreateNestedManyWithoutUserInput
@@ -1020,6 +1051,7 @@ export type UserUpdateWithoutMfaRecoveryCodesInput = {
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
@@ -1044,6 +1076,7 @@ export type UserUncheckedUpdateWithoutMfaRecoveryCodesInput = {
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUncheckedUpdateManyWithoutUserNestedInput
@@ -1066,6 +1099,7 @@ export type UserCreateWithoutApprovedCoursesInput = {
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
@@ -1090,6 +1124,7 @@ export type UserUncheckedCreateWithoutApprovedCoursesInput = {
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
@@ -1116,6 +1151,7 @@ export type UserCreateWithoutCoursesInput = {
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
@@ -1140,6 +1176,7 @@ export type UserUncheckedCreateWithoutCoursesInput = {
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
@@ -1179,6 +1216,7 @@ export type UserUpdateWithoutApprovedCoursesInput = {
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
@@ -1203,6 +1241,7 @@ export type UserUncheckedUpdateWithoutApprovedCoursesInput = {
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
@@ -1235,6 +1274,7 @@ export type UserUpdateWithoutCoursesInput = {
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
@@ -1259,6 +1299,7 @@ export type UserUncheckedUpdateWithoutCoursesInput = {
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
@@ -1281,6 +1322,7 @@ export type UserCreateWithoutDocumentsInput = {
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
@@ -1305,6 +1347,7 @@ export type UserUncheckedCreateWithoutDocumentsInput = {
   courses?: Prisma.CourseUncheckedCreateNestedManyWithoutCreatorInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
@@ -1343,6 +1386,7 @@ export type UserUpdateWithoutDocumentsInput = {
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
@@ -1367,6 +1411,7 @@ export type UserUncheckedUpdateWithoutDocumentsInput = {
   courses?: Prisma.CourseUncheckedUpdateManyWithoutCreatorNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
@@ -1389,6 +1434,7 @@ export type UserCreateWithoutEnrollmentsInput = {
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
@@ -1413,6 +1459,7 @@ export type UserUncheckedCreateWithoutEnrollmentsInput = {
   courses?: Prisma.CourseUncheckedCreateNestedManyWithoutCreatorInput
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
@@ -1451,6 +1498,7 @@ export type UserUpdateWithoutEnrollmentsInput = {
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
@@ -1475,6 +1523,7 @@ export type UserUncheckedUpdateWithoutEnrollmentsInput = {
   courses?: Prisma.CourseUncheckedUpdateManyWithoutCreatorNestedInput
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
@@ -1498,6 +1547,7 @@ export type UserCreateWithoutCertificatesInput = {
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
@@ -1522,6 +1572,7 @@ export type UserUncheckedCreateWithoutCertificatesInput = {
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
@@ -1560,6 +1611,7 @@ export type UserUpdateWithoutCertificatesInput = {
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
@@ -1584,6 +1636,7 @@ export type UserUncheckedUpdateWithoutCertificatesInput = {
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
@@ -1605,6 +1658,7 @@ export type UserCreateWithoutNotificationsInput = {
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
@@ -1629,6 +1683,7 @@ export type UserUncheckedCreateWithoutNotificationsInput = {
   courses?: Prisma.CourseUncheckedCreateNestedManyWithoutCreatorInput
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
@@ -1667,6 +1722,7 @@ export type UserUpdateWithoutNotificationsInput = {
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
@@ -1691,6 +1747,119 @@ export type UserUncheckedUpdateWithoutNotificationsInput = {
   courses?: Prisma.CourseUncheckedUpdateManyWithoutCreatorNestedInput
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
+  profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
+  mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
+  mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
+  certificates?: Prisma.CertificateUncheckedUpdateManyWithoutUserNestedInput
+  approvedCourses?: Prisma.CourseUncheckedUpdateManyWithoutApprovedByNestedInput
+}
+
+export type UserCreateWithoutNotificationPrefsInput = {
+  id?: string
+  email: string
+  password: string
+  passwordResetRequired?: boolean
+  authProvider?: string
+  role?: $Enums.UserRole
+  emailVerified?: boolean
+  mfaEnabled?: boolean
+  mfaVerifiedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
+  documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
+  enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
+  organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
+  mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
+  certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
+  approvedCourses?: Prisma.CourseCreateNestedManyWithoutApprovedByInput
+}
+
+export type UserUncheckedCreateWithoutNotificationPrefsInput = {
+  id?: string
+  email: string
+  password: string
+  passwordResetRequired?: boolean
+  organizationId?: string | null
+  authProvider?: string
+  role?: $Enums.UserRole
+  emailVerified?: boolean
+  mfaEnabled?: boolean
+  mfaVerifiedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  courses?: Prisma.CourseUncheckedCreateNestedManyWithoutCreatorInput
+  documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
+  enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
+  mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
+  mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
+  certificates?: Prisma.CertificateUncheckedCreateNestedManyWithoutUserInput
+  approvedCourses?: Prisma.CourseUncheckedCreateNestedManyWithoutApprovedByInput
+}
+
+export type UserCreateOrConnectWithoutNotificationPrefsInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutNotificationPrefsInput, Prisma.UserUncheckedCreateWithoutNotificationPrefsInput>
+}
+
+export type UserUpsertWithoutNotificationPrefsInput = {
+  update: Prisma.XOR<Prisma.UserUpdateWithoutNotificationPrefsInput, Prisma.UserUncheckedUpdateWithoutNotificationPrefsInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutNotificationPrefsInput, Prisma.UserUncheckedCreateWithoutNotificationPrefsInput>
+  where?: Prisma.UserWhereInput
+}
+
+export type UserUpdateToOneWithWhereWithoutNotificationPrefsInput = {
+  where?: Prisma.UserWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutNotificationPrefsInput, Prisma.UserUncheckedUpdateWithoutNotificationPrefsInput>
+}
+
+export type UserUpdateWithoutNotificationPrefsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  password?: Prisma.StringFieldUpdateOperationsInput | string
+  passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  authProvider?: Prisma.StringFieldUpdateOperationsInput | string
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
+  emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
+  documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
+  enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
+  organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
+  mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
+  certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
+  approvedCourses?: Prisma.CourseUpdateManyWithoutApprovedByNestedInput
+}
+
+export type UserUncheckedUpdateWithoutNotificationPrefsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  password?: Prisma.StringFieldUpdateOperationsInput | string
+  passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  authProvider?: Prisma.StringFieldUpdateOperationsInput | string
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
+  emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  courses?: Prisma.CourseUncheckedUpdateManyWithoutCreatorNestedInput
+  documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
+  enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
@@ -1714,6 +1883,7 @@ export type UserCreateWithoutOrganizationInput = {
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
@@ -1737,6 +1907,7 @@ export type UserUncheckedCreateWithoutOrganizationInput = {
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
   mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
@@ -1818,6 +1989,7 @@ export type UserUpdateWithoutOrganizationInput = {
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
@@ -1841,6 +2013,7 @@ export type UserUncheckedUpdateWithoutOrganizationInput = {
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
   mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
@@ -1872,6 +2045,7 @@ export type UserCountOutputType = {
   documents: number
   enrollments: number
   notifications: number
+  notificationPrefs: number
   mfaFactors: number
   mfaRecoveryCodes: number
   certificates: number
@@ -1883,6 +2057,7 @@ export type UserCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.I
   documents?: boolean | UserCountOutputTypeCountDocumentsArgs
   enrollments?: boolean | UserCountOutputTypeCountEnrollmentsArgs
   notifications?: boolean | UserCountOutputTypeCountNotificationsArgs
+  notificationPrefs?: boolean | UserCountOutputTypeCountNotificationPrefsArgs
   mfaFactors?: boolean | UserCountOutputTypeCountMfaFactorsArgs
   mfaRecoveryCodes?: boolean | UserCountOutputTypeCountMfaRecoveryCodesArgs
   certificates?: boolean | UserCountOutputTypeCountCertificatesArgs
@@ -1925,6 +2100,13 @@ export type UserCountOutputTypeCountEnrollmentsArgs<ExtArgs extends runtime.Type
  */
 export type UserCountOutputTypeCountNotificationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   where?: Prisma.NotificationWhereInput
+}
+
+/**
+ * UserCountOutputType without action
+ */
+export type UserCountOutputTypeCountNotificationPrefsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.NotificationPreferenceWhereInput
 }
 
 /**
@@ -1973,6 +2155,7 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   documents?: boolean | Prisma.User$documentsArgs<ExtArgs>
   enrollments?: boolean | Prisma.User$enrollmentsArgs<ExtArgs>
   notifications?: boolean | Prisma.User$notificationsArgs<ExtArgs>
+  notificationPrefs?: boolean | Prisma.User$notificationPrefsArgs<ExtArgs>
   profile?: boolean | Prisma.User$profileArgs<ExtArgs>
   organization?: boolean | Prisma.User$organizationArgs<ExtArgs>
   mfaFactors?: boolean | Prisma.User$mfaFactorsArgs<ExtArgs>
@@ -2035,6 +2218,7 @@ export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   documents?: boolean | Prisma.User$documentsArgs<ExtArgs>
   enrollments?: boolean | Prisma.User$enrollmentsArgs<ExtArgs>
   notifications?: boolean | Prisma.User$notificationsArgs<ExtArgs>
+  notificationPrefs?: boolean | Prisma.User$notificationPrefsArgs<ExtArgs>
   profile?: boolean | Prisma.User$profileArgs<ExtArgs>
   organization?: boolean | Prisma.User$organizationArgs<ExtArgs>
   mfaFactors?: boolean | Prisma.User$mfaFactorsArgs<ExtArgs>
@@ -2057,6 +2241,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     documents: Prisma.$DocumentPayload<ExtArgs>[]
     enrollments: Prisma.$EnrollmentPayload<ExtArgs>[]
     notifications: Prisma.$NotificationPayload<ExtArgs>[]
+    notificationPrefs: Prisma.$NotificationPreferencePayload<ExtArgs>[]
     profile: Prisma.$ProfilePayload<ExtArgs> | null
     organization: Prisma.$OrganizationPayload<ExtArgs> | null
     mfaFactors: Prisma.$MfaFactorPayload<ExtArgs>[]
@@ -2475,6 +2660,7 @@ export interface Prisma__UserClient<T, Null = never, ExtArgs extends runtime.Typ
   documents<T extends Prisma.User$documentsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$documentsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$DocumentPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   enrollments<T extends Prisma.User$enrollmentsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$enrollmentsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$EnrollmentPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   notifications<T extends Prisma.User$notificationsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$notificationsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$NotificationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  notificationPrefs<T extends Prisma.User$notificationPrefsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$notificationPrefsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$NotificationPreferencePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   profile<T extends Prisma.User$profileArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$profileArgs<ExtArgs>>): Prisma.Prisma__ProfileClient<runtime.Types.Result.GetResult<Prisma.$ProfilePayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   organization<T extends Prisma.User$organizationArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$organizationArgs<ExtArgs>>): Prisma.Prisma__OrganizationClient<runtime.Types.Result.GetResult<Prisma.$OrganizationPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   mfaFactors<T extends Prisma.User$mfaFactorsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$mfaFactorsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$MfaFactorPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
@@ -3016,6 +3202,30 @@ export type User$notificationsArgs<ExtArgs extends runtime.Types.Extensions.Inte
   take?: number
   skip?: number
   distinct?: Prisma.NotificationScalarFieldEnum | Prisma.NotificationScalarFieldEnum[]
+}
+
+/**
+ * User.notificationPrefs
+ */
+export type User$notificationPrefsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the NotificationPreference
+   */
+  select?: Prisma.NotificationPreferenceSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the NotificationPreference
+   */
+  omit?: Prisma.NotificationPreferenceOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.NotificationPreferenceInclude<ExtArgs> | null
+  where?: Prisma.NotificationPreferenceWhereInput
+  orderBy?: Prisma.NotificationPreferenceOrderByWithRelationInput | Prisma.NotificationPreferenceOrderByWithRelationInput[]
+  cursor?: Prisma.NotificationPreferenceWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.NotificationPreferenceScalarFieldEnum | Prisma.NotificationPreferenceScalarFieldEnum[]
 }
 
 /**
