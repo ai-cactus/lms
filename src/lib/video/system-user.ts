@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 export const SYSTEM_USER_EMAIL = 'system@theraptly.internal';
 

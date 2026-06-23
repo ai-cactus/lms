@@ -1,0 +1,51 @@
+// ── Quiz & Assessment ────────────────────────────────────────────────────────
+
+model Quiz {
+  id              String        @id @default(uuid())
+  lessonId        String?       @unique @map("lesson_id")
+  courseId        String?       @unique @map("course_id")
+  title           String
+  passingScore    Int           @default(70) @map("passing_score")
+  allowedAttempts Int?          @default(1) @map("allowed_attempts")
+  timeLimit       Int?          @map("time_limit")
+  difficulty      String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  questions       Question[]
+  lesson          Lesson?       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  course          Course?       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  attempts        QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model Question {
+  id            String  @id @default(uuid())
+  quizId        String  @map("quiz_id")
+  text          String
+  type          String
+  options       Json?
+  correctAnswer String  @map("correct_answer")
+  order         Int
+  archetype     String?
+  evidence      Json?
+  explanation   String?
+  quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@map("questions")
+}
+
+model QuizAttempt {
+  id           String     @id @default(uuid())
+  enrollmentId String     @map("enrollment_id")
+  quizId       String     @map("quiz_id")
+  answers      Json
+  score        Int
+  timeTaken    Int?       @map("time_taken")
+  attemptCount Int        @default(1) @map("attempt_count")
+  completedAt  DateTime   @default(now()) @map("completed_at")
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  quiz         Quiz       @relation(fields: [quizId], references: [id])
+
+  @@unique([enrollmentId, quizId])
+  @@map("quiz_attempts")
+}

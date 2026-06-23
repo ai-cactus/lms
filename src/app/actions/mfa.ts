@@ -1,7 +1,7 @@
 'use server';
 
 import crypto from 'crypto';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { headers } from 'next/headers';

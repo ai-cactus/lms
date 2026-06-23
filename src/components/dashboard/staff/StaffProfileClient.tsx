@@ -15,7 +15,7 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import Link from 'next/link';
 import Image from 'next/image';
 import EditStaffModal from './EditStaffModal';
-import type { UserRole } from '@prisma/client';
+import { UserRole } from '@/generated/prisma/enums';
 import AssignUserCourseModal from './AssignUserCourseModal';
 import AssignRetakeModal from '../training/AssignRetakeModal';
 import RemoveStaffModal from './RemoveStaffModal';

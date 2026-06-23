@@ -22,15 +22,16 @@ const {
 
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  const prisma = {
     lesson: { findUnique: (...a: unknown[]) => mockLessonFindUnique(...a) },
     enrollment: {
       findUnique: (...a: unknown[]) => mockEnrollmentFindUnique(...a),
       update: (...a: unknown[]) => mockEnrollmentUpdate(...a),
     },
-  },
-}));
+  };
+  return { prisma, default: prisma };
+});
 // gating is a real module — isQuizUnlocked is used directly by the action.
 // Note: signed-URL resolution now lives in the /api/video/[lessonId] proxy
 // route (see its test); getVideoPlaybackUrl only does the access pre-check and

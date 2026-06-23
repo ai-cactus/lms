@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';

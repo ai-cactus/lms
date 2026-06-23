@@ -1,5 +1,3 @@
-import { Prisma } from '@prisma/client';
-
 export type CourseWithStats = {
   id: string;
   title: string;
@@ -58,6 +56,7 @@ export interface RenderableModule extends GeneratedLesson {
   keyPoints?: string[];
 }
 
+import { Prisma } from '@/generated/prisma/client';
 import { QuizQuestion } from './quiz';
 
 export interface GeneratedCourse {

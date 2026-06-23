@@ -20,9 +20,7 @@
  *   --dry-run   Print affected users without writing changes
  */
 
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/db/index';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 

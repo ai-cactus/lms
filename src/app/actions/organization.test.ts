@@ -1,16 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { checkOrganizationNameAvailable } from './organization';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 // Mock the prisma client
 vi.mock('@/lib/prisma', () => {
-  return {
-    prisma: {
-      organization: {
-        findFirst: vi.fn(),
-      },
+  const prisma = {
+    organization: {
+      findFirst: vi.fn(),
     },
   };
+  return { prisma, default: prisma };
 });
 
 describe('checkOrganizationNameAvailable', () => {

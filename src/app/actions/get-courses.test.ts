@@ -9,13 +9,14 @@ const { mockAuth, mockWorkerAuth, mockCourseFindMany, mockOfferingFindMany, mock
     mockUserFindUnique: vi.fn(),
   }));
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  const prisma = {
     course: { findMany: mockCourseFindMany },
     orgCourseOffering: { findMany: mockOfferingFindMany },
     user: { findUnique: mockUserFindUnique },
-  },
-}));
+  };
+  return { prisma, default: prisma };
+});
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 

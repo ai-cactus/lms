@@ -1,7 +1,7 @@
 import React from 'react';
 import ProfileForm from '@/components/dashboard/ProfileForm';
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { getSignedUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';

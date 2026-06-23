@@ -1,6 +1,6 @@
 -- add-vector-column.sql
 --
--- Run ONCE after `prisma migrate deploy` has created the ManualChunk table.
+-- Run ONCE after `prisma migrate deploy` has created the manual_chunks table.
 -- This script adds the pgvector embedding column and an IVFFlat index that
 -- Prisma cannot manage natively (Unsupported type).
 --
@@ -16,8 +16,8 @@
 -- 1. Enable the pgvector extension (requires pgvector/pgvector image).
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- 2. Add the embedding column to ManualChunk (768 dims = text-embedding-004).
-ALTER TABLE "ManualChunk"
+-- 2. Add the embedding column to manual_chunks (768 dims = text-embedding-004).
+ALTER TABLE manual_chunks
   ADD COLUMN IF NOT EXISTS embedding vector(768);
 
 -- 3. Create an IVFFlat index for approximate nearest-neighbour cosine search.
@@ -25,7 +25,7 @@ ALTER TABLE "ManualChunk"
 --    The index is only useful once rows exist, so it can be created lazily,
 --    but creating it upfront avoids a later lock on a large table.
 CREATE INDEX IF NOT EXISTS manual_chunk_embedding_cosine_idx
-  ON "ManualChunk"
+  ON manual_chunks
   USING ivfflat (embedding vector_cosine_ops)
   WITH (lists = 100);
 

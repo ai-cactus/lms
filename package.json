@@ -11,7 +11,10 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
     "test": "vitest run",
-    "prepare": "husky"
+    "prepare": "husky",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:generate": "prisma generate"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
@@ -27,6 +30,8 @@
     "@google-cloud/vertexai": "^1.10.0",
     "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.2.2",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
     "@react-pdf/renderer": "^4.5.1",
     "@types/pdf-parse": "^1.1.5",
     "@types/pdfkit": "^0.17.6",
@@ -35,6 +40,7 @@
     "clsx": "^2.1.1",
     "docx": "^9.6.1",
     "dompurify": "^3.4.11",
+    "dotenv": "^17.4.2",
     "framer-motion": "^12.33.0",
     "google-auth-library": "^10.6.2",
     "html-to-image": "^1.11.13",
@@ -49,6 +55,7 @@
     "otpauth": "^9.5.0",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.18.0",
+    "pg": "^8.22.0",
     "qrcode": "^1.5.4",
     "quill": "^2.0.3",
     "radix-ui": "^1.5.0",
@@ -68,7 +75,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "@prisma/client": "^5.22.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -78,6 +84,7 @@
     "@types/dompurify": "^3.0.5",
     "@types/node": "^20.19.37",
     "@types/nodemailer": "^7.0.9",
+    "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -92,7 +99,7 @@
     "lint-staged": "^16.3.2",
     "next-auth": "^5.0.0-beta.30",
     "prettier": "^3.8.1",
-    "prisma": "^5.22.0",
+    "prisma": "^7.8.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5",
     "vitest": "^4.1.8"

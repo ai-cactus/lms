@@ -1,7 +1,7 @@
 import React, { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { getCourses } from '@/app/actions/course';
 import { listAvailableVideoCourses } from '@/app/actions/offering';
 import CoursesPageTabs from '@/components/dashboard/courses/CoursesPageTabs';

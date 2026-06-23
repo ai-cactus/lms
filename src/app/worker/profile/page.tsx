@@ -1,6 +1,6 @@
 import React from 'react';
 import { auth } from '@/auth.worker';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { getSignedUrl } from '@/lib/storage';
 import WorkerProfileForm from '@/components/worker/WorkerProfileForm';

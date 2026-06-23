@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import stripe from '@/lib/stripe';
 import { BILLING_PLANS, BillingCycle } from '@/lib/billing-plans';
 import { logger } from '@/lib/logger';

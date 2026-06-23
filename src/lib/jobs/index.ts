@@ -1,6 +1,6 @@
-import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { Prisma } from '@/generated/prisma/client';
 
 export type JobType =
   | 'GENERATE_DRAFT'

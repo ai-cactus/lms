@@ -1,8 +1,7 @@
 'use server';
 
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { saveFile } from '@/lib/documents/uploadHandler';
 import { calculateHash } from '@/lib/documents/versioning';
 import { scanText } from '@/lib/documents/phiScanner';
@@ -10,6 +9,7 @@ import { extractTextFromFile } from '@/lib/file-parser';
 import { deleteFile } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 import { revalidatePath } from 'next/cache';
+import { Prisma } from '@/generated/prisma/client';
 
 export async function uploadDocument(
   _prevState: { success?: boolean; error?: string; phiDetected?: boolean } | null,

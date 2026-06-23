@@ -1,10 +1,8 @@
 'use server';
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { SYSTEM_CATEGORIES } from '@/lib/course-categories';
-
-const prisma = new PrismaClient();
 
 export async function getCategories() {
   const session = await auth();

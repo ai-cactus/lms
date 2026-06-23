@@ -1,6 +1,6 @@
 import React from 'react';
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import DashboardCharts from '@/components/dashboard/DashboardCharts';
 import MyCoursesTable from '@/components/dashboard/MyCoursesTable';

@@ -54,7 +54,7 @@ vi.mock('bcryptjs', () => ({
   hash: vi.fn().mockResolvedValue('hashed-password'),
 }));
 
-vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 
 // ---------------------------------------------------------------------------
 // Import the module under test AFTER all vi.mock() declarations.

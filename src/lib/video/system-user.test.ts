@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const upsert = vi.fn();
-vi.mock('@/lib/prisma', () => ({
-  prisma: { user: { upsert: (...a: unknown[]) => upsert(...a) } },
-}));
+vi.mock('@/lib/prisma', () => {
+  const prisma = { user: { upsert: (...a: unknown[]) => upsert(...a) } };
+  return { prisma, default: prisma };
+});
 
 import { getOrCreateSystemUser, SYSTEM_USER_EMAIL } from './system-user';
 

@@ -42,13 +42,14 @@ vi.mock('@/lib/queue/video-transcode-queue', () => ({
   enqueueVideoTranscode: mockEnqueueTranscode,
 }));
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/prisma', () => {
+  const prisma = {
     $transaction: mockTransaction,
     course: { update: courseUpdate },
     lesson: { update: vi.fn() },
-  },
-}));
+  };
+  return { prisma, default: prisma };
+});
 vi.mock('@/lib/system-auth', () => ({ verifySystemAdminCookie: mockVerify }));
 vi.mock('@/lib/video/system-user', () => ({ getOrCreateSystemUser: mockGetSystemUser }));
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));

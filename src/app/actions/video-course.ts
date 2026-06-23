@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { verifySystemAdminCookie } from '@/lib/system-auth';
 import { getOrCreateSystemUser } from '@/lib/video/system-user';
 import type { ParsedQuiz } from '@/lib/video/types';

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import stripe from '@/lib/stripe';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import Stripe from 'stripe';
 import { logger } from '@/lib/logger';
 import type {
   SubscriptionPlan,
   SubscriptionBillingCycle,
   SubscriptionStatus,
-} from '@prisma/client';
+} from '@/generated/prisma/enums';
 
 // Stripe webhook secret — required to verify event authenticity
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;

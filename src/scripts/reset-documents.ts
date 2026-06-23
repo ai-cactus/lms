@@ -12,11 +12,9 @@
  * WARNING: This is destructive and irreversible. Use only in dev/staging.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/db/index';
 import { deleteFile, isLegacyPath } from '../lib/storage';
 import { logger } from '../lib/logger';
-
-const prisma = new PrismaClient();
 
 async function main() {
   logger.info({ msg: 'Fetching all document versions...' });
