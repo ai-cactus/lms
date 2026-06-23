@@ -338,7 +338,7 @@ export default function AssignPublishClient({
                 <Check className="size-6 text-white" strokeWidth={3} aria-hidden="true" />
               </span>
             </span>
-            <h2 className="text-xl font-bold text-foreground">Course added successfully</h2>
+            <h2 className="text-xl font-bold text-foreground">Course Assigned Successfully</h2>
             <p className="text-sm text-text-secondary">
               Workers have been assigned and are now enrolled in this course.
             </p>

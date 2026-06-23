@@ -11,7 +11,7 @@ interface AvailableCoursesTableProps {
 }
 
 export default function AvailableCoursesTable({ courses }: AvailableCoursesTableProps) {
-  const rows = courses.slice(0, 5);
+  const rows = courses.slice(0, 2);
 
   return (
     <section className="flex flex-col gap-3">

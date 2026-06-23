@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ChevronRight, FileText, PlayCircle, ShieldCheck } from 'lucide-react';
+import { ChevronRight, FileText, ShieldCheck } from 'lucide-react';
 import type { VideoCourseAvailabilityRow } from '@/app/actions/offering';
 
 // All global video courses share the same delivery format and deliverables, so
@@ -35,11 +35,6 @@ function CourseThumbnail({ courseId, hasPreview }: { courseId: string; hasPrevie
           aria-hidden="true"
         />
       )}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="flex size-12 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm">
-          <PlayCircle className="size-7 text-white/90" aria-hidden="true" />
-        </span>
-      </div>
     </div>
   );
 }
@@ -53,7 +48,11 @@ export default function VideoCourseCard({ course }: VideoCourseCardProps) {
   const href = `/dashboard/training/courses/${course.id}`;
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-white p-4 transition-shadow hover:shadow-sm sm:flex-row">
+    <Link
+      href={href}
+      aria-label={`View ${course.title}`}
+      className="group flex flex-col gap-4 rounded-xl border border-border bg-white p-4 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 sm:flex-row"
+    >
       <CourseThumbnail courseId={course.id} hasPreview={course.hasPreview} />
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -65,13 +64,10 @@ export default function VideoCourseCard({ course }: VideoCourseCardProps) {
           ) : (
             <span />
           )}
-          <Link
-            href={href}
-            className="flex shrink-0 items-center gap-1 text-sm font-semibold text-primary hover:underline"
-          >
+          <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-primary group-hover:underline">
             View
             <ChevronRight className="size-4" aria-hidden="true" />
-          </Link>
+          </span>
         </div>
 
         <h3 className="text-base font-bold text-[#1a202c]">{course.title}</h3>
@@ -93,6 +89,6 @@ export default function VideoCourseCard({ course }: VideoCourseCardProps) {
           </span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
