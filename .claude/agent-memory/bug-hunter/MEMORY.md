@@ -1,0 +1,1 @@
+- [Test Framework & Patterns](project-test-framework.md) — Vitest, file placement, vi.hoisted mocking pattern, auth/signup mock setup

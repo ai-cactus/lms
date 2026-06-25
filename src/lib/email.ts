@@ -161,7 +161,7 @@ export const sendEmailVerification = async (email: string, token: string) => {
                 <a href="${verifyLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Verify Email</a>
             </div>
             <p style="color: #718096; font-size: 14px; text-align: center;">
-                This link expires in <strong>5 minutes</strong>.
+                This link expires in <strong>24 hours</strong>.
             </p>
             <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
                 If you didn't create an account with ${appName}, you can safely ignore this email.

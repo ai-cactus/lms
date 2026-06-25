@@ -1,0 +1,2 @@
+- [App Setup & Infrastructure](app-setup.md) — Docker containers, .env.local, running tests
+- [Signup Test Patterns & Gotchas](signup-test-patterns.md) — Radix checkbox, DB timestamps, email bypass, server action mocking

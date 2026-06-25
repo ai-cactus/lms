@@ -3,9 +3,25 @@ import prisma from '@/lib/prisma';
 import { sendEmailVerification } from '@/lib/email';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting — 5 attempts per IP per 10 minutes, before any DB access.
+    const ip =
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      request.headers.get('x-real-ip') ??
+      'unknown';
+    const { allowed } = await checkRateLimit(`resend-verification:${ip}`, 5, 600);
+    if (!allowed) {
+      logger.warn({ msg: '[auth] Resend verification rate limit exceeded', ip });
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please try again later.' },
+        { status: 429 },
+      );
+    }
+
     const { email } = await request.json();
 
     if (!email) {
@@ -52,9 +68,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Create new verification token with preserved user data (5 minute expiry)
+    // Create new verification token with preserved user data (24 hour expiry)
     const newToken = crypto.randomUUID();
-    const expires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const expires = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MS);
 
     await prisma.verificationToken.create({
       data: {
@@ -65,6 +81,7 @@ export async function POST(request: NextRequest) {
         password: existingToken.password,
         firstName: existingToken.firstName,
         lastName: existingToken.lastName,
+        role: existingToken.role,
       },
     });
 
