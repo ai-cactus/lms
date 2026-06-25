@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 import { logger, maskEmail } from '@/lib/logger';
 import { createMfaChallenge } from '@/lib/mfa-challenge';
 
@@ -144,6 +145,19 @@ interface SignupWithRoleData {
 export async function signupWithRole(data: SignupWithRoleData): Promise<SignupResult> {
   const { email, password, firstName, lastName, role } = data;
 
+  // Rate limiting — 5 attempts per IP per 10 minutes. Runs before any DB access
+  // (existence check, token creation) and before any email send.
+  const headersList = await headers();
+  const ip =
+    headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    headersList.get('x-real-ip') ??
+    'unknown';
+  const { allowed } = await checkRateLimit(`signup:${ip}`, 5, 600);
+  if (!allowed) {
+    logger.warn({ msg: '[auth] Signup rate limit exceeded', ip });
+    return { success: false, error: 'Too many signup attempts. Please try again later.' };
+  }
+
   // Basic validation
   if (!email || !password || !firstName || !lastName || !role) {
     return { success: false, error: 'All fields are required' };
@@ -172,9 +186,9 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
       where: { identifier: email, type: 'email_verification' },
     });
 
-    // Create verification token with pending user data including role (5 minute expiry)
+    // Create verification token with pending user data including role (24 hour expiry)
     const token = crypto.randomUUID();
-    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const expires = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MS);
 
     await prisma.verificationToken.create({
       data: {
