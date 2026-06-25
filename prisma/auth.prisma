@@ -1,0 +1,118 @@
+// ── Authentication & User Management ──────────────────────────────────────────
+
+enum UserRole {
+  admin
+  worker
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  expired
+}
+
+model User {
+  id                    String            @id @default(uuid())
+  email                 String            @unique
+  password              String
+  passwordResetRequired Boolean           @default(false) @map("password_reset_required")
+  organizationId        String?           @map("organization_id")
+  authProvider          String            @default("credentials") @map("auth_provider")
+  role                  UserRole          @default(worker)
+  emailVerified         Boolean           @default(false) @map("email_verified")
+  mfaEnabled            Boolean           @default(false) @map("mfa_enabled")
+  mfaVerifiedAt         DateTime?         @map("mfa_verified_at")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  courses               Course[]
+  documents             Document[]
+  enrollments           Enrollment[]
+  notifications         Notification[]
+  notificationPrefs     NotificationPreference[]
+  profile               Profile?
+  organization          Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  mfaFactors            MfaFactor[]
+  mfaRecoveryCodes      MfaRecoveryCode[]
+  certificates          Certificate[]
+  approvedCourses       Course[]          @relation("CourseApprover")
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Profile {
+  id                    String   @id
+  email                 String   @unique
+  firstName             String?  @map("first_name")
+  lastName              String?  @map("last_name")
+  fullName              String?  @map("full_name")
+  jobTitle              String?  @map("job_title")
+  companyName           String?  @map("company_name")
+  avatarUrl             String?  @map("avatar_url")
+  hasSeenAuditorWelcome Boolean  @default(false) @map("has_seen_auditor_welcome")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  user                  User     @relation(fields: [id], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Invite {
+  id             String       @id @default(uuid())
+  email          String
+  token          String       @unique
+  organizationId String       @map("organization_id")
+  role           UserRole     @default(worker)
+  status         InviteStatus @default(pending)
+  expiresAt      DateTime     @map("expires_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  invitedBy      String?      @map("invited_by")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+  @@map("invites")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  type       String   @default("password_reset")
+  expires    DateTime
+  password   String?
+  firstName  String?  @map("first_name")
+  lastName   String?  @map("last_name")
+  role       String?
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model MfaFactor {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String   @default("totp")
+  secret    String?
+  name      String?
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_factors")
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  codeHash  String    @map("code_hash")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_recovery_codes")
+}

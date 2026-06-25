@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import Button from '@/components/ui/legacy/Button';
-import Input from '@/components/ui/legacy/Input';
+import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
 import { getStandardManualHistory } from '@/app/actions/standard-manual';
-import styles from './manual.module.css';
 import { logger } from '@/lib/logger';
 
 interface ManualHistory {
@@ -112,30 +113,39 @@ export default function StandardManualPage() {
   const activeManual = history.find((m) => m.isActive);
 
   return (
-    <div className={styles.page}>
-      <div className={styles.pageHeader}>
-        <h1 className={styles.pageTitle}>Standard Manual Management</h1>
-        <p className={styles.pageDescription}>
+    <div className="mx-auto max-w-[800px] p-4 md:p-8">
+      <div className="mb-8">
+        <h1 className="font-heading text-[28px] font-bold tracking-[-0.5px] text-[#0f172a]">
+          Standard Manual Management
+        </h1>
+        <p className="mt-1.5 text-sm leading-normal text-[#64748b]">
           Upload and manage the central Standard Manual PDF used by the RAG AI pipeline.
         </p>
       </div>
 
       {/* Active Manual Status Banner */}
       {activeManual && (
-        <div className={styles.statusBanner}>
-          <div className={styles.statusBannerContent}>
-            <span className={styles.statusBannerLabel}>Active Manual</span>
-            <span className={styles.statusBannerFilename}>{activeManual.filename}</span>
-            <span className={styles.statusBannerVersion}>v{activeManual.version}</span>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-[10px] border border-[#e2e8f0] bg-[#f8fafc] px-5 py-3.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-[0.5px] text-[#94a3b8]">
+              Active Manual
+            </span>
+            <span className="text-[13px] font-semibold text-[#0f172a]">
+              {activeManual.filename}
+            </span>
+            <span className="rounded-xl bg-[#e2e8f0] px-2 py-0.5 text-xs text-[#64748b]">
+              v{activeManual.version}
+            </span>
           </div>
-          <div className={styles.statusBannerState}>
+          <div className="shrink-0">
             {activeManual.processedAt ? (
-              <span className={styles.statusIndexed}>
+              <span className="text-[13px] font-medium text-[#166534]">
                 ✓ Indexed &mdash; {activeManual.chunkCount} chunks ready
               </span>
             ) : (
-              <span className={styles.statusProcessing}>
-                <span className={styles.spinner} /> Indexing in progress&hellip;
+              <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#b45309]">
+                <Loader2 className="size-2.5 animate-spin" aria-hidden="true" /> Indexing in
+                progress&hellip;
               </span>
             )}
           </div>
@@ -143,25 +153,23 @@ export default function StandardManualPage() {
       )}
 
       {message && (
-        <div
-          className={`${styles.alert} ${message.type === 'success' ? styles.alertSuccess : styles.alertError}`}
-        >
-          {message.text}
+        <div className="mb-6">
+          <Alert variant={message.type === 'success' ? 'success' : 'error'}>{message.text}</Alert>
         </div>
       )}
 
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <h2 className={styles.cardTitle}>Upload New Manual</h2>
-          <p className={styles.cardSubtitle}>
+      <div className="mb-6 overflow-hidden rounded-xl border border-[#e2e8f0] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        <div className="border-b border-[#e2e8f0] px-6 py-5">
+          <h2 className="text-[17px] font-semibold text-[#0f172a]">Upload New Manual</h2>
+          <p className="mt-1 text-[13px] leading-normal text-[#64748b]">
             Uploading a new manual deactivates the previous one and queues vector indexing. The page
             will update automatically when indexing completes.
           </p>
         </div>
-        <div className={styles.cardBody}>
-          <form onSubmit={handleUpload} className={styles.form}>
-            <div className={styles.fieldGroup}>
-              <label htmlFor="version" className={styles.fieldLabel}>
+        <div className="p-6">
+          <form onSubmit={handleUpload} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="version" className="text-[13px] font-medium text-[#334155]">
                 Version Tag
               </label>
               <Input
@@ -172,20 +180,20 @@ export default function StandardManualPage() {
                 required
               />
             </div>
-            <div className={styles.fieldGroup}>
-              <label htmlFor="file" className={styles.fieldLabel}>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="file" className="text-[13px] font-medium text-[#334155]">
                 PDF Document
               </label>
               <input
                 id="file"
                 type="file"
                 accept="application/pdf"
-                className={styles.fileInput}
+                className="w-full cursor-pointer rounded-lg border border-[#e2e8f0] px-3.5 py-2.5 text-[13px] text-[#334155] outline-none transition-colors focus:border-[#4c6ef5] focus:shadow-[0_0_0_3px_rgba(76,110,245,0.1)]"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
                 required
               />
               {file && (
-                <p className={styles.fileInfo}>
+                <p className="mt-0.5 text-xs text-[#64748b]">
                   {file.name} &mdash; {(file.size / 1024 / 1024).toFixed(2)} MB
                 </p>
               )}
@@ -201,46 +209,56 @@ export default function StandardManualPage() {
         </div>
       </div>
 
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <h2 className={styles.cardTitle}>Version History</h2>
-          <p className={styles.cardSubtitle}>Previously uploaded standard manuals</p>
+      <div className="mb-6 overflow-hidden rounded-xl border border-[#e2e8f0] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        <div className="border-b border-[#e2e8f0] px-6 py-5">
+          <h2 className="text-[17px] font-semibold text-[#0f172a]">Version History</h2>
+          <p className="mt-1 text-[13px] leading-normal text-[#64748b]">
+            Previously uploaded standard manuals
+          </p>
         </div>
-        <div className={styles.cardBody}>
+        <div className="p-6">
           {isLoadingHistory ? (
-            <p className={styles.stateText}>Loading history&hellip;</p>
+            <p className="text-sm text-[#64748b]">Loading history&hellip;</p>
           ) : history.length === 0 ? (
-            <p className={styles.stateText}>No manuals uploaded yet.</p>
+            <p className="text-sm text-[#64748b]">No manuals uploaded yet.</p>
           ) : (
-            <div className={styles.historyList}>
+            <div className="flex flex-col">
               {history.map((manual) => (
-                <div key={manual.id} className={styles.historyItem}>
-                  <div className={styles.historyMeta}>
-                    <div className={styles.historyFilename}>
+                <div
+                  key={manual.id}
+                  className="flex items-center justify-between border-b border-[#f1f5f9] py-4 last:border-b-0"
+                >
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
                       {manual.filename}
-                      {manual.isActive && <span className={styles.badgeActive}>Active</span>}
+                      {manual.isActive && (
+                        <span className="inline-flex items-center rounded-full bg-[#0f172a] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.4px] text-white">
+                          Active
+                        </span>
+                      )}
                     </div>
-                    <div className={styles.historyDetails}>
+                    <div className="text-xs text-[#64748b]">
                       Version: {manual.version} &bull; Uploaded:{' '}
                       {new Date(manual.createdAt).toLocaleDateString()} &bull; By:{' '}
                       {manual.uploadedBy}
                     </div>
-                    <div className={styles.historyStatus}>
+                    <div className="text-xs text-[#64748b]">
                       {manual.processedAt ? (
                         manual.chunkCount > 0 ? (
-                          <span className={styles.statusIndexed}>
+                          <span className="font-medium text-[#166534]">
                             ✓ Indexed ({manual.chunkCount} chunks) &mdash;{' '}
                             {new Date(manual.processedAt).toLocaleString()}
                           </span>
                         ) : (
-                          <span className={styles.statusProcessing} style={{ color: '#ef4444' }}>
+                          <span className="font-medium text-[#ef4444]">
                             ✗ Indexing Failed &mdash;{' '}
                             {new Date(manual.processedAt).toLocaleString()}
                           </span>
                         )
                       ) : (
-                        <span className={styles.statusProcessing}>
-                          <span className={styles.spinner} /> Indexing in queue&hellip;
+                        <span className="inline-flex items-center gap-1.5 font-medium text-[#b45309]">
+                          <Loader2 className="size-2.5 animate-spin" aria-hidden="true" /> Indexing
+                          in queue&hellip;
                         </span>
                       )}
                     </div>

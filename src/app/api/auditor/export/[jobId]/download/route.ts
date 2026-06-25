@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import * as XLSX from 'xlsx';
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
@@ -14,10 +14,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
     }
 
     const url = new URL(req.url);
-    const format = url.searchParams.get('format') || 'csv';
+    const format = url.searchParams.get('format') || 'pdf';
 
     if (!jobId) {
       return NextResponse.json({ error: 'Missing jobId' }, { status: 400 });
+    }
+
+    // ── Authorization: caller must be an admin of an org with the paid auditor
+    //    feature enabled (mirrors POST /api/auditor/export).
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true, organizationId: true },
+    });
+    if (!user || user.role !== 'admin' || !user.organizationId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const org = await prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { name: true, hasAuditorAccess: true },
+    });
+    if (!org?.hasAuditorAccess) {
+      return NextResponse.json({ error: 'Auditor access not enabled' }, { status: 403 });
     }
 
     const job = await prisma.job.findUnique({ where: { id: jobId } });
@@ -25,147 +43,118 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Job not ready or not found' }, { status: 404 });
     }
 
-    let compiledData: Record<string, unknown>[] = [];
-    if (Array.isArray(job.result)) {
-      compiledData = job.result as Record<string, unknown>[];
+    // Tenant isolation: the job must belong to a user in the caller's org.
+    if (job.userId) {
+      const jobOwner = await prisma.user.findUnique({
+        where: { id: job.userId },
+        select: { organizationId: true },
+      });
+      if (jobOwner?.organizationId !== user.organizationId) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     } else {
-      return NextResponse.json({ error: 'Invalid job result formatting' }, { status: 500 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const org = await prisma.organization.findFirst({
-      where: { users: { some: { id: session.user.id } } },
-    });
-    const orgName = org?.name || 'Organization';
+    if (job.result === null || typeof job.result !== 'object') {
+      return NextResponse.json({ error: 'Invalid job result formatting' }, { status: 500 });
+    }
+    const result = job.result as unknown as import('@/lib/audit-reports/types').AuditReportResult;
+
+    const orgName = org.name || 'Organization';
     const timestamp = new Date().toISOString().split('T')[0];
+    const safeName = orgName.replace(/[^a-z0-9]+/gi, '_');
+
+    if (format === 'pdf') {
+      const { generateAuditReportPdf } = await import('@/lib/audit-reports/pdf');
+      const pdf = await generateAuditReportPdf(result);
+      const scopeLabel =
+        result.scope === 'course'
+          ? result.course.title.replace(/[^a-z0-9]+/gi, '_')
+          : result.scope === 'staff'
+            ? result.staff.name.replace(/[^a-z0-9]+/gi, '_')
+            : safeName;
+      return new NextResponse(new Uint8Array(pdf), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="Audit_Report_${result.scope}_${scopeLabel}_${timestamp}.pdf"`,
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+
+    // ── Flatten the result into rows for CSV/DOCX (secondary formats) ──
+    const flatRows: Record<string, unknown>[] =
+      result.scope === 'org'
+        ? result.activity.map((a) => ({
+            'Staff Name': a.staffName,
+            'Course Title': a.courseTitle,
+            Category: a.category ?? '',
+            Status: a.status,
+            Score: a.score ?? 'N/A',
+            'Date Assigned': a.dateAssigned,
+            'Date Completed': a.dateCompleted ?? '',
+          }))
+        : result.scope === 'staff'
+          ? result.transcript.map((t) => ({
+              'Course Title': t.courseTitle,
+              Type: t.type,
+              Category: t.category ?? '',
+              Status: t.status,
+              Score: t.score ?? 'N/A',
+              Attempts: t.attempts,
+              'Date Assigned': t.dateAssigned,
+              'Date Completed': t.dateCompleted ?? '',
+            }))
+          : result.staffPerformance.map((s) => ({
+              'Course Title': result.course.title,
+              'Staff Name': s.staffName,
+              Status: s.status,
+              Score: s.score ?? 'N/A',
+              Attempts: s.attempts,
+              'Date Completed': s.completedAt ?? '',
+            }));
 
     if (format === 'csv') {
-      const rows: Record<string, unknown>[] = [];
-      compiledData.forEach((row) => {
-        const baseInfo = {
-          'Staff Name': row.staffName as string,
-          'Course Title': row.courseTitle as string,
-          Status: row.status as string,
-          Score: row.score ?? 'N/A',
-          Attested: row.attested ? 'Yes' : 'No',
-          'Attestation Role': (row.attestationRole as string) || 'N/A',
-          'Attestation Date': row.attestationDate
-            ? new Date(row.attestationDate as string).toLocaleString()
-            : 'N/A',
-          'Course Summary': row.courseSummary as string,
-        };
-
-        const quizzes = row.quizzes as Record<string, unknown>[] | undefined;
-        if (!quizzes || quizzes.length === 0) {
-          rows.push({ ...baseInfo, 'Quiz Name': 'None', 'Quiz Best Score': 'N/A' });
-        } else {
-          quizzes.forEach((q) => {
-            const attempts = q.attempts as { score: number }[] | undefined;
-            const bestScore = attempts ? Math.max(...attempts.map((a) => a.score), 0) : 'N/A';
-            rows.push({
-              ...baseInfo,
-              'Quiz Name': q.title as string,
-              'Quiz Best Score': bestScore !== -Infinity ? bestScore : '0',
-            });
-          });
-        }
-      });
-
-      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const worksheet = XLSX.utils.json_to_sheet(flatRows);
       const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
-
       return new NextResponse(csvOutput, {
         status: 200,
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="Auditor_Export_${orgName}_${timestamp}.csv"`,
+          'Content-Disposition': `attachment; filename="Audit_Report_${safeName}_${timestamp}.csv"`,
           'Cache-Control': 'no-store',
         },
       });
-    } else if (format === 'docx') {
-      const children: Paragraph[] = [];
-      children.push(
+    }
+
+    if (format === 'docx') {
+      const children: Paragraph[] = [
         new Paragraph({
-          text: `Auditor Compliance Pack: ${orgName}`,
+          text: `Audit Report: ${orgName}`,
           heading: HeadingLevel.TITLE,
           spacing: { after: 400 },
         }),
-      );
-
-      compiledData.forEach((row) => {
+      ];
+      flatRows.forEach((row) => {
         children.push(
           new Paragraph({
-            text: `Staff: ${row.staffName as string}`,
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 400, after: 200 },
-          }),
-        );
-        children.push(
-          new Paragraph({
-            text: `Course: ${row.courseTitle as string}`,
-            heading: HeadingLevel.HEADING_2,
+            text: Object.entries(row)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join('  |  '),
             spacing: { after: 100 },
           }),
         );
-        children.push(
-          new Paragraph({
-            text: `Status: ${row.status as string} | Score: ${row.score ?? 'N/A'} | Attested: ${row.attested ? 'Yes' : 'No'} (${row.attestationRole as string})`,
-            spacing: { after: 100 },
-          }),
-        );
-        children.push(
-          new Paragraph({
-            text: `Summary: ${row.courseSummary as string}`,
-            spacing: { after: 200 },
-          }),
-        );
-
-        const quizzes = row.quizzes as Record<string, unknown>[] | undefined;
-        if (quizzes && quizzes.length > 0) {
-          quizzes.forEach((q) => {
-            children.push(
-              new Paragraph({
-                text: `Quiz: ${q.title as string} (Passing Score: ${q.passingScore ?? '70'}%)`,
-                heading: HeadingLevel.HEADING_3,
-              }),
-            );
-            const questions = q.questions as Record<string, unknown>[] | undefined;
-            if (questions) {
-              questions.forEach((qu, i: number) => {
-                children.push(new Paragraph({ text: `Q${i + 1}: ${qu.text as string}` }));
-                if (Array.isArray(qu.options)) {
-                  children.push(
-                    new Paragraph({ text: `   Options: ${(qu.options as string[]).join(', ')}` }),
-                  );
-                }
-                children.push(
-                  new Paragraph({
-                    text: `   Answer: ${qu.correctAnswer as string}`,
-                    spacing: { after: 100 },
-                  }),
-                );
-              });
-            }
-          });
-        }
       });
-
-      const doc = new Document({
-        sections: [
-          {
-            properties: {},
-            children: children,
-          },
-        ],
-      });
-
-      const b64string = await Packer.toBase64String(doc);
+      const docxDoc = new Document({ sections: [{ properties: {}, children }] });
+      const b64string = await Packer.toBase64String(docxDoc);
       const buffer = Buffer.from(b64string, 'base64');
-
-      return new NextResponse(buffer, {
+      return new NextResponse(new Uint8Array(buffer), {
         status: 200,
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'Content-Disposition': `attachment; filename="Auditor_Export_${orgName}_${timestamp}.docx"`,
+          'Content-Disposition': `attachment; filename="Audit_Report_${safeName}_${timestamp}.docx"`,
           'Cache-Control': 'no-store',
         },
       });

@@ -6,10 +6,10 @@ import { callVertexAI, truncateToContext } from '@/lib/ai-client';
 import { buildPromptA, buildPromptB } from '@/lib/prompts';
 import { CourseV3Schema, QuizV3Schema } from '@/lib/prompt-schemas';
 import type { CourseV3, QuizV3, QuizDifficulty } from '@/lib/prompt-types';
-import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
+import { Prisma } from '@/generated/prisma/client';
 
 // Token budget for source content
 const MAX_SOURCE_TOKENS = 100000;

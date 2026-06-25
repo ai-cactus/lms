@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import styles from './billing.module.css';
+import { cn } from '@/lib/utils';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 
@@ -24,12 +24,18 @@ const PaymentMethodTab = dynamic(() => import('./PaymentMethodTab'), { ssr: fals
 interface BillingPageProps {
   staffCount: string | null;
   currentPlan: string | null;
+  /** ISO timestamp when billing was paused, or null when not paused. */
+  pausedAt?: string | null;
+  /** ISO timestamp when the pause window ends, or null. */
+  pauseEndsAt?: string | null;
   initialTab?: Tab;
 }
 
 export default function BillingPage({
   staffCount,
   currentPlan,
+  pausedAt = null,
+  pauseEndsAt = null,
   initialTab = 'overview',
 }: BillingPageProps) {
   const searchParams = useSearchParams();
@@ -44,20 +50,27 @@ export default function BillingPage({
   };
 
   return (
-    <div className={styles.billingPage}>
-      <div className={styles.pageHeader}>
-        <h1>Billing &amp; Subscription</h1>
-        <p>Manage your subscription plan, billing history, and payment methods.</p>
+    <div className="min-h-full bg-background-secondary px-4 py-6 md:px-10 md:py-8">
+      <div className="mb-6">
+        <h1 className="mb-1 text-2xl font-bold text-foreground">Billing &amp; Subscription</h1>
+        <p className="text-sm text-text-secondary">
+          Manage your subscription plan, billing history, and payment methods.
+        </p>
       </div>
 
       {/* Tab Navigation */}
-      <div className={styles.tabs} role="tablist">
+      <div className="mb-7 flex gap-0 overflow-x-auto border-b border-border" role="tablist">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             role="tab"
             aria-selected={activeTab === tab.key}
-            className={`${styles.tab} ${activeTab === tab.key ? styles.tabActive : ''}`}
+            className={cn(
+              'cursor-pointer whitespace-nowrap border-b-2 px-5 py-3 text-sm font-medium transition-colors',
+              activeTab === tab.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-secondary hover:text-primary',
+            )}
             onClick={() => handleTabChange(tab.key)}
           >
             {tab.label}
@@ -72,6 +85,8 @@ export default function BillingPage({
         <SubscriptionTab
           orgStaffCount={parseInt(staffCount ?? '0', 10)}
           currentPlan={currentPlan}
+          pausedAt={pausedAt}
+          pauseEndsAt={pauseEndsAt}
           onChangeTab={handleTabChange}
         />
       )}

@@ -2,8 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import styles from './BadgeSuccessModal.module.css';
-import { Modal, Button } from '@/components/ui';
+import { Star, CheckCircle2 } from 'lucide-react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 interface BadgeSuccessModalProps {
   isOpen: boolean;
@@ -35,100 +36,79 @@ export default function BadgeSuccessModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" className={styles.modalParams}>
-      <div className={styles.container}>
-        <div className={styles.leftPanel}>
-          <div className={styles.badgeIcon}>
-            <svg
-              width="64"
-              height="64"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-                fill="#F6E05E"
-                stroke="#D69E2E"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-[90vw] gap-0 overflow-hidden p-0 sm:max-w-3xl"
+      >
+        <div className="flex min-h-[480px] w-full flex-col-reverse overflow-hidden bg-background md:flex-row">
+          <div className="flex flex-1 flex-col items-center p-6 text-center sm:p-10">
+            <div className="relative mb-6">
+              <Star
+                className="size-16 fill-[#F6E05E] text-[#D69E2E]"
+                strokeWidth={2}
+                aria-hidden="true"
               />
-              <path
-                d="M12 17.77V2"
-                stroke="#D69E2E"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray="4 4"
-              />
-            </svg>
-            <div className={styles.ribbon} />
-          </div>
+              <div className="absolute -bottom-3 left-1/2 h-5 w-6 -translate-x-1/2 bg-[#D69E2E] [clip-path:polygon(0_0,100%_0,100%_100%,50%_75%,0_100%)]" />
+            </div>
 
-          <h2 className={styles.title}>{`Well done! You've earned a Certificate!`}</h2>
+            <h2 className="mb-3 text-xl font-bold leading-tight text-foreground sm:text-2xl">
+              {`Well done! You've earned a Certificate!`}
+            </h2>
 
-          <p className={styles.description}>
-            The certificate is now securely stored and accessible on your dashboard anytime.
-          </p>
+            <p className="mb-6 max-w-full text-sm leading-relaxed text-text-secondary sm:mb-8 sm:max-w-[80%]">
+              The certificate is now securely stored and accessible on your dashboard anytime.
+            </p>
 
-          <div className={styles.badgeCard}>
-            <div className={styles.badgeHeader}>
-              <h3 className={styles.badgeTitle}>{courseName}</h3>
-              <svg
-                className={styles.verifiedIcon}
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <div className="mb-6 w-full rounded-md border border-border bg-background p-4 text-left sm:mb-8">
+              <div className="mb-2 flex items-start justify-between">
+                <h3 className="text-base font-semibold text-text-secondary">{courseName}</h3>
+                <CheckCircle2
+                  className="size-5 shrink-0 text-[#1DA1F2]"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+              </div>
+              <div className="text-xs leading-relaxed text-text-tertiary">
+                <div>{organizationName}</div>
+                <div>Issued on: {issuedDate}</div>
+                <div>Certificate ID: {badgeId}</div>
+              </div>
+            </div>
+
+            <Button variant="outline" className="mb-4 w-full" onClick={handleDashboard}>
+              Go to Dashboard
+            </Button>
+
+            <div className="text-sm text-text-tertiary">
+              or{' '}
+              <span
+                className="cursor-pointer font-medium text-primary underline hover:opacity-80 focus-visible:rounded-[2px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                onClick={() => router.push('/worker')}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && router.push('/worker')}
               >
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                <polyline points="22 4 12 14.01 9 11.01"></polyline>
-              </svg>
-            </div>
-            <div className={styles.badgeDetails}>
-              <div>{organizationName}</div>
-              <div>Issued on: {issuedDate}</div>
-              <div>Certificate ID: {badgeId}</div>
+                start a new course here
+              </span>
             </div>
           </div>
 
-          <Button
-            variant="outline"
-            fullWidth
-            className={styles.dashboardBtn}
-            onClick={handleDashboard}
-          >
-            Go to Dashboard
-          </Button>
-
-          <div className={styles.startNewLink}>
-            or{' '}
-            <span
-              className={styles.startNewSpan}
-              onClick={() => router.push('/worker')}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && router.push('/worker')}
-            >
-              start a new course here
-            </span>
+          <div className="relative flex min-h-[180px] w-full items-center justify-center overflow-hidden md:w-[300px]">
+            <Image
+              src="/images/course_badge_modal.png"
+              alt="Badge Success"
+              fill
+              className="object-cover object-center"
+            />
           </div>
         </div>
-
-        <div className={styles.rightPanel}>
-          <Image
-            src="/images/course_badge_modal.png"
-            alt="Badge Success"
-            fill
-            className={styles.rightImage}
-          />
-        </div>
-      </div>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 }

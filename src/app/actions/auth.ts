@@ -2,7 +2,7 @@
 
 import { signIn } from '@/auth';
 import { signIn as signInWorker } from '@/auth.worker';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { validatePassword } from '@/lib/password-policy';
 import { AuthError } from 'next-auth';
@@ -229,15 +229,17 @@ export async function sendPasswordResetLink(email: string) {
   const token = crypto.randomUUID();
   const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-  // Clean up old tokens for this user first
+  // Clean up old password-reset tokens for this user first (leave any pending
+  // email-verification tokens intact).
   await prisma.verificationToken.deleteMany({
-    where: { identifier: email },
+    where: { identifier: email, type: 'password_reset' },
   });
 
   await prisma.verificationToken.create({
     data: {
       identifier: email,
       token,
+      type: 'password_reset',
       expires,
     },
   });
@@ -264,8 +266,10 @@ export async function resetPasswordWithToken(
 
   const verificationToken = await prisma.verificationToken.findFirst({
     where: {
-      token, // Token is unique enough, but we should verify against user email if we had it in context,
-      // but here the token proves possession of the link.
+      token,
+      // Scope strictly to password-reset tokens so a token minted for another
+      // purpose (e.g. email verification) cannot be redeemed here.
+      type: 'password_reset',
       expires: { gt: new Date() },
     },
   });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySystemAdminCookie } from '@/lib/system-auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { uploadFile } from '@/lib/storage';
 import { manualIndexerQueue } from '@/lib/queue/manual-indexer-queue';
 import { logger } from '@/lib/logger';

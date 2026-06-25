@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import styles from './billing.module.css';
+import { Plus, Loader2, AlertTriangle, Check, CreditCard } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 
 interface PaymentMethod {
   id: string;
@@ -116,72 +125,57 @@ export default function PaymentMethodTab() {
 
   if (loading) {
     return (
-      <div className={styles.loadingState}>
-        <div className={styles.spinner} />
+      <div className="flex flex-col items-center justify-center gap-3 px-5 py-16 text-sm text-text-tertiary">
+        <Loader2 className="size-7 animate-spin text-primary" aria-hidden="true" />
         <span>Loading payment methods...</span>
       </div>
     );
   }
 
-  if (error) return <div className={styles.errorBanner}>{error}</div>;
+  if (error)
+    return (
+      <div className="mb-4 rounded-lg border border-error/40 bg-error/10 px-4 py-2.5 text-[13px] text-error">
+        {error}
+      </div>
+    );
 
   const primaryMethod = paymentMethods.find((p) => p.isDefault);
   const otherMethods = paymentMethods.filter((p) => !p.isDefault);
 
   return (
     <div>
-      <div className={styles.pmHeader}>
+      <div className="mb-6 flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
         <div>
-          <h2>Payment Method</h2>
-          <p>
+          <h2 className="text-[22px] font-bold text-foreground">Payment Method</h2>
+          <p className="mt-1 text-sm text-text-secondary">
             Manage your subscription plans, update payment methods, and download your previous
             invoices.
           </p>
         </div>
-        <button
+        <Button
           id="add-payment-method-btn"
-          className={styles.addBtn}
+          loading={portalLoading}
           disabled={portalLoading}
           onClick={() => void handleOpenPortal()}
         >
-          {portalLoading ? (
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              style={{ animation: 'spin 0.8s linear infinite', flexShrink: 0 }}
-            >
-              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-            </svg>
-          ) : (
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          )}
+          {!portalLoading && <Plus className="size-4" aria-hidden="true" />}
           {portalLoading ? 'Opening portal...' : 'Add Payment Method'}
-        </button>
+        </Button>
       </div>
 
       {(actionError || portalError) && (
-        <div className={styles.errorBanner}>{actionError ?? portalError}</div>
+        <div className="mb-4 rounded-lg border border-error/40 bg-error/10 px-4 py-2.5 text-[13px] text-error">
+          {actionError ?? portalError}
+        </div>
       )}
 
       {/* Primary Method */}
       {primaryMethod && (
         <>
-          <p className={styles.pmSectionTitle}>Primary Method</p>
-          <div className={styles.pmList}>
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.6px] text-text-tertiary">
+            Primary Method
+          </p>
+          <div className="mb-7 flex flex-col gap-3">
             <PaymentMethodCard
               pm={primaryMethod}
               onRemove={() => setModal({ type: 'confirm-delete', pm: primaryMethod })}
@@ -195,8 +189,10 @@ export default function PaymentMethodTab() {
       {/* Other Methods */}
       {otherMethods.length > 0 && (
         <>
-          <p className={styles.pmSectionTitle}>Other Methods</p>
-          <div className={styles.pmList}>
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.6px] text-text-tertiary">
+            Other Methods
+          </p>
+          <div className="mb-7 flex flex-col gap-3">
             {otherMethods.map((pm) => (
               <PaymentMethodCard
                 key={pm.id}
@@ -211,125 +207,104 @@ export default function PaymentMethodTab() {
       )}
 
       {paymentMethods.length === 0 && (
-        <div className={styles.emptyState}>
-          <svg
-            width="40"
-            height="40"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#94a3b8"
-            strokeWidth="1.5"
-          >
-            <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-            <line x1="1" y1="10" x2="23" y2="10" />
-          </svg>
+        <div className="py-12 text-center text-text-tertiary">
+          <CreditCard className="mx-auto mb-2 size-10 text-text-tertiary" aria-hidden="true" />
           <p>No payment methods on file.</p>
         </div>
       )}
 
       {/* ===== Remove Confirmation Modal ===== */}
-      {modal.type === 'confirm-delete' && (
-        <div
-          className={styles.modalBackdrop}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setModal({ type: 'none' });
-          }}
-        >
-          <div
-            className={styles.modal}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Remove payment method"
-          >
-            <div className={`${styles.modalIcon} ${styles.modalIconWarning}`}>
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </div>
-            <h2>Remove payment method?</h2>
-            <p>
-              Are you sure you want to remove{' '}
-              <strong>
-                {modal.pm.brand.toUpperCase()} •••• {modal.pm.last4}
-              </strong>{' '}
-              from your account? You will no longer be charged using this method.
-            </p>
+      <Dialog
+        open={modal.type === 'confirm-delete'}
+        onOpenChange={(open) => {
+          if (!open) {
+            setModal({ type: 'none' });
+            setActionError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          {modal.type === 'confirm-delete' && (
+            <>
+              <DialogHeader>
+                <div className="mx-auto mb-2 flex size-14 items-center justify-center rounded-full bg-error/10 text-error">
+                  <AlertTriangle className="size-7" aria-hidden="true" />
+                </div>
+                <DialogTitle className="text-center">Remove payment method?</DialogTitle>
+              </DialogHeader>
+              <p className="text-center text-sm text-text-secondary">
+                Are you sure you want to remove{' '}
+                <strong className="text-foreground">
+                  {modal.pm.brand.toUpperCase()} •••• {modal.pm.last4}
+                </strong>{' '}
+                from your account? You will no longer be charged using this method.
+              </p>
 
-            {actionError && <div className={styles.errorBanner}>{actionError}</div>}
+              {actionError && <Alert variant="error">{actionError}</Alert>}
 
-            <div className={styles.modalActions}>
-              <button
-                className={styles.btnDanger}
-                disabled={actionLoading}
-                onClick={() => void handleDelete(modal.pm)}
-              >
-                {actionLoading ? 'Removing...' : 'Remove Payment Method'}
-              </button>
-              <button
-                className={styles.btnSecondary}
-                onClick={() => {
-                  setModal({ type: 'none' });
-                  setActionError(null);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <DialogFooter className="flex-col gap-2.5 sm:flex-col sm:space-x-0">
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  loading={actionLoading}
+                  disabled={actionLoading}
+                  onClick={() => void handleDelete(modal.pm)}
+                >
+                  {actionLoading ? 'Removing...' : 'Remove Payment Method'}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setModal({ type: 'none' });
+                    setActionError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ===== Success Modal ===== */}
-      {modal.type === 'delete-success' && (
-        <div
-          className={styles.modalBackdrop}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setModal({ type: 'none' });
-          }}
-        >
-          <div
-            className={styles.modal}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Payment method removed"
-          >
-            <div className={`${styles.modalIcon} ${styles.modalIconSuccess}`}>
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-            <h2>Payment method removed</h2>
-            <p>
-              The card <strong>({modal.pmLabel})</strong> has been successfully removed from your
-              account. You will no longer be charged using this method.
-            </p>
-            <div className={styles.modalActions}>
-              <button className={styles.btnPrimary} onClick={() => setModal({ type: 'none' })}>
-                Return to Billing
-              </button>
-              <button className={styles.btnSecondary} onClick={() => setModal({ type: 'none' })}>
-                Back to Payment Methods
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog
+        open={modal.type === 'delete-success'}
+        onOpenChange={(open) => {
+          if (!open) setModal({ type: 'none' });
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          {modal.type === 'delete-success' && (
+            <>
+              <DialogHeader>
+                <div className="mx-auto mb-2 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
+                  <Check className="size-7" aria-hidden="true" />
+                </div>
+                <DialogTitle className="text-center">Payment method removed</DialogTitle>
+              </DialogHeader>
+              <p className="text-center text-sm text-text-secondary">
+                The card <strong className="text-foreground">({modal.pmLabel})</strong> has been
+                successfully removed from your account. You will no longer be charged using this
+                method.
+              </p>
+              <DialogFooter className="flex-col gap-2.5 sm:flex-col sm:space-x-0">
+                <Button className="w-full" onClick={() => setModal({ type: 'none' })}>
+                  Return to Billing
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setModal({ type: 'none' })}
+                >
+                  Back to Payment Methods
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -347,25 +322,27 @@ function PaymentMethodCard({ pm, onRemove, onSetDefault, actionLoading }: Paymen
   const brandLabel = pm.brand.charAt(0).toUpperCase() + pm.brand.slice(1);
 
   return (
-    <div className={styles.pmCard}>
-      <div className={styles.pmCardBrand}>{pm.brand.slice(0, 4)}</div>
-      <div className={styles.pmCardInfo}>
-        <p>
+    <div className="flex items-center gap-4 rounded-xl border border-border bg-background px-5 py-4">
+      <div className="flex h-8 w-[50px] shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-bold uppercase tracking-[0.5px] text-primary">
+        {pm.brand.slice(0, 4)}
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-medium text-foreground">
           {brandLabel} •••• {pm.last4}
           {pm.isDefault && (
-            <span className={styles.pmDefaultBadge} style={{ marginLeft: 8 }}>
+            <span className="ml-2 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
               Default
             </span>
           )}
         </p>
-        <span>
+        <span className="text-xs text-text-secondary">
           Expires {String(pm.expMonth).padStart(2, '0')}/{pm.expYear}
         </span>
       </div>
-      <div className={styles.pmCardActions}>
+      <div className="flex items-center gap-2">
         {!pm.isDefault && (
           <button
-            className={styles.pmSetDefaultBtn}
+            className="rounded-md px-2.5 py-1.5 text-[13px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
             disabled={actionLoading}
             onClick={onSetDefault}
           >
@@ -373,7 +350,7 @@ function PaymentMethodCard({ pm, onRemove, onSetDefault, actionLoading }: Paymen
           </button>
         )}
         <button
-          className={`${styles.pmActionBtn} ${styles.pmRemoveBtn}`}
+          className="rounded-md px-2.5 py-1.5 text-[13px] font-medium text-error hover:bg-error/10 disabled:opacity-50"
           disabled={actionLoading}
           onClick={onRemove}
           aria-label={`Remove ${brandLabel} ending in ${pm.last4}`}

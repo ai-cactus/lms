@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import styles from './WorkerWelcomeModal.module.css';
-import { Modal, Button } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useModalContext } from '@/components/ui/legacy/ModalContext';
 import { logger } from '@/lib/logger';
 
@@ -73,110 +73,97 @@ export default function WorkerWelcomeModal({
   if (!hasMounted || !isOpen) return null;
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={handleClose}
-      size="lg"
-      className={styles.modalParams}
-      showCloseButton={false} // We have a custom close button in design or we can use the default.
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
     >
-      <div className={styles.container}>
-        {/* Left Panel */}
-        <div className={styles.leftPanel}>
-          <div className={styles.blob} />
-          {/* Illustration */}
-          <div className={styles.illustration}>
-            <Image
-              src="/images/onboarding-welcome.png"
-              alt="Welcome"
-              width={280}
-              height={280}
-              style={{ objectFit: 'contain' }}
-              priority
-            />
-          </div>
+      <DialogContent className="max-w-[95vw] gap-0 overflow-hidden p-0 sm:max-w-[900px]">
+        <div className="flex max-h-[85vh] w-full flex-col overflow-y-auto md:max-h-none md:min-h-[500px] md:flex-row md:overflow-y-visible">
+          {/* Left Panel */}
+          <div className="relative flex flex-1 flex-col items-center justify-center overflow-hidden bg-[#e6fffa] px-6 py-8 text-center md:p-10">
+            {/* Green decoration blob */}
+            <div className="absolute -left-[50px] -top-[50px] z-0 size-[200px] rounded-full bg-[#38b2ac] opacity-10 md:size-[300px]" />
+            {/* Illustration */}
+            <div className="relative z-[1] mb-5 h-auto w-[180px] md:mb-[30px] md:w-[280px]">
+              <Image
+                src="/images/onboarding-welcome.png"
+                alt="Welcome"
+                width={280}
+                height={280}
+                className="object-contain"
+                priority
+              />
+            </div>
 
-          <h2 className={styles.welcomeTitle}>
-            Your first training
-            <br />
-            course awaits you
-          </h2>
+            <DialogTitle className="z-[1] mb-3 font-heading text-[22px] font-extrabold leading-tight text-[#065f46] md:mb-4 md:text-[28px]">
+              Your first training
+              <br />
+              course awaits you
+            </DialogTitle>
 
-          <p className={styles.welcomeText}>
-            Join professionals learning with Theraply in a clear, accessible, and supportive way.
-          </p>
+            <DialogDescription className="z-[1] mb-5 max-w-[320px] text-sm leading-normal text-[#2c7a7b] md:mb-8 md:text-base">
+              Join professionals learning with Theraply in a clear, accessible, and supportive way.
+            </DialogDescription>
 
-          <Button
-            variant="primary"
-            size="lg"
-            pill
-            onClick={handleStart}
-            style={{ marginTop: '24px', width: '100%', maxWidth: '240px' }}
-          >
-            Start your first course
-          </Button>
-        </div>
-
-        {/* Right Panel */}
-        <div className={styles.rightPanel}>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className={styles.closeButton}
-            onClick={handleClose}
-          >
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <Button
+              size="lg"
+              onClick={handleStart}
+              className="z-[1] mt-6 w-full max-w-[240px] rounded-full"
             >
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </Button>
+              Start your first course
+            </Button>
+          </div>
 
-          <h3 className={styles.stepsTitle}>How to get started</h3>
+          {/* Right Panel */}
+          <div className="relative flex flex-1 flex-col justify-center px-6 py-8 md:px-10 md:py-12">
+            <h3 className="mb-6 font-heading text-xl font-bold text-[#1a202c] md:mb-10 md:text-2xl">
+              How to get started
+            </h3>
 
-          <div className={styles.stepsList}>
-            <div className={styles.stepItem}>
-              <div className={styles.stepNumber}>1.</div>
-              <div className={styles.stepContent}>
-                <div className={styles.stepHeading}>Log In to Your Dashboard</div>
-                <div className={styles.stepDesc}>
-                  Access your assigned courses in one place, right from your computer or phone.
+            <div className="flex flex-col gap-5 md:gap-8">
+              <div className="flex items-start gap-4">
+                <div className="text-lg font-extrabold leading-tight text-[#1a202c]">1.</div>
+                <div className="flex-1">
+                  <div className="mb-1.5 text-[15px] font-bold text-[#1a202c] md:text-base">
+                    Log In to Your Dashboard
+                  </div>
+                  <div className="text-[13px] leading-normal text-[#718096] md:text-sm">
+                    Access your assigned courses in one place, right from your computer or phone.
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className={styles.stepItem}>
-              <div className={styles.stepNumber}>2.</div>
-              <div className={styles.stepContent}>
-                <div className={styles.stepHeading}>Complete your Courses and take quizzes.</div>
-                <div className={styles.stepDesc}>
-                  Training includes courses and quizzes. Access your assigned courses in one place,
-                  right from your computer or phone.
+              <div className="flex items-start gap-4">
+                <div className="text-lg font-extrabold leading-tight text-[#1a202c]">2.</div>
+                <div className="flex-1">
+                  <div className="mb-1.5 text-[15px] font-bold text-[#1a202c] md:text-base">
+                    Complete your Courses and take quizzes.
+                  </div>
+                  <div className="text-[13px] leading-normal text-[#718096] md:text-sm">
+                    Training includes courses and quizzes. Access your assigned courses in one
+                    place, right from your computer or phone.
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className={styles.stepItem}>
-              <div className={styles.stepNumber}>3.</div>
-              <div className={styles.stepContent}>
-                <div className={styles.stepHeading}>Earn Your Certificate</div>
-                <div className={styles.stepDesc}>
-                  Pass your training and instantly get a certificate you can use to prove
-                  compliance.
+              <div className="flex items-start gap-4">
+                <div className="text-lg font-extrabold leading-tight text-[#1a202c]">3.</div>
+                <div className="flex-1">
+                  <div className="mb-1.5 text-[15px] font-bold text-[#1a202c] md:text-base">
+                    Earn Your Certificate
+                  </div>
+                  <div className="text-[13px] leading-normal text-[#718096] md:text-sm">
+                    Pass your training and instantly get a certificate you can use to prove
+                    compliance.
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 }

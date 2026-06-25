@@ -1,0 +1,21 @@
+// ── Video Course Offerings ───────────────────────────────────────────────────
+
+/// Maps a global course to an organization, allowing admins to offer shared
+/// video courses to their workers without duplicating course records.
+model OrgCourseOffering {
+  id                String       @id @default(uuid())
+  organizationId    String       @map("organization_id")
+  courseId          String       @map("course_id")
+  addedByAdminId    String       @map("added_by_admin_id")
+  customTitle       String?      @map("custom_title")
+  customDescription String?      @map("custom_description")
+  customIntro       String?      @map("custom_intro")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  course            Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, courseId])
+  @@index([organizationId])
+  @@index([courseId])
+  @@map("org_course_offerings")
+}

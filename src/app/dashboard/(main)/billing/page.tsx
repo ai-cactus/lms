@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import BillingPage from '@/components/billing/BillingPage';
 
@@ -32,18 +32,28 @@ export default async function BillingPageRoute() {
         select: {
           staffCount: true,
           subscription: {
-            select: { plan: true, status: true },
+            select: { plan: true, status: true, pausedAt: true, pauseEndsAt: true },
           },
         },
       })
     : null;
 
-  // Expose the plan key only when the subscription is in a billable state
+  const sub = organization?.subscription;
+
+  // Expose the plan key only when the subscription is in a billable state.
+  // A paused subscription keeps a Stripe status of `active`, so it still counts
+  // as having a plan — the paused state is conveyed separately below.
   const activePlan =
-    organization?.subscription?.status === 'active' ||
-    organization?.subscription?.status === 'trialing'
-      ? organization.subscription.plan // 'starter' | 'professional' | 'enterprise'
+    sub?.status === 'active' || sub?.status === 'trialing'
+      ? sub.plan // 'starter' | 'professional' | 'enterprise'
       : null;
 
-  return <BillingPage staffCount={organization?.staffCount ?? null} currentPlan={activePlan} />;
+  return (
+    <BillingPage
+      staffCount={organization?.staffCount ?? null}
+      currentPlan={activePlan}
+      pausedAt={sub?.pausedAt ? sub.pausedAt.toISOString() : null}
+      pauseEndsAt={sub?.pauseEndsAt ? sub.pauseEndsAt.toISOString() : null}
+    />
+  );
 }

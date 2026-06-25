@@ -1,0 +1,172 @@
+// ── Course Management ────────────────────────────────────────────────────────
+
+enum CourseStatus {
+  draft
+  published
+  inactive
+}
+
+enum CourseType {
+  text
+  video
+}
+
+enum SkillLevel {
+  beginner
+  intermediate
+  advanced
+}
+
+enum RenewalCycle {
+  none
+  monthly
+  quarterly
+  semiannual
+  annual
+}
+
+model Course {
+  id                          String              @id @default(uuid())
+  title                       String
+  description                 String?
+  thumbnail                   String?
+  status                      CourseStatus        @default(draft)
+  category                    String?
+  categoryId                  String?             @map("category_id")
+  duration                    Int?
+  createdBy                   String              @map("created_by")
+  objectives                  String[]            @default([])
+  overview                    String?
+  skillLevel                  SkillLevel?         @map("skill_level")
+  previewVideoStorageUri      String?             @map("preview_video_storage_uri")
+  previewVideoDurationSeconds Int?                @map("preview_video_duration_seconds")
+  previewMediaStatus          MediaStatus?        @map("preview_media_status")
+  createdAt                   DateTime            @default(now()) @map("created_at")
+  updatedAt                   DateTime            @updatedAt @map("updated_at")
+  promptVersion               String?             @map("prompt_version")
+  rawCourseJson               Json?               @map("raw_course_json")
+  rawQuizJson                 Json?               @map("raw_quiz_json")
+  rawArticleMarkdown          String?             @map("raw_article_markdown")
+  rawArticleMeta              Json?               @map("raw_article_meta")
+  rawJudgeJson                Json?               @map("raw_judge_json")
+  rawSlidesJson               Json?               @map("raw_slides_json")
+  approvedByUserId            String?             @map("approved_by_user_id")
+  approvedAt                  DateTime?           @map("approved_at")
+  type                        CourseType          @default(text)
+  isGlobal                    Boolean             @default(false) @map("is_global")
+  courseCategory              CourseCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  approvedBy                  User?               @relation("CourseApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  creator                     User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  versions                    CourseVersion[]
+  enrollments                 Enrollment[]
+  lessons                     Lesson[]
+  artifacts                   CourseArtifact[]
+  certificates                Certificate[]
+  offerings                   OrgCourseOffering[]
+  modules                     CourseModule[]
+  quiz                        Quiz?
+  assignments                 CourseAssignment[]
+
+  @@index([createdBy])
+  @@index([status])
+  @@index([categoryId])
+  @@index([type])
+  @@index([isGlobal])
+  @@map("courses")
+}
+
+model CourseModule {
+  id        String   @id @default(uuid())
+  courseId  String   @map("course_id")
+  title     String
+  order     Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+
+  @@index([courseId])
+  @@map("course_modules")
+}
+
+model Lesson {
+  id                   String        @id @default(uuid())
+  courseId             String        @map("course_id")
+  title                String
+  content              String
+  slideContent         String?       @map("slide_content")
+  order                Int
+  duration             Int?
+  videoProvider        String?       @map("video_provider")
+  videoStorageUri      String?       @map("video_storage_uri")
+  videoDurationSeconds Int?          @map("video_duration_seconds")
+  mediaStatus          MediaStatus   @default(ready) @map("media_status")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+  course               Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quiz                 Quiz?
+  moduleId             String?       @map("module_id")
+  module               CourseModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+
+  @@index([moduleId])
+  @@map("lessons")
+}
+
+model CourseArtifact {
+  id         String   @id @default(uuid())
+  courseId   String   @map("course_id")
+  type       String
+  storageUri String   @map("storage_uri")
+  mimeType   String   @default("application/json") @map("mime_type")
+  sizeBytes  Int?     @map("size_bytes")
+  version    Int      @default(1)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, type, version])
+  @@index([courseId])
+  @@map("course_artifacts")
+}
+
+model CourseVersion {
+  id                String          @id @default(uuid())
+  courseId          String          @map("course_id")
+  documentVersionId String          @map("document_version_id")
+  version           Int
+  publishedAt       DateTime        @default(now()) @map("published_at")
+  course            Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
+
+  @@map("course_versions")
+}
+
+model CourseAssignment {
+  id                String               @id @default(uuid())
+  organizationId    String               @map("organization_id")
+  courseId          String               @map("course_id")
+  assignedByAdminId String               @map("assigned_by_admin_id")
+  scheduleAt        DateTime?            @map("schedule_at")
+  renewalCycle      RenewalCycle         @default(none) @map("renewal_cycle")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  course            Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  reminders         AssignmentReminder[]
+  enrollments       Enrollment[]
+
+  @@index([organizationId])
+  @@index([courseId])
+  @@map("course_assignments")
+}
+
+model AssignmentReminder {
+  id            String           @id @default(uuid())
+  assignmentId  String           @map("assignment_id")
+  offsetMinutes Int              @map("offset_minutes")
+  channel       String           @default("email")
+  assignment    CourseAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@map("assignment_reminders")
+}

@@ -1,6 +1,5 @@
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
-import styles from './mapping.module.css';
+import prisma from '@/lib/prisma';
 import { getMappingSuggestions } from '@/app/actions/mapping';
 import MappingCard from './mapping-card';
 
@@ -26,8 +25,8 @@ export default async function MappingPage({ params }: { params: { id: string } }
   const suggestions = await getMappingSuggestions(content.substring(0, 500)); // Sample first 500 chars
 
   return (
-    <div className={styles.container}>
-      <div className={styles.documentPanel}>
+    <div className="flex h-[calc(100vh-64px)] flex-col overflow-hidden md:flex-row">
+      <div className="flex-1 overflow-y-auto border-b border-border bg-background-secondary p-8 md:border-b-0 md:border-r">
         <h2>Document Content</h2>
         <div className="prose mt-4">
           {/* Render simplistic view of content */}
@@ -37,9 +36,9 @@ export default async function MappingPage({ params }: { params: { id: string } }
         </div>
       </div>
 
-      <div className={styles.standardsPanel}>
+      <div className="flex flex-col gap-6 overflow-y-auto bg-background p-8 md:flex-[0_0_400px]">
         <h2>Compliance Mapping</h2>
-        <div className={styles.suggestions}>
+        <div className="flex flex-col gap-4">
           <h3>Suggestions</h3>
           {suggestions.map((s, i) => (
             <MappingCard key={i} documentVersionId={docVersion.id} suggestion={s} />

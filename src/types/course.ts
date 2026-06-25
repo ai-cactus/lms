@@ -1,11 +1,10 @@
-import { Prisma } from '@prisma/client';
-
 export type CourseWithStats = {
   id: string;
   title: string;
   description: string | null;
   thumbnail: string | null;
   status: string;
+  type: string; // 'video' | 'text'
   duration: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -57,6 +56,7 @@ export interface RenderableModule extends GeneratedLesson {
   keyPoints?: string[];
 }
 
+import { Prisma } from '@/generated/prisma/client';
 import { QuizQuestion } from './quiz';
 
 export interface GeneratedCourse {
@@ -80,6 +80,20 @@ export interface GeneratedCourse {
 
 export type CourseWithRelations = Prisma.CourseGetPayload<{
   include: {
+    modules: {
+      include: {
+        lessons: {
+          include: {
+            quiz: {
+              include: { questions: true };
+            };
+          };
+        };
+      };
+    };
+    quiz: {
+      include: { questions: true };
+    };
     lessons: {
       include: {
         quiz: {
@@ -107,5 +121,14 @@ export type EnrollmentWithRelations = Prisma.EnrollmentGetPayload<{
     };
     course: true;
     certificate: true;
+  };
+}>;
+
+// Use where an enrollment must carry its assignment batch (schedule / renewal /
+// reminders). Kept separate from EnrollmentWithRelations so existing enrollment
+// queries aren't forced to include the assignment relation.
+export type EnrollmentWithAssignment = Prisma.EnrollmentGetPayload<{
+  include: {
+    assignment: { include: { reminders: true } };
   };
 }>;

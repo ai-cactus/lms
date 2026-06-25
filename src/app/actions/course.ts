@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -24,21 +24,58 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     throw new Error('Unauthorized');
   }
 
-  const courses = await prisma.course.findMany({
-    where: { createdBy: session.user.id },
-    include: {
-      lessons: { select: { id: true } },
-      enrollments: { select: { status: true } },
-    },
-    orderBy: { createdAt: 'desc' },
+  const currentUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { organizationId: true },
   });
 
-  return courses.map((course) => ({
+  const [ownCourses, offerings] = await Promise.all([
+    prisma.course.findMany({
+      where: { createdBy: session.user.id },
+      include: {
+        lessons: { select: { id: true } },
+        enrollments: { select: { status: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    currentUser?.organizationId
+      ? prisma.orgCourseOffering.findMany({
+          where: { organizationId: currentUser.organizationId },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            course: {
+              include: {
+                lessons: { select: { id: true } },
+                enrollments: {
+                  where: { user: { organizationId: currentUser.organizationId } },
+                  select: { status: true },
+                },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const toStats = (course: {
+    id: string;
+    title: string;
+    description: string | null;
+    thumbnail: string | null;
+    status: string;
+    type: string;
+    duration: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+    lessons: { id: string }[];
+    enrollments: { status: string }[];
+  }): CourseWithStats => ({
     id: course.id,
     title: course.title,
     description: course.description,
     thumbnail: course.thumbnail,
     status: course.status,
+    type: course.type,
     duration: course.duration,
     createdAt: course.createdAt,
     updatedAt: course.updatedAt,
@@ -53,7 +90,14 @@ export async function getCourses(): Promise<CourseWithStats[]> {
               100,
           )
         : 0,
-  }));
+  });
+
+  const own = ownCourses.map(toStats);
+  const adopted = offerings.map((o) => toStats(o.course));
+
+  // De-dupe in case the admin both created and adopted the same course id.
+  const seen = new Set(own.map((c) => c.id));
+  return [...own, ...adopted.filter((c) => !seen.has(c.id))];
 }
 
 // Get single course by ID with lessons
@@ -66,6 +110,22 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   const course = await prisma.course.findUnique({
     where: { id: courseId },
     include: {
+      modules: {
+        orderBy: { order: 'asc' },
+        include: {
+          lessons: {
+            orderBy: { order: 'asc' },
+            include: {
+              quiz: {
+                include: { questions: { orderBy: { order: 'asc' } } },
+              },
+            },
+          },
+        },
+      },
+      quiz: {
+        include: { questions: { orderBy: { order: 'asc' } } },
+      },
       lessons: {
         orderBy: { order: 'asc' },
         include: {
@@ -95,6 +155,64 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   const isEnrolled = course.enrollments.some((e) => e.userId === session.user.id);
 
   if (!isCreator && !isEnrolled) {
+    throw new Error('Course not found');
+  }
+
+  return course;
+}
+
+/**
+ * Fetch a GLOBAL, published video course for an org admin to view, even when
+ * the org hasn't enrolled/offered it yet (the browse → "View" flow from the
+ * available-courses list).
+ *
+ * Access is allowed to any org admin since the global catalog is public to
+ * orgs, but enrollments are scoped to the CALLER'S organization so one org can
+ * never see another org's enrolled staff. The creator/enrolled path stays in
+ * getCourseById — this is only used as a fallback for global browse.
+ */
+export async function getCourseForOrgView(courseId: string): Promise<CourseWithRelations> {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { organizationId: true },
+  });
+  if (!currentUser?.organizationId) {
+    throw new Error('Course not found');
+  }
+  const organizationId = currentUser.organizationId;
+
+  const course = await prisma.course.findFirst({
+    where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
+    include: {
+      modules: {
+        orderBy: { order: 'asc' },
+        include: {
+          lessons: {
+            orderBy: { order: 'asc' },
+            include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
+          },
+        },
+      },
+      quiz: { include: { questions: { orderBy: { order: 'asc' } } } },
+      lessons: {
+        orderBy: { order: 'asc' },
+        include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
+      },
+      // Scope enrolled staff to the caller's org — never leak other orgs' users.
+      enrollments: {
+        where: { user: { organizationId } },
+        include: { user: { include: { profile: true } }, certificate: true },
+      },
+      creator: { include: { profile: true } },
+    },
+  });
+
+  if (!course) {
     throw new Error('Course not found');
   }
 
@@ -263,6 +381,7 @@ export async function getDashboardData() {
     description: course.description,
     thumbnail: course.thumbnail,
     status: course.status,
+    type: course.type,
     duration: course.duration,
     createdAt: course.createdAt,
     updatedAt: course.updatedAt,

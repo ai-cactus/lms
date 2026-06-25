@@ -1,11 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import styles from './AttestationModal.module.css';
+import { Calendar } from 'lucide-react';
 import { attestCourse } from '@/app/actions/course';
 import { issueCertificate } from '@/app/actions/certificate';
 
-import { Modal, Button } from '@/components/ui';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
 
 interface AttestationModalProps {
   isOpen: boolean;
@@ -53,116 +63,125 @@ export default function AttestationModal({
   });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" showCloseButton={true}>
-      <div className={styles.header}>
-        <div>
-          <h2 className={styles.title}>Training Attestation of Understanding and Compliance</h2>
-          <div className={styles.subtitle}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="border-b border-border p-6">
+          <DialogTitle className="text-lg font-bold text-foreground">
+            Training Attestation of Understanding and Compliance
+          </DialogTitle>
+          <p className="text-sm text-text-secondary">
             You are required to sign this document to confirm you have reviewed this compliance
-          </div>
-        </div>
-      </div>
+          </p>
+        </DialogHeader>
 
-      <div className={styles.body}>
-        {error && <div style={{ color: 'red', marginBottom: 12, fontSize: 13 }}>{error}</div>}
-
-        <div className={styles.fieldGroup}>
-          <label className={styles.label}>Name</label>
-          <input
-            className={styles.input}
-            value={signature}
-            onChange={(e) => setSignature(e.target.value)}
-          />
-          {userEmail && (
-            <div style={{ fontSize: 12, color: '#A0AEC0', marginTop: 4 }}>{userEmail}</div>
+        <div className="flex-1 overflow-y-auto p-6">
+          {error && (
+            <Alert variant="error" className="mb-3">
+              {error}
+            </Alert>
           )}
-        </div>
 
-        <div className={styles.legalBox}>
-          <div className={styles.checkboxGroup}>
-            <input
-              type="checkbox"
-              className={styles.checkbox}
-              checked={confirmed1}
-              onChange={(e) => setConfirmed1(e.target.checked)}
+          <div className="mb-5">
+            <label
+              htmlFor="attestation-name"
+              className="mb-2 block text-sm font-semibold text-foreground"
+            >
+              Name
+            </label>
+            <Input
+              id="attestation-name"
+              className="h-11"
+              value={signature}
+              onChange={(e) => setSignature(e.target.value)}
             />
-            <div className={styles.checkboxLabel}>
-              I hereby certify that I have successfully completed the training module referenced
-              above, including all associated learning materials and the required knowledge
-              assessment.
-              <br />
-              By submitting this electronic signature, I solemnly attest to the following:
-              <ol style={{ paddingLeft: 20, marginTop: 8 }}>
-                <li>
-                  1. Competency: I have read and fully comprehended the training content. I
-                  acknowledge my responsibility to perform my duties in strict accordance with these
-                  requirements.
-                </li>
-                <li>
-                  2. Application & Policy: I will integrate these principles into my daily practice
-                  and consistently adhere to all related organizational policies, procedures, and
-                  applicable state/federal regulatory standards.
-                </li>
-                <li>
-                  3. Proactive Clarification: If I encounter a situation where I am uncertain of the
-                  correct protocol, I agree to seek immediate guidance from my supervisor or the
-                  Compliance Department before proceeding.
-                </li>
-                <li>
-                  4. Professional Accountability: I understand that maintaining this competency is a
-                  condition of my employment/engagement. I acknowledge that failure to comply with
-                  these standards may result in disciplinary action, up to and including termination
-                  of my contract or employment.
-                </li>
-              </ol>
+            {userEmail && <div className="mt-1 text-xs text-text-tertiary">{userEmail}</div>}
+          </div>
+
+          <div className="mb-5 rounded-md border border-border bg-bg-secondary p-4">
+            <div className="mb-4 flex items-start gap-3">
+              <Checkbox
+                id="attestation-confirm-1"
+                className="mt-1"
+                checked={confirmed1}
+                onCheckedChange={(c) => setConfirmed1(c === true)}
+              />
+              <label
+                htmlFor="attestation-confirm-1"
+                className="cursor-pointer text-sm leading-relaxed text-foreground"
+              >
+                I hereby certify that I have successfully completed the training module referenced
+                above, including all associated learning materials and the required knowledge
+                assessment.
+                <br />
+                By submitting this electronic signature, I solemnly attest to the following:
+                <ol className="mt-2 pl-5">
+                  <li>
+                    1. Competency: I have read and fully comprehended the training content. I
+                    acknowledge my responsibility to perform my duties in strict accordance with
+                    these requirements.
+                  </li>
+                  <li>
+                    2. Application &amp; Policy: I will integrate these principles into my daily
+                    practice and consistently adhere to all related organizational policies,
+                    procedures, and applicable state/federal regulatory standards.
+                  </li>
+                  <li>
+                    3. Proactive Clarification: If I encounter a situation where I am uncertain of
+                    the correct protocol, I agree to seek immediate guidance from my supervisor or
+                    the Compliance Department before proceeding.
+                  </li>
+                  <li>
+                    4. Professional Accountability: I understand that maintaining this competency is
+                    a condition of my employment/engagement. I acknowledge that failure to comply
+                    with these standards may result in disciplinary action, up to and including
+                    termination of my contract or employment.
+                  </li>
+                </ol>
+              </label>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="attestation-confirm-2"
+                className="mt-1"
+                checked={confirmed2}
+                onCheckedChange={(c) => setConfirmed2(c === true)}
+              />
+              <label
+                htmlFor="attestation-confirm-2"
+                className="cursor-pointer text-sm leading-relaxed text-foreground"
+              >
+                I confirm that I have read the above statements and that this attestation is true,
+                accurate, and provided of my own free will.
+              </label>
             </div>
           </div>
 
-          <div className={styles.checkboxGroup}>
-            <input
-              type="checkbox"
-              className={styles.checkbox}
-              checked={confirmed2}
-              onChange={(e) => setConfirmed2(e.target.checked)}
-            />
-            <div className={styles.checkboxLabel}>
-              I confirm that I have read the above statements and that this attestation is true,
-              accurate, and provided of my own free will.
-            </div>
+          <div className="mt-5 flex items-center gap-2 rounded-md bg-[#edf2f7] p-3 text-sm text-text-secondary">
+            <Calendar className="size-5 text-success" aria-hidden="true" />
+            Effective date: <strong>{effectiveDate}</strong>
           </div>
         </div>
 
-        <div className={styles.effectiveDate}>
-          <svg
-            className={styles.successBadge}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+        <DialogFooter className="border-t border-border p-5 sm:justify-between">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!isFormValid || isSubmitting}
+            loading={isSubmitting}
+            className="flex-1"
           >
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
-          Effective date: <strong>{effectiveDate}</strong>
-        </div>
-      </div>
-
-      <div className={styles.footer}>
-        <Button variant="ghost" size="sm" onClick={onClose} disabled={isSubmitting}>
-          Cancel
-        </Button>
-        <Button
-          variant="primary"
-          onClick={handleSubmit}
-          disabled={!isFormValid || isSubmitting}
-          loading={isSubmitting}
-          style={{ flex: 1 }}
-        >
-          Confirm
-        </Button>
-      </div>
-    </Modal>
+            Confirm
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { logger } from '@/lib/logger';
@@ -23,6 +23,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         creator: {
           select: { organizationId: true },
         },
+        // Course-level quiz (video courses attach the quiz to the course, not a lesson).
+        quiz: {
+          include: { questions: { orderBy: { order: 'asc' } } },
+        },
         lessons: {
           orderBy: { order: 'asc' },
           include: {
@@ -30,12 +34,15 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
               include: {
                 questions: {
                   orderBy: { order: 'asc' },
+                  // correctAnswer/explanation are fetched but only surfaced to admins
+                  // (the read-only answer-key review); never sent to workers.
                   select: {
                     id: true,
                     text: true,
                     type: true,
                     options: true,
-                    // Note: NOT including correctAnswer here for security
+                    correctAnswer: true,
+                    explanation: true,
                   },
                 },
               },
@@ -81,7 +88,11 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         adminUser.organizationId === course.creator.organizationId,
       );
 
-      if (adminEnroll || (adminUser?.role === 'admin' && isSameOrg)) {
+      // Global published courses are a shared catalog any org admin may open
+      // (read-only review before assigning).
+      const isGlobalCatalog = course.isGlobal && course.status === 'published';
+
+      if (adminEnroll || (adminUser?.role === 'admin' && (isSameOrg || isGlobalCatalog))) {
         activeUserId = adminSession.user.id;
         // Cast the role to 'admin' | 'worker' | undefined based on session type if necessary
         // Or cast as `any` or exactly `typeof session.user.role`
@@ -103,12 +114,14 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       progress: 0,
       status: 'in_progress',
       score: null,
+      videoPositionSeconds: null,
       quizAttempts: [],
     };
 
-    // Extract quiz from last lesson (where it's attached)
+    // Quiz lives on the last lesson (text courses) or on the course itself
+    // (video courses). Prefer the lesson quiz, fall back to the course quiz.
     const lastLesson = course.lessons[course.lessons.length - 1];
-    const quizData = lastLesson?.quiz as {
+    const quizData = (lastLesson?.quiz ?? course.quiz) as {
       id: string;
       title: string;
       passingScore: number;
@@ -119,6 +132,8 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         text: string;
         type: string;
         options: unknown;
+        correctAnswer?: string;
+        explanation?: string | null;
       }[];
     } | null;
 
@@ -134,6 +149,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
             text: q.text,
             type: q.type,
             options: Array.isArray(q.options) ? [...q.options] : [],
+            // Answer key is exposed only to admins (read-only review).
+            ...(isAdmin
+              ? { correctAnswer: q.correctAnswer ?? '', explanation: q.explanation ?? '' }
+              : {}),
           })),
         }
       : null;
@@ -249,6 +268,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
           slideContent: l.slideContent,
           duration: l.duration,
           order: l.order,
+          videoProvider: l.videoProvider,
+          videoStorageUri: l.videoStorageUri,
+          videoDurationSeconds: l.videoDurationSeconds,
         })),
         quiz,
       },
@@ -257,6 +279,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         progress: effectiveEnrollment.progress,
         status: effectiveEnrollment.status,
         score: effectiveEnrollment.score,
+        videoPositionSeconds: effectiveEnrollment.videoPositionSeconds,
         quizAttempts: effectiveEnrollment.quizAttempts,
       },
       quizResultsData,

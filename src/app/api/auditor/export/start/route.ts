@@ -1,11 +1,13 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { NextResponse, NextRequest } from 'next/server';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
 import { getExportWorker } from '@/lib/queue/auditor-export-worker';
 import { logger } from '@/lib/logger';
 
-export async function POST() {
+type Scope = 'org' | 'course' | 'staff';
+
+export async function POST(req: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -14,17 +16,66 @@ export async function POST() {
       where: { id: session.user.id },
       select: { organizationId: true, role: true },
     });
-
     if (!user || user.role !== 'admin' || !user.organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+
+    const org = await prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { hasAuditorAccess: true },
+    });
+    if (!org?.hasAuditorAccess) {
+      return NextResponse.json({ error: 'Auditor access not enabled' }, { status: 403 });
+    }
+
+    const body = (await req.json().catch(() => ({}))) as {
+      scope?: Scope;
+      scopeId?: string;
+      label?: string;
+    };
+    const scope: Scope = body.scope ?? 'org';
+    const scopeId = body.scopeId;
+
+    // ── Authorize scopeId belongs to this org ──
+    if (scope === 'course') {
+      if (!scopeId) return NextResponse.json({ error: 'scopeId required' }, { status: 400 });
+      const orgUserIds = await prisma.user
+        .findMany({ where: { organizationId: user.organizationId }, select: { id: true } })
+        .then((u) => u.map((x) => x.id));
+      const course = await prisma.course.findFirst({
+        where: { id: scopeId, createdBy: { in: orgUserIds } },
+        select: { id: true },
+      });
+      if (!course) return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    } else if (scope === 'staff') {
+      if (!scopeId) return NextResponse.json({ error: 'scopeId required' }, { status: 400 });
+      const staff = await prisma.user.findFirst({
+        where: { id: scopeId, organizationId: user.organizationId },
+        select: { id: true },
+      });
+      if (!staff) return NextResponse.json({ error: 'Staff not found' }, { status: 404 });
+    }
+
+    const label =
+      body.label ??
+      (scope === 'course'
+        ? 'Course report'
+        : scope === 'staff'
+          ? 'Staff report'
+          : 'Organization report');
 
     const dbJob = await prisma.job.create({
       data: {
         type: 'AUDITOR_PACK_EXPORT',
         userId: session.user.id,
         status: 'queued',
-        payload: { progress: 0, message: 'Queued for export...' },
+        payload: {
+          progress: 0,
+          message: 'Queued for export...',
+          scope,
+          scopeId: scopeId ?? null,
+          label,
+        },
       },
     });
 
@@ -34,9 +85,11 @@ export async function POST() {
     await auditorExportQueue.add('export-org-data', {
       organizationId: user.organizationId,
       dbJobId: dbJob.id,
+      scope,
+      scopeId,
     });
 
-    return NextResponse.json({ jobId: dbJob.id });
+    return NextResponse.json({ jobId: dbJob.id, scope, label });
   } catch (error) {
     logger.error({ msg: 'Failed to start export:', err: error });
     return NextResponse.json({ error: 'Failed to start export' }, { status: 500 });

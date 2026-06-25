@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import styles from './QuizResults.module.css';
 import Link from 'next/link';
-import Button from '@/components/ui/legacy/Button';
+import { ArrowLeft, Pencil, Star, Check, X, Info } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import CircularProgress from '@/components/ui/CircularProgress';
 import AttestationModal from './AttestationModal';
 import BadgeSuccessModal from './BadgeSuccessModal';
 
@@ -68,9 +69,6 @@ export default function QuizResults({
   const questions = data?.questions || [];
 
   // Radial Progress Calculation
-  const radius = 50;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (stats.score / 100) * circumference;
   const passingScore = data?.passingScore || 70;
   const isPassed = stats.score >= passingScore;
   const strokeColor = isPassed ? '#00C55E' : '#E53E3E'; // Green or Red
@@ -96,42 +94,35 @@ export default function QuizResults({
   const dashboardPath = userRole === 'admin' ? '/dashboard' : '/worker';
 
   return (
-    <div className={styles.container}>
-      <Link href={dashboardPath} className={styles.backLink}>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="19" y1="12" x2="5" y2="12"></line>
-          <polyline points="12 19 5 12 12 5"></polyline>
-        </svg>
+    <div className="mx-auto max-w-[1000px] p-6">
+      <Link
+        href={dashboardPath}
+        className="mb-6 flex cursor-pointer items-center gap-2 text-sm text-text-secondary no-underline"
+      >
+        <ArrowLeft className="size-4" />
         Back to Dashboard
       </Link>
-      <div className={`${styles.headerCard} ${!isPassed ? styles.headerCardFailed : ''}`}>
-        <div className={styles.headerTop}>
-          <div className={styles.headerTitle}>
+
+      <div
+        className={`relative mb-8 overflow-hidden rounded-2xl p-8 ${
+          isPassed ? 'bg-success/10' : 'bg-error/10'
+        }`}
+      >
+        <div className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row">
+          <div className="text-2xl font-bold leading-snug text-foreground md:max-w-[60%]">
             {isPassed ? 'Nice work!' : 'Keep trying!'} You completed the{' '}
-            <span className={styles.highlight}>{stats.courseName}</span> quiz in{' '}
+            <span className="text-primary">{stats.courseName}</span> quiz in{' '}
             {Math.ceil((stats.time || 0) / 60)} minutes.
             {!isPassed && allowedAttempts && (
-              <div style={{ fontSize: 13, marginTop: 4, fontWeight: 400, color: '#E53E3E' }}>
+              <div className="mt-1 text-[13px] font-normal text-error">
                 Attempt {attemptsUsed} of {allowedAttempts}
               </div>
             )}
           </div>
           {!hideActions && (
-            <div
-              className={styles.headerActions}
-              style={{ display: 'flex', gap: '8px', alignItems: 'center' }}
-            >
+            <div className="flex items-center gap-2">
               {showAttestation && isPassed && (
-                <Button variant="primary" size="sm" onClick={() => setIsAttestationOpen(true)}>
+                <Button variant="default" size="sm" onClick={() => setIsAttestationOpen(true)}>
                   Attestate
                 </Button>
               )}
@@ -142,7 +133,7 @@ export default function QuizResults({
               )}
               {isPassed && (
                 <Link href={dashboardPath}>
-                  <Button variant="primary" size="sm">
+                  <Button variant="default" size="sm">
                     Done
                   </Button>
                 </Link>
@@ -151,103 +142,56 @@ export default function QuizResults({
           )}
         </div>
 
-        <div className={styles.statsRow}>
+        <div className="relative z-[2] flex flex-col items-center gap-6 sm:flex-row">
           {/* Grade Circle */}
-          <div className={styles.gradeCircle}>
-            <svg width="120" height="120" viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r={radius} stroke="#E2E8F0" strokeWidth="8" fill="none" />
-              <circle
-                cx="60"
-                cy="60"
-                r={radius}
-                stroke={strokeColor}
-                strokeWidth="8"
-                fill="none"
-                strokeDasharray={circumference}
-                strokeDashoffset={offset}
-                strokeLinecap="round"
-                transform="rotate(-90 60 60)"
-              />
-            </svg>
-            <div style={{ position: 'absolute', textAlign: 'center' }}>
-              <div className={styles.gradeValue}>{stats.score}%</div>
-              <div className={styles.gradeLabel}>Grade</div>
-            </div>
+          <div className="flex size-[120px] shrink-0 items-center justify-center">
+            <CircularProgress
+              percentage={stats.score}
+              size={120}
+              strokeWidth={8}
+              color={strokeColor}
+              label="Grade"
+            />
           </div>
 
           {/* Stats Cards */}
-          <div className={`${styles.statsCard} ${styles.cardWhite}`}>
-            <span className={styles.cardValue}>{stats.answered}</span>
-            <span className={styles.cardLabel}>Quiz Answered</span>
-            <svg
-              className={styles.cardIcon}
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#718096"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 20h9"></path>
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-            </svg>
-          </div>
-          <div className={`${styles.statsCard} ${styles.cardGreen}`}>
-            <span className={styles.cardValue}>{stats.correct}</span>
-            <span className={styles.cardLabel}>Correct Answers</span>
-            <svg
-              className={styles.cardIcon}
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-            </svg>
-          </div>
-          <div className={`${styles.statsCard} ${styles.cardRed}`}>
-            <span className={styles.cardValue}>{stats.wrong}</span>
-            <span className={styles.cardLabel}>Wrong Answers</span>
-            <svg
-              className={styles.cardIcon}
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-            </svg>
+          <div className="flex w-full flex-1 flex-col gap-4 sm:flex-row">
+            <div className="relative flex min-h-20 flex-1 flex-col justify-center rounded-xl bg-background p-4 px-5 text-foreground shadow-sm">
+              <span className="mb-1 block text-2xl font-bold">{stats.answered}</span>
+              <span className="text-[13px] font-semibold">Questions Answered</span>
+              <Pencil className="absolute right-4 top-4 size-4 text-text-muted" />
+            </div>
+            <div className="relative flex min-h-20 flex-1 flex-col justify-center rounded-xl bg-[#00c55e] p-4 px-5 text-white shadow-sm">
+              <span className="mb-1 block text-2xl font-bold">{stats.correct}</span>
+              <span className="text-[13px] font-semibold">Correct Answers</span>
+              <Star className="absolute right-4 top-4 size-4 fill-white text-white" />
+            </div>
+            <div className="relative flex min-h-20 flex-1 flex-col justify-center rounded-xl bg-error p-4 px-5 text-white shadow-sm">
+              <span className="mb-1 block text-2xl font-bold">{stats.wrong}</span>
+              <span className="text-[13px] font-semibold">Wrong Answers</span>
+              <Star className="absolute right-4 top-4 size-4 fill-white text-white" />
+            </div>
           </div>
         </div>
       </div>
 
       {data?.userName && (
-        <div className={styles.profileRow}>
+        <div className="mb-8 flex items-center gap-3 rounded-[50px] border border-border bg-background px-6 py-3 text-sm text-text-muted">
           <span>📚 Results for: {data.userName}</span>
         </div>
       )}
 
-      <div className={styles.questionList}>
-        <h2 className={styles.questionTitle}>Answers</h2>
+      <div className="flex flex-col gap-6">
+        <h2 className="mb-6 text-xl font-bold text-foreground">Answers</h2>
         {questions.length === 0 ? (
-          <p style={{ color: '#718096', padding: 20 }}>No questions available.</p>
+          <p className="p-5 text-text-muted">No questions available.</p>
         ) : (
           questions.map((q, index) => (
-            <div key={q.id} className={styles.questionCard}>
-              <div className={styles.questionText}>
+            <div key={q.id} className="mb-8">
+              <div className="mb-4 flex gap-3 text-base font-semibold text-foreground">
                 <span>{index + 1}.</span> {q.text}
               </div>
-              <div className={styles.optionList}>
+              <div className="flex flex-col gap-3">
                 {q.options.map((opt, i) => {
                   const isCorrectAnswer = opt.id === q.correctAnswer;
                   const isSelectedWrong =
@@ -255,64 +199,31 @@ export default function QuizResults({
                   const isSelectedCorrect =
                     opt.id === q.selectedAnswer && q.selectedAnswer === q.correctAnswer;
 
-                  let optionClass = styles.option;
+                  let optionClass =
+                    'flex items-center gap-3 rounded-lg border border-border px-4 py-3 text-sm text-text-secondary';
                   let icon = null;
 
                   if (isSelectedCorrect) {
                     // Worker selected the correct answer — highlight green
-                    optionClass = `${styles.option} ${styles.optionCorrect}`;
-                    icon = (
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        style={{ marginLeft: 'auto' }}
-                      >
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    );
+                    optionClass =
+                      'flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success';
+                    icon = <Check className="ml-auto size-5" />;
                   } else if (isSelectedWrong) {
                     // Worker selected the wrong answer — highlight red
-                    optionClass = `${styles.option} ${styles.optionWrong}`;
-                    icon = (
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        style={{ marginLeft: 'auto' }}
-                      >
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                    );
+                    optionClass =
+                      'flex items-center gap-3 rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error';
+                    icon = <X className="ml-auto size-5" />;
                   } else if (isCorrectAnswer) {
                     // This is the correct answer and the worker did NOT select it —
                     // highlight it green so they know the right answer during review.
-                    optionClass = `${styles.option} ${styles.optionCorrect}`;
-                    icon = (
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        style={{ marginLeft: 'auto' }}
-                      >
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    );
+                    optionClass =
+                      'flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success';
+                    icon = <Check className="ml-auto size-5" />;
                   }
 
                   return (
                     <div key={i} className={optionClass}>
-                      <span className={styles.optionLabel}>{opt.id}.</span>
+                      <span className="mr-2 font-semibold">{opt.id}.</span>
                       {opt.text}
                       {icon}
                     </div>
@@ -320,28 +231,12 @@ export default function QuizResults({
                 })}
               </div>
               {q.explanation && (
-                <div className={styles.explanation}>
-                  <div
-                    className={styles.explanationTitle}
-                    style={{ color: '#2F855A', fontSize: 14 }}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="12" y1="16" x2="12" y2="12"></line>
-                      <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                    </svg>
+                <div className="mt-4 rounded-lg border-l-4 border-success bg-success/10 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-bold text-success">
+                    <Info className="size-3.5" />
                     &nbsp;Explanation
                   </div>
-                  <div className={styles.explanationText}>{q.explanation}</div>
+                  <div className="text-sm leading-normal text-foreground">{q.explanation}</div>
                 </div>
               )}
             </div>

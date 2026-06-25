@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import styles from './MyCoursesTable.module.css';
-import { Input } from '@/components/ui';
+import { Search, ChevronRight } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import CourseTypeIcon from '@/components/dashboard/courses/CourseTypeIcon';
 import {
   Table,
   TableBody,
@@ -20,6 +21,7 @@ interface Course {
   id: string;
   title: string;
   thumbnail?: string | null;
+  type?: string; // 'video' | 'text'
   level?: string | null;
   enrollmentsCount: number;
   completionRate: number;
@@ -44,114 +46,108 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
   const displayCourses = filteredCourses.slice(0, maxItems);
 
   return (
-    <div className={styles.container}>
+    <div className="flex min-w-0 max-w-full flex-1 flex-col rounded-xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
       {/* Header */}
-      <div className={styles.header}>
-        <h3 className={styles.title}>My Courses</h3>
-        <div className={styles.searchContainer}>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <h3 className="text-lg font-bold text-[#1a202c]">My Courses</h3>
+        <div className="w-full sm:w-80">
           <Input
             placeholder="Search for courses..."
-            className={styles.searchInput}
+            className="h-11"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            leftIcon={
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ color: '#A0AEC0' }}
-              >
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            }
+            startIcon={<Search aria-hidden="true" />}
           />
         </div>
       </div>
 
-      {/* Table */}
-      <div className={styles.tableWrapper}>
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-0">
-              <TableHead style={{ width: '45%' }}>Course Name</TableHead>
-              <TableHead style={{ width: '15%' }}>Assigned Staff</TableHead>
-              <TableHead style={{ width: '20%' }}>Completion %</TableHead>
-              <TableHead style={{ width: '20%' }}>Date Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {displayCourses.length > 0 ? (
-              displayCourses.map((course) => (
-                <TableRow
-                  key={course.id}
-                  onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                  className={`cursor-pointer ${styles.clickableRow}`}
-                >
-                  <TableCell>
-                    <div className={styles.courseInfo}>
-                      <div className={styles.courseIcon}>
-                        <Image
-                          src={course.thumbnail || '/images/icon-course-blue.svg'}
-                          alt={course.title}
-                          width={40}
-                          height={40}
-                        />
-                      </div>
-                      <div className={styles.courseText}>
-                        <span className={styles.courseName}>{course.title}</span>
-                      </div>
+      {/* Table — secondary columns collapse on mobile, leaving the course name + level */}
+      <Table>
+        <TableHeader>
+          <TableRow className="border-0 hover:bg-transparent">
+            <TableHead className="w-full md:w-[34%]">Course Name</TableHead>
+            <TableHead className="hidden md:table-cell">Type</TableHead>
+            <TableHead className="hidden md:table-cell">Assigned Staff</TableHead>
+            <TableHead className="hidden md:table-cell">Completion Rate</TableHead>
+            <TableHead className="hidden md:table-cell">Date Created</TableHead>
+            <TableHead className="hidden text-right md:table-cell">Action</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {displayCourses.length > 0 ? (
+            displayCourses.map((course) => (
+              <TableRow
+                key={course.id}
+                onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                className="cursor-pointer"
+              >
+                <TableCell>
+                  <div className="flex items-center gap-4">
+                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
+                      <Image
+                        src={course.thumbnail || '/images/icon-course-blue.svg'}
+                        alt={course.title}
+                        width={40}
+                        height={40}
+                        className="object-cover"
+                      />
                     </div>
-                  </TableCell>
-                  <TableCell>{course.enrollmentsCount}</TableCell>
-                  <TableCell>
-                    <span className={styles.completionRate}>{course.completionRate}%</span>
-                  </TableCell>
-                  <TableCell>
-                    {new Date(course.createdAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <EmptyTableState
-                message="No courses found."
-                subMessage="Create a course to get started."
-                colSpan={4}
-                asTableRow
-              />
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate font-semibold text-[#0f172a]">{course.title}</span>
+                      {course.level && (
+                        <span className="text-xs font-normal text-text-secondary md:hidden">
+                          {course.level}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="hidden md:table-cell">
+                  <CourseTypeIcon type={course.type} />
+                </TableCell>
+                <TableCell className="hidden md:table-cell">{course.enrollmentsCount}</TableCell>
+                <TableCell className="hidden md:table-cell">
+                  <span className="font-semibold text-[#0f172a]">{course.completionRate}%</span>
+                </TableCell>
+                <TableCell className="hidden whitespace-nowrap text-[#718096] md:table-cell">
+                  {new Date(course.createdAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: '2-digit',
+                    year: 'numeric',
+                  })}
+                </TableCell>
+                <TableCell
+                  className="hidden text-right md:table-cell"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Link
+                    href={`/dashboard/training/courses/${course.id}`}
+                    className="text-sm font-semibold text-primary hover:underline"
+                  >
+                    View Course
+                  </Link>
+                </TableCell>
+              </TableRow>
+            ))
+          ) : (
+            <EmptyTableState
+              message="No courses found."
+              subMessage="Create a course to get started."
+              colSpan={6}
+              asTableRow
+            />
+          )}
+        </TableBody>
+      </Table>
 
       {/* View All Link */}
-      <div className="flex justify-end mt-4 pr-6">
+      <div className="mt-4 flex justify-end">
         <Link
           href="/dashboard/courses"
-          className="text-[#4C6EF5] text-sm font-semibold flex items-center gap-1"
+          className="flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
         >
           View all
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="9 18 15 12 9 6"></polyline>
-          </svg>
+          <ChevronRight className="size-4" aria-hidden="true" />
         </Link>
       </div>
     </div>

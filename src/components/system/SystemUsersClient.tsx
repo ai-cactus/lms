@@ -1,11 +1,22 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Eye, Trash2 } from 'lucide-react';
 import { getAllUsers, getUserDeletePreview } from '@/app/actions/system-admin';
 import type { SystemUserRow, DeletePreview } from '@/app/actions/system-admin';
 import DeleteUserModal from './DeleteUserModal';
-import Link from 'next/link';
-import styles from '@/app/system/system.module.css';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { RowActionsMenu } from '@/components/ui';
+import EmptyTableState from '@/components/ui/EmptyTableState';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { logger } from '@/lib/logger';
 
 interface SystemUsersClientProps {
@@ -110,49 +121,44 @@ export default function SystemUsersClient({
 
   return (
     <>
-      <div className={styles.pageHeader}>
-        <div>
-          <h1 className={styles.pageTitle}>All Users</h1>
-          <p className={styles.pageDescription}>
-            Manage all users across all organizations. {total} total users.
-          </p>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-foreground">All Users</h1>
+        <p className="mt-1 text-sm text-text-secondary">
+          Manage all users across all organizations. {total} total users.
+        </p>
       </div>
 
       {/* Stats */}
-      <div className={styles.statsBar}>
-        <div className={styles.statCard}>
-          <div className={styles.statValue}>{total}</div>
-          <div className={styles.statLabel}>Total Users</div>
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="rounded-[10px] border border-border bg-background p-4">
+          <div className="text-2xl font-bold text-foreground">{total}</div>
+          <div className="mt-1 text-sm text-text-secondary">Total Users</div>
         </div>
-        <div className={styles.statCard}>
-          <div className={styles.statValue} style={{ color: '#2563eb' }}>
-            {adminCount}
-          </div>
-          <div className={styles.statLabel}>Admins (this page)</div>
+        <div className="rounded-[10px] border border-border bg-background p-4">
+          <div className="text-2xl font-bold text-primary">{adminCount}</div>
+          <div className="mt-1 text-sm text-text-secondary">Admins (this page)</div>
         </div>
-        <div className={styles.statCard}>
-          <div className={styles.statValue} style={{ color: '#4338ca' }}>
-            {workerCount}
-          </div>
-          <div className={styles.statLabel}>Workers (this page)</div>
+        <div className="rounded-[10px] border border-border bg-background p-4">
+          <div className="text-2xl font-bold text-foreground">{workerCount}</div>
+          <div className="mt-1 text-sm text-text-secondary">Workers (this page)</div>
         </div>
-        <div className={styles.statCard}>
-          <div className={styles.statValue} style={{ color: '#64748b' }}>
-            {organizations.length}
-          </div>
-          <div className={styles.statLabel}>Organizations</div>
+        <div className="rounded-[10px] border border-border bg-background p-4">
+          <div className="text-2xl font-bold text-text-secondary">{organizations.length}</div>
+          <div className="mt-1 text-sm text-text-secondary">Organizations</div>
         </div>
       </div>
 
       {/* Filters */}
-      <form onSubmit={handleSearchSubmit} className={styles.filtersBar}>
-        <input
+      <form
+        onSubmit={handleSearchSubmit}
+        className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center"
+      >
+        <Input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by email or name..."
-          className={styles.searchInput}
+          className="h-11 sm:flex-1"
         />
         <select
           value={roleFilter}
@@ -160,7 +166,7 @@ export default function SystemUsersClient({
             setRoleFilter(e.target.value);
             setPage(1);
           }}
-          className={styles.filterSelect}
+          className="h-11 rounded-[10px] border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           <option value="">All Roles</option>
           <option value="admin">Admin</option>
@@ -172,7 +178,7 @@ export default function SystemUsersClient({
             setOrgFilter(e.target.value);
             setPage(1);
           }}
-          className={styles.filterSelect}
+          className="h-11 rounded-[10px] border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           <option value="">All Organizations</option>
           {organizations.map((org) => (
@@ -184,142 +190,139 @@ export default function SystemUsersClient({
       </form>
 
       {/* Table */}
-      <div className={styles.tableWrapper}>
+      <div className="rounded-xl border border-border bg-background">
         {loading && (
-          <div className={styles.loading}>
-            <div className={styles.spinner} />
+          <div className="flex items-center justify-center gap-3 py-12 text-sm text-text-secondary">
+            <span className="size-5 animate-spin rounded-full border-2 border-border border-t-primary" />
             Loading users...
           </div>
         )}
 
-        {!loading && users.length === 0 && (
-          <div className={styles.emptyState}>
-            <div className={styles.emptyStateIcon}>👥</div>
-            <div className={styles.emptyStateTitle}>No users found</div>
-            <div className={styles.emptyStateText}>
-              Try adjusting your search or filter criteria.
-            </div>
-          </div>
-        )}
-
-        {!loading && users.length > 0 && (
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Role</th>
-                <th>Organization</th>
-                <th>Courses</th>
-                <th>Enrollments</th>
-                <th>Documents</th>
-                <th>Created</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td>
-                    <div className={styles.userCell}>
-                      <div className={styles.avatar}>{getInitials(user)}</div>
-                      <div>
-                        <div className={styles.userName}>{getDisplayName(user)}</div>
-                        <div className={styles.userEmail}>{user.email}</div>
+        {!loading && (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent border-0">
+                <TableHead>User</TableHead>
+                <TableHead className="hidden md:table-cell">Role</TableHead>
+                <TableHead className="hidden lg:table-cell">Organization</TableHead>
+                <TableHead className="hidden xl:table-cell">Courses</TableHead>
+                <TableHead className="hidden xl:table-cell">Enrollments</TableHead>
+                <TableHead className="hidden xl:table-cell">Documents</TableHead>
+                <TableHead className="hidden lg:table-cell">Created</TableHead>
+                <TableHead className="text-right" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.length > 0 ? (
+                users.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                          {getInitials(user)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-foreground">
+                            {getDisplayName(user)}
+                          </div>
+                          <div className="truncate text-xs text-text-secondary">{user.email}</div>
+                          <span className="mt-0.5 block text-xs capitalize text-text-secondary md:hidden">
+                            {user.role}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span
-                      className={`${styles.roleBadge} ${user.role === 'admin' ? styles.roleBadgeAdmin : styles.roleBadgeWorker}`}
-                    >
-                      {user.role}
-                    </span>
-                  </td>
-                  <td>{user.organizationName || <span style={{ color: '#94a3b8' }}>None</span>}</td>
-                  <td>{user._count.courses}</td>
-                  <td>{user._count.enrollments}</td>
-                  <td>{user._count.documents}</td>
-                  <td>{formatDate(user.createdAt)}</td>
-                  <td>
-                    <div className={styles.actions}>
-                      <Link href={`/system/users/${user.id}`} className={styles.viewButton}>
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                        View
-                      </Link>
-                      <button
-                        onClick={() => handleDeleteClick(user.id)}
-                        disabled={deleteLoading}
-                        className={styles.deleteButton}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                          user.role === 'admin'
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-background-secondary text-text-secondary'
+                        }`}
                       >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        {user.role}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {user.organizationName || <span className="text-text-tertiary">None</span>}
+                    </TableCell>
+                    <TableCell className="hidden xl:table-cell">{user._count.courses}</TableCell>
+                    <TableCell className="hidden xl:table-cell">
+                      {user._count.enrollments}
+                    </TableCell>
+                    <TableCell className="hidden xl:table-cell">{user._count.documents}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {formatDate(user.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <RowActionsMenu
+                        actions={[
+                          {
+                            label: 'View',
+                            icon: <Eye className="size-4" />,
+                            href: `/system/users/${user.id}`,
+                          },
+                          {
+                            label: 'Delete',
+                            icon: <Trash2 className="size-4" />,
+                            variant: 'destructive',
+                            disabled: deleteLoading,
+                            onSelect: () => handleDeleteClick(user.id),
+                          },
+                        ]}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <EmptyTableState
+                  message="No users found"
+                  subMessage="Try adjusting your search or filter criteria."
+                  colSpan={8}
+                  asTableRow
+                />
+              )}
+            </TableBody>
+          </Table>
         )}
 
         {/* Pagination */}
         {!loading && totalPages > 1 && (
-          <div className={styles.pagination}>
-            <div className={styles.paginationInfo}>
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-3 sm:flex-row">
+            <div className="text-sm text-text-secondary">
               Showing {(page - 1) * 20 + 1}–{Math.min(page * 20, total)} of {total} users
             </div>
-            <div className={styles.paginationControls}>
-              <button
-                className={styles.pageButton}
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
                 ← Prev
-              </button>
+              </Button>
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 const pageNum = page <= 3 ? i + 1 : page - 2 + i;
                 if (pageNum > totalPages || pageNum < 1) return null;
                 return (
-                  <button
+                  <Button
                     key={pageNum}
-                    className={`${styles.pageButton} ${pageNum === page ? styles.pageButtonActive : ''}`}
+                    variant={pageNum === page ? 'default' : 'outline'}
+                    size="sm"
                     onClick={() => setPage(pageNum)}
                   >
                     {pageNum}
-                  </button>
+                  </Button>
                 );
               })}
-              <button
-                className={styles.pageButton}
+              <Button
+                variant="outline"
+                size="sm"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               >
                 Next →
-              </button>
+              </Button>
             </div>
           </div>
         )}

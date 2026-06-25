@@ -2,7 +2,6 @@
 
 import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import styles from './billing.module.css';
 import {
   BILLING_PLANS,
   BillingCycle,
@@ -10,14 +9,29 @@ import {
   getEffectiveMonthlyPrice,
   canSelectPlan,
 } from '@/lib/billing-plans';
-import { Star, PauseCircle, AlertTriangle } from 'lucide-react';
+import { Star, Check, Play } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
+import { MAX_PAUSE_MONTHS, getPauseState } from '@/lib/billing';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 
 interface Props {
   orgStaffCount: number;
   currentPlan: string | null;
+  pausedAt?: string | null;
+  pauseEndsAt?: string | null;
   onChangeTab: (tab: Tab) => void;
+}
+
+function formatLongDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 // ── Dropdown option sets ─────────────────────────────────────────────────────
@@ -46,6 +60,19 @@ const ACCREDITATION_OPTIONS = [
 
 const TRAINING_METHODS = ['Self-directed', 'Consultant-led', 'Legacy Software'] as const;
 
+// ── Field styling helpers ────────────────────────────────────────────────────
+
+const labelClass = 'mb-1.5 block text-[13px] font-medium text-text-secondary';
+const fieldBaseClass =
+  'box-border w-full rounded-[10px] border border-border px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-[3px] focus:ring-primary/10';
+const fieldErrorClass = 'border-error focus:border-error focus:ring-error/10';
+const selectExtraClass = 'cursor-pointer appearance-none bg-background bg-no-repeat pr-9';
+const requiredMarkClass = 'ml-0.5 text-error';
+const fieldErrorTextClass = 'mt-1 block text-xs text-error';
+const inputClass = (hasError: boolean) => cn(fieldBaseClass, hasError && fieldErrorClass);
+const selectClass = (hasError: boolean) =>
+  cn(fieldBaseClass, selectExtraClass, hasError && fieldErrorClass);
+
 // ── State types ──────────────────────────────────────────────────────────────
 
 interface EnterpriseFormFields {
@@ -70,18 +97,6 @@ interface EnterpriseModalState extends EnterpriseFormFields {
   error: string | null;
   /** Field-level validation errors */
   fieldErrors: Partial<Record<keyof EnterpriseFormFields, string>>;
-}
-
-interface CancelModalState {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
-}
-
-interface PauseModalState {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
 }
 
 const EMPTY_FORM: EnterpriseFormFields = {
@@ -163,8 +178,16 @@ function validateForm(
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTab }: Props) {
+export default function SubscriptionTab({
+  orgStaffCount,
+  currentPlan,
+  pausedAt = null,
+  pauseEndsAt = null,
+  onChangeTab,
+}: Props) {
   const router = useRouter();
+  const pauseState = getPauseState({ status: null, pausedAt, pauseEndsAt });
+  const isPaused = pauseState !== 'none';
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -178,17 +201,8 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
     fieldErrors: {},
   });
 
-  const [cancelModal, setCancelModal] = useState<CancelModalState>({
-    open: false,
-    loading: false,
-    error: null,
-  });
-
-  const [pauseModal, setPauseModal] = useState<PauseModalState>({
-    open: false,
-    loading: false,
-    error: null,
-  });
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   // ── Checkout ───────────────────────────────────────────────────────────────
 
@@ -297,43 +311,23 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
     [enterpriseModal, router],
   );
 
-  // ── Cancel subscription ────────────────────────────────────────────────────
+  // ── Resume subscription (Continue Plan) ────────────────────────────────────
 
-  const handleCancelSubscription = useCallback(async () => {
-    setCancelModal((s) => ({ ...s, loading: true, error: null }));
+  const handleResumeSubscription = useCallback(async () => {
+    setResuming(true);
+    setResumeError(null);
     try {
-      const res = await fetch('/api/billing/subscription/cancel', { method: 'POST' });
+      const res = await fetch('/api/billing/subscription/resume', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to cancel subscription');
-      setCancelModal({ open: false, loading: false, error: null });
+      if (!res.ok) throw new Error(data.error ?? 'Failed to resume subscription');
+      router.refresh();
       onChangeTab('overview');
     } catch (err) {
-      setCancelModal((s) => ({
-        ...s,
-        loading: false,
-        error: err instanceof Error ? err.message : 'Unexpected error',
-      }));
+      setResumeError(err instanceof Error ? err.message : 'Unexpected error');
+    } finally {
+      setResuming(false);
     }
-  }, [onChangeTab]);
-
-  // ── Pause subscription ─────────────────────────────────────────────────────
-
-  const handlePauseSubscription = useCallback(async () => {
-    setPauseModal((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const res = await fetch('/api/billing/subscription/pause', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to pause subscription');
-      setPauseModal({ open: false, loading: false, error: null });
-      onChangeTab('overview');
-    } catch (err) {
-      setPauseModal((s) => ({
-        ...s,
-        loading: false,
-        error: err instanceof Error ? err.message : 'Unexpected error',
-      }));
-    }
-  }, [onChangeTab]);
+  }, [onChangeTab, router]);
 
   // ── Billing cycle labels ───────────────────────────────────────────────────
 
@@ -348,19 +342,32 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
 
   return (
     <div>
-      <div className={styles.plansHeader}>
-        <h2>Select a plan</h2>
-        <p>Select the best plan for your team size and budget — Upgrade or cancel at anytime.</p>
+      <div className="mb-7">
+        <h2 className="mb-1.5 text-[26px] font-bold text-foreground">Select a plan</h2>
+        <p className="text-sm text-text-secondary">
+          Select the best plan for your team size and budget — Upgrade or cancel at anytime.
+        </p>
       </div>
 
-      {checkoutError && <div className={styles.errorBanner}>{checkoutError}</div>}
+      {checkoutError && (
+        <div className="mb-4 rounded-lg border border-error/40 bg-error/10 px-4 py-2.5 text-[13px] text-error">
+          {checkoutError}
+        </div>
+      )}
 
       {/* Billing cycle toggle */}
-      <div className={styles.cycleToggle} role="group" aria-label="Billing cycle">
+      <div
+        className="mb-8 inline-flex max-w-full gap-0 overflow-x-auto rounded-lg bg-muted p-1"
+        role="group"
+        aria-label="Billing cycle"
+      >
         {cycles.map((c) => (
           <button
             key={c}
-            className={`${styles.cycleBtn} ${cycle === c ? styles.cycleBtnActive : ''}`}
+            className={cn(
+              'cursor-pointer whitespace-nowrap rounded-md px-5 py-2 text-[13px] font-medium transition-colors',
+              cycle === c ? 'bg-background text-primary shadow-sm' : 'text-text-secondary',
+            )}
             onClick={() => setCycle(c)}
           >
             {cycleLabels[c]}
@@ -369,38 +376,45 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
       </div>
 
       {/* Plan cards */}
-      <div className={styles.plansGrid}>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(270px,1fr))]">
         {BILLING_PLANS.map((plan) => {
           const allowed = canSelectPlan(plan, orgStaffCount);
           const effectivePrice = getEffectiveMonthlyPrice(plan, cycle);
           const discount = CYCLE_DISCOUNTS[cycle];
+          const isCurrent = currentPlan === plan.key;
+          const isDisabled = !allowed && !plan.isEnterprise;
 
           return (
             <div
               key={plan.key}
-              className={[
-                styles.planCard,
-                currentPlan === plan.key ? styles.planCardActive : '',
-                !allowed && !plan.isEnterprise ? styles.planCardDisabled : '',
-              ].join(' ')}
-              aria-disabled={!allowed && !plan.isEnterprise}
+              className={cn(
+                'relative flex flex-col rounded-xl border-[1.5px] border-border bg-background p-7 transition-all',
+                isCurrent && 'border-primary bg-primary/5 shadow-[0_4px_16px_rgba(51,92,255,0.12)]',
+                !isCurrent &&
+                  !isDisabled &&
+                  'hover:border-primary hover:shadow-[0_4px_16px_rgba(51,92,255,0.1)]',
+                isDisabled && 'pointer-events-none cursor-not-allowed opacity-50',
+              )}
+              aria-disabled={isDisabled}
             >
               {plan.key === 'professional' && (
-                <div className={styles.planCardPopularBadge}>
+                <div className="absolute right-6 top-6 flex items-center gap-1 rounded-full border border-primary bg-background px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.6px] text-primary">
                   <Star size={12} fill="currentColor" /> POPULAR
                 </div>
               )}
 
-              <p className={styles.planCardName}>{plan.name}</p>
-              <p className={styles.planCardDesc}>{plan.description}</p>
+              <p className="mb-1 text-lg font-bold text-foreground">{plan.name}</p>
+              <p className="mb-5 text-[13px] text-text-secondary">{plan.description}</p>
 
-              <div className={styles.planCardPrice}>
+              <div className="mb-5 flex items-baseline gap-1">
                 {plan.isEnterprise ? (
-                  <span className={styles.priceCustom}>Custom</span>
+                  <span className="text-[32px] font-extrabold text-foreground">Custom</span>
                 ) : (
                   <>
-                    <span className={styles.priceAmount}>${effectivePrice}</span>
-                    <span className={styles.priceUnit}>
+                    <span className="text-[38px] font-extrabold text-foreground">
+                      ${effectivePrice}
+                    </span>
+                    <span className="text-sm text-text-secondary">
                       /mo{discount > 0 ? ` (billed ${cycle})` : ''}
                     </span>
                   </>
@@ -410,7 +424,7 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
               {plan.isEnterprise ? (
                 <button
                   id={`plan-btn-${plan.key}`}
-                  className={`${styles.planCardBtn} ${styles.planCardBtnContactSales}`}
+                  className="mb-6 w-full cursor-pointer rounded-lg bg-primary px-3 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                   onClick={() =>
                     setEnterpriseModal((s) => ({
                       ...s,
@@ -428,38 +442,34 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
                 <>
                   <button
                     id={`plan-btn-${plan.key}`}
-                    className={
-                      currentPlan === plan.key
-                        ? styles.planCardBtnCurrentDisabled
-                        : styles.planCardBtnOutline
-                    }
-                    disabled={currentPlan === plan.key || !allowed || checkoutLoading === plan.key}
+                    className={cn(
+                      'mb-6 w-full rounded-lg px-3 py-3 text-sm font-semibold transition-colors',
+                      isCurrent
+                        ? 'cursor-default bg-[#cbd5e1] text-white'
+                        : 'cursor-pointer border-[1.5px] border-primary bg-background text-primary hover:bg-primary/10',
+                    )}
+                    disabled={isCurrent || !allowed || checkoutLoading === plan.key}
                     onClick={() => void handleSelectPlan(plan.key)}
                   >
                     {checkoutLoading === plan.key
                       ? 'Redirecting...'
-                      : currentPlan === plan.key
+                      : isCurrent
                         ? 'Current Plan'
                         : 'Subscribe'}
                   </button>
                 </>
               )}
 
-              <p className={styles.featuresLabel}>{plan.featuresLabel}</p>
-              <ul className={styles.featureList}>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.8px] text-text-tertiary">
+                {plan.featuresLabel}
+              </p>
+              <ul className="flex flex-col gap-2.5">
                 {plan.features.map((feature) => (
-                  <li key={feature}>
-                    <svg
-                      className={styles.featureCheckIcon}
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
+                  <li
+                    key={feature}
+                    className="flex items-center gap-2.5 text-[13px] text-foreground"
+                  >
+                    <Check className="size-4 shrink-0 text-primary" aria-hidden="true" />
                     {feature}
                   </li>
                 ))}
@@ -469,577 +479,502 @@ export default function SubscriptionTab({ orgStaffCount, currentPlan, onChangeTa
         })}
       </div>
 
-      {currentPlan && (
+      {currentPlan && isPaused && (
+        <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">
+                {pauseState === 'expired' ? 'Your pause has ended' : 'Your subscription is paused'}
+              </h3>
+              <p className="text-sm text-text-secondary">
+                {pauseState === 'expired'
+                  ? 'Continue your plan to restore access, or cancel your subscription.'
+                  : pauseEndsAt
+                    ? `All your data is safely stored. Paused until ${formatLongDate(pauseEndsAt)}.`
+                    : 'All your data is safely stored until you continue your plan.'}
+              </p>
+              {resumeError && (
+                <p className="mt-2 text-[13px] text-error" role="alert">
+                  {resumeError}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => router.push('/dashboard/billing/cancel')}>
+                Cancel Subscription
+              </Button>
+              <Button
+                loading={resuming}
+                disabled={resuming}
+                onClick={() => void handleResumeSubscription()}
+              >
+                <Play className="size-4" aria-hidden="true" />
+                Continue Plan
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {currentPlan && !isPaused && (
         <>
-          <div className={styles.manageSubscriptionBox}>
-            <div className={styles.manageSubscriptionBoxRow}>
+          <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+            <div className="flex items-center justify-between">
               <div>
-                <h3>
+                <h3 className="text-base font-semibold text-foreground">
                   Your {BILLING_PLANS.find((p) => p.key === currentPlan)?.name} -{' '}
                   {cycle.charAt(0).toUpperCase() + cycle.slice(1)} subscription renews
                   automatically...
                 </h3>
-                <p>If you don&apos;t want to renew, you can freeze or cancel your subscription.</p>
+                <p className="text-sm text-text-secondary">
+                  If you don&apos;t want to renew, you can pause or cancel your subscription.
+                </p>
               </div>
             </div>
           </div>
 
-          <div className={styles.manageSubscriptionBox}>
-            <div className={styles.manageSubscriptionBoxRow}>
+          <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div>
-                <h3>Cancel/Freeze Subscription</h3>
-                <p>You&apos;ll be able to re-activate your plan anytime at the regular price.</p>
+                <h3 className="text-base font-semibold text-foreground">
+                  Cancel or Pause Subscription
+                </h3>
+                <p className="text-sm text-text-secondary">
+                  Take a break for up to {MAX_PAUSE_MONTHS} months, or cancel anytime — you can
+                  re-activate later at the regular price.
+                </p>
               </div>
-              <div className={styles.manageSubscriptionActions}>
-                <button
-                  className={styles.btnSecondary}
-                  onClick={() => setCancelModal({ open: true, loading: false, error: null })}
-                >
-                  Cancel Subscription
-                </button>
-                <button
-                  className={styles.btnDark}
-                  onClick={() => setPauseModal({ open: true, loading: false, error: null })}
-                >
-                  Pause Subscription
-                </button>
-              </div>
+              <Button variant="outline" onClick={() => router.push('/dashboard/billing/cancel')}>
+                Cancel or Pause
+              </Button>
             </div>
           </div>
         </>
       )}
 
       {/* ===== Enterprise Contact Modal ===== */}
-      {enterpriseModal.open && (
-        <div
-          className={styles.modalBackdrop}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setEnterpriseModal((s) => ({ ...s, open: false }));
-          }}
-        >
-          <div
-            className={`${styles.modal} ${styles.modalWide}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Enterprise plan inquiry"
-          >
-            {enterpriseModal.success ? (
-              /* ── Success state ── */
-              <>
-                <div className={`${styles.modalIcon} ${styles.modalIconSuccess}`}>
-                  <svg
-                    width="28"
-                    height="28"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+      <Dialog
+        open={enterpriseModal.open}
+        onOpenChange={(open) => {
+          if (!open) setEnterpriseModal((s) => ({ ...s, open: false }));
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[620px]">
+          {enterpriseModal.success ? (
+            /* ── Success state ── */
+            <div className="text-center">
+              <DialogHeader>
+                <div className="mx-auto mb-2 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
+                  <Check className="size-7" aria-hidden="true" />
                 </div>
-                <h2>Inquiry sent!</h2>
-                <p>
-                  The Theraptly team will reach out to your organization to discuss your needs.
-                  Redirecting you to the dashboard…
+                <DialogTitle className="text-center">Inquiry sent!</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-text-secondary">
+                The Theraptly team will reach out to your organization to discuss your needs.
+                Redirecting you to the dashboard…
+              </p>
+            </div>
+          ) : (
+            /* ── Form state ── */
+            <form
+              id="enterprise-contact-form"
+              onSubmit={(e) => void handleEnterpriseSubmit(e)}
+              noValidate
+              className="flex flex-col"
+            >
+              {/* Header */}
+              <DialogHeader className="mb-6">
+                <DialogTitle>Contact Sales</DialogTitle>
+                <p className="text-sm text-text-secondary">
+                  Fill out the form to request your free demo.
                 </p>
-              </>
-            ) : (
-              /* ── Form state ── */
-              <form
-                id="enterprise-contact-form"
-                onSubmit={(e) => void handleEnterpriseSubmit(e)}
-                noValidate
-              >
-                {/* Header */}
-                <div className={styles.enterpriseModalHeader}>
-                  <h2>Contact Sales</h2>
-                  <p>Fill out the form to request your free demo.</p>
-                </div>
+              </DialogHeader>
 
-                {enterpriseModal.error && (
-                  <div className={styles.errorBanner} role="alert">
-                    {enterpriseModal.error}
-                  </div>
-                )}
+              {enterpriseModal.error && (
+                <Alert variant="error" className="mb-4">
+                  {enterpriseModal.error}
+                </Alert>
+              )}
 
-                {/* Row: First Name + Last Name */}
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="ent-first-name">
-                      First Name <span className={styles.requiredMark}>*</span>
-                    </label>
-                    <input
-                      id="ent-first-name"
-                      type="text"
-                      autoComplete="given-name"
-                      placeholder="Jane"
-                      required
-                      aria-invalid={!!enterpriseModal.fieldErrors.firstName}
-                      aria-describedby={
-                        enterpriseModal.fieldErrors.firstName ? 'ent-first-err' : undefined
-                      }
-                      value={enterpriseModal.firstName}
-                      onChange={(e) => setField('firstName', e.target.value)}
-                      className={enterpriseModal.fieldErrors.firstName ? styles.inputError : ''}
-                    />
-                    {enterpriseModal.fieldErrors.firstName && (
-                      <span id="ent-first-err" className={styles.fieldError} role="alert">
-                        {enterpriseModal.fieldErrors.firstName}
-                      </span>
-                    )}
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="ent-last-name">
-                      Last Name <span className={styles.requiredMark}>*</span>
-                    </label>
-                    <input
-                      id="ent-last-name"
-                      type="text"
-                      autoComplete="family-name"
-                      placeholder="Doe"
-                      required
-                      aria-invalid={!!enterpriseModal.fieldErrors.lastName}
-                      aria-describedby={
-                        enterpriseModal.fieldErrors.lastName ? 'ent-last-err' : undefined
-                      }
-                      value={enterpriseModal.lastName}
-                      onChange={(e) => setField('lastName', e.target.value)}
-                      className={enterpriseModal.fieldErrors.lastName ? styles.inputError : ''}
-                    />
-                    {enterpriseModal.fieldErrors.lastName && (
-                      <span id="ent-last-err" className={styles.fieldError} role="alert">
-                        {enterpriseModal.fieldErrors.lastName}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Work Email */}
-                <div className={styles.formGroup}>
-                  <label htmlFor="ent-email">
-                    Work Email <span className={styles.requiredMark}>*</span>
+              {/* Row: First Name + Last Name */}
+              <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+                <div className="mb-4">
+                  <label htmlFor="ent-first-name" className={labelClass}>
+                    First Name <span className={requiredMarkClass}>*</span>
                   </label>
                   <input
-                    id="ent-email"
-                    type="email"
-                    autoComplete="work email"
-                    placeholder="jane@organisation.com"
+                    id="ent-first-name"
+                    type="text"
+                    autoComplete="given-name"
+                    placeholder="Jane"
                     required
-                    aria-invalid={!!enterpriseModal.fieldErrors.workEmail}
+                    aria-invalid={!!enterpriseModal.fieldErrors.firstName}
                     aria-describedby={
-                      enterpriseModal.fieldErrors.workEmail ? 'ent-email-err' : undefined
+                      enterpriseModal.fieldErrors.firstName ? 'ent-first-err' : undefined
                     }
-                    value={enterpriseModal.workEmail}
-                    onChange={(e) => setField('workEmail', e.target.value)}
-                    className={enterpriseModal.fieldErrors.workEmail ? styles.inputError : ''}
+                    value={enterpriseModal.firstName}
+                    onChange={(e) => setField('firstName', e.target.value)}
+                    className={inputClass(!!enterpriseModal.fieldErrors.firstName)}
                   />
-                  {enterpriseModal.fieldErrors.workEmail && (
-                    <span id="ent-email-err" className={styles.fieldError} role="alert">
-                      {enterpriseModal.fieldErrors.workEmail}
+                  {enterpriseModal.fieldErrors.firstName && (
+                    <span id="ent-first-err" className={fieldErrorTextClass} role="alert">
+                      {enterpriseModal.fieldErrors.firstName}
                     </span>
                   )}
                 </div>
-
-                {/* Row: Job Title + Organization Name */}
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="ent-job-title">
-                      Job Title <span className={styles.requiredMark}>*</span>
-                    </label>
-                    <input
-                      id="ent-job-title"
-                      type="text"
-                      autoComplete="organization-title"
-                      placeholder="Clinical Director"
-                      required
-                      aria-invalid={!!enterpriseModal.fieldErrors.jobTitle}
-                      aria-describedby={
-                        enterpriseModal.fieldErrors.jobTitle ? 'ent-job-err' : undefined
-                      }
-                      value={enterpriseModal.jobTitle}
-                      onChange={(e) => setField('jobTitle', e.target.value)}
-                      className={enterpriseModal.fieldErrors.jobTitle ? styles.inputError : ''}
-                    />
-                    {enterpriseModal.fieldErrors.jobTitle && (
-                      <span id="ent-job-err" className={styles.fieldError} role="alert">
-                        {enterpriseModal.fieldErrors.jobTitle}
-                      </span>
-                    )}
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="ent-org-name">
-                      Organization Name <span className={styles.requiredMark}>*</span>
-                    </label>
-                    <input
-                      id="ent-org-name"
-                      type="text"
-                      autoComplete="organization"
-                      placeholder="Sunrise Recovery Center"
-                      required
-                      aria-invalid={!!enterpriseModal.fieldErrors.organizationName}
-                      aria-describedby={
-                        enterpriseModal.fieldErrors.organizationName ? 'ent-org-err' : undefined
-                      }
-                      value={enterpriseModal.organizationName}
-                      onChange={(e) => setField('organizationName', e.target.value)}
-                      className={
-                        enterpriseModal.fieldErrors.organizationName ? styles.inputError : ''
-                      }
-                    />
-                    {enterpriseModal.fieldErrors.organizationName && (
-                      <span id="ent-org-err" className={styles.fieldError} role="alert">
-                        {enterpriseModal.fieldErrors.organizationName}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Facility Type */}
-                <div className={styles.formGroup}>
-                  <label htmlFor="ent-facility-type">
-                    Facility Type <span className={styles.requiredMark}>*</span>
+                <div className="mb-4">
+                  <label htmlFor="ent-last-name" className={labelClass}>
+                    Last Name <span className={requiredMarkClass}>*</span>
                   </label>
-                  <select
-                    id="ent-facility-type"
+                  <input
+                    id="ent-last-name"
+                    type="text"
+                    autoComplete="family-name"
+                    placeholder="Doe"
                     required
-                    aria-invalid={!!enterpriseModal.fieldErrors.facilityType}
+                    aria-invalid={!!enterpriseModal.fieldErrors.lastName}
                     aria-describedby={
-                      enterpriseModal.fieldErrors.facilityType ? 'ent-fac-type-err' : undefined
+                      enterpriseModal.fieldErrors.lastName ? 'ent-last-err' : undefined
                     }
-                    value={enterpriseModal.facilityType}
-                    onChange={(e) => setField('facilityType', e.target.value)}
-                    className={`${styles.selectField} ${
-                      enterpriseModal.fieldErrors.facilityType ? styles.inputError : ''
-                    }`}
-                  >
-                    <option value="">Select facility type…</option>
-                    {FACILITY_TYPES.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                  {enterpriseModal.fieldErrors.facilityType && (
-                    <span id="ent-fac-type-err" className={styles.fieldError} role="alert">
-                      {enterpriseModal.fieldErrors.facilityType}
+                    value={enterpriseModal.lastName}
+                    onChange={(e) => setField('lastName', e.target.value)}
+                    className={inputClass(!!enterpriseModal.fieldErrors.lastName)}
+                  />
+                  {enterpriseModal.fieldErrors.lastName && (
+                    <span id="ent-last-err" className={fieldErrorTextClass} role="alert">
+                      {enterpriseModal.fieldErrors.lastName}
                     </span>
                   )}
                 </div>
+              </div>
 
-                {/* "Other" facility type — shown conditionally */}
-                {enterpriseModal.facilityType === 'Other (Custom)' && (
-                  <div className={styles.formGroup}>
-                    <label htmlFor="ent-facility-other">
-                      Please specify <span className={styles.requiredMark}>*</span>
-                    </label>
-                    <input
-                      id="ent-facility-other"
-                      type="text"
-                      placeholder="Describe your facility type"
-                      required
-                      aria-invalid={!!enterpriseModal.fieldErrors.facilityTypeOther}
-                      aria-describedby={
-                        enterpriseModal.fieldErrors.facilityTypeOther
-                          ? 'ent-facility-other-err'
-                          : undefined
-                      }
-                      value={enterpriseModal.facilityTypeOther}
-                      onChange={(e) => setField('facilityTypeOther', e.target.value)}
-                      className={
-                        enterpriseModal.fieldErrors.facilityTypeOther ? styles.inputError : ''
-                      }
-                    />
-                    {enterpriseModal.fieldErrors.facilityTypeOther && (
-                      <span id="ent-facility-other-err" className={styles.fieldError} role="alert">
-                        {enterpriseModal.fieldErrors.facilityTypeOther}
-                      </span>
-                    )}
-                  </div>
+              {/* Work Email */}
+              <div className="mb-4">
+                <label htmlFor="ent-email" className={labelClass}>
+                  Work Email <span className={requiredMarkClass}>*</span>
+                </label>
+                <input
+                  id="ent-email"
+                  type="email"
+                  autoComplete="work email"
+                  placeholder="jane@organisation.com"
+                  required
+                  aria-invalid={!!enterpriseModal.fieldErrors.workEmail}
+                  aria-describedby={
+                    enterpriseModal.fieldErrors.workEmail ? 'ent-email-err' : undefined
+                  }
+                  value={enterpriseModal.workEmail}
+                  onChange={(e) => setField('workEmail', e.target.value)}
+                  className={inputClass(!!enterpriseModal.fieldErrors.workEmail)}
+                />
+                {enterpriseModal.fieldErrors.workEmail && (
+                  <span id="ent-email-err" className={fieldErrorTextClass} role="alert">
+                    {enterpriseModal.fieldErrors.workEmail}
+                  </span>
                 )}
+              </div>
 
-                {/* Row: Number of Facilities + Number of Staff */}
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="ent-num-facilities">
-                      Number of Facilities/Locations <span className={styles.requiredMark}>*</span>
-                    </label>
-                    <select
-                      id="ent-num-facilities"
-                      required
-                      aria-invalid={!!enterpriseModal.fieldErrors.numberOfFacilities}
-                      aria-describedby={
-                        enterpriseModal.fieldErrors.numberOfFacilities ? 'ent-fac-err' : undefined
-                      }
-                      value={enterpriseModal.numberOfFacilities}
-                      onChange={(e) => setField('numberOfFacilities', e.target.value)}
-                      className={`${styles.selectField} ${
-                        enterpriseModal.fieldErrors.numberOfFacilities ? styles.inputError : ''
-                      }`}
-                    >
-                      <option value="">Select range…</option>
-                      {FACILITY_COUNTS.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                    {enterpriseModal.fieldErrors.numberOfFacilities && (
-                      <span id="ent-fac-err" className={styles.fieldError} role="alert">
-                        {enterpriseModal.fieldErrors.numberOfFacilities}
-                      </span>
-                    )}
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="ent-num-staff">
-                      Number of Staff <span className={styles.requiredMark}>*</span>
-                    </label>
-                    <input
-                      id="ent-num-staff"
-                      type="number"
-                      min="1"
-                      placeholder="e.g. 150"
-                      required
-                      aria-invalid={!!enterpriseModal.fieldErrors.numberOfStaff}
-                      aria-describedby={
-                        enterpriseModal.fieldErrors.numberOfStaff ? 'ent-staff-err' : undefined
-                      }
-                      value={enterpriseModal.numberOfStaff}
-                      onChange={(e) => setField('numberOfStaff', e.target.value)}
-                      className={enterpriseModal.fieldErrors.numberOfStaff ? styles.inputError : ''}
-                    />
-                    {enterpriseModal.fieldErrors.numberOfStaff && (
-                      <span id="ent-staff-err" className={styles.fieldError} role="alert">
-                        {enterpriseModal.fieldErrors.numberOfStaff}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Current Accreditation */}
-                <div className={styles.formGroup}>
-                  <label htmlFor="ent-accreditation">
-                    Current Accreditation <span className={styles.requiredMark}>*</span>
+              {/* Row: Job Title + Organization Name */}
+              <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+                <div className="mb-4">
+                  <label htmlFor="ent-job-title" className={labelClass}>
+                    Job Title <span className={requiredMarkClass}>*</span>
                   </label>
-                  <select
-                    id="ent-accreditation"
+                  <input
+                    id="ent-job-title"
+                    type="text"
+                    autoComplete="organization-title"
+                    placeholder="Clinical Director"
                     required
-                    aria-invalid={!!enterpriseModal.fieldErrors.currentAccreditation}
+                    aria-invalid={!!enterpriseModal.fieldErrors.jobTitle}
                     aria-describedby={
-                      enterpriseModal.fieldErrors.currentAccreditation ? 'ent-acc-err' : undefined
+                      enterpriseModal.fieldErrors.jobTitle ? 'ent-job-err' : undefined
                     }
-                    value={enterpriseModal.currentAccreditation}
-                    onChange={(e) => setField('currentAccreditation', e.target.value)}
-                    className={`${styles.selectField} ${
-                      enterpriseModal.fieldErrors.currentAccreditation ? styles.inputError : ''
-                    }`}
-                  >
-                    <option value="">Select accreditation…</option>
-                    {ACCREDITATION_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                  {enterpriseModal.fieldErrors.currentAccreditation && (
-                    <span id="ent-acc-err" className={styles.fieldError} role="alert">
-                      {enterpriseModal.fieldErrors.currentAccreditation}
+                    value={enterpriseModal.jobTitle}
+                    onChange={(e) => setField('jobTitle', e.target.value)}
+                    className={inputClass(!!enterpriseModal.fieldErrors.jobTitle)}
+                  />
+                  {enterpriseModal.fieldErrors.jobTitle && (
+                    <span id="ent-job-err" className={fieldErrorTextClass} role="alert">
+                      {enterpriseModal.fieldErrors.jobTitle}
                     </span>
                   )}
                 </div>
-
-                {/* Current Training Method */}
-                <div className={styles.formGroup}>
-                  <label htmlFor="ent-training-method">
-                    Current Training Method <span className={styles.requiredMark}>*</span>
+                <div className="mb-4">
+                  <label htmlFor="ent-org-name" className={labelClass}>
+                    Organization Name <span className={requiredMarkClass}>*</span>
                   </label>
-                  <select
-                    id="ent-training-method"
+                  <input
+                    id="ent-org-name"
+                    type="text"
+                    autoComplete="organization"
+                    placeholder="Sunrise Recovery Center"
                     required
-                    aria-invalid={!!enterpriseModal.fieldErrors.currentTrainingMethod}
+                    aria-invalid={!!enterpriseModal.fieldErrors.organizationName}
                     aria-describedby={
-                      enterpriseModal.fieldErrors.currentTrainingMethod
-                        ? 'ent-method-err'
+                      enterpriseModal.fieldErrors.organizationName ? 'ent-org-err' : undefined
+                    }
+                    value={enterpriseModal.organizationName}
+                    onChange={(e) => setField('organizationName', e.target.value)}
+                    className={inputClass(!!enterpriseModal.fieldErrors.organizationName)}
+                  />
+                  {enterpriseModal.fieldErrors.organizationName && (
+                    <span id="ent-org-err" className={fieldErrorTextClass} role="alert">
+                      {enterpriseModal.fieldErrors.organizationName}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Facility Type */}
+              <div className="mb-4">
+                <label htmlFor="ent-facility-type" className={labelClass}>
+                  Facility Type <span className={requiredMarkClass}>*</span>
+                </label>
+                <select
+                  id="ent-facility-type"
+                  required
+                  aria-invalid={!!enterpriseModal.fieldErrors.facilityType}
+                  aria-describedby={
+                    enterpriseModal.fieldErrors.facilityType ? 'ent-fac-type-err' : undefined
+                  }
+                  value={enterpriseModal.facilityType}
+                  onChange={(e) => setField('facilityType', e.target.value)}
+                  className={selectClass(!!enterpriseModal.fieldErrors.facilityType)}
+                >
+                  <option value="">Select facility type…</option>
+                  {FACILITY_TYPES.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+                {enterpriseModal.fieldErrors.facilityType && (
+                  <span id="ent-fac-type-err" className={fieldErrorTextClass} role="alert">
+                    {enterpriseModal.fieldErrors.facilityType}
+                  </span>
+                )}
+              </div>
+
+              {/* "Other" facility type — shown conditionally */}
+              {enterpriseModal.facilityType === 'Other (Custom)' && (
+                <div className="mb-4">
+                  <label htmlFor="ent-facility-other" className={labelClass}>
+                    Please specify <span className={requiredMarkClass}>*</span>
+                  </label>
+                  <input
+                    id="ent-facility-other"
+                    type="text"
+                    placeholder="Describe your facility type"
+                    required
+                    aria-invalid={!!enterpriseModal.fieldErrors.facilityTypeOther}
+                    aria-describedby={
+                      enterpriseModal.fieldErrors.facilityTypeOther
+                        ? 'ent-facility-other-err'
                         : undefined
                     }
-                    value={enterpriseModal.currentTrainingMethod}
-                    onChange={(e) => setField('currentTrainingMethod', e.target.value)}
-                    className={`${styles.selectField} ${
-                      enterpriseModal.fieldErrors.currentTrainingMethod ? styles.inputError : ''
-                    }`}
+                    value={enterpriseModal.facilityTypeOther}
+                    onChange={(e) => setField('facilityTypeOther', e.target.value)}
+                    className={inputClass(!!enterpriseModal.fieldErrors.facilityTypeOther)}
+                  />
+                  {enterpriseModal.fieldErrors.facilityTypeOther && (
+                    <span id="ent-facility-other-err" className={fieldErrorTextClass} role="alert">
+                      {enterpriseModal.fieldErrors.facilityTypeOther}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Row: Number of Facilities + Number of Staff */}
+              <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+                <div className="mb-4">
+                  <label htmlFor="ent-num-facilities" className={labelClass}>
+                    Number of Facilities/Locations <span className={requiredMarkClass}>*</span>
+                  </label>
+                  <select
+                    id="ent-num-facilities"
+                    required
+                    aria-invalid={!!enterpriseModal.fieldErrors.numberOfFacilities}
+                    aria-describedby={
+                      enterpriseModal.fieldErrors.numberOfFacilities ? 'ent-fac-err' : undefined
+                    }
+                    value={enterpriseModal.numberOfFacilities}
+                    onChange={(e) => setField('numberOfFacilities', e.target.value)}
+                    className={selectClass(!!enterpriseModal.fieldErrors.numberOfFacilities)}
                   >
-                    <option value="">Select training method…</option>
-                    {TRAINING_METHODS.map((opt) => (
+                    <option value="">Select range…</option>
+                    {FACILITY_COUNTS.map((opt) => (
                       <option key={opt} value={opt}>
                         {opt}
                       </option>
                     ))}
                   </select>
-                  {enterpriseModal.fieldErrors.currentTrainingMethod && (
-                    <span id="ent-method-err" className={styles.fieldError} role="alert">
-                      {enterpriseModal.fieldErrors.currentTrainingMethod}
+                  {enterpriseModal.fieldErrors.numberOfFacilities && (
+                    <span id="ent-fac-err" className={fieldErrorTextClass} role="alert">
+                      {enterpriseModal.fieldErrors.numberOfFacilities}
                     </span>
                   )}
                 </div>
-
-                {/* Primary Pain Point */}
-                <div className={styles.formGroup}>
-                  <label htmlFor="ent-pain-point">
-                    Primary Pain Point <span className={styles.requiredMark}>*</span>
+                <div className="mb-4">
+                  <label htmlFor="ent-num-staff" className={labelClass}>
+                    Number of Staff <span className={requiredMarkClass}>*</span>
                   </label>
-                  <textarea
-                    id="ent-pain-point"
+                  <input
+                    id="ent-num-staff"
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 150"
                     required
-                    aria-invalid={!!enterpriseModal.fieldErrors.primaryPainPoint}
+                    aria-invalid={!!enterpriseModal.fieldErrors.numberOfStaff}
                     aria-describedby={
-                      enterpriseModal.fieldErrors.primaryPainPoint ? 'ent-pain-err' : undefined
+                      enterpriseModal.fieldErrors.numberOfStaff ? 'ent-staff-err' : undefined
                     }
-                    rows={3}
-                    placeholder="e.g. Our trainings are out of date and hard to track…"
-                    value={enterpriseModal.primaryPainPoint}
-                    onChange={(e) => setField('primaryPainPoint', e.target.value)}
-                    className={
-                      enterpriseModal.fieldErrors.primaryPainPoint ? styles.inputError : ''
-                    }
+                    value={enterpriseModal.numberOfStaff}
+                    onChange={(e) => setField('numberOfStaff', e.target.value)}
+                    className={inputClass(!!enterpriseModal.fieldErrors.numberOfStaff)}
                   />
-                  {enterpriseModal.fieldErrors.primaryPainPoint && (
-                    <span id="ent-pain-err" className={styles.fieldError} role="alert">
-                      {enterpriseModal.fieldErrors.primaryPainPoint}
+                  {enterpriseModal.fieldErrors.numberOfStaff && (
+                    <span id="ent-staff-err" className={fieldErrorTextClass} role="alert">
+                      {enterpriseModal.fieldErrors.numberOfStaff}
                     </span>
                   )}
                 </div>
-
-                {/* Terms and Conditions Disclaimer */}
-                <p className={styles.termsText}>
-                  By clicking &quot;Request a demo&quot;, you agree to Theraptly&apos;s{' '}
-                  <a href="/terms" target="_blank" rel="noopener noreferrer">
-                    Terms & Conditions
-                  </a>{' '}
-                  and{' '}
-                  <a href="/privacy" target="_blank" rel="noopener noreferrer">
-                    Privacy Policy
-                  </a>
-                  .
-                </p>
-
-                {/* Actions */}
-                <div className={styles.modalActions}>
-                  <button
-                    type="submit"
-                    className={styles.btnPrimary}
-                    disabled={enterpriseModal.loading}
-                  >
-                    {enterpriseModal.loading ? 'Sending…' : 'Request a demo'}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.btnSecondary}
-                    onClick={() => setEnterpriseModal((s) => ({ ...s, open: false }))}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ===== Cancel Subscription Confirmation Modal ===== */}
-      {cancelModal.open && (
-        <div
-          className={styles.modalBackdrop}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setCancelModal((s) => ({ ...s, open: false }));
-          }}
-        >
-          <div
-            className={styles.modal}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Cancel subscription confirmation"
-          >
-            <div className={`${styles.modalIcon} ${styles.modalIconWarning}`}>
-              <AlertTriangle size={28} />
-            </div>
-            <h2>Cancel subscription?</h2>
-            <p>
-              Your plan will remain active until the end of the current billing period. After that,
-              your account will lose access to premium features.
-            </p>
-
-            {cancelModal.error && (
-              <div className={styles.errorBanner} role="alert">
-                {cancelModal.error}
               </div>
-            )}
 
-            <div className={styles.modalActions}>
-              <button
-                className={styles.btnDanger}
-                disabled={cancelModal.loading}
-                onClick={() => void handleCancelSubscription()}
-              >
-                {cancelModal.loading ? 'Canceling...' : 'Yes, cancel subscription'}
-              </button>
-              <button
-                className={styles.btnSecondary}
-                onClick={() => setCancelModal({ open: false, loading: false, error: null })}
-              >
-                Keep my plan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== Pause Subscription Confirmation Modal ===== */}
-      {pauseModal.open && (
-        <div
-          className={styles.modalBackdrop}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setPauseModal((s) => ({ ...s, open: false }));
-          }}
-        >
-          <div
-            className={styles.modal}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Pause subscription confirmation"
-          >
-            <div className={`${styles.modalIcon} ${styles.modalIconWarning}`}>
-              <PauseCircle size={28} />
-            </div>
-            <h2>Taking a Break?</h2>
-            <p>
-              We can pause your subscription for you at a reduced cost of $9.90/mo to keep all your
-              user progress, courses and data intact.
-            </p>
-
-            {pauseModal.error && (
-              <div className={styles.errorBanner} role="alert">
-                {pauseModal.error}
+              {/* Current Accreditation */}
+              <div className="mb-4">
+                <label htmlFor="ent-accreditation" className={labelClass}>
+                  Current Accreditation <span className={requiredMarkClass}>*</span>
+                </label>
+                <select
+                  id="ent-accreditation"
+                  required
+                  aria-invalid={!!enterpriseModal.fieldErrors.currentAccreditation}
+                  aria-describedby={
+                    enterpriseModal.fieldErrors.currentAccreditation ? 'ent-acc-err' : undefined
+                  }
+                  value={enterpriseModal.currentAccreditation}
+                  onChange={(e) => setField('currentAccreditation', e.target.value)}
+                  className={selectClass(!!enterpriseModal.fieldErrors.currentAccreditation)}
+                >
+                  <option value="">Select accreditation…</option>
+                  {ACCREDITATION_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+                {enterpriseModal.fieldErrors.currentAccreditation && (
+                  <span id="ent-acc-err" className={fieldErrorTextClass} role="alert">
+                    {enterpriseModal.fieldErrors.currentAccreditation}
+                  </span>
+                )}
               </div>
-            )}
 
-            <div className={styles.modalActions}>
-              <button
-                className={styles.btnPrimary}
-                disabled={pauseModal.loading}
-                onClick={() => void handlePauseSubscription()}
-              >
-                {pauseModal.loading ? 'Pausing...' : 'Yes, freeze subscription'}
-              </button>
-              <button
-                className={styles.btnSecondary}
-                onClick={() => setPauseModal({ open: false, loading: false, error: null })}
-              >
-                Keep my plan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              {/* Current Training Method */}
+              <div className="mb-4">
+                <label htmlFor="ent-training-method" className={labelClass}>
+                  Current Training Method <span className={requiredMarkClass}>*</span>
+                </label>
+                <select
+                  id="ent-training-method"
+                  required
+                  aria-invalid={!!enterpriseModal.fieldErrors.currentTrainingMethod}
+                  aria-describedby={
+                    enterpriseModal.fieldErrors.currentTrainingMethod ? 'ent-method-err' : undefined
+                  }
+                  value={enterpriseModal.currentTrainingMethod}
+                  onChange={(e) => setField('currentTrainingMethod', e.target.value)}
+                  className={selectClass(!!enterpriseModal.fieldErrors.currentTrainingMethod)}
+                >
+                  <option value="">Select training method…</option>
+                  {TRAINING_METHODS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+                {enterpriseModal.fieldErrors.currentTrainingMethod && (
+                  <span id="ent-method-err" className={fieldErrorTextClass} role="alert">
+                    {enterpriseModal.fieldErrors.currentTrainingMethod}
+                  </span>
+                )}
+              </div>
+
+              {/* Primary Pain Point */}
+              <div className="mb-4">
+                <label htmlFor="ent-pain-point" className={labelClass}>
+                  Primary Pain Point <span className={requiredMarkClass}>*</span>
+                </label>
+                <textarea
+                  id="ent-pain-point"
+                  required
+                  aria-invalid={!!enterpriseModal.fieldErrors.primaryPainPoint}
+                  aria-describedby={
+                    enterpriseModal.fieldErrors.primaryPainPoint ? 'ent-pain-err' : undefined
+                  }
+                  rows={3}
+                  placeholder="e.g. Our trainings are out of date and hard to track…"
+                  value={enterpriseModal.primaryPainPoint}
+                  onChange={(e) => setField('primaryPainPoint', e.target.value)}
+                  className={cn(
+                    inputClass(!!enterpriseModal.fieldErrors.primaryPainPoint),
+                    'resize-y',
+                  )}
+                />
+                {enterpriseModal.fieldErrors.primaryPainPoint && (
+                  <span id="ent-pain-err" className={fieldErrorTextClass} role="alert">
+                    {enterpriseModal.fieldErrors.primaryPainPoint}
+                  </span>
+                )}
+              </div>
+
+              {/* Terms and Conditions Disclaimer */}
+              <p className="mb-6 mt-3 text-xs leading-relaxed text-text-secondary">
+                By clicking &quot;Request a demo&quot;, you agree to Theraptly&apos;s{' '}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Terms & Conditions
+                </a>{' '}
+                and{' '}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Privacy Policy
+                </a>
+                .
+              </p>
+
+              {/* Actions */}
+              <div className="flex flex-col gap-2.5">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  loading={enterpriseModal.loading}
+                  disabled={enterpriseModal.loading}
+                >
+                  {enterpriseModal.loading ? 'Sending…' : 'Request a demo'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setEnterpriseModal((s) => ({ ...s, open: false }))}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

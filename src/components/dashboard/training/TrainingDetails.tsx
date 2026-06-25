@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import styles from './TrainingDetails.module.css';
-import { Button, Input } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -11,20 +11,31 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { RowActionsMenu } from '@/components/ui';
 import Link from 'next/link';
-import ShareCourseModal from './ShareCourseModal';
 import CertificateModal from './CertificateModal';
 import AssignRetakeModal from './AssignRetakeModal';
-import { MoreVertical, ClipboardList, RotateCcw } from 'lucide-react';
+import {
+  ClipboardList,
+  RotateCcw,
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  Calendar,
+  Share2,
+  Check,
+  X,
+  Search,
+  Download,
+  Users,
+  Award,
+  Activity,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
+import { Badge } from '@/components/ui/badge';
+import { courseTypeLabel, courseTypeBadgeVariant } from '@/lib/video/course-type-label';
 import { CourseWithRelations } from '@/types/course';
 
 interface TrainingDetailsProps {
@@ -34,7 +45,6 @@ interface TrainingDetailsProps {
 export default function TrainingDetails({ course }: TrainingDetailsProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'staff' | 'certificates'>('staff');
   const [selectedCertId, setSelectedCertId] = useState<string | null>(null);
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
@@ -69,87 +79,53 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
   });
 
   return (
-    <div className={styles.container}>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
       {/* Breadcrumbs & Header */}
-      <div className={styles.headerContainer}>
-        <div className={styles.breadcrumbs}>
-          <Link href="/dashboard/courses" className={styles.backButton}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="19" y1="12" x2="5" y2="12"></line>
-              <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>
+      <div className="mb-8">
+        {/* Breadcrumb */}
+        <div className="mb-4 inline-flex items-center gap-2 text-sm text-[#718096]">
+          <Link
+            href="/dashboard/courses"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[#e2e8f0] bg-white px-3 py-2 text-[#4a5568] transition-colors hover:bg-[#f7fafc] hover:text-[#2d3748]"
+          >
+            <ArrowLeft className="size-4" />
             Go Back
           </Link>
-          <span>Course</span> <span className={styles.separator}>/</span>{' '}
-          <span className={styles.activeBreadcrumb}>Course Details</span>
+          <span>Course</span>
+          <span className="text-[#cbd5e0]">/</span>
+          <span className="font-medium text-primary">Course Details</span>
         </div>
 
-        <div className={styles.header}>
-          <div className={styles.titleSection}>
-            <h1 className={styles.title}>{course.title}</h1>
-            <p className={styles.metaLink}>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-10 max-md:flex-col">
+          <div className="flex-1">
+            <div className="mb-2 flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-[#1a202c]">{course.title}</h1>
+              <Badge variant={courseTypeBadgeVariant(course.type)}>
+                {courseTypeLabel(course.type)}
+              </Badge>
+            </div>
+            <p className="text-sm text-[#718096]">
               Mandatory annual training aligned with organizational standards
             </p>
-            <div className={styles.approvalSection}>
-              <span className={styles.approvedBy}>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="#38A169"
-                  stroke="white"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="mr-1.5"
-                >
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="9 12 11 14 15 10"></polyline>
-                </svg>
-                <strong>Approved by: Admin</strong>
+            {course.type !== 'video' && (
+              <div className="mt-2 mb-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f0fff4] px-3 py-1 text-[13px] text-[#38a169]">
+                  <CheckCircle2 className="size-4 text-[#38A169]" />
+                  <strong>Approved by: Admin</strong>
+                </span>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="rounded-full bg-[#c6f6d5] px-3 py-1 text-[13px] font-medium text-[#22543d]">
+                Active
               </span>
-            </div>
-            <div className={styles.courseBadges}>
-              <span className={`${styles.badge} ${styles.badgeActive}`}>Active</span>
-              <span className={styles.metaBadge}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="mr-1.5"
-                >
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
+              <span className="inline-flex items-center rounded-full border border-[#e2e8f0] bg-[#f7fafc] px-3 py-1 text-[13px] text-[#718096]">
+                <Clock className="mr-1.5 size-3.5" />
                 {course.duration || 10} min read
               </span>
-              <span className={styles.metaBadge}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="mr-1.5"
-                >
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                  <line x1="16" y1="2" x2="16" y2="6"></line>
-                  <line x1="8" y1="2" x2="8" y2="6"></line>
-                  <line x1="3" y1="10" x2="21" y2="10"></line>
-                </svg>
+              <span className="inline-flex items-center rounded-full border border-[#e2e8f0] bg-[#f7fafc] px-3 py-1 text-[13px] text-[#718096]">
+                <Calendar className="mr-1.5 size-3.5" />
                 Pass mark:{' '}
                 {course.lessons?.find((l) => (l as { quiz?: { passingScore?: number } }).quiz)?.quiz
                   ?.passingScore || 80}
@@ -157,34 +133,16 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
               </span>
             </div>
           </div>
-          <div className={styles.actions}>
+          <div className="flex gap-3">
             <Link href={`/dashboard/training/courses/${course.id}/preview`}>
-              <Button variant="primary" size="lg" className="bg-[#4C6EF5]">
-                Preview
-              </Button>
+              <Button size="lg">Preview</Button>
             </Link>
             <Button
               variant="outline"
-              className={styles.outlineButton}
               size="lg"
-              onClick={() => setIsShareModalOpen(true)}
+              onClick={() => router.push(`/dashboard/training/courses/${course.id}/assign`)}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="mr-2"
-              >
-                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="8.5" cy="7" r="4"></circle>
-                <line x1="20" y1="8" x2="20" y2="14"></line>
-                <line x1="23" y1="11" x2="17" y2="11"></line>
-              </svg>
+              <Share2 className="size-4" />
               Assign
             </Button>
           </div>
@@ -192,112 +150,74 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
       </div>
 
       {/* Stats Cards */}
-      <div className={styles.statsGrid}>
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {/* Total Learners */}
-        <div className={`${styles.statCard} ${styles.cardBlue}`}>
-          <div className={`${styles.iconBox} ${styles.iconBlue}`}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
+        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#bee3f8] bg-[#ebf8ff]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2b6cb0]">
+            <Users className="size-5" />
           </div>
-          <div className={styles.statInfo}>
-            <h4>Total Learners</h4>
-            <div className={styles.statValue}>{totalLearners}</div>
+          <div className="flex flex-col">
+            <span className="mb-1 text-[13px] text-[#4a5568]">Total Learners</span>
+            <span className="text-xl font-bold text-[#1a202c]">{totalLearners}</span>
           </div>
         </div>
 
         {/* Completion Rate */}
-        <div className={`${styles.statCard} ${styles.cardGreen}`}>
-          <div className={`${styles.iconBox} ${styles.iconGreen}`}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-            </svg>
+        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#c6f6d5] bg-[#f0fff4]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2f855a]">
+            <Activity className="size-5" />
           </div>
-          <div className={styles.statInfo}>
-            <h4>Completion Rate</h4>
-            <div className={styles.statValue}>{completionRate}%</div>
+          <div className="flex flex-col">
+            <span className="mb-1 text-[13px] text-[#4a5568]">Completion Rate</span>
+            <span className="text-xl font-bold text-[#1a202c]">{completionRate}%</span>
           </div>
         </div>
 
         {/* Average Score */}
-        <div className={`${styles.statCard} ${styles.cardRed}`}>
-          <div className={`${styles.iconBox} ${styles.iconRed}`}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="8" r="7"></circle>
-              <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline>
-            </svg>
+        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fed7d7] bg-[#fff5f5]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#c53030]">
+            <Award className="size-5" />
           </div>
-          <div className={styles.statInfo}>
-            <h4>Average Score</h4>
-            <div className={styles.statValue}>{averageScore}%</div>
+          <div className="flex flex-col">
+            <span className="mb-1 text-[13px] text-[#4a5568]">Average Score</span>
+            <span className="text-xl font-bold text-[#1a202c]">{averageScore}%</span>
           </div>
         </div>
 
         {/* Duration */}
-        <div className={`${styles.statCard} ${styles.cardYellow}`}>
-          <div className={`${styles.iconBox} ${styles.iconYellow}`}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10"></circle>
-              <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
+        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fefcbf] bg-[#fffff0]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#d69e2e]">
+            <Clock className="size-5" />
           </div>
-          <div className={styles.statInfo}>
-            <h4>Estimated Duration</h4>
-            <div className={styles.statValue}>{course.duration || 0} mins</div>
+          <div className="flex flex-col">
+            <span className="mb-1 text-[13px] text-[#4a5568]">Estimated Duration</span>
+            <span className="text-xl font-bold text-[#1a202c]">{course.duration || 0} mins</span>
           </div>
         </div>
       </div>
 
-      <div className={styles.staffSection}>
+      {/* Staff / Certificates Section */}
+      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
         {/* Tabs */}
-        <div className="flex gap-6 border-b border-[#E2E8F0] mb-6">
+        <div className="mb-6 flex gap-6 border-b border-[#E2E8F0]">
           <button
-            className={activeTab === 'staff' ? styles.tabActive : styles.tabInactive}
+            className={cn(
+              'cursor-pointer border-b-2 py-3 text-sm font-semibold',
+              activeTab === 'staff'
+                ? 'border-primary text-[#2D3748]'
+                : 'border-transparent text-[#718096]',
+            )}
             onClick={() => setActiveTab('staff')}
           >
             Enrolled Staff
           </button>
           <button
-            className={activeTab === 'certificates' ? styles.tabActive : styles.tabInactive}
+            className={cn(
+              'cursor-pointer border-b-2 py-3 text-sm font-semibold',
+              activeTab === 'certificates'
+                ? 'border-primary text-[#2D3748]'
+                : 'border-transparent text-[#718096]',
+            )}
             onClick={() => setActiveTab('certificates')}
           >
             Certificates Issued
@@ -307,46 +227,18 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         {activeTab === 'staff' ? (
           <>
             {/* Search + Export bar */}
-            <div className={styles.searchContainer}>
+            <div className="mb-4 flex items-center gap-3">
               <Input
+                className="h-11 w-full sm:w-[280px]"
                 placeholder="Search for staff..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className={styles.searchInput}
-                leftIcon={
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-[#aaa]"
-                  >
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                }
+                startIcon={<Search aria-hidden="true" />}
               />
-              <button className={styles.exportButton}>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
+              <Button variant="outline">
+                <Download className="size-4" />
                 Export
-              </button>
+              </Button>
             </div>
 
             {/* Enrolled Staff Table */}
@@ -354,8 +246,12 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-0">
                   <TableHead style={{ width: '40%' }}>Staff Name</TableHead>
-                  <TableHead style={{ width: '20%' }}>Score</TableHead>
-                  <TableHead style={{ width: '20%' }}>Status</TableHead>
+                  <TableHead style={{ width: '20%' }} className="hidden sm:table-cell">
+                    Score
+                  </TableHead>
+                  <TableHead style={{ width: '20%' }} className="hidden md:table-cell">
+                    Status
+                  </TableHead>
                   <TableHead style={{ width: '20%' }} className="text-right">
                     Actions
                   </TableHead>
@@ -365,8 +261,8 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                 {filteredEnrollments.map((enrollment) => (
                   <TableRow key={enrollment.id}>
                     <TableCell>
-                      <div className={styles.staffProfile}>
-                        <div className={styles.avatar}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
                           {(
                             enrollment.user?.profile?.fullName?.[0] ||
                             enrollment.user?.email?.[0] ||
@@ -374,103 +270,44 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                           ).toUpperCase()}
                         </div>
                         <div>
-                          <span className={styles.staffName}>
+                          <span className="block font-semibold text-[#1a202c]">
                             {enrollment.user?.profile?.fullName || enrollment.user?.email}
                           </span>
-                          <span className={styles.staffRole}>
+                          <span className="text-xs text-[#718096]">
                             {enrollment.user?.role || 'Staff'}
                           </span>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <span className={styles.score}>
+                    <TableCell className="hidden sm:table-cell">
+                      <span className="font-bold text-[#2d3748]">
                         {enrollment.score !== null ? `${enrollment.score}%` : '-'}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       {(enrollment.status === 'completed' || enrollment.status === 'attested') &&
                       (enrollment.score ?? 0) >= 70 ? (
-                        <span className={`${styles.statusBadge} ${styles.passed}`}>
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                          </svg>
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#f0fff4] text-[#2f855a]">
+                          <Check className="size-3" />
                           Passed
                         </span>
                       ) : enrollment.status === 'completed' || enrollment.status === 'attested' ? (
-                        <span className={`${styles.statusBadge} ${styles.failed}`}>
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                          </svg>
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#fff5f5] text-[#c53030]">
+                          <X className="size-3" />
                           Failed
                         </span>
                       ) : enrollment.status === 'lessons_complete' ? (
-                        <span className={`${styles.statusBadge} ${styles.inProgress}`}>
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <polyline points="12 6 12 12 16 14"></polyline>
-                          </svg>
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-warning/10 text-warning">
+                          <Clock className="size-3" />
                           Awaiting Quiz
                         </span>
                       ) : enrollment.status === 'in_progress' || enrollment.progress > 0 ? (
-                        <span className={`${styles.statusBadge} ${styles.inProgress}`}>
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <polyline points="12 6 12 12 16 14"></polyline>
-                          </svg>
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-warning/10 text-warning">
+                          <Clock className="size-3" />
                           In Progress
                         </span>
                       ) : (
-                        <span className={`${styles.statusBadge} ${styles.notStarted}`}>
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <circle cx="12" cy="12" r="10"></circle>
-                          </svg>
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-muted text-muted-foreground">
                           Not Started
                         </span>
                       )}
@@ -481,65 +318,40 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                         {enrollment.score !== null ? (
                           <Link
                             href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
-                            className={styles.viewResultText}
+                            className="text-sm font-semibold text-[#3182ce] hover:underline"
                           >
                             View Result
                           </Link>
                         ) : (
-                          <span className="text-[#cbd5e0] cursor-not-allowed text-sm">
+                          <span className="cursor-not-allowed text-sm text-[#cbd5e0]">
                             View Result
                           </span>
                         )}
 
                         {/* Kebab menu */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              className={styles.dotsButton}
-                              title="More actions"
-                              aria-label="More actions"
-                            >
-                              <MoreVertical size={16} />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="min-w-[180px]">
-                            {/* View Result */}
-                            {enrollment.score !== null ? (
-                              <DropdownMenuItem
-                                className="gap-2 cursor-pointer"
-                                onClick={() =>
-                                  router.push(
-                                    `/dashboard/training/courses/${course.id}/results/${enrollment.id}`,
-                                  )
-                                }
-                              >
-                                <ClipboardList size={14} />
-                                View Result
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem disabled className="gap-2">
-                                <ClipboardList size={14} />
-                                View Result
-                              </DropdownMenuItem>
-                            )}
-
-                            <DropdownMenuSeparator />
-
-                            {/* Assign Retake */}
-                            <DropdownMenuItem
-                              className="gap-2 cursor-pointer"
-                              onClick={() =>
+                        <RowActionsMenu
+                          actions={[
+                            {
+                              label: 'View Result',
+                              icon: <ClipboardList className="size-4" />,
+                              disabled: enrollment.score === null,
+                              onSelect: () =>
+                                router.push(
+                                  `/dashboard/training/courses/${course.id}/results/${enrollment.id}`,
+                                ),
+                            },
+                            {
+                              label: 'Assign Retake',
+                              icon: <RotateCcw className="size-4" />,
+                              separatorBefore: true,
+                              onSelect: () =>
                                 setRetakeEnrollment({
                                   id: enrollment.id,
                                   courseName: course.title,
-                                })
-                              }
-                            >
-                              <RotateCcw size={14} />
-                              Assign Retake
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                                }),
+                            },
+                          ]}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>
@@ -566,7 +378,9 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                 <TableHeader>
                   <TableRow className="hover:bg-transparent border-0">
                     <TableHead style={{ width: '40%' }}>Staff Name</TableHead>
-                    <TableHead style={{ width: '30%' }}>Issue Date</TableHead>
+                    <TableHead style={{ width: '30%' }} className="hidden sm:table-cell">
+                      Issue Date
+                    </TableHead>
                     <TableHead style={{ width: '30%' }} className="text-right">
                       Certificate
                     </TableHead>
@@ -578,8 +392,8 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                     .map((enrollment) => (
                       <TableRow key={enrollment.id}>
                         <TableCell>
-                          <div className={styles.staffProfile}>
-                            <div className={styles.avatar}>
+                          <div className="flex items-center gap-3">
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
                               {(
                                 enrollment.user?.profile?.fullName?.[0] ||
                                 enrollment.user?.email?.[0] ||
@@ -587,16 +401,16 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                               ).toUpperCase()}
                             </div>
                             <div>
-                              <span className={styles.staffName}>
+                              <span className="block font-semibold text-[#1a202c]">
                                 {enrollment.user?.profile?.fullName || enrollment.user?.email}
                               </span>
-                              <span className={styles.staffRole}>
+                              <span className="text-xs text-[#718096]">
                                 {enrollment.user?.role || 'Staff'}
                               </span>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           {new Date(enrollment.certificate!.issuedAt).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right">
@@ -618,12 +432,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
       </div>
 
       {/* Modals */}
-      <ShareCourseModal
-        isOpen={isShareModalOpen}
-        onClose={() => setIsShareModalOpen(false)}
-        courseId={course.id}
-      />
-
       {selectedCertId && (
         <CertificateModal
           isOpen={true}

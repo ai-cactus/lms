@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -8,6 +8,13 @@ import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
+import { RenewalCycle } from '@/generated/prisma/enums';
+
+export interface AssignmentSettingsInput {
+  scheduleAt?: string | Date | null;
+  renewalCycle?: RenewalCycle;
+  reminders?: { offsetMinutes: number; channel?: string }[];
+}
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -25,8 +32,18 @@ export async function getAvailableUsers() {
     throw new Error('Unauthorized');
   }
 
-  // Get all users with worker role
+  // Restrict to the caller's own organization — never return users from other tenants.
+  const caller = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { organizationId: true },
+  });
+  if (!caller?.organizationId) {
+    return [];
+  }
+
+  // Get all users within the caller's organization
   const users = await prisma.user.findMany({
+    where: { organizationId: caller.organizationId },
     include: {
       profile: true,
     },
@@ -53,26 +70,100 @@ export async function getAvailableUsers() {
  * - New users: account is created (with profile hydrated from CSV fields),
  *   a temporary password is issued, and a course invite email is sent.
  */
-export async function enrollUsers(courseId: string, staffEntries: StaffEntry[]) {
+export async function enrollUsers(
+  courseId: string,
+  staffEntries: StaffEntry[],
+  assignmentSettings?: AssignmentSettingsInput,
+) {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  // Verify course exists and belongs to the calling user.
+  // Verify course exists and the calling admin is allowed to enroll staff into it.
   const course = await prisma.course.findUnique({
     where: { id: courseId },
   });
 
-  if (!course || course.createdBy !== session.user.id) {
-    throw new Error('Course not found');
-  }
-
-  // Get organization info for new user creation.
+  // Get organization info for new user creation and offering checks.
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { organization: true },
   });
+
+  // Enrolling staff is an admin-only action. The session check above only
+  // proves *someone* is logged in (a worker session would pass it); require
+  // the admin role explicitly (mirrors assertOrgAdmin in offering.ts).
+  if (currentUser?.role !== 'admin') {
+    throw new Error('Forbidden');
+  }
+
+  const isOwnCourse = course?.createdBy === session.user.id;
+
+  // An org admin may also enroll staff into a global course that their
+  // organization has explicitly offered (an OrgCourseOffering row exists).
+  const organizationId = currentUser?.organizationId ?? null;
+  const isOfferedGlobal =
+    !isOwnCourse && course?.isGlobal === true && organizationId !== null
+      ? (await prisma.orgCourseOffering.findUnique({
+          where: { organizationId_courseId: { organizationId, courseId } },
+          select: { id: true },
+        })) !== null
+      : false;
+
+  // An org admin may assign a global published course straight from the
+  // catalog without having offered it first — the offering is created below as
+  // part of the assignment. (Non-global courses still require ownership.)
+  const isAssignableCatalog = course?.isGlobal === true && course.status === 'published';
+
+  if (!course || (!isOwnCourse && !isOfferedGlobal && !isAssignableCatalog)) {
+    throw new Error('Course not found');
+  }
+
+  // A soft-deleted (inactive) global course must not accept NEW enrollments,
+  // even if the org still has an existing offering row. Existing enrollments
+  // are unaffected — they do not pass through this action.
+  if (!isOwnCourse && course.isGlobal === true && course.status !== 'published') {
+    throw new Error('Course not found');
+  }
+
+  // Create a CourseAssignment batch to hold this assignment's schedule /
+  // renewal / reminder settings. Workers in this call share these settings;
+  // a later assignment creates a separate batch.
+  const scheduleAt =
+    assignmentSettings?.scheduleAt != null ? new Date(assignmentSettings.scheduleAt) : null;
+  let assignmentId: string | null = null;
+  if (organizationId) {
+    // Assigning a global catalog course also offers it to the org, so it shows
+    // up in their offered courses and future assignments pass the offering
+    // check above. Idempotent: re-assigning an already-offered course is a noop.
+    if (course.isGlobal === true && !isOwnCourse) {
+      await prisma.orgCourseOffering.upsert({
+        where: { organizationId_courseId: { organizationId, courseId } },
+        update: {},
+        create: { organizationId, courseId, addedByAdminId: session.user.id },
+      });
+    }
+
+    const assignment = await prisma.courseAssignment.create({
+      data: {
+        organizationId,
+        courseId,
+        assignedByAdminId: session.user.id,
+        scheduleAt,
+        renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
+        reminders: assignmentSettings?.reminders?.length
+          ? {
+              create: assignmentSettings.reminders.map((r) => ({
+                offsetMinutes: r.offsetMinutes,
+                channel: r.channel ?? 'email',
+              })),
+            }
+          : undefined,
+      },
+    });
+    assignmentId = assignment.id;
+  }
 
   const results = {
     success: [] as string[],
@@ -220,6 +311,8 @@ export async function enrollUsers(courseId: string, staffEntries: StaffEntry[]) 
         courseId,
         status: 'enrolled',
         progress: 0,
+        assignmentId: assignmentId ?? undefined,
+        accessAt: scheduleAt ?? undefined,
       },
     });
 

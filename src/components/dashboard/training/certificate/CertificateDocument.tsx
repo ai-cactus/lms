@@ -1,0 +1,274 @@
+import React, { forwardRef } from 'react';
+
+/**
+ * Pixel-exact certificate artwork, matching the Theraptly Figma design.
+ *
+ * Rendered at a fixed A4-landscape size (297mm × 210mm at 96dpi) so it is the
+ * single source of truth for both the on-screen preview and the exported PDF —
+ * the modal scales this node down to fit, and the exporter rasterises the very
+ * same node. Everything is sized in absolute pixels for deterministic capture.
+ */
+
+// A4 landscape @ 96dpi.
+export const CERT_WIDTH = 1123;
+export const CERT_HEIGHT = 794;
+
+const COLORS = {
+  paper: '#F6F5F0',
+  dashed: '#D8D5CB',
+  ink: '#1A1A1A',
+  navy: '#163139', // deep teal used for the name + course
+  body: '#5B5B58',
+  gold: '#A98B53', // metadata labels
+  blue: '#0066FF', // brand mark
+};
+
+interface CertificateDocumentProps {
+  studentName: string;
+  courseName: string;
+  organizationName?: string;
+  /** Pre-formatted, e.g. "10 Oct 2025". */
+  issueDate: string;
+  certificateId: string;
+  /** PNG data URL of the verification QR code. */
+  qrDataUrl?: string;
+  className?: string;
+}
+
+const goldText: React.CSSProperties = {
+  backgroundImage: 'linear-gradient(90deg, #C9A227 0%, #9C7B3C 45%, #6E5A2E 100%)',
+  WebkitBackgroundClip: 'text',
+  backgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  color: 'transparent',
+};
+
+const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>(
+  function CertificateDocument(
+    { studentName, courseName, organizationName, issueDate, certificateId, qrDataUrl, className },
+    ref,
+  ) {
+    return (
+      <div
+        ref={ref}
+        className={className}
+        style={{
+          position: 'relative',
+          width: CERT_WIDTH,
+          height: CERT_HEIGHT,
+          backgroundColor: COLORS.paper,
+          borderRadius: 14,
+          overflow: 'hidden',
+          fontFamily: 'var(--font-suisse)',
+          flexShrink: 0,
+        }}
+      >
+        {/* dashed inner frame */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 22,
+            border: `1px dashed ${COLORS.dashed}`,
+            borderRadius: 8,
+            pointerEvents: 'none',
+          }}
+        />
+
+        {/* diagonal wordmark watermark */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%) rotate(-26deg)',
+            fontFamily: 'var(--font-suisse)',
+            fontWeight: 800,
+            fontSize: 150,
+            letterSpacing: 6,
+            color: 'rgba(20, 30, 40, 0.035)',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          Theraptly
+        </div>
+
+        {/* faint clover watermark, lower-centre */}
+        <svg
+          width={300}
+          height={300}
+          viewBox="25 25 94 94"
+          style={{
+            position: 'absolute',
+            left: '46%',
+            top: '58%',
+            transform: 'translate(-50%, -50%)',
+            opacity: 0.035,
+            pointerEvents: 'none',
+          }}
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="M57.401 26.665C52.1501 26.665 47.1144 28.7001 43.4015 32.3224L25.4853 49.8015V57.8023C25.4853 63.4549 27.974 68.5403 31.9408 72.0725C27.974 75.6048 25.4853 80.6902 25.4853 86.3428V94.3436L43.4015 111.823C47.1144 115.445 52.1501 117.48 57.401 117.48C63.1949 117.48 68.4075 115.052 72.028 111.182C75.6486 115.052 80.8611 117.48 86.655 117.48C91.9059 117.48 96.9416 115.445 100.655 111.823L118.571 94.3436V86.3428C118.571 80.6902 116.082 75.6048 112.115 72.0725C116.082 68.5403 118.571 63.4549 118.571 57.8023V49.8015L100.655 32.3224C96.9416 28.7001 91.9059 26.665 86.655 26.665C80.8611 26.665 75.6486 29.0931 72.028 32.9631C68.4075 29.0931 63.1949 26.665 57.401 26.665ZM77.1994 94.3436V98.1646C77.1994 103.259 81.4329 107.39 86.655 107.39C89.1627 107.39 91.5678 106.418 93.3411 104.688L108.228 90.1638V86.3428C108.228 81.248 103.994 77.1178 98.7724 77.1178C96.2647 77.1178 93.8596 78.0897 92.0863 79.8197L77.1994 94.3436ZM66.8567 94.3436L51.9697 79.8197C50.1965 78.0897 47.7915 77.1178 45.2837 77.1178C40.0615 77.1178 35.8281 81.248 35.8281 86.3428V90.1638L50.7149 104.688C52.4882 106.418 54.8933 107.39 57.401 107.39C62.6231 107.39 66.8567 103.259 66.8567 98.1646V94.3436ZM66.8567 45.9805V49.8015L51.9697 64.3253C50.1965 66.0554 47.7915 67.0273 45.2837 67.0273C40.0615 67.0273 35.8281 62.897 35.8281 57.8023V53.9813L50.7149 39.4575C52.4882 37.7275 54.8933 36.7556 57.401 36.7556C62.6231 36.7556 66.8567 40.8857 66.8567 45.9805ZM92.0863 64.3253L77.1994 49.8015V45.9805C77.1994 40.8857 81.4329 36.7556 86.655 36.7556C89.1627 36.7556 91.5678 37.7275 93.3411 39.4575L108.228 53.9813V57.8023C108.228 62.897 103.994 67.0273 98.7724 67.0273C96.2647 67.0273 93.8596 66.0554 92.0863 64.3253Z"
+            fill={COLORS.ink}
+          />
+        </svg>
+
+        {/* logo, top-right */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 56,
+            right: 64,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <svg width={46} height={46} viewBox="25 25 94 94" xmlns="http://www.w3.org/2000/svg">
+            <path
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M57.401 26.665C52.1501 26.665 47.1144 28.7001 43.4015 32.3224L25.4853 49.8015V57.8023C25.4853 63.4549 27.974 68.5403 31.9408 72.0725C27.974 75.6048 25.4853 80.6902 25.4853 86.3428V94.3436L43.4015 111.823C47.1144 115.445 52.1501 117.48 57.401 117.48C63.1949 117.48 68.4075 115.052 72.028 111.182C75.6486 115.052 80.8611 117.48 86.655 117.48C91.9059 117.48 96.9416 115.445 100.655 111.823L118.571 94.3436V86.3428C118.571 80.6902 116.082 75.6048 112.115 72.0725C116.082 68.5403 118.571 63.4549 118.571 57.8023V49.8015L100.655 32.3224C96.9416 28.7001 91.9059 26.665 86.655 26.665C80.8611 26.665 75.6486 29.0931 72.028 32.9631C68.4075 29.0931 63.1949 26.665 57.401 26.665ZM85.4295 72.0725C85.2063 71.8739 84.9874 71.6698 84.7728 71.4604L72.028 59.0265L59.2832 71.4604C59.0687 71.6698 58.8497 71.8739 58.6265 72.0725C58.8497 72.2712 59.0687 72.4753 59.2832 72.6846L72.028 85.1186L84.7728 72.6846C84.9874 72.4753 85.2063 72.2712 85.4295 72.0725ZM77.1994 94.3436V98.1646C77.1994 103.259 81.4329 107.39 86.655 107.39C89.1627 107.39 91.5678 106.418 93.3411 104.688L108.228 90.1638V86.3428C108.228 81.248 103.994 77.1178 98.7724 77.1178C96.2647 77.1178 93.8596 78.0897 92.0863 79.8197L77.1994 94.3436ZM66.8567 94.3436L51.9697 79.8197C50.1965 78.0897 47.7915 77.1178 45.2837 77.1178C40.0615 77.1178 35.8281 81.248 35.8281 86.3428V90.1638L50.7149 104.688C52.4882 106.418 54.8933 107.39 57.401 107.39C62.6231 107.39 66.8567 103.259 66.8567 98.1646V94.3436ZM66.8567 45.9805V49.8015L51.9697 64.3253C50.1965 66.0554 47.7915 67.0273 45.2837 67.0273C40.0615 67.0273 35.8281 62.897 35.8281 57.8023V53.9813L50.7149 39.4575C52.4882 37.7275 54.8933 36.7556 57.401 36.7556C62.6231 36.7556 66.8567 40.8857 66.8567 45.9805ZM92.0863 64.3253L77.1994 49.8015V45.9805C77.1994 40.8857 81.4329 36.7556 86.655 36.7556C89.1627 36.7556 91.5678 37.7275 93.3411 39.4575L108.228 53.9813V57.8023C108.228 62.897 103.994 67.0273 98.7724 67.0273C96.2647 67.0273 93.8596 66.0554 92.0863 64.3253Z"
+              fill={COLORS.blue}
+            />
+          </svg>
+          <span style={{ fontSize: 32, fontWeight: 700, color: COLORS.ink, letterSpacing: -0.5 }}>
+            Theraptly
+          </span>
+        </div>
+
+        {/* seal, right */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/certificate-seal.svg"
+          alt="Theraptly certified seal"
+          width={210}
+          height={207}
+          style={{ position: 'absolute', top: 174, right: 78 }}
+        />
+
+        {/* heading, top-left */}
+        <div style={{ position: 'absolute', top: 60, left: 64 }}>
+          <div
+            style={{
+              fontFamily: 'var(--font-playfair)',
+              fontWeight: 500,
+              fontSize: 30,
+              letterSpacing: 4,
+              textTransform: 'uppercase',
+              ...goldText,
+            }}
+          >
+            Certificate of
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--font-playfair)',
+              fontWeight: 700,
+              fontSize: 62,
+              lineHeight: 1.05,
+              color: COLORS.ink,
+              marginTop: 2,
+            }}
+          >
+            COMPLETION
+          </div>
+        </div>
+
+        {/* body, left-aligned */}
+        <div style={{ position: 'absolute', top: 286, left: 64, width: 600 }}>
+          <p style={{ margin: 0, fontSize: 19, color: COLORS.body }}>This is to certify that</p>
+          <p
+            style={{
+              margin: '18px 0 0',
+              fontSize: 42,
+              fontWeight: 700,
+              color: COLORS.navy,
+              lineHeight: 1.1,
+            }}
+          >
+            {studentName}
+          </p>
+          <p style={{ margin: '22px 0 0', fontSize: 19, color: COLORS.body }}>
+            successfully completed and received a passing grade in
+          </p>
+          <p style={{ margin: '18px 0 0', fontSize: 30, fontWeight: 700, color: COLORS.navy }}>
+            {courseName}
+          </p>
+          <p style={{ margin: '22px 0 0', fontSize: 19, color: COLORS.body, lineHeight: 1.55 }}>
+            a course of study offered by{' '}
+            <strong style={{ color: COLORS.navy, fontWeight: 700 }}>
+              {organizationName || 'the organization'}
+            </strong>
+            , showcasing your commitment to excellence, innovation, and teamwork.
+          </p>
+        </div>
+
+        {/* footer row — "presented on" (left) · certificate ID (centre) · QR (far right) */}
+        <div
+          style={{
+            position: 'absolute',
+            left: 64,
+            right: 64,
+            bottom: 60,
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'space-between',
+            gap: 24,
+          }}
+        >
+          <div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 12,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                color: COLORS.gold,
+                fontWeight: 600,
+              }}
+            >
+              Presented on
+            </p>
+            <p style={{ margin: '6px 0 0', fontSize: 22, color: COLORS.ink }}>{issueDate}</p>
+          </div>
+
+          <div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 12,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                color: COLORS.gold,
+                fontWeight: 600,
+              }}
+            >
+              Valid certificate ID
+            </p>
+            <p style={{ margin: '6px 0 0', fontSize: 22, color: COLORS.ink }}>{certificateId}</p>
+          </div>
+
+          {qrDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={qrDataUrl}
+              alt="Certificate verification QR code"
+              width={88}
+              height={88}
+              style={{ display: 'block', flexShrink: 0 }}
+            />
+          ) : (
+            <div style={{ width: 88, height: 88, flexShrink: 0 }} />
+          )}
+        </div>
+      </div>
+    );
+  },
+);
+
+export default CertificateDocument;

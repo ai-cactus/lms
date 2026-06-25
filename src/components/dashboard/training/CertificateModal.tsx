@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import styles from './CertificateModal.module.css';
-import { Button } from '@/components/ui';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Download, Loader2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { getCertificateDetails } from '@/app/actions/certificate';
+import CertificateDocument, { CERT_HEIGHT, CERT_WIDTH } from './certificate/CertificateDocument';
+import { exportCertificatePdf, generateQrDataUrl } from '@/lib/certificate-export';
 
 type CertificateData = Awaited<ReturnType<typeof getCertificateDetails>>;
 
@@ -11,6 +14,18 @@ interface CertificateModalProps {
   isOpen: boolean;
   onClose: () => void;
   certificateId: string;
+}
+
+function formatIssueDate(date: Date | string): string {
+  return new Date(date).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function readableCertId(data: CertificateData): string {
+  return `CERT-${data.enrollmentId.substring(0, 8).toUpperCase()}`;
 }
 
 export default function CertificateModal({
@@ -21,18 +36,31 @@ export default function CertificateModal({
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<CertificateData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | undefined>();
+  const [exporting, setExporting] = useState(false);
+
+  const docRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.82);
 
   useEffect(() => {
     if (!isOpen || !certificateId) return;
 
     let cancelled = false;
+    setLoading(true);
+    setError(null);
 
     getCertificateDetails(certificateId)
-      .then((res) => {
-        if (!cancelled) {
-          setData(res);
-          setLoading(false);
-          setError(null);
+      .then(async (res) => {
+        if (cancelled) return;
+        setData(res);
+        setLoading(false);
+        try {
+          const verifyValue = `${window.location.origin}/verify-certificate/${certificateId}`;
+          const qr = await generateQrDataUrl(verifyValue);
+          if (!cancelled) setQrDataUrl(qr);
+        } catch {
+          /* QR is decorative — ignore generation failures */
         }
       })
       .catch((err: Error) => {
@@ -47,151 +75,92 @@ export default function CertificateModal({
     };
   }, [isOpen, certificateId]);
 
+  // Scale the fixed-size certificate down to fit the dialog width.
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const update = () => setScale(el.clientWidth / CERT_WIDTH);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [data]);
+
+  const handleExport = async () => {
+    if (!docRef.current || !data) return;
+    setExporting(true);
+    try {
+      const name = data.user?.profile?.fullName || data.user?.email || 'certificate';
+      await exportCertificatePdf(docRef.current, `Certificate-${data.course?.title}-${name}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export certificate');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className={styles.overlay}>
-      <div className={styles.container}>
-        <div className={styles.header}>
-          <h2>Certificate Details</h2>
-          <div className={styles.headerActions}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[92vh] gap-0 overflow-y-auto p-0 sm:max-w-[1040px]">
+        <DialogHeader className="flex flex-row items-center justify-between border-b border-border px-6 py-5">
+          <DialogTitle className="text-xl font-semibold text-foreground">
+            Certificate Details
+          </DialogTitle>
+          <div className="mr-8 flex items-center gap-4">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => window.open(`/api/certificates/${certificateId}`, '_blank')}
+              onClick={handleExport}
+              disabled={!data || exporting}
             >
-              Export
+              {exporting ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Download className="size-4" aria-hidden="true" />
+              )}
+              {exporting ? 'Exporting…' : 'Export PDF'}
             </Button>
-            <button className={styles.closeButton} onClick={onClose}>
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
           </div>
-        </div>
+        </DialogHeader>
 
         {loading ? (
-          <div className={styles.loading}>Loading certificate...</div>
+          <div className="p-12 text-center text-text-secondary">Loading certificate...</div>
         ) : error ? (
-          <div className={styles.error}>{error}</div>
-        ) : (
-          <div className={styles.certificateWrapper}>
-            <div className={styles.certificate}>
-              {/* Watermark */}
-              <div className={styles.watermark}>Theraptly</div>
-
-              {/* Logo Top Right */}
-              <div className={styles.logoContainer}>
-                <h1 className={styles.logoText}>Theraptly</h1>
-              </div>
-
-              {/* Top Banner/Border */}
-              <div className={styles.topBorder}></div>
-
-              {/* Content */}
-              <div className={styles.content}>
-                <h2 className={styles.title}>CERTIFICATE OF COMPLETION</h2>
-                <p className={styles.subtitle}>This is to certify that</p>
-                <h3 className={styles.studentName}>
-                  {data?.user?.profile?.fullName || data?.user?.email || 'Student Name'}
-                </h3>
-                <p className={styles.description}>
-                  successfully completed and received a passing grade in
-                </p>
-                <h4 className={styles.courseName}>{data?.course?.title || 'Course Title'}</h4>
-                <p className={styles.organizationText}>
-                  a course of study offered by{' '}
-                  <strong>{data?.user?.organization?.name || 'the Organization'}</strong>,
-                  showcasing your commitment to excellence, innovation, and teamwork.
-                </p>
-              </div>
-
-              {/* Footer */}
-              <div className={styles.footer}>
-                <div className={styles.footerLeft}>
-                  {/* QR Code Placeholder */}
-                  <div className={styles.qrCode}>
-                    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <rect width="100" height="100" fill="#fff" />
-                      <rect x="10" y="10" width="30" height="30" stroke="#000" strokeWidth="5" />
-                      <rect x="60" y="10" width="30" height="30" stroke="#000" strokeWidth="5" />
-                      <rect x="10" y="60" width="30" height="30" stroke="#000" strokeWidth="5" />
-                      <rect x="20" y="20" width="10" height="10" fill="#000" />
-                      <rect x="70" y="20" width="10" height="10" fill="#000" />
-                      <rect x="20" y="70" width="10" height="10" fill="#000" />
-                      <rect x="50" y="50" width="40" height="40" fill="#000" />
-                    </svg>
-                  </div>
-                  <div className={styles.issueDetails}>
-                    <p>
-                      PRESENTED ON:{' '}
-                      {data
-                        ? new Date(data.issuedAt).toLocaleDateString('en-US', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })
-                        : ''}
-                    </p>
-                    <p>
-                      VALID CERTIFICATE ID: CERT-{data?.enrollmentId?.substring(0, 8).toUpperCase()}
-                    </p>
-                  </div>
-                </div>
-
-                <div className={styles.footerRight}>
-                  {/* Signature */}
-                  <div className={styles.signatureBox}>
-                    <div className={styles.signatureLine}></div>
-                    <p className={styles.signatureText}>CTO, THERAPTLY</p>
-                  </div>
-                  {/* Gold Seal Placeholder */}
-                  <div className={styles.goldSeal}>
-                    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="45"
-                        fill="#D4AF37"
-                        stroke="#B8860B"
-                        strokeWidth="2"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="35"
-                        fill="#FFDF00"
-                        stroke="#D4AF37"
-                        strokeWidth="1"
-                      />
-                      <path d="M30 70 L20 100 L40 85 Z" fill="#D4AF37" />
-                      <path d="M70 70 L80 100 L60 85 Z" fill="#D4AF37" />
-                      <text
-                        x="50"
-                        y="55"
-                        fontSize="20"
-                        textAnchor="middle"
-                        fill="#fff"
-                        fontWeight="bold"
-                      >
-                        T
-                      </text>
-                    </svg>
-                  </div>
-                </div>
+          <div className="p-12 text-center text-error">{error}</div>
+        ) : data ? (
+          <div className="bg-background-secondary p-4 sm:p-8">
+            <div
+              ref={wrapRef}
+              style={{ width: '100%', height: CERT_HEIGHT * scale, overflow: 'hidden' }}
+            >
+              <div
+                style={{
+                  width: CERT_WIDTH,
+                  transformOrigin: 'top left',
+                  transform: `scale(${scale})`,
+                }}
+              >
+                <CertificateDocument
+                  ref={docRef}
+                  studentName={data.user?.profile?.fullName || data.user?.email || 'Student Name'}
+                  courseName={data.course?.title || 'Course Title'}
+                  organizationName={data.user?.organization?.name}
+                  issueDate={formatIssueDate(data.issuedAt)}
+                  certificateId={readableCertId(data)}
+                  qrDataUrl={qrDataUrl}
+                />
               </div>
             </div>
           </div>
-        )}
-      </div>
-    </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }

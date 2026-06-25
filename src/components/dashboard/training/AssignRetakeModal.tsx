@@ -1,10 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
-
-import { Button } from '@/components/ui';
-import { assignRetake } from '@/app/actions/course';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import { assignRetake } from '@/app/actions/course';
 
 interface AssignRetakeModalProps {
   isOpen: boolean;
@@ -25,8 +33,6 @@ export default function AssignRetakeModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-
-  if (!isOpen) return null;
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -49,96 +55,50 @@ export default function AssignRetakeModal({
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
-      onClick={onClose}
     >
-      <div
-        style={{
-          background: 'white',
-          width: '90%',
-          maxWidth: '480px',
-          borderRadius: '16px',
-          padding: '24px',
-          position: 'relative',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1A202C', marginBottom: '16px' }}>
-          Assign Retake
-        </h2>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Assign Retake</DialogTitle>
+        </DialogHeader>
 
-        <p style={{ fontSize: '14px', color: '#4A5568', marginBottom: '20px', lineHeight: 1.5 }}>
+        <p className="text-sm leading-relaxed text-text-secondary">
           This action will create a new retake attempt for <strong>{userName}</strong> on the course{' '}
           <strong>{courseName}</strong>. Their previous attempts will be preserved in the system but
           the course will be marked as in-progress again.
         </p>
 
-        {error && (
-          <div
-            style={{
-              padding: '12px',
-              backgroundColor: '#FFF5F5',
-              color: '#C53030',
-              borderRadius: '8px',
-              fontSize: '14px',
-              marginBottom: '16px',
-            }}
-          >
-            {error}
-          </div>
-        )}
+        {error && <Alert variant="error">{error}</Alert>}
 
-        <div style={{ marginBottom: '24px' }}>
+        <div>
           <label
-            style={{
-              display: 'block',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: '#4A5568',
-              marginBottom: '8px',
-            }}
+            htmlFor="retake-reason"
+            className="mb-2 block text-sm font-medium text-text-secondary"
           >
             Reason for retake (optional)
           </label>
           <textarea
+            id="retake-reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. Granted a second chance after brief review session"
-            style={{
-              width: '100%',
-              minHeight: '80px',
-              padding: '12px',
-              borderRadius: '8px',
-              border: '1px solid #E2E8F0',
-              fontSize: '14px',
-              resize: 'vertical',
-              fontFamily: 'inherit',
-            }}
+            className="min-h-20 w-full resize-y rounded-lg border border-border p-3 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
           />
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+        <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleSubmit} loading={isSubmitting}>
+          <Button onClick={handleSubmit} loading={isSubmitting}>
             Assign Retake
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

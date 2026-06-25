@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { extractTextFromFile } from '@/lib/file-parser';
 import { callVertexAI, truncateToContext } from '@/lib/ai-client';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
 

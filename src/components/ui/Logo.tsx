@@ -1,5 +1,11 @@
 import React from 'react';
-import styles from './Logo.module.css';
+import { cn } from '@/lib/utils';
+
+const VARIANT_CLASS = {
+  light: 'text-[#2d3748]',
+  dark: 'text-white',
+  blue: 'text-primary',
+} as const;
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
@@ -15,15 +21,21 @@ export default function Logo({
   className = '',
 }: LogoProps) {
   const sizes = {
-    sm: { icon: 32, fontSize: 20 },
-    md: { icon: 48, fontSize: 28 },
-    lg: { icon: 64, fontSize: 36 },
+    sm: { icon: 24, fontSize: 20 },
+    md: { icon: 32, fontSize: 28 },
+    lg: { icon: 44, fontSize: 34 },
   };
 
   const { icon, fontSize } = sizes[size];
 
   return (
-    <div className={`${styles.logo} ${className} ${styles[variant]}`}>
+    <div
+      className={cn(
+        'inline-flex select-none items-center gap-2',
+        VARIANT_CLASS[variant],
+        className,
+      )}
+    >
       <svg
         width={icon}
         height={icon}
@@ -39,7 +51,7 @@ export default function Logo({
         />
       </svg>
       {showText && (
-        <span className={`${styles.logoText} ${styles[variant]}`} style={{ fontSize }}>
+        <span className="font-sans font-bold leading-none" style={{ fontSize }}>
           Theraptly
         </span>
       )}

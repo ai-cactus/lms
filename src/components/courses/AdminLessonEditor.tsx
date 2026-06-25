@@ -3,10 +3,10 @@
 import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
 import CourseArticle from '@/components/courses/CourseArticle';
-import styles from '@/components/courses/CoursePlayer.module.css';
 import { updateLessonContent } from '@/app/actions/course';
 import 'react-quill-new/dist/quill.snow.css';
-import { Button } from '@/components/ui';
+import { Pencil } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { logger } from '@/lib/logger';
 
@@ -89,26 +89,16 @@ export default function AdminLessonEditor({
         isEditing ? (
           <textarea
             ref={titleRef}
-            className={styles.articleTitleInput}
+            className="w-full overflow-hidden border-0 border-b border-dashed border-b-[#cbd5e0] bg-transparent p-0 text-[36px] font-extrabold leading-[1.15] tracking-[-0.03em] text-foreground outline-none resize-none font-[inherit] max-md:text-[26px] max-[480px]:text-[22px]"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Lesson Title"
             rows={1}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              borderBottom: '1px dashed #cbd5e0',
-              fontSize: 'inherit',
-              fontWeight: 'inherit',
-              color: 'inherit',
-              width: '100%',
-              outline: 'none',
-              resize: 'none',
-              overflow: 'hidden',
-            }}
           />
         ) : (
-          <h1 className={styles.articleTitle}>{title}</h1>
+          <h1 className="text-[36px] font-extrabold tracking-[-0.03em] text-foreground leading-[1.15] max-md:text-[26px] max-[480px]:text-[22px]">
+            {title}
+          </h1>
         )
       }
       onNext={onNext}
@@ -116,43 +106,26 @@ export default function AdminLessonEditor({
       isFirst={isFirst}
       isLast={isLast}
     >
-      <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+      <div className="mb-5 flex justify-end gap-3">
         {isEditing ? (
           <>
-            <Button variant="outline" size="md" onClick={handleCancel} disabled={isSaving}>
+            <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
               Cancel
             </Button>
-            <Button variant="primary" size="md" onClick={handleSave} disabled={isSaving}>
+            <Button variant="default" onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Saving...' : 'Save Changes'}
             </Button>
           </>
         ) : (
-          <Button
-            variant="outline"
-            size="md"
-            onClick={() => setIsEditing(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
+          <Button variant="outline" onClick={() => setIsEditing(true)}>
+            <Pencil className="size-3.5" aria-hidden="true" />
             Edit Article
           </Button>
         )}
       </div>
 
       {isEditing ? (
-        <div className={styles.quillWrapper}>
+        <div className="[&_.ql-container]:!text-[18px] [&_.ql-container]:font-[450] [&_.ql-container]:leading-[1.8] [&_.ql-container]:text-text-secondary [&_.ql-container]:font-[inherit] [&_.ql-container]:!border-none [&_.ql-editor]:!p-0 [&_.ql-toolbar]:!border-none [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-b-[#f3f4f6] [&_.ql-toolbar]:mb-6 [&_.ql-toolbar]:bg-transparent [&_.ql-toolbar]:!py-2 [&_.ql-toolbar]:!px-0">
           <ReactQuill theme="snow" value={content} onChange={setContent} modules={quillModules} />
         </div>
       ) : (

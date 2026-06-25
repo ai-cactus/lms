@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { validatePassword, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '@/lib/password-policy';
 import { logger } from '@/lib/logger';
-
-const prisma = new PrismaClient();
+import prisma from '@/lib/prisma';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),

@@ -49,7 +49,9 @@ RUN npm run build
 # ──────────────────────────────────────────────────────────────────────────────
 FROM node:20-slim AS runner
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl curl poppler-utils \
+# ffmpeg: required by the video-transcode worker to normalize uploaded course
+# videos to a web-safe, faststart MP4 (scripts/transcode-worker.mjs).
+RUN apt-get update && apt-get install -y --no-install-recommends openssl curl poppler-utils ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -71,8 +73,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
 
-# Prisma schema + migrations are required for `prisma migrate deploy` at startup
+# Prisma schema + migrations are required for `prisma migrate deploy` at startup.
+# prisma.config.ts (repo root, NOT inside prisma/) now holds datasource.url — it
+# MUST be copied too, or migrate deploy fails with:
+#   "The datasource.url property is required in your Prisma config file"
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
 
 # Entrypoint: runs migrations then starts the Next.js server
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh

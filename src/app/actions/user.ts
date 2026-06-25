@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -158,6 +158,23 @@ export async function updateRole(role: 'admin' | 'worker') {
   }
 
   try {
+    // Self-service role selection is only permitted during initial onboarding,
+    // i.e. before the user has been attached to an organization. Once a user
+    // belongs to an org, this path must not allow self-promotion (e.g. a worker
+    // escalating to admin).
+    const current = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { organizationId: true },
+    });
+
+    if (!current) {
+      return { success: false, error: 'User not found' };
+    }
+
+    if (current.organizationId) {
+      return { success: false, error: 'Role can no longer be changed for this account.' };
+    }
+
     // Update User role
     await prisma.user.update({
       where: {

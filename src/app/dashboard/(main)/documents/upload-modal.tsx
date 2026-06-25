@@ -1,14 +1,24 @@
 'use client';
 
 import { useActionState, useState, useEffect, useRef } from 'react';
+import { FileText } from 'lucide-react';
 import { uploadDocument } from '@/app/actions/documents';
-import styles from './modal.module.css';
-import { Modal, Button } from '@/components/ui';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert } from '@/components/ui/alert';
 
 export default function UploadModal({ onClose }: { onClose: () => void }) {
   const [state, action, isPending] = useActionState(uploadDocument, null);
   const [file, setFile] = useState<File | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -59,113 +69,81 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Upload Document" size="md">
-      <form action={action} className={styles.form}>
-        <div className={styles.dropzone}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            name="file"
-            onChange={handleFileChange}
-            accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
-            required
-          />
-          {file ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                justifyContent: 'center',
-              }}
-            >
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#4C6EF5"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
-              <p style={{ margin: 0 }}>{file.name}</p>
-            </div>
-          ) : (
-            <p>Drag &amp; drop or Click to Select (PDF, DOCX - Max 10MB)</p>
-          )}
-        </div>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Upload Document</DialogTitle>
+        </DialogHeader>
 
-        <div className={styles.agreement}>
-          <input type="checkbox" id="phi-agree" required />
-          <label htmlFor="phi-agree">
-            I verify this document contains no Personal Health Information (PHI).
-          </label>
-        </div>
-
-        {validationError && <div className={styles.error}>{validationError}</div>}
-        {state?.error && <div className={styles.error}>{state.error}</div>}
-
-        {state?.phiDetected && (
-          <div className={styles.phiWarningCard}>
-            <div className={styles.phiWarningHeader}>PHI WARNING</div>
-            <div className={styles.phiWarningBody}>
-              <svg
-                className={styles.phiWarningIcon}
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-              </svg>
-              <p className={styles.phiWarningText}>
-                <strong>WARNING:</strong> Protected Health Information (PHI) detected. Ensure all
-                uploads comply with HIPAA regulations. Unauthorized disclosure is strictly
-                prohibited.
-              </p>
-            </div>
+        <form action={action} className="flex flex-col gap-6">
+          <div className="relative rounded-[10px] border-2 border-dashed border-border p-8 text-center">
+            <input
+              ref={fileInputRef}
+              type="file"
+              name="file"
+              onChange={handleFileChange}
+              accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+              required
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+            {file ? (
+              <div className="flex items-center justify-center gap-2.5">
+                <FileText className="size-6 text-primary" aria-hidden="true" />
+                <p className="m-0">{file.name}</p>
+              </div>
+            ) : (
+              <p>Drag &amp; drop or Click to Select (PDF, DOCX - Max 10MB)</p>
+            )}
           </div>
-        )}
 
-        {state?.success && !state.phiDetected && (
-          <div className={styles.phiSuccessCard}>
-            <svg
-              className={styles.phiSuccessIcon}
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-            </svg>
-            <p className={styles.phiSuccessText}>
+          <div className="flex items-start gap-2 text-sm text-text-secondary">
+            <Checkbox
+              id="phi-agree"
+              checked={agreed}
+              onCheckedChange={(c) => setAgreed(c === true)}
+              className="mt-0.5"
+            />
+            <label htmlFor="phi-agree" className="cursor-pointer">
+              I verify this document contains no Personal Health Information (PHI).
+            </label>
+          </div>
+
+          {validationError && <Alert variant="error">{validationError}</Alert>}
+          {state?.error && <Alert variant="error">{state.error}</Alert>}
+
+          {state?.phiDetected && (
+            <Alert variant="warning" title="PHI Warning">
+              <strong>WARNING:</strong> Protected Health Information (PHI) detected. Ensure all
+              uploads comply with HIPAA regulations. Unauthorized disclosure is strictly prohibited.
+            </Alert>
+          )}
+
+          {state?.success && !state.phiDetected && (
+            <Alert variant="success" title="Success">
               <strong>SUCCESS:</strong> No Protected Health Information (PHI) detected. Uploads are
               not subject to HIPAA restrictions. Authorized sharing is permitted.
-            </p>
-          </div>
-        )}
+            </Alert>
+          )}
 
-        <div className={styles.actions}>
-          <Button variant="ghost" size="md" type="button" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            type="submit"
-            disabled={!file || isPending || !!validationError}
-          >
-            {isPending ? 'Scanning for PHI…' : 'Upload'}
-          </Button>
-        </div>
-      </form>
-    </Modal>
+          <DialogFooter>
+            <Button variant="ghost" type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              loading={isPending}
+              disabled={!file || isPending || !!validationError || !agreed}
+            >
+              {isPending ? 'Scanning for PHI…' : 'Upload'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

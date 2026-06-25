@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { callVertexAI } from '@/lib/ai-client';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
 

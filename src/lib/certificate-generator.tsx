@@ -1,9 +1,25 @@
 /**
- * Certificate PDF generator using PDFKit (pure Node.js, no browser DOM required).
- * This replaces the previous @react-pdf/renderer implementation which required
- * browser-only APIs (DOMMatrix, Path2D) incompatible with Next.js SSR builds.
+ * Server-side certificate PDF generator (PDFKit, pure Node.js — no browser DOM).
+ *
+ * This produces the certificate that is persisted at issuance time and served
+ * from `/api/certificates/[id]` (e.g. when the verification QR code is scanned).
+ * The user-facing "Export PDF" in the app is rendered client-side from the
+ * `CertificateDocument` component (pixel-exact WYSIWYG); this server renderer
+ * mirrors that design — cream paper, left-aligned body, gold accents, footer —
+ * as closely as PDFKit's primitives allow so the stored artifact stays on brand.
  */
 import PDFDocument from 'pdfkit';
+import { readFileSync } from 'fs';
+import path from 'path';
+
+// Pre-rasterised gold seal (matches the on-screen `CertificateDocument`). Read
+// once at module load; if the asset is missing we simply omit the seal.
+let SEAL_PNG: Buffer | null = null;
+try {
+  SEAL_PNG = readFileSync(path.join(process.cwd(), 'public/images/certificate-seal.png'));
+} catch {
+  SEAL_PNG = null;
+}
 
 export interface CertificateData {
   studentName: string;
@@ -13,145 +29,133 @@ export interface CertificateData {
   certificateId: string;
 }
 
-/**
- * Generates a PDF certificate as a Buffer.
- * Uses PDFKit which runs natively in Node.js without browser polyfills.
- */
+const COLORS = {
+  paper: '#F6F5F0',
+  dashed: '#D8D5CB',
+  ink: '#1A1A1A',
+  navy: '#163139',
+  body: '#5B5B58',
+  gold: '#A98B53',
+  blue: '#0066FF',
+};
+
+/** Generates a PDF certificate as a Buffer (A4 landscape). */
 export async function generateCertificatePDF(data: CertificateData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    // A4 landscape
-    const doc = new PDFDocument({
-      size: 'A4',
-      layout: 'landscape',
-      margins: { top: 40, bottom: 40, left: 40, right: 40 },
-    });
+    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0 });
 
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(chunks)));
 
-    const pageWidth = doc.page.width;
-    const pageHeight = doc.page.height;
-    const margin = 40;
+    const W = doc.page.width;
+    const H = doc.page.height;
+    const pad = 60;
 
-    // ── Outer border ─────────────────────────────────────────────────────────
-    doc
-      .rect(margin, margin, pageWidth - margin * 2, pageHeight - margin * 2)
-      .lineWidth(6)
-      .strokeColor('#1E40AF')
-      .stroke();
+    // ── Cream paper ──────────────────────────────────────────────────────────
+    doc.rect(0, 0, W, H).fill(COLORS.paper);
 
-    // ── Inner border ─────────────────────────────────────────────────────────
+    // ── Dashed inner frame ─────────────────────────────────────────────────────
     doc
-      .rect(margin + 12, margin + 12, pageWidth - (margin + 12) * 2, pageHeight - (margin + 12) * 2)
-      .lineWidth(1.5)
-      .strokeColor('#93C5FD')
-      .stroke();
-
-    // ── Header ───────────────────────────────────────────────────────────────
-    doc
-      .fontSize(40)
-      .fillColor('#1E3A8A')
-      .font('Helvetica-Bold')
-      .text('CERTIFICATE OF COMPLETION', 0, 90, {
-        align: 'center',
-        characterSpacing: 2,
-      });
-
-    // ── Sub-header ───────────────────────────────────────────────────────────
-    doc
-      .moveDown(0.6)
-      .fontSize(18)
-      .font('Helvetica')
-      .fillColor('#4B5563')
-      .text('This is to certify that', { align: 'center' });
-
-    // ── Student name ─────────────────────────────────────────────────────────
-    doc
-      .moveDown(0.8)
-      .fontSize(30)
-      .font('Helvetica-Bold')
-      .fillColor('#111827')
-      .text(data.studentName, { align: 'center', underline: false });
-
-    // Underline below name
-    const nameY = doc.y + 6;
-    const lineWidth = 380;
-    doc
-      .moveTo((pageWidth - lineWidth) / 2, nameY)
-      .lineTo((pageWidth + lineWidth) / 2, nameY)
+      .save()
       .lineWidth(1)
-      .strokeColor('#D1D5DB')
-      .stroke();
+      .dash(3, { space: 3 })
+      .strokeColor(COLORS.dashed)
+      .rect(22, 22, W - 44, H - 44)
+      .stroke()
+      .undash()
+      .restore();
 
-    // ── Course label ─────────────────────────────────────────────────────────
+    // ── Heading (top-left) ─────────────────────────────────────────────────────
     doc
-      .moveDown(1.4)
+      .font('Helvetica')
       .fontSize(16)
-      .font('Helvetica')
-      .fillColor('#4B5563')
-      .text('has successfully completed the course', { align: 'center' });
+      .fillColor(COLORS.gold)
+      .text('CERTIFICATE OF', pad, 64, { characterSpacing: 3 });
+    doc.font('Helvetica-Bold').fontSize(42).fillColor(COLORS.ink).text('COMPLETION', pad, 84);
 
-    // ── Course name ──────────────────────────────────────────────────────────
+    // ── Wordmark (top-right) ───────────────────────────────────────────────────
     doc
-      .moveDown(0.6)
-      .fontSize(22)
       .font('Helvetica-Bold')
-      .fillColor('#1E40AF')
-      .text(data.courseName, { align: 'center', width: pageWidth - 160 });
+      .fontSize(24)
+      .fillColor(COLORS.ink)
+      .text('Theraptly', W - pad - 220, 70, { width: 220, align: 'right' });
 
-    // ── Footer ───────────────────────────────────────────────────────────────
-    const footerY = pageHeight - margin - 80;
-    const footerLineY = footerY - 10;
-
-    doc
-      .moveTo(margin + 50, footerLineY)
-      .lineTo(pageWidth - margin - 50, footerLineY)
-      .lineWidth(0.5)
-      .strokeColor('#E5E7EB')
-      .stroke();
-
-    // Date column (left)
-    doc
-      .fontSize(11)
-      .font('Helvetica')
-      .fillColor('#6B7280')
-      .text('Date of Completion', margin + 60, footerY, { width: 200, align: 'center' });
-
-    doc
-      .fontSize(13)
-      .font('Helvetica-Bold')
-      .fillColor('#374151')
-      .text(data.issueDate, margin + 60, footerY + 18, { width: 200, align: 'center' });
-
-    // Org column (right) — only if provided
-    if (data.organizationName) {
-      doc
-        .fontSize(11)
-        .font('Helvetica')
-        .fillColor('#6B7280')
-        .text('Issued By', pageWidth - margin - 260, footerY, { width: 200, align: 'center' });
-
-      doc
-        .fontSize(13)
-        .font('Helvetica-Bold')
-        .fillColor('#374151')
-        .text(data.organizationName, pageWidth - margin - 260, footerY + 18, {
-          width: 200,
-          align: 'center',
-        });
+    // ── Gold seal (rasterised real artwork, right) ─────────────────────────────
+    if (SEAL_PNG) {
+      const sealW = 126;
+      doc.image(SEAL_PNG, W - pad - sealW - 6, 150, { width: sealW });
     }
 
-    // ── Certificate ID watermark ──────────────────────────────────────────────
+    // ── Body (left-aligned) ────────────────────────────────────────────────────
+    const bodyW = 470;
+    let y = 250;
+
     doc
-      .fontSize(9)
       .font('Helvetica')
-      .fillColor('#9CA3AF')
-      .text(`ID: ${data.certificateId}`, pageWidth - margin - 180, pageHeight - margin - 30, {
-        width: 170,
-        align: 'right',
+      .fontSize(13)
+      .fillColor(COLORS.body)
+      .text('This is to certify that', pad, y);
+    y += 28;
+    doc.font('Helvetica-Bold').fontSize(28).fillColor(COLORS.navy).text(data.studentName, pad, y, {
+      width: bodyW,
+    });
+    y = doc.y + 18;
+    doc
+      .font('Helvetica')
+      .fontSize(13)
+      .fillColor(COLORS.body)
+      .text('successfully completed and received a passing grade in', pad, y);
+    y += 26;
+    doc.font('Helvetica-Bold').fontSize(20).fillColor(COLORS.navy).text(data.courseName, pad, y, {
+      width: bodyW,
+    });
+    y = doc.y + 18;
+
+    doc.font('Helvetica').fontSize(13).fillColor(COLORS.body);
+    doc.text('a course of study offered by ', pad, y, { width: bodyW, continued: true });
+    doc
+      .font('Helvetica-Bold')
+      .fillColor(COLORS.navy)
+      .text(data.organizationName || 'the organization', {
+        continued: true,
       });
+    doc
+      .font('Helvetica')
+      .fillColor(COLORS.body)
+      .text(', showcasing your commitment to excellence, innovation, and teamwork.');
+
+    // ── Footer — metadata ──────────────────────────────────────────────────────
+    // "Presented on" sits bottom-left; "Valid certificate ID" bottom-right.
+    const footY = H - pad - 52;
+    const idColW = 240;
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor(COLORS.gold)
+      .text('PRESENTED ON', pad, footY, { characterSpacing: 1 });
+    doc
+      .font('Helvetica')
+      .fontSize(15)
+      .fillColor(COLORS.ink)
+      .text(data.issueDate, pad, footY + 14);
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor(COLORS.gold)
+      .text('VALID CERTIFICATE ID', W - pad - idColW, footY, {
+        width: idColW,
+        align: 'right',
+        characterSpacing: 1,
+      });
+    doc
+      .font('Helvetica')
+      .fontSize(15)
+      .fillColor(COLORS.ink)
+      .text(data.certificateId, W - pad - idColW, footY + 14, { width: idColW, align: 'right' });
 
     doc.end();
   });

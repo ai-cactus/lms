@@ -3,6 +3,8 @@ import path from 'path';
 
 export default defineConfig({
   test: {
+    environment: 'jsdom',
+    setupFiles: ['./vitest.setup.ts'],
     exclude: [...defaultExclude, 'tests/e2e/**/*'],
     server: {
       deps: {

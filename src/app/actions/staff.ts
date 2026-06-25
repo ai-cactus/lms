@@ -1,9 +1,9 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
-import type { UserRole } from '@prisma/client';
+import type { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 
@@ -84,6 +84,7 @@ export async function getStaffDetails(userId: string) {
         courseId: e.courseId,
         courseName: e.course.title,
         courseImage: e.course.thumbnail,
+        courseType: e.course.type,
         status: e.status,
         progress: e.progress,
         score: e.score ?? 0,
@@ -109,8 +110,17 @@ export async function updateStaffDetails(
   },
 ) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
     return { success: false, error: 'Unauthorized' };
+  }
+
+  // Tenant isolation: an admin may only edit users that belong to their own org.
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { organizationId: true },
+  });
+  if (!target || target.organizationId !== session.user.organizationId) {
+    return { success: false, error: 'Forbidden' };
   }
 
   try {

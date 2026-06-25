@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import { prisma } from './prisma';
 
 async function main() {
   console.log('Starting auditor access synchronization...');

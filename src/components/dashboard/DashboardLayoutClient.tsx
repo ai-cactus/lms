@@ -1,11 +1,19 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import styles from '@/app/dashboard/(main)/layout.module.css';
 import { Logo } from '@/components/ui';
 import Header from '@/components/dashboard/Header';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import {
+  Home,
+  FileText,
+  BookOpen,
+  Users,
+  ClipboardCheck,
+  CreditCard,
+  ChevronDown,
+} from 'lucide-react';
 
 interface DashboardLayoutClientProps {
   children: React.ReactNode;
@@ -45,205 +53,124 @@ export default function DashboardLayoutClient({
   // If on profile page, render simplified layout
   if (isProfilePage) {
     return (
-      <div
-        className={styles.container}
-        style={{ flexDirection: 'column', backgroundColor: '#FFFFFF' }}
-      >
-        <header
-          style={{
-            height: '80px',
-            padding: '0 40px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid #E2E8F0',
-            width: '100%',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div className="relative min-h-screen w-full flex flex-col bg-white">
+        <header className="flex h-20 w-full items-center justify-between border-b border-[#e2e8f0] px-10">
+          <div className="flex items-center">
             {/* Blue Logo for Profile Page */}
             <Logo size="md" variant="blue" />
           </div>
 
-          <div className={styles.headerEnd}>
-            <div className={styles.profile}>
-              <div className={styles.avatar}>{fullName ? fullName[0] : userEmail[0]}</div>
-              <span className={styles.profileName}>{fullName}</span>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.chevron}
-              >
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
+          <div className="flex items-center gap-6">
+            <div className="flex cursor-pointer items-center gap-3 rounded-full bg-[#f7fafc] py-1.5 pl-1.5 pr-3">
+              <div className="flex size-8 items-center justify-center rounded-full bg-[#bfccfa] text-xs font-semibold text-[#2d4ddd]">
+                {fullName ? fullName[0] : userEmail[0]}
+              </div>
+              <span className="hidden text-sm font-semibold text-[#2d3748] lg:block">
+                {fullName}
+              </span>
+              <ChevronDown className="hidden size-4 text-[#cbd5e0] lg:inline" />
             </div>
           </div>
         </header>
 
-        <main
-          style={{ flex: 1, width: '100%', maxWidth: '1200px', margin: '0 auto', padding: '0' }}
-        >
-          {children}
-        </main>
+        <main className="mx-auto w-full max-w-[1200px] flex-1 p-0">{children}</main>
       </div>
     );
   }
 
+  const navSectionLabelCls =
+    'mb-3 pl-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#a0aec0]';
+  const navItemBase =
+    'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-[#718096] transition-colors hover:bg-[#f7fafc] hover:text-[#1a202c]';
+  const navItemActive = 'bg-[#edf2f7] text-[#1a202c] font-semibold';
+
   return (
-    <div className={styles.container}>
+    <div className="relative min-h-screen w-full bg-[#f8f9fa]">
       {/* Mobile Backdrop */}
-      {sidebarOpen && <div className={styles.backdrop} onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-[90] bg-black/40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       {/* Sidebar */}
-      <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
-        <div className={styles.logoWrapper}>
+      <aside
+        className={[
+          'fixed top-0 left-0 z-[100] flex h-screen w-[280px] flex-col border-r border-[#e2e8f0] bg-white p-6',
+          'transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
+          // On lg+ always visible; on mobile slides in/out
+          'lg:translate-x-0',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+        ].join(' ')}
+      >
+        <div className="mb-10 flex items-center justify-between">
           <Logo size="sm" />
         </div>
 
-        <nav className={styles.nav}>
+        <nav className="flex flex-col gap-8">
           {/* MAIN MENU Section */}
-          <div className={styles.navSection}>
-            <h4 className={styles.navSectionTitle}>MAIN MENU</h4>
+          <div className="flex flex-col gap-2">
+            <h4 className={navSectionLabelCls}>MAIN MENU</h4>
 
             <Link
               href="/dashboard"
-              className={`${styles.navItem} ${pathname === '/dashboard' ? styles.active : ''}`}
+              className={`${navItemBase} ${pathname === '/dashboard' ? navItemActive : ''}`}
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
-              </svg>
+              <Home className="size-5" />
               <span>Dashboard</span>
             </Link>
 
             <Link
               href="/dashboard/documents"
-              className={`${styles.navItem} ${pathname.startsWith('/dashboard/documents') ? styles.active : ''}`}
+              className={`${navItemBase} ${pathname.startsWith('/dashboard/documents') ? navItemActive : ''}`}
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-                <polyline points="10 9 9 9 8 9" />
-              </svg>
+              <FileText className="size-5" />
               <span>Documents</span>
             </Link>
 
             <Link
               href="/dashboard/courses"
-              className={`${styles.navItem} ${pathname.startsWith('/dashboard/courses') ? styles.active : ''}`}
+              className={`${navItemBase} ${pathname.startsWith('/dashboard/courses') ? navItemActive : ''}`}
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
+              <BookOpen className="size-5" />
               <span>Courses</span>
             </Link>
           </div>
 
           {/* PERFORMANCE Section — admin only */}
           {role === 'admin' && (
-            <div className={styles.navSection}>
-              <h4 className={styles.navSectionTitle}>PERFORMANCE</h4>
+            <div className="flex flex-col gap-2">
+              <h4 className={navSectionLabelCls}>PERFORMANCE</h4>
 
               <Link
                 href="/dashboard/staff"
-                className={`${styles.navItem} ${pathname.startsWith('/dashboard/staff') ? styles.active : ''}`}
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/staff') ? navItemActive : ''}`}
               >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
+                <Users className="size-5" />
                 <span>Staff Management</span>
               </Link>
 
               <Link
-                href="/dashboard/auditor-pack"
-                className={`${styles.navItem} ${pathname.startsWith('/dashboard/auditor-pack') ? styles.active : ''}`}
+                href="/dashboard/audit-reports"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/audit-reports') ? navItemActive : ''}`}
               >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M9 11l3 3L22 4" />
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                </svg>
-                <span>Auditor Pack</span>
+                <ClipboardCheck className="size-5" />
+                <span>Audit Reports</span>
               </Link>
             </div>
           )}
 
           {/* SETTINGS Section — admin only */}
           {role === 'admin' && (
-            <div className={styles.navSection}>
-              <h4 className={styles.navSectionTitle}>SETTINGS</h4>
+            <div className="flex flex-col gap-2">
+              <h4 className={navSectionLabelCls}>SETTINGS</h4>
 
               <Link
                 href="/dashboard/billing"
-                className={`${styles.navItem} ${pathname.startsWith('/dashboard/billing') ? styles.active : ''}`}
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/billing') ? navItemActive : ''}`}
               >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-                  <line x1="1" y1="10" x2="23" y2="10" />
-                </svg>
+                <CreditCard className="size-5" />
                 <span>Billing</span>
               </Link>
             </div>
@@ -252,11 +179,11 @@ export default function DashboardLayoutClient({
       </aside>
 
       {/* Main Content Area */}
-      <main className={styles.main}>
+      <main className="flex min-h-screen w-full flex-col lg:ml-[280px] lg:w-[calc(100%-280px)]">
         {/* Top Header */}
         <Header fullName={fullName} onMenuClick={() => setSidebarOpen(true)} />
 
-        <div className={styles.content}>{children}</div>
+        <div className="min-w-0 flex-1 p-4 lg:p-10">{children}</div>
       </main>
     </div>
   );

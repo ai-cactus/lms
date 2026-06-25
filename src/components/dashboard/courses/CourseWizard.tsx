@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import styles from './CourseWizard.module.css';
 import Step1Category from './steps/Step1Category';
 import Step2Documents from './steps/Step2Documents';
 import Step3Details from './steps/Step3Details';
@@ -13,7 +12,7 @@ import Step7Publish from './steps/Step7Publish';
 import CourseSuccessModal from './CourseSuccessModal';
 import ConfirmPublishModal from './ConfirmPublishModal';
 import Logo from '@/components/ui/Logo';
-import Button from '@/components/ui/legacy/Button';
+import { Button } from '@/components/ui/button';
 import PhiErrorModal from './PhiErrorModal';
 import { createFullCourse } from '@/app/actions/course';
 import { analyzeStoredDocument } from '@/app/actions/course-ai';
@@ -542,13 +541,13 @@ export default function CourseWizard() {
   };
 
   return (
-    <div className={styles.container}>
-      <header className={styles.header}>
-        <div className={styles.logoSection}>
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-background font-body">
+      <header className="relative flex h-20 w-full shrink-0 border-b border-border bg-background max-md:px-4">
+        <div className="relative flex w-[250px] items-center justify-center border-r border-border max-md:mr-4 max-md:w-auto max-md:border-r-0">
           <Logo variant="blue" size="md" />
         </div>
-        <div className={styles.headerContent}>
-          <span className={styles.stepText}>
+        <div className="flex flex-1 items-center justify-between px-10 max-md:px-0">
+          <span className="text-base font-medium text-[#2d3748] max-md:mr-auto max-md:text-sm">
             Step {currentStep} of {totalSteps}
           </span>
           <Button
@@ -566,12 +565,12 @@ export default function CourseWizard() {
           </Button>
         </div>
         <div
-          className={styles.progressBar}
+          className="absolute bottom-0 left-0 z-10 h-1 bg-primary transition-[width] duration-300 ease-[ease]"
           style={{ width: `${(currentStep / totalSteps) * 100}%` }}
         />
       </header>
 
-      <main className={styles.content}>
+      <main className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-5 pt-10 pb-1.5 max-md:px-4 max-md:pt-6">
         {showResumeBanner && (
           <div className="bg-[#EBF4FF] border border-[#BEE3F8] rounded-lg p-4 mb-6 flex justify-between items-center">
             <div>
@@ -593,7 +592,7 @@ export default function CourseWizard() {
                 Start Fresh
               </Button>
               <Button
-                variant="primary"
+                variant="default"
                 size="sm"
                 onClick={() => {
                   if (draftToRestore) {
@@ -623,15 +622,22 @@ export default function CourseWizard() {
         {renderStep()}
 
         {(!isGenerating || currentStep !== 5) && (
-          <div className={`${styles.footer} ${currentStep === 5 ? styles.footerWide : ''}`}>
-            {publishError && <div className={styles.errorMessage}>{publishError}</div>}
-            <div className={styles.footerButtons}>
-              <Button variant="secondary" size="md" onClick={handleBack} disabled={isPublishing}>
+          <div
+            className={`flex w-full shrink-0 justify-between px-5 z-20 mt-4 mb-4 transition-[max-width] duration-300 ease-[ease] max-md:mt-8 max-md:mb-8 max-md:px-0 ${
+              currentStep === 5 ? 'max-w-[1400px]' : 'max-w-[800px]'
+            }`}
+          >
+            {publishError && (
+              <div className="mb-3 rounded-md bg-[#fed7d7] px-4 py-2.5 text-center text-sm text-[#e53e3e]">
+                {publishError}
+              </div>
+            )}
+            <div className="flex w-full justify-between">
+              <Button variant="secondary" onClick={handleBack} disabled={isPublishing}>
                 Back
               </Button>
               <Button
-                variant="primary"
-                size="md"
+                variant="default"
                 onClick={handleNext}
                 disabled={
                   isNextDisabled() || isGenerating || isPublishing || isAnalyzing || isScanningPhi
@@ -750,7 +756,7 @@ export default function CourseWizard() {
                   Cancel
                 </Button>
                 <Button
-                  variant="primary"
+                  variant="default"
                   size="sm"
                   onClick={() => {
                     sessionStorage.removeItem(DRAFT_KEY);

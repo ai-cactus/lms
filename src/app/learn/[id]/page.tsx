@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import styles from '../../../components/courses/CoursePlayer.module.css';
+import { Menu, AlertCircle } from 'lucide-react';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 
 // Reusable Components
@@ -11,7 +11,10 @@ import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
-import { Button } from '@/components/ui';
+import AdminCourseReview from '@/components/courses/AdminCourseReview';
+import { Button } from '@/components/ui/button';
+import { VideoPlayer } from '@/components/video/VideoPlayer';
+import { isQuizUnlocked } from '@/lib/video/gating';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { logger } from '@/lib/logger';
 
@@ -23,6 +26,9 @@ interface Lesson {
   duration: number | null;
   order: number;
   moduleIndex: number;
+  videoProvider?: string | null;
+  videoStorageUri?: string | null;
+  videoDurationSeconds?: number | null;
 }
 
 interface Question {
@@ -31,6 +37,7 @@ interface Question {
   type: string;
   options: string[];
   correctAnswer: string;
+  explanation?: string;
 }
 
 interface Quiz {
@@ -57,6 +64,7 @@ interface EnrollmentData {
   progress: number;
   status: string;
   score?: number;
+  videoPositionSeconds?: number | null;
   quizAttempts?: {
     id: string;
     score: number;
@@ -136,6 +144,11 @@ export default function LearnPage() {
   // Quiz unlocked flag
   const [quizUnlocked, setQuizUnlocked] = useState(false);
 
+  // Video watch-gate progress (only relevant for VIDEO lessons).
+  // Seeded in the initial fetch from the video's own position
+  // (videoPositionSeconds / videoDurationSeconds), then updated live by VideoPlayer.
+  const [watchedPct, setWatchedPct] = useState(0);
+
   // Track if user just finished quiz in this session
   // (Removed unused justFinished state)
 
@@ -203,11 +216,25 @@ export default function LearnPage() {
     }
   };
 
+  // True when the LAST lesson is a video lesson whose watch-gate has not yet been met.
+  // Admins bypass; non-video courses are unaffected (returns false).
+  const isVideoQuizGateBlocked = () => {
+    if (!course || userData?.role === 'admin') return false;
+    const lastLesson = course.lessons[course.lessons.length - 1];
+    if (!lastLesson?.videoStorageUri) return false;
+    return !isQuizUnlocked(watchedPct);
+  };
+
   const handleRailSelect = (index: number) => {
     if (!course) return;
 
     // Quiz Index Selection
     if (index === course.lessons.length) {
+      // Video watch-gate: keep the quiz locked until the gate is met.
+      // (The disabled control + hint already communicate this to the learner.)
+      if (!quizResults && isVideoQuizGateBlocked()) {
+        return;
+      }
       if (quizUnlocked || quizResults || userData?.role === 'admin') {
         setIsQuizActive(true);
         setQuizStep(quizResults ? 'review' : 'intro');
@@ -239,7 +266,14 @@ export default function LearnPage() {
       setActiveIndex(nextIndex);
       updateProgress(nextIndex);
     } else if (activeIndex === course.lessons.length - 1 && course.quiz) {
-      // Reached end of lessons, check quiz
+      // Reached end of lessons, check quiz.
+      // Video watch-gate: bail out BEFORE writing any progress so a blocked video
+      // lesson never persists a lesson-completion value that would later seed/unlock
+      // the gate on reload. Text courses (gate returns false) fall through unchanged.
+      if (isVideoQuizGateBlocked()) {
+        return;
+      }
+
       if (course.lessons.length - 1 > highestUnlockedIndex) {
         setHighestUnlockedIndex(course.lessons.length - 1);
       }
@@ -346,6 +380,21 @@ export default function LearnPage() {
         setCourse(data.course);
         setEnrollment(data.enrollment);
         setUserData(data.user);
+
+        // Seed the video watch-gate from the VIDEO's own authoritative signal
+        // (videoPositionSeconds / videoDurationSeconds), NOT enrollment.progress.
+        // enrollment.progress is also written by lesson-nav (updateProgress) and would
+        // otherwise unlock the gate after a reload even if the video was never watched.
+        const videoLesson = (data.course.lessons || []).find((l) => l.videoStorageUri);
+        if (videoLesson) {
+          const durationSeconds = videoLesson.videoDurationSeconds ?? 0;
+          const positionSeconds = data.enrollment?.videoPositionSeconds ?? 0;
+          const seededPct =
+            durationSeconds > 0
+              ? Math.min(100, Math.round((positionSeconds / durationSeconds) * 100))
+              : 0;
+          setWatchedPct(seededPct);
+        }
 
         const lessonCount = data.course.lessons?.length || 1;
 
@@ -468,26 +517,62 @@ export default function LearnPage() {
 
   if (loading)
     return (
-      <div
-        className={styles.playerContainer}
-        style={{ justifyContent: 'center', alignItems: 'center' }}
-      >
+      <div className="flex flex-row-reverse max-md:flex-col h-screen w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a] justify-center items-center">
         Loading...
       </div>
     );
   if (error)
     return (
-      <div
-        className={styles.playerContainer}
-        style={{ justifyContent: 'center', alignItems: 'center' }}
-      >
+      <div className="flex flex-row-reverse max-md:flex-col h-screen w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a] justify-center items-center">
         Error: {error}
       </div>
     );
   if (!course) return null;
 
+  // Admins opening a VIDEO course get a clean read-only review: the course
+  // video + an answer-key walkthrough of the quiz + an Assign action. (Text
+  // courses keep the existing editable admin flow below.)
+  if (userData?.role === 'admin' && course.lessons.some((l) => l.videoStorageUri)) {
+    const reviewVideoLesson = course.lessons.find((l) => l.videoStorageUri) ?? null;
+    return (
+      <AdminCourseReview
+        courseId={courseId}
+        title={course.title}
+        videoLesson={
+          reviewVideoLesson ? { id: reviewVideoLesson.id, title: reviewVideoLesson.title } : null
+        }
+        enrollmentId={enrollment?.id || 'preview-mode'}
+        quiz={
+          course.quiz
+            ? {
+                title: course.quiz.title,
+                passingScore: course.quiz.passingScore,
+                questions: course.quiz.questions.map((q) => ({
+                  id: q.id,
+                  text: q.text,
+                  options: q.options,
+                  correctAnswer: q.correctAnswer,
+                  explanation: q.explanation,
+                })),
+              }
+            : null
+        }
+      />
+    );
+  }
+
   const isQuizIndex = activeIndex >= course.lessons.length;
   const currentLesson = !isQuizIndex ? course.lessons[activeIndex] : null;
+
+  // VIDEO lesson detection + watch-gate. Text lessons (no videoStorageUri) are unaffected.
+  const isVideoLesson = Boolean(currentLesson?.videoStorageUri);
+  // A video course = any lesson carries a video. Used to hide the article/slide
+  // toggle ("View on Slides") which is meaningless for video content.
+  const isVideoCourse = course.lessons.some((l) => Boolean(l.videoStorageUri));
+  // For video lessons, the quiz stays locked until the watch-gate is met.
+  // Admins bypass the gate; text lessons keep their existing (non-video) gating.
+  const isVideoGateBlocked =
+    isVideoLesson && userData?.role !== 'admin' && !isQuizUnlocked(watchedPct);
 
   const isQuizLocked = isQuizActive && quizStep === 'active' && userData?.role !== 'admin';
 
@@ -500,7 +585,7 @@ export default function LearnPage() {
   const showSharedLayout = isQuizIndex || (quizStep === 'review' && quizResults);
 
   return (
-    <div className={styles.playerContainer}>
+    <div className="flex flex-row-reverse max-md:flex-col h-screen w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a]">
       {showSharedLayout && (
         <CourseRail
           lessons={course.lessons}
@@ -522,59 +607,46 @@ export default function LearnPage() {
       {/* Mobile Rail Toggle Button */}
       {showSharedLayout && (
         <button
-          className={styles.railToggle}
+          className="hidden max-md:flex fixed bottom-5 right-5 z-[70] h-12 w-12 cursor-pointer items-center justify-center rounded-full border border-[#e5e7eb] bg-white text-[#374151] shadow-[0_4px_12px_rgba(0,0,0,0.15)] transition-all hover:scale-105 hover:bg-[#f9fafb]"
           onClick={() => setRailOpen(true)}
           aria-label="Open module list"
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="8" y1="6" x2="21" y2="6" />
-            <line x1="8" y1="12" x2="21" y2="12" />
-            <line x1="8" y1="18" x2="21" y2="18" />
-            <line x1="3" y1="6" x2="3.01" y2="6" />
-            <line x1="3" y1="12" x2="3.01" y2="12" />
-            <line x1="3" y1="18" x2="3.01" y2="18" />
-          </svg>
+          <Menu width={20} height={20} strokeWidth={2} />
         </button>
       )}
 
-      <div className={styles.main} style={showSharedLayout ? {} : { width: '100%' }}>
+      <div
+        className="flex h-full flex-1 flex-col overflow-hidden"
+        style={showSharedLayout ? {} : { width: '100%' }}
+      >
         {showSharedLayout && (
-          <header className={styles.topbar}>
-            <div className={styles.topbarLeft}>
-              <span className={styles.breadcrumb}>Course</span>
-              <span className={styles.breadcrumbSep}>›</span>
-              <span className={styles.breadcrumbActive}>
+          <header className="z-10 flex h-16 max-md:h-[52px] flex-shrink-0 items-center justify-between border-b border-[#e8e6e1] bg-[#fafaf8] px-8 max-md:gap-2 max-md:px-3">
+            <div className="flex items-center gap-2.5 max-md:min-w-0 max-md:flex-1 max-md:overflow-hidden">
+              <span className="text-[13px] font-medium text-[#9ca3af] max-md:hidden">Course</span>
+              <span className="text-[13px] text-[#d1d5db] max-md:hidden">›</span>
+              <span className="max-w-[400px] overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-semibold text-[#374151] max-md:max-w-[200px] max-md:text-xs">
                 {isQuizIndex ? course.quiz?.title || 'Quiz' : currentLesson?.title}
               </span>
               {!isQuizIndex && (
-                <span className={styles.durationPill}>
+                <span className="ml-2 rounded-[20px] bg-[#f3f4f6] px-2.5 py-1 text-[11px] font-semibold text-text-muted max-md:hidden">
                   {course.duration || currentLesson?.duration || 5} min
                 </span>
               )}
             </div>
 
-            <div className={styles.topbarRight}>
+            <div className="flex items-center gap-6 max-md:flex-shrink-0 max-md:gap-2">
               {!isQuizIndex && (
-                <div className={styles.toggle}>
+                <div className="flex gap-0.5 rounded-lg bg-[#efefed] p-[3px] max-md:p-0.5">
                   <Button
                     variant="ghost"
-                    className={`${styles.toggleBtn} ${viewMode === 'article' ? styles.toggleBtnActive : ''}`}
+                    className={`h-auto cursor-pointer rounded-md border-none px-4 py-1.5 text-xs font-semibold tracking-[0.02em] transition-all max-md:px-2.5 max-md:py-[5px] max-md:text-[10px] ${viewMode === 'article' ? 'bg-white text-primary shadow-[0_1px_3px_rgba(0,0,0,0.1)]' : 'bg-transparent text-text-muted'}`}
                     onClick={() => setViewMode('article')}
                   >
                     ARTICLE
                   </Button>
                   <Button
                     variant="ghost"
-                    className={`${styles.toggleBtn} ${viewMode === 'slides' ? styles.toggleBtnActive : ''}`}
+                    className={`h-auto cursor-pointer rounded-md border-none px-4 py-1.5 text-xs font-semibold tracking-[0.02em] transition-all max-md:px-2.5 max-md:py-[5px] max-md:text-[10px] ${viewMode === 'slides' ? 'bg-white text-primary shadow-[0_1px_3px_rgba(0,0,0,0.1)]' : 'bg-transparent text-text-muted'}`}
                     onClick={() => setViewMode('slides')}
                   >
                     SLIDE
@@ -585,7 +657,7 @@ export default function LearnPage() {
           </header>
         )}
 
-        <div className={styles.contentArea}>
+        <div className="relative h-full flex-1 overflow-hidden bg-[#f8f7f4]">
           {quizStep === 'review' && quizResults ? (
             <div style={{ overflow: 'auto', height: '100%', padding: 24 }}>
               <QuizResults
@@ -643,13 +715,15 @@ export default function LearnPage() {
                 />
               </div>
             ) : (
-              <div className={`${styles.slideStage} ${styles.fadeEnter}`}>
-                <div className={styles.quizCard}>
-                  <div className={styles.slideAccent} />
-                  <div className={styles.quizInner}>
+              <div className="flex h-full flex-col items-center justify-start overflow-y-auto px-4 py-8 max-md:px-2 max-md:py-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+                <div className="relative mx-auto flex w-full max-w-[800px] flex-col rounded-2xl border border-[#e8e6e1] bg-white shadow-[0_4px_12px_-2px_rgba(0,0,0,0.08),0_24px_48px_-12px_rgba(0,0,0,0.1)] max-md:rounded-xl">
+                  <div className="hidden" />
+                  <div className="flex flex-1 flex-col px-12 pt-10 pb-5 max-md:px-4 max-md:pt-5 max-md:pb-4">
                     {quizStep === 'intro' && (
-                      <div className={styles.quizIntro}>
-                        <h1 className={styles.quizIntroTitle}>{course.quiz?.title}</h1>
+                      <div className="mt-10 flex w-full flex-col items-center text-center">
+                        <h1 className="mb-4 text-[32px] font-extrabold tracking-[-0.02em] text-[#111827] max-md:text-[22px] max-[480px]:text-[20px]">
+                          {course.quiz?.title}
+                        </h1>
 
                         {enrollment?.status === 'locked' ? (
                           <div
@@ -680,20 +754,7 @@ export default function LearnPage() {
                                   justifyContent: 'center',
                                 }}
                               >
-                                <svg
-                                  width="24"
-                                  height="24"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2.5"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <circle cx="12" cy="12" r="10"></circle>
-                                  <line x1="12" y1="8" x2="12" y2="12"></line>
-                                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                                </svg>
+                                <AlertCircle width={24} height={24} strokeWidth={2.5} />
                               </div>
                             </div>
                             <h2
@@ -720,7 +781,7 @@ export default function LearnPage() {
                           </div>
                         ) : (
                           <>
-                            <p className={styles.quizIntroText}>
+                            <p className="mb-10 text-base leading-[1.6] text-[#6b7280] max-md:text-sm">
                               This quiz contains {course.quiz?.questions.length} questions.
                               <br />
                               Passing score: {course.quiz?.passingScore}%
@@ -742,7 +803,7 @@ export default function LearnPage() {
                               )}
                             </p>
                             <Button
-                              variant="primary"
+                              variant="default"
                               style={{ fontSize: 16, padding: '12px 32px' }}
                               onClick={handleStartQuiz}
                             >
@@ -755,7 +816,7 @@ export default function LearnPage() {
 
                     {quizStep === 'active' && course.quiz && (
                       <>
-                        <div className={styles.quizHeader}>
+                        <div className="mb-8">
                           <div
                             style={{
                               display: 'flex',
@@ -763,35 +824,41 @@ export default function LearnPage() {
                               marginBottom: 16,
                             }}
                           >
-                            <span className={styles.slideModuleLabel}>
+                            <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-text-muted">
                               Question {currentQuestionIndex + 1} of {course.quiz.questions.length}
                               {course.quiz.allowedAttempts &&
                                 ` | Attempt ${enrollment?.quizAttempts?.[0]?.attemptCount ?? 1} of ${course.quiz.allowedAttempts}`}
                             </span>
-                            <span className={styles.slideCounter}>
+                            <span className="text-[11px] font-semibold text-text-muted">
                               {Math.floor(timeLeft / 60)}:
                               {(timeLeft % 60).toString().padStart(2, '0')}
                             </span>
                           </div>
-                          <h2 className={styles.quizQuestion}>
+                          <h2 className="text-2xl font-bold leading-[1.3] tracking-[-0.01em] text-foreground max-md:text-lg max-[480px]:text-base">
                             {course.quiz.questions[currentQuestionIndex].text}
                           </h2>
                         </div>
-                        <div className={styles.optionsGrid}>
-                          {course.quiz.questions[currentQuestionIndex].options.map((opt, i) => (
-                            <div
-                              key={i}
-                              className={`${styles.optionBox} ${quizAnswers[course.quiz!.questions[currentQuestionIndex].id] === opt ? styles.selected : ''}`}
-                              onClick={() => handleOptionSelect(opt)}
-                            >
-                              <div className={styles.optionLetter}>
-                                {String.fromCharCode(65 + i)}
+                        <div className="mb-8 grid grid-cols-1 gap-3">
+                          {course.quiz.questions[currentQuestionIndex].options.map((opt, i) => {
+                            const isSelected =
+                              quizAnswers[course.quiz!.questions[currentQuestionIndex].id] === opt;
+                            return (
+                              <div
+                                key={i}
+                                className={`flex cursor-pointer items-center gap-4 rounded-xl border bg-white px-5 py-4 font-medium transition-all hover:-translate-y-px hover:border-primary hover:bg-background-secondary hover:shadow-[0_2px_4px_rgba(0,0,0,0.05)] max-md:gap-3 max-md:px-3.5 max-md:py-3 ${isSelected ? 'border-primary bg-background-secondary font-semibold text-primary shadow-[0_0_0_1px_var(--primary)]' : 'border-[#e5e7eb] text-[#374151]'}`}
+                                onClick={() => handleOptionSelect(opt)}
+                              >
+                                <div
+                                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-sm font-bold transition-all ${isSelected ? 'bg-primary text-white' : 'bg-[#f3f4f6] text-[#6b7280]'}`}
+                                >
+                                  {String.fromCharCode(65 + i)}
+                                </div>
+                                <span>{opt}</span>
                               </div>
-                              <span>{opt}</span>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
-                        <div className={styles.quizFooter}>
+                        <div className="flex items-center justify-between border-t border-[#f3f4f6] pt-3 max-md:flex-wrap max-md:gap-2">
                           <Button
                             variant="outline"
                             onClick={() => setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))}
@@ -805,7 +872,7 @@ export default function LearnPage() {
                             Previous Question
                           </Button>
                           <Button
-                            variant="primary"
+                            variant="default"
                             onClick={handleNextQuestion}
                             disabled={
                               !quizAnswers[course.quiz.questions[currentQuestionIndex].id] ||
@@ -830,6 +897,23 @@ export default function LearnPage() {
                 </div>
               </div>
             )
+          ) : viewMode === 'slides' && isVideoLesson ? (
+            <div className="flex h-full flex-col overflow-y-auto px-4 py-6 md:px-8 md:py-10">
+              <div className="mx-auto w-full max-w-[860px]">
+                <h2 className="mb-4 text-xl font-bold text-foreground md:text-2xl">
+                  {currentLesson!.title}
+                </h2>
+                <VideoPlayer
+                  lessonId={currentLesson!.id}
+                  enrollmentId={enrollment!.id}
+                  initialPositionSeconds={enrollment?.videoPositionSeconds ?? 0}
+                  onWatchedPct={setWatchedPct}
+                />
+                {isVideoGateBlocked && (
+                  <p className="mt-3 text-sm text-text-muted">Watch the video to unlock the quiz</p>
+                )}
+              </div>
+            </div>
           ) : viewMode === 'slides' ? (
             <CourseSlide
               lesson={{
@@ -864,8 +948,10 @@ export default function LearnPage() {
                   });
                 }
               }}
-              onToggleView={() => setViewMode('slides')}
+              onToggleView={isVideoCourse ? undefined : () => setViewMode('slides')}
               onProceedToQuiz={() => {
+                // Video watch-gate: block quiz entry until the gate is met.
+                if (isVideoGateBlocked) return;
                 const endIdx = course.lessons.length - 1;
                 setHighestUnlockedIndex(endIdx);
                 updateProgress(endIdx);
@@ -874,6 +960,8 @@ export default function LearnPage() {
                 setQuizStep(quizResults ? 'review' : 'intro');
                 setActiveIndex(course.lessons.length);
               }}
+              proceedDisabled={isVideoGateBlocked}
+              proceedHint="Watch the video to unlock the quiz"
               hasQuiz={!!course.quiz}
               onNext={handleNext}
               onPrev={handlePrev}
@@ -921,16 +1009,34 @@ export default function LearnPage() {
                       >
                         {lesson.title}
                       </h3>
-                      <div
-                        dangerouslySetInnerHTML={{
-                          __html: sanitizeHtml(
-                            (lesson.content || '')
-                              .replace(/&nbsp;/g, ' ')
-                              .replace(/<br\s*\/?>/gi, ' ')
-                              .replace(/\s+/g, ' '),
-                          ),
-                        }}
-                      />
+                      {lesson.videoStorageUri ? (
+                        <>
+                          <VideoPlayer
+                            lessonId={lesson.id}
+                            enrollmentId={enrollment!.id}
+                            initialPositionSeconds={
+                              idx === activeIndex ? (enrollment?.videoPositionSeconds ?? 0) : 0
+                            }
+                            onWatchedPct={idx === activeIndex ? setWatchedPct : undefined}
+                          />
+                          {idx === activeIndex && isVideoGateBlocked && (
+                            <p className="mt-3 text-sm text-text-muted">
+                              Watch the video to unlock the quiz
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <div
+                          dangerouslySetInnerHTML={{
+                            __html: sanitizeHtml(
+                              (lesson.content || '')
+                                .replace(/&nbsp;/g, ' ')
+                                .replace(/<br\s*\/?>/gi, ' ')
+                                .replace(/\s+/g, ' '),
+                            ),
+                          }}
+                        />
+                      )}
                       {idx < course.lessons.length - 1 && (
                         <hr
                           style={{
@@ -951,19 +1057,29 @@ export default function LearnPage() {
 
       {/* Modals */}
       {showQuizGateModal && userData?.role !== 'admin' && (
-        <div className={styles.modalOverlay} onClick={() => setShowQuizGateModal(false)}>
-          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalIcon}>🎓</div>
-            <h2 className={styles.modalTitle}>Ready for the Quiz?</h2>
-            <p className={styles.modalText}>
+        <div
+          className="fixed left-0 top-0 z-[100] flex h-full w-full items-center justify-center bg-black/50 backdrop-blur-[4px] animate-in fade-in duration-200"
+          onClick={() => setShowQuizGateModal(false)}
+        >
+          <div
+            className="flex w-full max-w-[480px] flex-col items-center rounded-2xl bg-white p-10 text-center shadow-[0_20px_25px_-5px_rgba(0,0,0,0.1),0_10px_10px_-5px_rgba(0,0,0,0.04)] animate-in zoom-in-95 duration-200 max-md:m-4 max-md:rounded-xl max-md:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[#f3f4f6] text-5xl max-md:h-16 max-md:w-16 max-md:text-4xl">
+              🎓
+            </div>
+            <h2 className="mb-3 text-2xl font-extrabold tracking-[-0.02em] text-foreground max-md:text-xl">
+              Ready for the Quiz?
+            </h2>
+            <p className="mb-8 text-base leading-[1.5] text-text-muted max-md:text-sm">
               You&apos;ve completed all the course modules. Would you like to proceed to the quiz
               now?
             </p>
-            <div className={styles.modalActions}>
+            <div className="flex w-full justify-center gap-3 max-md:flex-col">
               <Button variant="outline" onClick={() => setShowQuizGateModal(false)}>
                 Review Modules
               </Button>
-              <Button variant="primary" onClick={handleConfirmQuiz}>
+              <Button variant="default" onClick={handleConfirmQuiz}>
                 Start Quiz
               </Button>
             </div>
@@ -971,16 +1087,26 @@ export default function LearnPage() {
         </div>
       )}
       {showIncompleteModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowIncompleteModal(false)}>
-          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalIcon}>📚</div>
-            <h2 className={styles.modalTitle}>Complete All Modules First</h2>
-            <p className={styles.modalText}>
+        <div
+          className="fixed left-0 top-0 z-[100] flex h-full w-full items-center justify-center bg-black/50 backdrop-blur-[4px] animate-in fade-in duration-200"
+          onClick={() => setShowIncompleteModal(false)}
+        >
+          <div
+            className="flex w-full max-w-[480px] flex-col items-center rounded-2xl bg-white p-10 text-center shadow-[0_20px_25px_-5px_rgba(0,0,0,0.1),0_10px_10px_-5px_rgba(0,0,0,0.04)] animate-in zoom-in-95 duration-200 max-md:m-4 max-md:rounded-xl max-md:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[#f3f4f6] text-5xl max-md:h-16 max-md:w-16 max-md:text-4xl">
+              📚
+            </div>
+            <h2 className="mb-3 text-2xl font-extrabold tracking-[-0.02em] text-foreground max-md:text-xl">
+              Complete All Modules First
+            </h2>
+            <p className="mb-8 text-base leading-[1.5] text-text-muted max-md:text-sm">
               You have <strong>{course.lessons.length - (highestUnlockedIndex + 1)}</strong>{' '}
               module(s) remaining. Please complete all modules in order.
             </p>
-            <div className={styles.modalActions}>
-              <Button variant="primary" onClick={() => setShowIncompleteModal(false)}>
+            <div className="flex w-full justify-center gap-3 max-md:flex-col">
+              <Button variant="default" onClick={() => setShowIncompleteModal(false)}>
                 Continue Learning
               </Button>
             </div>
