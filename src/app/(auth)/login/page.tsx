@@ -14,7 +14,7 @@ import { Alert } from '@/components/ui/alert';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { authenticate } from '@/app/actions/auth';
 import { signIn } from 'next-auth/react';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 
 function LoginForm() {
   const router = useRouter();
@@ -86,9 +86,12 @@ function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    logger.info({ msg: '[Login Client] Submit clicked! Current form data:', data: formData });
+    logger.debug({
+      msg: '[login] Submit clicked',
+      data: { email: maskEmail(formData.email), rememberMe: formData.rememberMe },
+    });
     const isValid = validateForm();
-    logger.info({ msg: '[Login Client] Validation result:', data: { isValid, errors } });
+    logger.debug({ msg: '[login] Validation result', data: { isValid, errors } });
     if (!isValid) return;
 
     setErrors({});
@@ -97,22 +100,25 @@ function LoginForm() {
     form.append('email', formData.email);
     form.append('password', formData.password);
 
-    logger.info({ msg: '[Login Client] Dispatching form to authenticate action...' });
+    logger.debug({ msg: '[login] Dispatching form to authenticate action' });
     React.startTransition(() => {
       dispatch(form);
     });
   };
 
   useEffect(() => {
-    logger.info({ msg: '[Login Client] Action state changed:', data: state });
+    logger.debug({
+      msg: '[login] Action state changed',
+      data: { success: state?.success, redirect: state?.redirect, hasError: Boolean(state?.error) },
+    });
     if (state?.redirect) {
       // Auto-route to the correct login page for their role
       router.push(state.redirect);
     } else if (state?.success) {
-      logger.info({ msg: '[Login Client] Success! Redirecting to /dashboard' });
+      logger.debug({ msg: '[login] Success, redirecting to /dashboard' });
       router.push('/dashboard');
     } else if (state?.error) {
-      logger.error({ msg: '[Login Client] Error returned from action:', err: state.error });
+      logger.error({ msg: '[login] Error returned from action', err: state.error });
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional sync of server error to local state for UX control
       setErrors((prev) => ({ ...prev, email: state.error }));
     }
