@@ -1,2 +1,4 @@
 - [App Setup & Infrastructure](app-setup.md) — Docker containers, .env.local, running tests
 - [Signup Test Patterns & Gotchas](signup-test-patterns.md) — Radix checkbox, DB timestamps, email bypass, server action mocking
+- [Staging Env Access & Login UI](staging-env-access.md) — Staging URL, login page landmarks, auth behavior, admin account, session quirks
+- [Report Conventions](report-conventions.md) — Markdown-only reports, location, naming, results-table spine
