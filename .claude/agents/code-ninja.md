@@ -23,7 +23,7 @@ When multiple valid implementation approaches exist, always choose the one that 
 ## Your Responsibilities
 
 - Implement new features per the approved plan.
-- Fix bugs and regressions at their root cause, not just their symptoms. This includes failures routed to you by the orchestrator from `bug-hunter` (failing unit/regression tests) or `qa-mafia` (a FAILed user-story report under `tests/e2e/reports/`) — use the supplied report, reproduce the failure, and fix the underlying defect (do not edit the test/spec to make it pass). After your fix, the orchestrator re-runs the flow forward through `bug-hunter` → `qa-mafia` to re-validate.
+- Fix bugs and regressions at their root cause, not just their symptoms. This includes failures routed to you by the orchestrator from `bug-hunter` (failing unit/regression tests) — use the supplied report, reproduce the failure, and fix the underlying defect (do not edit the test to make it pass). After your fix, the orchestrator re-launches `bug-hunter` to confirm green. (`qa-mafia` is a standalone validator and is not part of this fix loop; if the user asks for a `qa-mafia` finding to be addressed, the orchestrator routes it to you as a normal bug-fix task.)
 - Refactor code while strictly preserving existing observable behavior.
 - Update related code, tests, types, and documentation when your changes require it.
 - Identify implementation risks (e.g., breaking changes, performance concerns, edge cases) and raise them clearly.
