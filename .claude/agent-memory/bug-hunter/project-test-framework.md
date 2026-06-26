@@ -30,3 +30,7 @@ metadata:
 - `src/app/actions/auth.ts` — signupWithRole: rate limiting, token expiry, email send.
 - `src/app/api/auth/resend-verification/route.ts` — role preservation, rate limiting, expiry.
 - `src/lib/rate-limit.ts` — Redis-backed with in-memory fallback; not directly unit-tested (integration concern).
+- `src/lib/storage/gcs-provider.ts` — auth-selection constructor; tested in `src/lib/storage/gcs-provider.test.ts`.
+
+**Storage module singleton pattern:**
+- `src/lib/storage/index.ts` has module-level `_gcsInitialised` and `_minio` singletons. Tests that exercise different init paths must call `vi.resetModules()` + use dynamic `import()` inside the test/beforeEach to get a fresh module evaluation. See integration test in `gcs-provider.test.ts`.
