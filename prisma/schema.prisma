@@ -4,6 +4,15 @@ generator client {
   previewFeatures = ["postgresqlExtensions"]
 }
 
+generator worker_client {
+  provider = "prisma-client-js"
+  // Required by scripts/transcode-worker.mjs — a raw Node.js child process that
+  // cannot consume the TypeScript-output `prisma-client` generator. Outputs the
+  // legacy CJS client to node_modules/.prisma/client, which is already copied
+  // into the runtime image via the existing `COPY .../node_modules`.
+  // Deprecated in Prisma v7; tracked for follow-up migration (worker → tsx+generated client or pg driver).
+}
+
 datasource db {
   provider   = "postgresql"
   extensions = [vector]

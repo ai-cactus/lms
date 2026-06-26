@@ -73,8 +73,11 @@ const log = (level, msg, extra = {}) =>
 
 // ── Dependencies ─────────────────────────────────────────────────────────────
 const Minio = require('minio');
+const { PrismaPg } = require('@prisma/adapter-pg');
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+// Prisma 7 connects via a driver adapter (no query-engine binary). Mirror db/index.ts.
+const prismaAdapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter: prismaAdapter });
 
 let minioClient = null;
 function getMinio() {
@@ -94,7 +97,34 @@ let gcsStorage = null;
 function getGcs() {
   if (!gcsStorage) {
     const { Storage } = require('@google-cloud/storage');
-    gcsStorage = new Storage();
+    const rawKey = process.env.GCS_KEY_BASE64;
+    if (rawKey) {
+      // Mirrors GCSProvider in src/lib/storage/gcs-provider.ts (worker is plain
+      // .mjs and can't import the TS module). NEVER log rawKey or decoded fields.
+      let parsed;
+      try {
+        parsed = JSON.parse(Buffer.from(rawKey, 'base64').toString('utf8'));
+      } catch {
+        log('error', '[transcode-worker] GCS_KEY_BASE64 is malformed (decode/parse failed)', {});
+        throw new Error('GCS_KEY_BASE64 is malformed');
+      }
+      if (
+        typeof parsed?.client_email !== 'string' ||
+        !parsed.client_email ||
+        typeof parsed?.private_key !== 'string' ||
+        !parsed.private_key
+      ) {
+        log('error', '[transcode-worker] GCS_KEY_BASE64 is missing client_email or private_key', {});
+        throw new Error('GCS_KEY_BASE64 is missing required service-account fields');
+      }
+      gcsStorage = new Storage({
+        projectId: process.env.GOOGLE_PROJECT_ID,
+        credentials: { client_email: parsed.client_email, private_key: parsed.private_key },
+      });
+    } else {
+      // Local dev: resolve via ADC (gcloud login / GOOGLE_APPLICATION_CREDENTIALS).
+      gcsStorage = new Storage();
+    }
   }
   return gcsStorage;
 }
