@@ -149,7 +149,7 @@ function VerifyEmailContent() {
         </p>
       </div>
 
-      <p className="text-xs text-text-secondary">The link expires in 5 minutes.</p>
+      <p className="text-xs text-text-secondary">The link expires in 24 hours.</p>
 
       <Button
         size="lg"
