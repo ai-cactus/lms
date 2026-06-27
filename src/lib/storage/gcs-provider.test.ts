@@ -179,6 +179,86 @@ describe('GCSProvider constructor', () => {
   });
 });
 
+// ─── GCSProvider.list ─────────────────────────────────────────────────────────
+//
+// Tests for the list() method added in the orphaned-object cleanup phase.
+// These set up MockStorage to return an instance with a bucket() method.
+
+describe('GCSProvider.list', () => {
+  useEnvIsolation();
+
+  const mockGetFiles = vi.fn();
+  const mockBucketFn = vi.fn().mockReturnValue({ getFiles: mockGetFiles });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GCP_BUCKET_NAME = 'test-bucket';
+    // Give MockStorage a constructor implementation that returns an object
+    // with a .bucket() method.  Must use a regular function (not arrow) so
+    // that new MockStorage(...) works correctly.
+    MockStorage.mockImplementation(function () {
+      return { bucket: mockBucketFn };
+    });
+  });
+
+  it('maps file metadata to StorageListItem with correct gcs:// URIs and createdAt', async () => {
+    mockGetFiles.mockResolvedValue([
+      [
+        {
+          name: 'system/videos/lecture.mp4',
+          metadata: { timeCreated: '2024-01-15T10:00:00Z' },
+        },
+        {
+          name: 'system/videos/preview.webm',
+          metadata: { timeCreated: '2024-03-20T08:30:00Z' },
+        },
+      ],
+    ]);
+
+    const provider = new GCSProvider();
+    const result = await provider.list('system/videos/');
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({
+      storageUri: 'gcs://test-bucket/system/videos/lecture.mp4',
+      createdAt: new Date('2024-01-15T10:00:00Z'),
+    });
+    expect(result[1]).toEqual({
+      storageUri: 'gcs://test-bucket/system/videos/preview.webm',
+      createdAt: new Date('2024-03-20T08:30:00Z'),
+    });
+  });
+
+  it('falls back to a valid Date (not NaN) when timeCreated is absent from metadata', async () => {
+    mockGetFiles.mockResolvedValue([[{ name: 'system/videos/no-meta.mp4', metadata: {} }]]);
+
+    const provider = new GCSProvider();
+    const result = await provider.list('system/videos/');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].createdAt).toBeInstanceOf(Date);
+    expect(isNaN(result[0].createdAt.getTime())).toBe(false);
+  });
+
+  it('returns an empty array when getFiles resolves with no files', async () => {
+    mockGetFiles.mockResolvedValue([[]]);
+
+    const provider = new GCSProvider();
+    const result = await provider.list('system/videos/');
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('passes the prefix to getFiles', async () => {
+    mockGetFiles.mockResolvedValue([[]]);
+
+    const provider = new GCSProvider();
+    await provider.list('system/videos/normalized/');
+
+    expect(mockGetFiles).toHaveBeenCalledWith({ prefix: 'system/videos/normalized/' });
+  });
+});
+
 // ─── Integration: GCS→MinIO fallback via storage/index.ts ─────────────────────
 //
 // index.ts memoises GCS init behind a module-level _gcsInitialised flag.
