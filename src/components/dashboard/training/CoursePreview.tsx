@@ -247,7 +247,7 @@ export default function CoursePreview({
 
       {/* Body */}
       <div className="mx-auto max-w-[1200px]">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           {/* Left column */}
           <div className="flex flex-col gap-8">
             {course.previewVideoStorageUri && <PreviewVideoPlayer courseId={course.id} />}
