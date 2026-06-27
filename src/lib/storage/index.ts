@@ -15,13 +15,13 @@
 
 import { GCSProvider } from './gcs-provider';
 import { MinIOProvider } from './minio-provider';
-import type { StorageProvider, StorageUploadResult } from './types';
+import type { StorageListItem, StorageProvider, StorageUploadResult } from './types';
 import { isLegacyPath } from './types';
 import { logger } from '@/lib/logger';
 
 // Re-export helpers and types for convenience
 export { parseStorageUri, isLegacyPath } from './types';
-export type { StorageUploadResult, StorageBackend } from './types';
+export type { StorageListItem, StorageUploadResult, StorageBackend } from './types';
 
 // ─── Singleton instances ───────────────────────────────────────────────────────
 
@@ -125,6 +125,45 @@ export async function deleteFile(storageUri: string): Promise<void> {
 
   const provider = resolveProvider(storageUri);
   return provider.delete(storageUri);
+}
+
+/**
+ * List every stored object under a key prefix across BOTH backends.
+ *
+ * Used by the orphaned-object reconciliation sweeper. Each backend is queried
+ * independently and wrapped so that one backend being unavailable (e.g. GCS not
+ * configured in local dev) logs a warning and contributes [] rather than
+ * aborting the whole sweep.
+ *
+ * @param prefix  Object key prefix (e.g. "system/videos/").
+ */
+export async function listFiles(prefix: string): Promise<StorageListItem[]> {
+  const gcs = tryGetGCS();
+
+  const [gcsItems, minioItems] = await Promise.all([
+    gcs
+      ? gcs.list(prefix).catch((err: unknown) => {
+          logger.warn({
+            msg: '[storage] GCS list failed — continuing without GCS results',
+            prefix,
+            reason: (err as Error).message,
+          });
+          return [] as StorageListItem[];
+        })
+      : Promise.resolve([] as StorageListItem[]),
+    getMinio()
+      .list(prefix)
+      .catch((err: unknown) => {
+        logger.warn({
+          msg: '[storage] MinIO list failed — continuing without MinIO results',
+          prefix,
+          reason: (err as Error).message,
+        });
+        return [] as StorageListItem[];
+      }),
+  ]);
+
+  return [...gcsItems, ...minioItems];
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────

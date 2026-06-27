@@ -316,45 +316,50 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
         </div>
 
         <div className="w-full relative shrink-0" style={{ height: 260 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={hasData ? activeDonutData : [{ name: 'Empty', value: 1 }]}
-                cx="50%"
-                cy="50%"
-                innerRadius="65%"
-                outerRadius="90%"
-                paddingAngle={0}
-                dataKey="value"
-              >
-                {activeDonutData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                ))}
-                {/* If no data, show gray ring */}
-                {!hasData && <Cell key="cell-empty" fill="#F1F5F9" stroke="none" />}
+          {/* Only render once mounted so ResponsiveContainer measures a real,
+              laid-out box — avoids the Recharts width(-1)/height(-1) warning that
+              fires when it measures during SSR / the first hydration paint. */}
+          {mounted && (
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <PieChart>
+                <Pie
+                  data={hasData ? activeDonutData : [{ name: 'Empty', value: 1 }]}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="65%"
+                  outerRadius="90%"
+                  paddingAngle={0}
+                  dataKey="value"
+                >
+                  {activeDonutData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                  ))}
+                  {/* If no data, show gray ring */}
+                  {!hasData && <Cell key="cell-empty" fill="#F1F5F9" stroke="none" />}
 
-                <Label
-                  value={trainingCoverage?.totalStaff || 0}
-                  position="center"
-                  dy={0}
-                  style={{
-                    fontSize: '24px',
-                    fontWeight: 'bold',
-                    fill: '#1F2937',
-                  }}
-                />
-                <Label
-                  value="Total Staff"
-                  position="center"
-                  dy={-20}
-                  style={{
-                    fontSize: '12px',
-                    fill: '#6B7280',
-                  }}
-                />
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
+                  <Label
+                    value={trainingCoverage?.totalStaff || 0}
+                    position="center"
+                    dy={0}
+                    style={{
+                      fontSize: '24px',
+                      fontWeight: 'bold',
+                      fill: '#1F2937',
+                    }}
+                  />
+                  <Label
+                    value="Total Staff"
+                    position="center"
+                    dy={-20}
+                    style={{
+                      fontSize: '12px',
+                      fill: '#6B7280',
+                    }}
+                  />
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         <div className="flex flex-col gap-3 mt-auto pt-4">

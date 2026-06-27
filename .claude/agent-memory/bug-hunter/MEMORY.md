@@ -1,3 +1,4 @@
 - [Test Framework & Patterns](project-test-framework.md) — Vitest, file placement, vi.hoisted mocking pattern, auth/signup mock setup
 - [Constructor mock must use regular function](feedback-constructor-mock-arrow-fn.md) — mockImplementation with arrow fn throws when called with `new`; use `function()` instead
 - [Scripts testing constraints](project-scripts-testing.md) — transcode-worker.mjs: can't import directly, child-process blocked by Prisma 7.8 CJS crash, replicated-algorithm approach used
+- [Storage/sweep test files and patterns](project-storage-sweep-tests.md) — abort-cleanup route, GCS/MinIO list, listFiles dual-backend, runVideoSweep/getVideoSweepWorker tests

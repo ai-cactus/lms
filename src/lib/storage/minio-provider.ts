@@ -15,7 +15,7 @@
  */
 
 import * as Minio from 'minio';
-import type { StorageProvider, StorageUploadResult } from './types';
+import type { StorageListItem, StorageProvider, StorageUploadResult } from './types';
 import { parseStorageUri } from './types';
 import { logger } from '@/lib/logger';
 
@@ -107,6 +107,26 @@ export class MinIOProvider implements StorageProvider {
       const chunks: Buffer[] = [];
       stream.on('data', (chunk: Buffer) => chunks.push(chunk));
       stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
+    });
+  }
+
+  async list(prefix: string): Promise<StorageListItem[]> {
+    await this.ensureBucket();
+
+    // listObjectsV2(bucket, prefix, recursive) returns a stream of BucketItem.
+    const stream = this.client.listObjectsV2(this.bucketName, prefix, true);
+    return new Promise<StorageListItem[]>((resolve, reject) => {
+      const items: StorageListItem[] = [];
+      stream.on('data', (obj) => {
+        // Prefix ("directory") entries carry no name — skip them.
+        if (!obj.name) return;
+        items.push({
+          storageUri: `minio://${this.bucketName}/${obj.name}`,
+          createdAt: obj.lastModified ? new Date(obj.lastModified) : new Date(),
+        });
+      });
+      stream.on('end', () => resolve(items));
       stream.on('error', reject);
     });
   }
