@@ -15,13 +15,23 @@
 
 import { GCSProvider } from './gcs-provider';
 import { MinIOProvider } from './minio-provider';
-import type { StorageListItem, StorageProvider, StorageUploadResult } from './types';
+import type {
+  StorageListItem,
+  StorageProvider,
+  StorageUploadResult,
+  UploadUrlResult,
+} from './types';
 import { isLegacyPath } from './types';
 import { logger } from '@/lib/logger';
 
 // Re-export helpers and types for convenience
 export { parseStorageUri, isLegacyPath } from './types';
-export type { StorageListItem, StorageUploadResult, StorageBackend } from './types';
+export type {
+  StorageListItem,
+  StorageUploadResult,
+  StorageBackend,
+  UploadUrlResult,
+} from './types';
 
 // ─── Singleton instances ───────────────────────────────────────────────────────
 
@@ -74,6 +84,41 @@ export async function uploadFile(
   }
 
   return getMinio().upload(key, buffer, mimeType);
+}
+
+/**
+ * Mint a short-lived URL the browser can upload a file directly to, bypassing
+ * the app server. Uses GCS if available, otherwise MinIO.
+ *
+ * The caller inspects `kind` to decide what to do: a `gcs-resumable` URL is
+ * safe to hand to a production browser, whereas a `minio-put` URL points at an
+ * internal host and must not be exposed beyond local dev.
+ *
+ * @param key            Object key inside the bucket (e.g. "system/videos/ts-name.mp4")
+ * @param contentType    MIME type the upload will declare
+ * @param expirySeconds  URL validity window (default 900 s = 15 min)
+ */
+export async function createUploadUrl(
+  key: string,
+  contentType: string,
+  expirySeconds = 900,
+): Promise<UploadUrlResult> {
+  const gcs = tryGetGCS();
+
+  if (gcs) {
+    try {
+      return await gcs.createUploadUrl(key, contentType, expirySeconds);
+    } catch (err: unknown) {
+      const e = err as Error;
+      logger.warn({
+        msg: '[storage] GCS createUploadUrl failed — falling back to MinIO',
+        reason: e.message,
+        key,
+      });
+    }
+  }
+
+  return getMinio().createUploadUrl(key, contentType, expirySeconds);
 }
 
 /**
