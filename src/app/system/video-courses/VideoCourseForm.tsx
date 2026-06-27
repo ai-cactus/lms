@@ -1,12 +1,13 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Upload, VideoIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/field';
 import { logger } from '@/lib/logger';
+import { resumableUpload } from '@/lib/upload/resumable-upload';
 import 'react-quill-new/dist/quill.snow.css';
 
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
@@ -101,7 +102,10 @@ function probeVideoDuration(file: File): Promise<number | null> {
   });
 }
 
-async function uploadVideo(file: File): Promise<string> {
+// Legacy fallback: proxies the whole file through the app server. Only used
+// when the direct-to-GCS path is unavailable (the upload-url route returns 503
+// GCS_UNAVAILABLE in that case).
+async function oldUploadVideo(file: File): Promise<string> {
   const fd = new FormData();
   fd.set('video', file);
   const res = await fetch('/api/system/video-courses/upload', { method: 'POST', body: fd });
@@ -161,6 +165,54 @@ export default function VideoCourseForm({
 
   const [quizFile, setQuizFile] = useState<File | null>(initialValues?.quizFile ?? null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ label: string; percent: number } | null>(
+    null,
+  );
+
+  // ── Video upload ────────────────────────────────────────────────────────────
+
+  // Uploads a video straight to GCS via a signed resumable URL, bypassing the
+  // app server (and its Cloudflare/Nginx limits). Falls back to the legacy
+  // proxy route when GCS is unavailable. Returned to the parent via onSubmit so
+  // it controls when each file is uploaded.
+  const uploadVideo = useCallback(async (file: File): Promise<string> => {
+    setUploadProgress({ label: file.name, percent: 0 });
+    try {
+      const res = await fetch('/api/system/video-courses/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type,
+          size: file.size,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        // GCS not configured/available — fall back to the legacy proxy upload.
+        if (res.status === 503 && data.error === 'GCS_UNAVAILABLE') {
+          return await oldUploadVideo(file);
+        }
+        throw new Error(data.error ?? 'Failed to start video upload');
+      }
+
+      const { uploadUrl, storageUri } = (await res.json()) as {
+        uploadUrl: string;
+        storageUri: string;
+      };
+
+      await resumableUpload({
+        uploadUrl,
+        file,
+        onProgress: (percent) => setUploadProgress({ label: file.name, percent }),
+      });
+
+      return storageUri;
+    } finally {
+      setUploadProgress(null);
+    }
+  }, []);
 
   // ── Submit gating ─────────────────────────────────────────────────────────────
 
@@ -470,6 +522,21 @@ export default function VideoCourseForm({
             >
               Download JSON sample
             </a>
+          </div>
+        </div>
+      )}
+
+      {/* Direct-to-GCS upload progress */}
+      {uploadProgress && (
+        <div className="flex flex-col gap-1">
+          <p className="truncate text-xs text-text-secondary">
+            Uploading {uploadProgress.label}… {Math.round(uploadProgress.percent)}%
+          </p>
+          <div className="h-1.5 w-full rounded-full bg-border">
+            <div
+              className="h-1.5 rounded-full bg-primary transition-all"
+              style={{ width: `${uploadProgress.percent}%` }}
+            />
           </div>
         </div>
       )}

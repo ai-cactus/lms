@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifySystemAdminCookie } from '@/lib/system-auth';
 import { uploadFile, deleteFile } from '@/lib/storage';
 import { logger } from '@/lib/logger';
-
-const MAX_VIDEO_BYTES = Number(process.env.MAX_VIDEO_UPLOAD_BYTES ?? 500 * 1024 * 1024);
-const ALLOWED = ['video/mp4', 'video/webm'];
+import { MAX_VIDEO_BYTES, ALLOWED_VIDEO_TYPES } from '@/lib/video/upload-config';
 
 // Uploads ONE video file (a lecture or the preview clip) and returns its
 // storage URI. The client calls this once per video, then submits the course
@@ -20,7 +18,7 @@ export async function POST(req: NextRequest) {
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'Missing video file' }, { status: 400 });
     }
-    if (!ALLOWED.includes(file.type)) {
+    if (!(ALLOWED_VIDEO_TYPES as readonly string[]).includes(file.type)) {
       return NextResponse.json({ error: 'Video must be MP4 or WebM' }, { status: 400 });
     }
     if (file.size > MAX_VIDEO_BYTES) {

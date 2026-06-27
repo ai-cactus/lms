@@ -15,7 +15,12 @@
  */
 
 import * as Minio from 'minio';
-import type { StorageListItem, StorageProvider, StorageUploadResult } from './types';
+import type {
+  StorageListItem,
+  StorageProvider,
+  StorageUploadResult,
+  UploadUrlResult,
+} from './types';
 import { parseStorageUri } from './types';
 import { logger } from '@/lib/logger';
 
@@ -66,6 +71,23 @@ export class MinIOProvider implements StorageProvider {
     const storageUri = `minio://${this.bucketName}/${key}`;
     logger.info({ msg: 'MinIO upload successful', storageUri });
     return { storageUri, backend: 'minio' };
+  }
+
+  async createUploadUrl(
+    key: string,
+    _contentType: string,
+    expirySeconds: number = DEFAULT_SIGNED_URL_EXPIRY,
+  ): Promise<UploadUrlResult> {
+    await this.ensureBucket();
+
+    // Dev-only fallback. The MinIO endpoint is an internal/Docker host and is
+    // NOT reachable from a production browser, so the upload-url route never
+    // hands this URL to the client (it returns 503 GCS_UNAVAILABLE instead and
+    // the client falls back to the legacy proxy route). A simple presigned PUT
+    // is enough for local development.
+    const uploadUrl = await this.client.presignedPutObject(this.bucketName, key, expirySeconds);
+    const storageUri = `minio://${this.bucketName}/${key}`;
+    return { uploadUrl, storageUri, kind: 'minio-put' };
   }
 
   async getSignedUrl(
