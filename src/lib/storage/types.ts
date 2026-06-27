@@ -24,6 +24,19 @@ export interface StorageListItem {
   createdAt: Date;
 }
 
+export interface UploadUrlResult {
+  /**
+   * URL the browser uploads directly to, bypassing the app server.
+   * For GCS this is the resumable-session *initiation* endpoint (POST);
+   * for MinIO it is a presigned PUT URL.
+   */
+  uploadUrl: string;
+  /** Opaque URI to persist once the upload completes (same format as upload()). */
+  storageUri: string;
+  /** Which protocol the browser must speak against `uploadUrl`. */
+  kind: 'gcs-resumable' | 'minio-put';
+}
+
 export interface StorageProvider {
   /**
    * Upload a file buffer to the backend.
@@ -33,6 +46,20 @@ export interface StorageProvider {
    * @returns         Upload result including the opaque storageUri.
    */
   upload(key: string, buffer: Buffer, mimeType: string): Promise<StorageUploadResult>;
+
+  /**
+   * Mint a short-lived URL the browser can upload directly to, so large files
+   * never transit the app server (which sits behind Cloudflare/Nginx body and
+   * timeout limits).
+   * @param key            Object key / path within the bucket.
+   * @param contentType    Content-Type the upload must declare (bound into the signature for GCS).
+   * @param expirySeconds  How long the URL is valid. Defaults to 900 (15 min).
+   */
+  createUploadUrl(
+    key: string,
+    contentType: string,
+    expirySeconds?: number,
+  ): Promise<UploadUrlResult>;
 
   /**
    * Generate a short-lived presigned GET URL for the given storageUri.

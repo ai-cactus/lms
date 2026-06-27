@@ -22,7 +22,12 @@
  */
 
 import { Storage } from '@google-cloud/storage';
-import type { StorageListItem, StorageProvider, StorageUploadResult } from './types';
+import type {
+  StorageListItem,
+  StorageProvider,
+  StorageUploadResult,
+  UploadUrlResult,
+} from './types';
 import { parseStorageUri } from './types';
 import { logger } from '@/lib/logger';
 
@@ -107,6 +112,30 @@ export class GCSProvider implements StorageProvider {
     const storageUri = `gcs://${this.bucketName}/${key}`;
     logger.info({ msg: 'GCS upload successful', storageUri });
     return { storageUri, backend: 'gcs' };
+  }
+
+  async createUploadUrl(
+    key: string,
+    contentType: string,
+    expirySeconds: number = DEFAULT_SIGNED_URL_EXPIRY,
+  ): Promise<UploadUrlResult> {
+    const bucket = this.storage.bucket(this.bucketName);
+    const file = bucket.file(key);
+
+    // action: 'resumable' signs a POST that initiates a resumable session; the
+    // SDK injects the required `x-goog-resumable: start` header into the
+    // signature. Binding contentType means the browser's initiation POST MUST
+    // send a matching Content-Type or GCS rejects the signature.
+    const [uploadUrl] = await file.getSignedUrl({
+      version: 'v4',
+      action: 'resumable',
+      expires: Date.now() + expirySeconds * 1000,
+      contentType,
+    });
+
+    const storageUri = `gcs://${this.bucketName}/${key}`;
+    logger.info({ msg: '[storage] GCS resumable upload URL minted', key });
+    return { uploadUrl, storageUri, kind: 'gcs-resumable' };
   }
 
   async getSignedUrl(

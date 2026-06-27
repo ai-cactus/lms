@@ -1,0 +1,18 @@
+[
+  {
+    "origin": [
+      "https://training.theraptly.com",
+      "https://staging-lms.theraptly.com",
+      "http://localhost:3000"
+    ],
+    "method": ["POST", "PUT", "OPTIONS"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "Content-Range",
+      "x-goog-resumable",
+      "Location"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

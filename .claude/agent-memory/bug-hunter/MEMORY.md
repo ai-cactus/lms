@@ -2,3 +2,4 @@
 - [Constructor mock must use regular function](feedback-constructor-mock-arrow-fn.md) — mockImplementation with arrow fn throws when called with `new`; use `function()` instead
 - [Scripts testing constraints](project-scripts-testing.md) — transcode-worker.mjs: can't import directly, child-process blocked by Prisma 7.8 CJS crash, replicated-algorithm approach used
 - [Storage/sweep test files and patterns](project-storage-sweep-tests.md) — abort-cleanup route, GCS/MinIO list, listFiles dual-backend, runVideoSweep/getVideoSweepWorker tests
+- [Resumable upload test patterns](resumable-upload-tests.md) — 3 new test files for GCS upload feature; JSDoc */  gotcha; reject-before-runAllTimers pattern; e2e skipped (system admin cookie + GCS stub impractical)
