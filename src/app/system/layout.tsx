@@ -54,6 +54,14 @@ import('@/lib/queue/video-transcode-worker').then(({ getVideoTranscodeWorker }) 
   getVideoTranscodeWorker();
 });
 
+// Boot the orphaned-video-object sweeper worker (reconciles the system/videos/
+// prefix against the DB on a cron and reclaims orphans). Same singleton
+// lifecycle; it installs its own repeatable schedule and is a no-op when
+// VIDEO_SWEEP_ENABLED=false.
+import('@/lib/queue/video-sweep-worker').then(({ getVideoSweepWorker }) => {
+  getVideoSweepWorker();
+});
+
 export default async function SystemLayout({ children }: { children: React.ReactNode }) {
   // If env var not set, return 404 — invisible in production
   const enabled = await isSystemAdminEnabled();

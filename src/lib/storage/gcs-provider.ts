@@ -22,7 +22,7 @@
  */
 
 import { Storage } from '@google-cloud/storage';
-import type { StorageProvider, StorageUploadResult } from './types';
+import type { StorageListItem, StorageProvider, StorageUploadResult } from './types';
 import { parseStorageUri } from './types';
 import { logger } from '@/lib/logger';
 
@@ -153,5 +153,20 @@ export class GCSProvider implements StorageProvider {
     // file.download() resolves to [Buffer]
     const [contents] = await file.download();
     return contents;
+  }
+
+  async list(prefix: string): Promise<StorageListItem[]> {
+    const bucket = this.storage.bucket(this.bucketName);
+
+    // getFiles auto-paginates internally and resolves to every matching File.
+    const [files] = await bucket.getFiles({ prefix });
+
+    return files.map((file) => {
+      const timeCreated = file.metadata.timeCreated;
+      return {
+        storageUri: `gcs://${this.bucketName}/${file.name}`,
+        createdAt: timeCreated ? new Date(timeCreated) : new Date(),
+      };
+    });
   }
 }

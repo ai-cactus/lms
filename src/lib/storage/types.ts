@@ -17,6 +17,13 @@ export interface StorageUploadResult {
   backend: StorageBackend;
 }
 
+export interface StorageListItem {
+  /** Opaque URI of the object, e.g. "gcs://my-bucket/system/videos/123-clip.mp4". */
+  storageUri: string;
+  /** When the object was created in the backend (used by the orphan sweeper grace filter). */
+  createdAt: Date;
+}
+
 export interface StorageProvider {
   /**
    * Upload a file buffer to the backend.
@@ -46,6 +53,14 @@ export interface StorageProvider {
    * Used by background workers that need the raw bytes for processing.
    */
   download(storageUri: string): Promise<Buffer>;
+
+  /**
+   * List every object under the given key prefix.
+   * Used by the orphaned-object reconciliation sweeper.
+   * @param prefix  Object key prefix (e.g. "system/videos/").
+   * @returns       One StorageListItem per object, including its createdAt timestamp.
+   */
+  list(prefix: string): Promise<StorageListItem[]>;
 }
 
 /**
