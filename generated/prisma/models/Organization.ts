@@ -60,6 +60,7 @@ export type OrganizationMinAggregateOutputType = {
   requireMfa: boolean | null
   complianceDocumentUrl: string | null
   complianceDocumentName: string | null
+  timezone: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -90,6 +91,7 @@ export type OrganizationMaxAggregateOutputType = {
   requireMfa: boolean | null
   complianceDocumentUrl: string | null
   complianceDocumentName: string | null
+  timezone: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -122,6 +124,7 @@ export type OrganizationCountAggregateOutputType = {
   requireMfa: number
   complianceDocumentUrl: number
   complianceDocumentName: number
+  timezone: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -162,6 +165,7 @@ export type OrganizationMinAggregateInputType = {
   requireMfa?: true
   complianceDocumentUrl?: true
   complianceDocumentName?: true
+  timezone?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -192,6 +196,7 @@ export type OrganizationMaxAggregateInputType = {
   requireMfa?: true
   complianceDocumentUrl?: true
   complianceDocumentName?: true
+  timezone?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -224,6 +229,7 @@ export type OrganizationCountAggregateInputType = {
   requireMfa?: true
   complianceDocumentUrl?: true
   complianceDocumentName?: true
+  timezone?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -343,6 +349,7 @@ export type OrganizationGroupByOutputType = {
   requireMfa: boolean
   complianceDocumentUrl: string | null
   complianceDocumentName: string | null
+  timezone: string | null
   createdAt: Date
   updatedAt: Date
   _count: OrganizationCountAggregateOutputType | null
@@ -398,6 +405,7 @@ export type OrganizationWhereInput = {
   requireMfa?: Prisma.BoolFilter<"Organization"> | boolean
   complianceDocumentUrl?: Prisma.StringNullableFilter<"Organization"> | string | null
   complianceDocumentName?: Prisma.StringNullableFilter<"Organization"> | string | null
+  timezone?: Prisma.StringNullableFilter<"Organization"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Organization"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Organization"> | Date | string
   users?: Prisma.UserListRelationFilter
@@ -437,6 +445,7 @@ export type OrganizationOrderByWithRelationInput = {
   requireMfa?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrderInput | Prisma.SortOrder
+  timezone?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   users?: Prisma.UserOrderByRelationAggregateInput
@@ -479,6 +488,7 @@ export type OrganizationWhereUniqueInput = Prisma.AtLeast<{
   requireMfa?: Prisma.BoolFilter<"Organization"> | boolean
   complianceDocumentUrl?: Prisma.StringNullableFilter<"Organization"> | string | null
   complianceDocumentName?: Prisma.StringNullableFilter<"Organization"> | string | null
+  timezone?: Prisma.StringNullableFilter<"Organization"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Organization"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Organization"> | Date | string
   users?: Prisma.UserListRelationFilter
@@ -518,6 +528,7 @@ export type OrganizationOrderByWithAggregationInput = {
   requireMfa?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrderInput | Prisma.SortOrder
+  timezone?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.OrganizationCountOrderByAggregateInput
@@ -558,6 +569,7 @@ export type OrganizationScalarWhereWithAggregatesInput = {
   requireMfa?: Prisma.BoolWithAggregatesFilter<"Organization"> | boolean
   complianceDocumentUrl?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   complianceDocumentName?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
+  timezone?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Organization"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Organization"> | Date | string
 }
@@ -590,6 +602,7 @@ export type OrganizationCreateInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
@@ -629,6 +642,7 @@ export type OrganizationUncheckedCreateInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
@@ -668,6 +682,7 @@ export type OrganizationUpdateInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
@@ -707,6 +722,7 @@ export type OrganizationUncheckedUpdateInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -746,6 +762,7 @@ export type OrganizationCreateManyInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -778,6 +795,7 @@ export type OrganizationUpdateManyMutationInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -810,6 +828,7 @@ export type OrganizationUncheckedUpdateManyInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -852,6 +871,7 @@ export type OrganizationCountOrderByAggregateInput = {
   requireMfa?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrder
+  timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -886,6 +906,7 @@ export type OrganizationMaxOrderByAggregateInput = {
   requireMfa?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrder
+  timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -916,6 +937,7 @@ export type OrganizationMinOrderByAggregateInput = {
   requireMfa?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrder
+  timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -1072,6 +1094,7 @@ export type OrganizationCreateWithoutUsersInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   invites?: Prisma.InviteCreateNestedManyWithoutOrganizationInput
@@ -1110,6 +1133,7 @@ export type OrganizationUncheckedCreateWithoutUsersInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   invites?: Prisma.InviteUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1164,6 +1188,7 @@ export type OrganizationUpdateWithoutUsersInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   invites?: Prisma.InviteUpdateManyWithoutOrganizationNestedInput
@@ -1202,6 +1227,7 @@ export type OrganizationUncheckedUpdateWithoutUsersInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   invites?: Prisma.InviteUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1240,6 +1266,7 @@ export type OrganizationCreateWithoutInvitesInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
@@ -1278,6 +1305,7 @@ export type OrganizationUncheckedCreateWithoutInvitesInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1332,6 +1360,7 @@ export type OrganizationUpdateWithoutInvitesInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
@@ -1370,6 +1399,7 @@ export type OrganizationUncheckedUpdateWithoutInvitesInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1408,6 +1438,7 @@ export type OrganizationCreateWithoutCustomCategoriesInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
@@ -1446,6 +1477,7 @@ export type OrganizationUncheckedCreateWithoutCustomCategoriesInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1500,6 +1532,7 @@ export type OrganizationUpdateWithoutCustomCategoriesInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
@@ -1538,6 +1571,7 @@ export type OrganizationUncheckedUpdateWithoutCustomCategoriesInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1576,6 +1610,7 @@ export type OrganizationCreateWithoutCourseAssignmentsInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
@@ -1614,6 +1649,7 @@ export type OrganizationUncheckedCreateWithoutCourseAssignmentsInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1668,6 +1704,7 @@ export type OrganizationUpdateWithoutCourseAssignmentsInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
@@ -1706,6 +1743,7 @@ export type OrganizationUncheckedUpdateWithoutCourseAssignmentsInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1744,6 +1782,7 @@ export type OrganizationCreateWithoutOfferingsInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
@@ -1782,6 +1821,7 @@ export type OrganizationUncheckedCreateWithoutOfferingsInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1836,6 +1876,7 @@ export type OrganizationUpdateWithoutOfferingsInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
@@ -1874,6 +1915,7 @@ export type OrganizationUncheckedUpdateWithoutOfferingsInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1912,6 +1954,7 @@ export type OrganizationCreateWithoutSubscriptionInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
@@ -1950,6 +1993,7 @@ export type OrganizationUncheckedCreateWithoutSubscriptionInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
@@ -2004,6 +2048,7 @@ export type OrganizationUpdateWithoutSubscriptionInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
@@ -2042,6 +2087,7 @@ export type OrganizationUncheckedUpdateWithoutSubscriptionInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -2080,6 +2126,7 @@ export type OrganizationCreateWithoutInvoicesInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
@@ -2118,6 +2165,7 @@ export type OrganizationUncheckedCreateWithoutInvoicesInput = {
   requireMfa?: boolean
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
@@ -2172,6 +2220,7 @@ export type OrganizationUpdateWithoutInvoicesInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
@@ -2210,6 +2259,7 @@ export type OrganizationUncheckedUpdateWithoutInvoicesInput = {
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -2324,6 +2374,7 @@ export type OrganizationSelect<ExtArgs extends runtime.Types.Extensions.Internal
   requireMfa?: boolean
   complianceDocumentUrl?: boolean
   complianceDocumentName?: boolean
+  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   users?: boolean | Prisma.Organization$usersArgs<ExtArgs>
@@ -2364,6 +2415,7 @@ export type OrganizationSelectCreateManyAndReturn<ExtArgs extends runtime.Types.
   requireMfa?: boolean
   complianceDocumentUrl?: boolean
   complianceDocumentName?: boolean
+  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["organization"]>
@@ -2396,6 +2448,7 @@ export type OrganizationSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.
   requireMfa?: boolean
   complianceDocumentUrl?: boolean
   complianceDocumentName?: boolean
+  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["organization"]>
@@ -2428,11 +2481,12 @@ export type OrganizationSelectScalar = {
   requireMfa?: boolean
   complianceDocumentUrl?: boolean
   complianceDocumentName?: boolean
+  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type OrganizationOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "slug" | "dba" | "ein" | "staffCount" | "primaryContact" | "primaryEmail" | "phone" | "address" | "city" | "country" | "state" | "zipCode" | "licenseNumber" | "isHipaaCompliant" | "hasAuditorAccess" | "primaryBusinessType" | "additionalBusinessTypes" | "programServices" | "joinCode" | "joinCodeExpiresAt" | "stripeCustomerId" | "inactivityTimeoutMinutes" | "requireMfa" | "complianceDocumentUrl" | "complianceDocumentName" | "createdAt" | "updatedAt", ExtArgs["result"]["organization"]>
+export type OrganizationOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "slug" | "dba" | "ein" | "staffCount" | "primaryContact" | "primaryEmail" | "phone" | "address" | "city" | "country" | "state" | "zipCode" | "licenseNumber" | "isHipaaCompliant" | "hasAuditorAccess" | "primaryBusinessType" | "additionalBusinessTypes" | "programServices" | "joinCode" | "joinCodeExpiresAt" | "stripeCustomerId" | "inactivityTimeoutMinutes" | "requireMfa" | "complianceDocumentUrl" | "complianceDocumentName" | "timezone" | "createdAt" | "updatedAt", ExtArgs["result"]["organization"]>
 export type OrganizationInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   users?: boolean | Prisma.Organization$usersArgs<ExtArgs>
   invites?: boolean | Prisma.Organization$invitesArgs<ExtArgs>
@@ -2485,6 +2539,7 @@ export type $OrganizationPayload<ExtArgs extends runtime.Types.Extensions.Intern
     requireMfa: boolean
     complianceDocumentUrl: string | null
     complianceDocumentName: string | null
+    timezone: string | null
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["organization"]>
@@ -2944,6 +2999,7 @@ export interface OrganizationFieldRefs {
   readonly requireMfa: Prisma.FieldRef<"Organization", 'Boolean'>
   readonly complianceDocumentUrl: Prisma.FieldRef<"Organization", 'String'>
   readonly complianceDocumentName: Prisma.FieldRef<"Organization", 'String'>
+  readonly timezone: Prisma.FieldRef<"Organization", 'String'>
   readonly createdAt: Prisma.FieldRef<"Organization", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Organization", 'DateTime'>
 }

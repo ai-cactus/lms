@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
+import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 
 interface OrganizationUpdateData {
   name?: string;
@@ -18,6 +19,7 @@ interface OrganizationUpdateData {
   state?: string;
   zipCode?: string;
   city?: string;
+  timezone?: string;
   licenseNumber?: string;
   isHipaaCompliant?: boolean;
   // Services fields (Step 3 data)
@@ -72,6 +74,7 @@ export async function updateOrganization(data: OrganizationUpdateData) {
         country: data.country,
         state: data.state,
         zipCode: data.zipCode,
+        timezone: data.timezone,
         licenseNumber: data.licenseNumber,
         isHipaaCompliant: data.isHipaaCompliant,
         primaryBusinessType: data.primaryBusinessType,
@@ -179,6 +182,7 @@ export async function createOrganization(data: OrganizationCreationData) {
         address: data.streetAddress,
         zipCode: data.zipCode,
         state: data.state,
+        timezone: deriveTimezoneFromState(data.state),
         slug: `${data.legalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${crypto.randomBytes(4).toString('hex')}`,
         isHipaaCompliant: false,
       },

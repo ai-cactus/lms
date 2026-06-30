@@ -47,6 +47,7 @@ model Organization {
   requireMfa               Boolean             @default(false) @map("require_mfa")
   complianceDocumentUrl    String?             @map("compliance_document_url")
   complianceDocumentName   String?             @map("compliance_document_name")
+  timezone                 String?             @map("timezone")
   users                    User[]
   createdAt                DateTime            @default(now()) @map("created_at")
   updatedAt                DateTime            @updatedAt @map("updated_at")

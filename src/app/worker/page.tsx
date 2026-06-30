@@ -75,7 +75,7 @@ export default async function LearnerDashboard() {
         score: picked.score,
         passingScore: picked.course.quiz?.passingScore ?? null,
       }),
-      deadline: null,
+      deadline: picked.dueAt,
       duration: picked.course.duration || undefined,
       quizAttempts: picked.quizAttempts,
       retakeOf: picked.retakeOf,

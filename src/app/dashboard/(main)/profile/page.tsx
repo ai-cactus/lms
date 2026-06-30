@@ -69,6 +69,7 @@ export default async function ProfilePage() {
         country: user.organization.country,
         state: user.organization.state,
         zipCode: user.organization.zipCode,
+        timezone: user.organization.timezone,
         licenseNumber: user.organization.licenseNumber,
         isHipaaCompliant: user.organization.isHipaaCompliant,
         primaryBusinessType: user.organization.primaryBusinessType,

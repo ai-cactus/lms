@@ -3,6 +3,7 @@ import {
   Bell,
   BookOpen,
   CheckCircle2,
+  Clock,
   RefreshCw,
   RotateCcw,
   XCircle,
@@ -70,6 +71,30 @@ export const NOTIFICATION_TYPES: NotificationTypeMeta[] = [
     description: 'When a worker reaches their quiz retry limit',
     audience: 'admin',
   },
+  {
+    key: 'COURSE_DEADLINE_REMINDER',
+    label: 'Deadline reminders',
+    description: 'When a course deadline is approaching',
+    audience: 'worker',
+  },
+  {
+    key: 'COURSE_OVERDUE',
+    label: 'Overdue',
+    description: 'When a course deadline has passed',
+    audience: 'worker',
+  },
+  {
+    key: 'COMPLIANCE_ESCALATION',
+    label: 'Compliance alerts',
+    description: 'When an overdue course is escalated for compliance',
+    audience: 'admin',
+  },
+  {
+    key: 'COURSE_RETAKE_REMINDER',
+    label: 'Retake reminders',
+    description: 'When you have remaining quiz attempts to use',
+    audience: 'worker',
+  },
 ];
 
 /** The notification types relevant to a given audience (includes 'all'). */
@@ -115,6 +140,14 @@ export function getNotificationVisual(type?: string | null): NotificationVisual 
       return { Icon: AlertTriangle, iconClass: 'text-amber-600', ringClass: 'bg-amber-50' };
     case 'RETAKE_ASSIGNED':
       return { Icon: RotateCcw, iconClass: 'text-indigo-600', ringClass: 'bg-indigo-50' };
+    case 'COURSE_DEADLINE_REMINDER':
+      return { Icon: Clock, iconClass: 'text-amber-600', ringClass: 'bg-amber-50' };
+    case 'COURSE_OVERDUE':
+      return { Icon: AlertTriangle, iconClass: 'text-red-600', ringClass: 'bg-red-50' };
+    case 'COMPLIANCE_ESCALATION':
+      return { Icon: AlertTriangle, iconClass: 'text-red-600', ringClass: 'bg-red-50' };
+    case 'COURSE_RETAKE_REMINDER':
+      return { Icon: RotateCcw, iconClass: 'text-amber-600', ringClass: 'bg-amber-50' };
     default:
       return { Icon: Bell, iconClass: 'text-slate-500', ringClass: 'bg-slate-100' };
   }

@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { PhoneInput, Alert } from '@/components/ui';
 import { logger } from '@/lib/logger';
+import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 
 interface OrganizationData {
   id: string;
@@ -32,6 +33,7 @@ interface OrganizationData {
   state?: string | null;
   zipCode?: string | null;
   city?: string | null;
+  timezone?: string | null;
   licenseNumber?: string | null;
   isHipaaCompliant?: boolean;
   complianceDocumentUrl?: string | null;
@@ -109,6 +111,25 @@ const STATE_OPTIONS = [
   { label: 'West Virginia', value: 'WV' },
   { label: 'Wisconsin', value: 'WI' },
   { label: 'Wyoming', value: 'WY' },
+];
+
+// Curated US IANA timezones used for "day"-granular reminder math. Covers every
+// zone that `deriveTimezoneFromState` can return so the select never renders a
+// value without a matching option. Admins can override the state-derived default.
+const TIMEZONE_OPTIONS = [
+  { label: 'Eastern Time (America/New_York)', value: 'America/New_York' },
+  { label: 'Eastern Time — Michigan (America/Detroit)', value: 'America/Detroit' },
+  {
+    label: 'Eastern Time — Indiana (America/Indiana/Indianapolis)',
+    value: 'America/Indiana/Indianapolis',
+  },
+  { label: 'Central Time (America/Chicago)', value: 'America/Chicago' },
+  { label: 'Mountain Time (America/Denver)', value: 'America/Denver' },
+  { label: 'Mountain Time — Idaho (America/Boise)', value: 'America/Boise' },
+  { label: 'Arizona — no DST (America/Phoenix)', value: 'America/Phoenix' },
+  { label: 'Pacific Time (America/Los_Angeles)', value: 'America/Los_Angeles' },
+  { label: 'Alaska Time (America/Anchorage)', value: 'America/Anchorage' },
+  { label: 'Hawaii Time (Pacific/Honolulu)', value: 'Pacific/Honolulu' },
 ];
 
 // Exact options from onboarding/step2
@@ -316,6 +337,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       state: '',
       zipCode: '',
       city: '',
+      timezone: '',
       licenseNumber: '',
       isHipaaCompliant: false,
       primaryBusinessType: '',
@@ -364,6 +386,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     formData.state !== baseData.state ||
     formData.zipCode !== baseData.zipCode ||
     formData.city !== baseData.city ||
+    formData.timezone !== baseData.timezone ||
     formData.licenseNumber !== baseData.licenseNumber ||
     formData.isHipaaCompliant !== baseData.isHipaaCompliant ||
     formData.primaryBusinessType !== baseData.primaryBusinessType ||
@@ -464,6 +487,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         country: formData.country || undefined,
         state: formData.state || undefined,
         zipCode: formData.zipCode || undefined,
+        timezone: formData.timezone || deriveTimezoneFromState(formData.state),
         licenseNumber: formData.licenseNumber || undefined,
         isHipaaCompliant: formData.isHipaaCompliant,
         primaryBusinessType: formData.primaryBusinessType || undefined,
@@ -729,6 +753,25 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
               placeholder="Select an option"
               disabled={!isAdmin}
             />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <label className={labelClass}>
+              Timezone <span className={optionalClass}>(optional)</span>
+            </label>
+            <FormSelect
+              value={formData.timezone || deriveTimezoneFromState(formData.state)}
+              onValueChange={(value) => handleSelectChange('timezone', value)}
+              options={TIMEZONE_OPTIONS}
+              placeholder="Select an option"
+              disabled={!isAdmin}
+            />
+            <p className="mt-1 text-xs text-text-tertiary">
+              Used for course deadline reminders. Defaults from your state; change it if your team
+              works in a different zone.
+            </p>
           </div>
         </div>
       </div>
