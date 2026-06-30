@@ -19,9 +19,9 @@ The assign page contains:
 
 **Success:** Modal dialog "Course Assigned Successfully" with "Workers have been assigned and are now enrolled in this course."
 
-**In-app notification title:** "New Course Assigned" (NOT "New Required Training Assigned") — type: COURSE_ASSIGNED in DB.
+**In-app notification title:** "New Required Training Assigned" (FIXED 2026-06-30 — was "New Course Assigned") — type: COURSE_ASSIGNED in DB.
 
-**Known bug (MEDIUM, open 2026-06-30):** Due date stored correctly in `enrollments.due_at` and `course_assignments.due_at` but NOT displayed in worker-facing UI. Worker dashboard shows "No deadline" in the Deadline column. Trainings page card shows no deadline info. ID tracked in qa-reports/reminders-and-escalations.md ISSUE-S1-01.
+**RESOLVED bug (was MEDIUM, ISSUE-S1-01, resolved 2026-06-30):** Due date now renders correctly in worker-facing UI. Worker dashboard "My Courses" table Deadline column shows the date (e.g. "Jul 14, 2026"); trainings card shows "Due Jul 14, 2026". Previously showed "No deadline". Fix verified in re-validation.
 
 **DB schema:**
 - `enrollments`: `due_at`, `started_at`, `completed_at`, `status`, `user_id`, `course_id`, `assignment_id`
