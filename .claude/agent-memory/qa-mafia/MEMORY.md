@@ -2,3 +2,4 @@
 - [Signup Test Patterns & Gotchas](signup-test-patterns.md) — Radix checkbox, DB timestamps, email bypass, server action mocking
 - [Staging Env Access & Login UI](staging-env-access.md) — Staging URL, login page landmarks, auth behavior, admin account, session quirks
 - [Report Conventions](report-conventions.md) — Markdown-only reports, location, naming, results-table spine
+- [Reminders & Escalations Feature Patterns](reminders-feature-patterns.md) — Assign UI flow, DB schema, known due-date bug, manager dropdown, compliance page

@@ -2,13 +2,38 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Layers } from 'lucide-react';
+import { Layers, Clock, AlertCircle } from 'lucide-react';
 
 function formatCategory(category: string): string {
   return category
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+/** Human-readable deadline with overdue styling, mirroring the dashboard table. */
+function DeadlineMeta({ deadline }: { deadline?: Date | string | null }) {
+  if (!deadline) {
+    return <span className="text-xs text-[#cbd5e1]">No deadline</span>;
+  }
+  const d = new Date(deadline);
+  const isOverdue = d < new Date();
+  const text = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  if (isOverdue) {
+    return (
+      <span className="flex items-center gap-1 text-xs font-medium text-[#dc2626]">
+        <AlertCircle className="size-3.5" aria-hidden="true" />
+        Due {text}
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs text-[#718096]">
+      <Clock className="size-3.5" aria-hidden="true" />
+      Due {text}
+    </span>
+  );
 }
 
 interface Course {
@@ -130,6 +155,7 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
                     <p className="text-sm text-[#718096]">
                       {course.category ? formatCategory(course.category) : 'General'}
                     </p>
+                    <DeadlineMeta deadline={course.deadline} />
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1 max-md:w-full">

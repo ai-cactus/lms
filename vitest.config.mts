@@ -12,6 +12,11 @@ export default defineConfig({
       },
     },
     alias: {
+      // Mirror the tsconfig path mappings. The more specific `@/generated`
+      // mapping must come first so it wins over the catch-all `@` → src alias
+      // (generated Prisma artifacts live at the repo root, not under src).
+      '@/generated': path.resolve(__dirname, './generated'),
+      '@/db': path.resolve(__dirname, './db'),
       '@': path.resolve(__dirname, './src'),
     },
   },

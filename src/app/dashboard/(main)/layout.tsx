@@ -8,7 +8,9 @@ import { AdminSessionProvider } from '@/components/providers/AdminSessionProvide
 import { Toaster } from 'sonner';
 import { ExportJobsProvider } from '@/components/dashboard/auditor/ExportJobsProvider';
 import BillingPausedBanner from '@/components/billing/BillingPausedBanner';
+import ComplianceAlertBanner from '@/components/dashboard/ComplianceAlertBanner';
 import { getPauseState } from '@/lib/billing';
+import { getOverdueComplianceForOrg } from '@/lib/reminders/compliance';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -48,6 +50,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const subscription = user?.organization?.subscription;
   const pauseState = role === 'admin' ? getPauseState(subscription) : 'none';
 
+  // Surface a site-wide compliance banner to admins when training is overdue by
+  // the hard-escalation threshold. Only queried for admins so non-admin loads are
+  // unaffected.
+  const hardEscalationCount =
+    role === 'admin' && organizationId
+      ? (await getOverdueComplianceForOrg(organizationId)).hardEscalationCount
+      : 0;
+
   return (
     <AdminSessionProvider>
       <OrganizationActivationModal hasOrganization={!!organizationId} />
@@ -65,6 +75,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               }
             />
           )}
+          {role === 'admin' && <ComplianceAlertBanner hardEscalationCount={hardEscalationCount} />}
           {children}
         </DashboardLayoutClient>
         <Toaster richColors position="top-right" />
