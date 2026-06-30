@@ -62,6 +62,14 @@ import('@/lib/queue/video-sweep-worker').then(({ getVideoSweepWorker }) => {
   getVideoSweepWorker();
 });
 
+// Boot the reminder & escalation sweeper worker (runs the daily deadline ladder
+// + Track B nudges over active enrollments). Same singleton lifecycle; it
+// installs its own repeatable cron schedule and is a no-op when
+// REMINDER_SWEEP_ENABLED=false.
+import('@/lib/queue/reminder-sweep-worker').then(({ getReminderSweepWorker }) => {
+  getReminderSweepWorker();
+});
+
 export default async function SystemLayout({ children }: { children: React.ReactNode }) {
   // If env var not set, return 404 — invisible in production
   const enabled = await isSystemAdminEnabled();

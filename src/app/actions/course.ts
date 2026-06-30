@@ -8,6 +8,7 @@ import { notifyOrganizationAdmins } from './notifications';
 import { CourseWithStats, CourseWithRelations } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
 import { logger } from '@/lib/logger';
+import { resolveOnCompletion } from '@/lib/reminders/sweep';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -982,6 +983,11 @@ export async function attestCourse(enrollmentId: string, signature: string, role
     courseId: enrollment.courseId,
     userId: enrollment.userId,
   });
+
+  // Clear any open overdue/escalation/retake reminders for this enrollment now
+  // that it has reached a terminal status, so the compliance banner/page
+  // self-clear. Never throws (errors are logged internally).
+  await resolveOnCompletion(enrollmentId);
 
   // Notify Admins of course completion
   if (enrollment.user.organizationId) {

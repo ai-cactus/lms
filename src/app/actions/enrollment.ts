@@ -8,12 +8,34 @@ import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
-import { RenewalCycle } from '@/generated/prisma/enums';
+import { RenewalCycle, ReminderStage } from '@/generated/prisma/enums';
+import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
+import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
 
 export interface AssignmentSettingsInput {
   scheduleAt?: string | Date | null;
   renewalCycle?: RenewalCycle;
-  reminders?: { offsetMinutes: number; channel?: string }[];
+  /** Admin-set hard deadline. Empty/omitted ⇒ computed server-side from a window. */
+  dueAt?: string | Date | null;
+  /** Override for the deadline window (days from start) when no explicit `dueAt`. */
+  dueWindowDays?: number | null;
+  /** Master switch for the deadline reminder ladder. Defaults to `true`. */
+  remindersEnabled?: boolean;
+  /** Per-stage cadence overrides; falls back to {@link REMINDER_STAGE_DEFAULTS}. */
+  stages?: { stage: ReminderStage; offsetDays: number; enabled: boolean; channels?: string[] }[];
+}
+
+/**
+ * Default `AssignmentReminderStage` rows — one per sweep stage seeded from the
+ * canonical {@link REMINDER_STAGE_DEFAULTS}. Used when the caller does not supply
+ * its own cadence. `INITIAL_LAUNCH` is intentionally excluded (it fires at
+ * assignment time, never via the daily sweep).
+ */
+function defaultStageRows() {
+  return SWEEP_STAGES.map((stage) => {
+    const def = REMINDER_STAGE_DEFAULTS[stage];
+    return { stage, offsetDays: def.offsetDays, enabled: true, channels: def.channels };
+  });
 }
 
 // Helper: resolve the active session from either auth instance
@@ -132,6 +154,8 @@ export async function enrollUsers(
   // a later assignment creates a separate batch.
   const scheduleAt =
     assignmentSettings?.scheduleAt != null ? new Date(assignmentSettings.scheduleAt) : null;
+  // An explicit admin-set deadline (empty string ⇒ omitted, computed per-user below).
+  const assignmentDueAt = assignmentSettings?.dueAt ? new Date(assignmentSettings.dueAt) : null;
   let assignmentId: string | null = null;
   if (organizationId) {
     // Assigning a global catalog course also offers it to the org, so it shows
@@ -145,21 +169,26 @@ export async function enrollUsers(
       });
     }
 
+    const stageRows = assignmentSettings?.stages?.length
+      ? assignmentSettings.stages.map((s) => ({
+          stage: s.stage,
+          offsetDays: s.offsetDays,
+          enabled: s.enabled,
+          channels: s.channels ?? ['email', 'in_app'],
+        }))
+      : defaultStageRows();
+
     const assignment = await prisma.courseAssignment.create({
       data: {
         organizationId,
         courseId,
         assignedByAdminId: session.user.id,
         scheduleAt,
+        dueAt: assignmentDueAt,
+        dueWindowDays: assignmentSettings?.dueWindowDays ?? null,
+        remindersEnabled: assignmentSettings?.remindersEnabled ?? true,
         renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
-        reminders: assignmentSettings?.reminders?.length
-          ? {
-              create: assignmentSettings.reminders.map((r) => ({
-                offsetMinutes: r.offsetMinutes,
-                channel: r.channel ?? 'email',
-              })),
-            }
-          : undefined,
+        reminderStages: { create: stageRows },
       },
     });
     assignmentId = assignment.id;
@@ -174,7 +203,7 @@ export async function enrollUsers(
 
   const bcrypt = await import('bcryptjs');
   const crypto = await import('crypto');
-  const { sendCourseInviteEmail, sendCourseEnrollmentEmail } = await import('@/lib/email');
+  const { sendCourseInviteEmail, sendCourseLaunchEmail } = await import('@/lib/email');
 
   for (const entry of staffEntries) {
     const normalizedEmail = entry.email.toLowerCase().trim();
@@ -304,8 +333,23 @@ export async function enrollUsers(
       continue;
     }
 
+    // Compute the effective deadline for this enrollment. An explicit
+    // assignment `dueAt` wins; otherwise it's `start + window`, where the window
+    // comes from the assignment, then the org default, then the system default.
+    // `Organization.defaultDueWindowDays` does not exist in the schema, so the
+    // org window is null and resolution falls through to the system default.
+    const computedDueAt = computeDueAt({
+      assignmentDueAt,
+      assignmentWindowDays: assignmentSettings?.dueWindowDays ?? null,
+      orgWindowDays: null,
+      start: resolveStartDate(
+        { scheduleAt },
+        { accessAt: scheduleAt ?? null, startedAt: new Date() },
+      ),
+    });
+
     // Create the enrollment record.
-    await prisma.enrollment.create({
+    const enrollment = await prisma.enrollment.create({
       data: {
         userId: user.id,
         courseId,
@@ -313,32 +357,59 @@ export async function enrollUsers(
         progress: 0,
         assignmentId: assignmentId ?? undefined,
         accessAt: scheduleAt ?? undefined,
+        dueAt: computedDueAt,
       },
     });
 
-    // In-app notification for the worker.
+    // Stage 1 dedup: record the launch in the ladder so the daily sweep never
+    // re-fires it. Never let a logging failure abort the enrollment (a P2002 on
+    // re-run is benign — the stage is already recorded).
+    try {
+      await prisma.reminderLog.create({
+        data: {
+          enrollmentId: enrollment.id,
+          stage: 'INITIAL_LAUNCH',
+          channels: ['email', 'in_app'],
+          targetDate: new Date(),
+        },
+      });
+    } catch (logErr) {
+      logger.warn({
+        msg: '[enrollment] INITIAL_LAUNCH reminder log not written',
+        enrollmentId: enrollment.id,
+        err: logErr,
+      });
+    }
+
+    // In-app notification for the worker (Stage 1, in-app channel).
     await createNotification({
       userId: user.id,
       type: 'COURSE_ASSIGNED',
-      title: 'New Course Assigned',
+      title: 'New Required Training Assigned',
       message: `You have been assigned a new course: ${course.title}`,
       linkUrl: `/worker/trainings`,
       metadata: { courseId },
     });
 
-    // Send enrollment email only to pre-existing users — new users already
-    // received the invite email with their temporary credentials above.
+    // Send the Stage 1 launch email only to pre-existing users — new users
+    // already received the invite email with their temporary credentials above
+    // (sending this too would double-email them). The launch email is itself the
+    // "New Required Training Assigned" notice, so it replaces the older generic
+    // enrollment email for existing users.
     if (!results.newInvited.includes(normalizedEmail)) {
+      const recipientName = user.profile?.fullName || fullName || 'there';
+      const orgName = currentUser?.organization?.name || 'Your Organization';
       try {
-        await sendCourseEnrollmentEmail(
+        await sendCourseLaunchEmail(
           normalizedEmail,
-          user.profile?.fullName || fullName || 'there',
+          recipientName,
           course.title,
-          currentUser?.organization?.name || 'Your Organization',
+          orgName,
+          computedDueAt,
         );
       } catch (emailErr) {
         logger.error({
-          msg: '[enrollment] Failed to send enrollment email',
+          msg: '[enrollment] Failed to send course launch email',
           userId: user.id,
           err: emailErr,
         });

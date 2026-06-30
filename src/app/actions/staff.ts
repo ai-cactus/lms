@@ -18,6 +18,9 @@ export async function getStaffDetails(userId: string) {
       where: { id: userId },
       include: {
         profile: true,
+        manager: {
+          include: { profile: true },
+        },
         enrollments: {
           include: {
             course: {
@@ -72,6 +75,8 @@ export async function getStaffDetails(userId: string) {
         avatarUrl: user.profile?.avatarUrl ?? null,
         role: user.role || 'worker',
         jobTitle: user.profile?.jobTitle || 'Staff Member',
+        managerId: user.managerId ?? null,
+        managerName: user.manager ? (user.manager.profile?.fullName ?? user.manager.email) : null,
       },
       stats: {
         totalCourses,
@@ -153,6 +158,98 @@ export async function updateStaffDetails(
   } catch (error) {
     logger.error({ msg: 'Failed to update staff details:', err: error });
     return { success: false, error: 'Failed to update user details' };
+  }
+}
+
+/**
+ * Returns the same-org users that are eligible to be assigned as a staff
+ * member's manager. Per the current product decision, managers must be
+ * admin-role (full RBAC is a separate effort). The caller's UI excludes the
+ * staff member themselves from the resulting list.
+ */
+export async function getAssignableManagers(): Promise<
+  { id: string; name: string; email: string }[]
+> {
+  const session = await auth();
+  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
+    throw new Error('Unauthorized');
+  }
+
+  // Restrict to the caller's own organization — never return users from other tenants.
+  const admins = await prisma.user.findMany({
+    where: {
+      organizationId: session.user.organizationId,
+      role: 'admin',
+    },
+    include: {
+      profile: true,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  return admins.map((admin) => ({
+    id: admin.id,
+    name: admin.profile?.fullName || admin.email,
+    email: admin.email,
+  }));
+}
+
+/**
+ * Sets (or clears) the manager for a staff member. Enforces multi-tenant
+ * isolation and the integrity rules: the manager must belong to the same
+ * organization, must be admin-role, and cannot be the staff member themselves.
+ */
+export async function setStaffManager(
+  staffId: string,
+  managerId: string | null,
+): Promise<{ success: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  // Tenant isolation: an admin may only manage users that belong to their own org.
+  const staff = await prisma.user.findUnique({
+    where: { id: staffId },
+    select: { organizationId: true },
+  });
+  if (!staff || staff.organizationId !== session.user.organizationId) {
+    return { success: false, error: 'Forbidden' };
+  }
+
+  if (managerId !== null) {
+    if (managerId === staffId) {
+      return { success: false, error: 'A staff member cannot be their own manager' };
+    }
+
+    const manager = await prisma.user.findUnique({
+      where: { id: managerId },
+      select: { organizationId: true, role: true },
+    });
+    if (!manager || manager.organizationId !== session.user.organizationId) {
+      return { success: false, error: 'Forbidden — manager not in your organization' };
+    }
+    if (manager.role !== 'admin') {
+      return { success: false, error: 'Manager must be an admin' };
+    }
+  }
+
+  try {
+    await prisma.user.update({
+      where: { id: staffId },
+      data: { managerId },
+    });
+
+    logger.info({ msg: '[staff] Manager set', staffId, managerId, userId: session.user.id });
+
+    revalidatePath(`/dashboard/staff/${staffId}`);
+    revalidatePath('/dashboard/staff');
+    return { success: true };
+  } catch (error) {
+    logger.error({ msg: '[staff] Failed to set manager', err: error, staffId });
+    return { success: false, error: 'Failed to update manager' };
   }
 }
 

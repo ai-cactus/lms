@@ -46,6 +46,7 @@ interface OrganizationData {
   state?: string | null;
   zipCode?: string | null;
   city?: string | null;
+  timezone?: string | null;
   licenseNumber?: string | null;
   isHipaaCompliant?: boolean;
   complianceDocumentUrl?: string | null;

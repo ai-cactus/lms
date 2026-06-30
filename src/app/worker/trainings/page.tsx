@@ -51,7 +51,7 @@ export default async function WorkerTrainingsPage() {
         score: picked.score,
         passingScore: picked.course.quiz?.passingScore ?? null,
       }),
-      deadline: null,
+      deadline: picked.dueAt,
       duration: picked.course.duration || undefined,
       category: picked.course.category,
       retakeOf: picked.retakeOf,

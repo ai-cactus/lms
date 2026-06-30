@@ -401,13 +401,15 @@ export const ModelName = {
   CourseArtifact: 'CourseArtifact',
   CourseVersion: 'CourseVersion',
   CourseAssignment: 'CourseAssignment',
-  AssignmentReminder: 'AssignmentReminder',
+  AssignmentReminderStage: 'AssignmentReminderStage',
   Document: 'Document',
   DocumentVersion: 'DocumentVersion',
   PhiReport: 'PhiReport',
   MappingEvidence: 'MappingEvidence',
   Enrollment: 'Enrollment',
   Certificate: 'Certificate',
+  ReminderLog: 'ReminderLog',
+  ReminderNudge: 'ReminderNudge',
   Job: 'Job',
   Notification: 'Notification',
   NotificationPreference: 'NotificationPreference',
@@ -433,7 +435,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "auditorPack" | "user" | "profile" | "invite" | "verificationToken" | "mfaFactor" | "mfaRecoveryCode" | "courseCategory" | "standardManual" | "manualChunk" | "manualChunkCategory" | "course" | "courseModule" | "lesson" | "courseArtifact" | "courseVersion" | "courseAssignment" | "assignmentReminder" | "document" | "documentVersion" | "phiReport" | "mappingEvidence" | "enrollment" | "certificate" | "job" | "notification" | "notificationPreference" | "orgCourseOffering" | "organization" | "subscription" | "invoice" | "quiz" | "question" | "quizAttempt"
+    modelProps: "auditorPack" | "user" | "profile" | "invite" | "verificationToken" | "mfaFactor" | "mfaRecoveryCode" | "courseCategory" | "standardManual" | "manualChunk" | "manualChunkCategory" | "course" | "courseModule" | "lesson" | "courseArtifact" | "courseVersion" | "courseAssignment" | "assignmentReminderStage" | "document" | "documentVersion" | "phiReport" | "mappingEvidence" | "enrollment" | "certificate" | "reminderLog" | "reminderNudge" | "job" | "notification" | "notificationPreference" | "orgCourseOffering" | "organization" | "subscription" | "invoice" | "quiz" | "question" | "quizAttempt"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1695,77 +1697,77 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
-    AssignmentReminder: {
-      payload: Prisma.$AssignmentReminderPayload<ExtArgs>
-      fields: Prisma.AssignmentReminderFieldRefs
+    AssignmentReminderStage: {
+      payload: Prisma.$AssignmentReminderStagePayload<ExtArgs>
+      fields: Prisma.AssignmentReminderStageFieldRefs
       operations: {
         findUnique: {
-          args: Prisma.AssignmentReminderFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload> | null
+          args: Prisma.AssignmentReminderStageFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload> | null
         }
         findUniqueOrThrow: {
-          args: Prisma.AssignmentReminderFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload>
+          args: Prisma.AssignmentReminderStageFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload>
         }
         findFirst: {
-          args: Prisma.AssignmentReminderFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload> | null
+          args: Prisma.AssignmentReminderStageFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload> | null
         }
         findFirstOrThrow: {
-          args: Prisma.AssignmentReminderFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload>
+          args: Prisma.AssignmentReminderStageFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload>
         }
         findMany: {
-          args: Prisma.AssignmentReminderFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload>[]
+          args: Prisma.AssignmentReminderStageFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload>[]
         }
         create: {
-          args: Prisma.AssignmentReminderCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload>
+          args: Prisma.AssignmentReminderStageCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload>
         }
         createMany: {
-          args: Prisma.AssignmentReminderCreateManyArgs<ExtArgs>
+          args: Prisma.AssignmentReminderStageCreateManyArgs<ExtArgs>
           result: BatchPayload
         }
         createManyAndReturn: {
-          args: Prisma.AssignmentReminderCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload>[]
+          args: Prisma.AssignmentReminderStageCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload>[]
         }
         delete: {
-          args: Prisma.AssignmentReminderDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload>
+          args: Prisma.AssignmentReminderStageDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload>
         }
         update: {
-          args: Prisma.AssignmentReminderUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload>
+          args: Prisma.AssignmentReminderStageUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload>
         }
         deleteMany: {
-          args: Prisma.AssignmentReminderDeleteManyArgs<ExtArgs>
+          args: Prisma.AssignmentReminderStageDeleteManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateMany: {
-          args: Prisma.AssignmentReminderUpdateManyArgs<ExtArgs>
+          args: Prisma.AssignmentReminderStageUpdateManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateManyAndReturn: {
-          args: Prisma.AssignmentReminderUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload>[]
+          args: Prisma.AssignmentReminderStageUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload>[]
         }
         upsert: {
-          args: Prisma.AssignmentReminderUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderPayload>
+          args: Prisma.AssignmentReminderStageUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AssignmentReminderStagePayload>
         }
         aggregate: {
-          args: Prisma.AssignmentReminderAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateAssignmentReminder>
+          args: Prisma.AssignmentReminderStageAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAssignmentReminderStage>
         }
         groupBy: {
-          args: Prisma.AssignmentReminderGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AssignmentReminderGroupByOutputType>[]
+          args: Prisma.AssignmentReminderStageGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AssignmentReminderStageGroupByOutputType>[]
         }
         count: {
-          args: Prisma.AssignmentReminderCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AssignmentReminderCountAggregateOutputType> | number
+          args: Prisma.AssignmentReminderStageCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AssignmentReminderStageCountAggregateOutputType> | number
         }
       }
     }
@@ -2210,6 +2212,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.CertificateCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.CertificateCountAggregateOutputType> | number
+        }
+      }
+    }
+    ReminderLog: {
+      payload: Prisma.$ReminderLogPayload<ExtArgs>
+      fields: Prisma.ReminderLogFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ReminderLogFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ReminderLogFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload>
+        }
+        findFirst: {
+          args: Prisma.ReminderLogFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ReminderLogFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload>
+        }
+        findMany: {
+          args: Prisma.ReminderLogFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload>[]
+        }
+        create: {
+          args: Prisma.ReminderLogCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload>
+        }
+        createMany: {
+          args: Prisma.ReminderLogCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ReminderLogCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload>[]
+        }
+        delete: {
+          args: Prisma.ReminderLogDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload>
+        }
+        update: {
+          args: Prisma.ReminderLogUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload>
+        }
+        deleteMany: {
+          args: Prisma.ReminderLogDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ReminderLogUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ReminderLogUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload>[]
+        }
+        upsert: {
+          args: Prisma.ReminderLogUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderLogPayload>
+        }
+        aggregate: {
+          args: Prisma.ReminderLogAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateReminderLog>
+        }
+        groupBy: {
+          args: Prisma.ReminderLogGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ReminderLogGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ReminderLogCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ReminderLogCountAggregateOutputType> | number
+        }
+      }
+    }
+    ReminderNudge: {
+      payload: Prisma.$ReminderNudgePayload<ExtArgs>
+      fields: Prisma.ReminderNudgeFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ReminderNudgeFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ReminderNudgeFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload>
+        }
+        findFirst: {
+          args: Prisma.ReminderNudgeFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ReminderNudgeFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload>
+        }
+        findMany: {
+          args: Prisma.ReminderNudgeFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload>[]
+        }
+        create: {
+          args: Prisma.ReminderNudgeCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload>
+        }
+        createMany: {
+          args: Prisma.ReminderNudgeCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ReminderNudgeCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload>[]
+        }
+        delete: {
+          args: Prisma.ReminderNudgeDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload>
+        }
+        update: {
+          args: Prisma.ReminderNudgeUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload>
+        }
+        deleteMany: {
+          args: Prisma.ReminderNudgeDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ReminderNudgeUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ReminderNudgeUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload>[]
+        }
+        upsert: {
+          args: Prisma.ReminderNudgeUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReminderNudgePayload>
+        }
+        aggregate: {
+          args: Prisma.ReminderNudgeAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateReminderNudge>
+        }
+        groupBy: {
+          args: Prisma.ReminderNudgeGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ReminderNudgeGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ReminderNudgeCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ReminderNudgeCountAggregateOutputType> | number
         }
       }
     }
@@ -3014,6 +3164,7 @@ export const UserScalarFieldEnum = {
   emailVerified: 'emailVerified',
   mfaEnabled: 'mfaEnabled',
   mfaVerifiedAt: 'mfaVerifiedAt',
+  managerId: 'managerId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -3237,6 +3388,9 @@ export const CourseAssignmentScalarFieldEnum = {
   courseId: 'courseId',
   assignedByAdminId: 'assignedByAdminId',
   scheduleAt: 'scheduleAt',
+  dueAt: 'dueAt',
+  dueWindowDays: 'dueWindowDays',
+  remindersEnabled: 'remindersEnabled',
   renewalCycle: 'renewalCycle',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -3245,14 +3399,16 @@ export const CourseAssignmentScalarFieldEnum = {
 export type CourseAssignmentScalarFieldEnum = (typeof CourseAssignmentScalarFieldEnum)[keyof typeof CourseAssignmentScalarFieldEnum]
 
 
-export const AssignmentReminderScalarFieldEnum = {
+export const AssignmentReminderStageScalarFieldEnum = {
   id: 'id',
   assignmentId: 'assignmentId',
-  offsetMinutes: 'offsetMinutes',
-  channel: 'channel'
+  stage: 'stage',
+  offsetDays: 'offsetDays',
+  enabled: 'enabled',
+  channels: 'channels'
 } as const
 
-export type AssignmentReminderScalarFieldEnum = (typeof AssignmentReminderScalarFieldEnum)[keyof typeof AssignmentReminderScalarFieldEnum]
+export type AssignmentReminderStageScalarFieldEnum = (typeof AssignmentReminderStageScalarFieldEnum)[keyof typeof AssignmentReminderStageScalarFieldEnum]
 
 
 export const DocumentScalarFieldEnum = {
@@ -3325,7 +3481,8 @@ export const EnrollmentScalarFieldEnum = {
   retakeOf: 'retakeOf',
   retakeReason: 'retakeReason',
   assignmentId: 'assignmentId',
-  accessAt: 'accessAt'
+  accessAt: 'accessAt',
+  dueAt: 'dueAt'
 } as const
 
 export type EnrollmentScalarFieldEnum = (typeof EnrollmentScalarFieldEnum)[keyof typeof EnrollmentScalarFieldEnum]
@@ -3343,6 +3500,29 @@ export const CertificateScalarFieldEnum = {
 } as const
 
 export type CertificateScalarFieldEnum = (typeof CertificateScalarFieldEnum)[keyof typeof CertificateScalarFieldEnum]
+
+
+export const ReminderLogScalarFieldEnum = {
+  id: 'id',
+  enrollmentId: 'enrollmentId',
+  stage: 'stage',
+  channels: 'channels',
+  targetDate: 'targetDate',
+  sentAt: 'sentAt'
+} as const
+
+export type ReminderLogScalarFieldEnum = (typeof ReminderLogScalarFieldEnum)[keyof typeof ReminderLogScalarFieldEnum]
+
+
+export const ReminderNudgeScalarFieldEnum = {
+  id: 'id',
+  enrollmentId: 'enrollmentId',
+  kind: 'kind',
+  lastSentAt: 'lastSentAt',
+  count: 'count'
+} as const
+
+export type ReminderNudgeScalarFieldEnum = (typeof ReminderNudgeScalarFieldEnum)[keyof typeof ReminderNudgeScalarFieldEnum]
 
 
 export const JobScalarFieldEnum = {
@@ -3429,6 +3609,7 @@ export const OrganizationScalarFieldEnum = {
   requireMfa: 'requireMfa',
   complianceDocumentUrl: 'complianceDocumentUrl',
   complianceDocumentName: 'complianceDocumentName',
+  timezone: 'timezone',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -3735,6 +3916,20 @@ export type ListEnumRenewalCycleFieldRefInput<$PrismaModel> = FieldRefInputType<
 
 
 /**
+ * Reference to a field of type 'ReminderStage'
+ */
+export type EnumReminderStageFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ReminderStage'>
+    
+
+
+/**
+ * Reference to a field of type 'ReminderStage[]'
+ */
+export type ListEnumReminderStageFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ReminderStage[]'>
+    
+
+
+/**
  * Reference to a field of type 'EnrollmentStatus'
  */
 export type EnumEnrollmentStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EnrollmentStatus'>
@@ -3745,6 +3940,20 @@ export type EnumEnrollmentStatusFieldRefInput<$PrismaModel> = FieldRefInputType<
  * Reference to a field of type 'EnrollmentStatus[]'
  */
 export type ListEnumEnrollmentStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EnrollmentStatus[]'>
+    
+
+
+/**
+ * Reference to a field of type 'ReminderNudgeKind'
+ */
+export type EnumReminderNudgeKindFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ReminderNudgeKind'>
+    
+
+
+/**
+ * Reference to a field of type 'ReminderNudgeKind[]'
+ */
+export type ListEnumReminderNudgeKindFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ReminderNudgeKind[]'>
     
 
 
@@ -3944,13 +4153,15 @@ export type GlobalOmitConfig = {
   courseArtifact?: Prisma.CourseArtifactOmit
   courseVersion?: Prisma.CourseVersionOmit
   courseAssignment?: Prisma.CourseAssignmentOmit
-  assignmentReminder?: Prisma.AssignmentReminderOmit
+  assignmentReminderStage?: Prisma.AssignmentReminderStageOmit
   document?: Prisma.DocumentOmit
   documentVersion?: Prisma.DocumentVersionOmit
   phiReport?: Prisma.PhiReportOmit
   mappingEvidence?: Prisma.MappingEvidenceOmit
   enrollment?: Prisma.EnrollmentOmit
   certificate?: Prisma.CertificateOmit
+  reminderLog?: Prisma.ReminderLogOmit
+  reminderNudge?: Prisma.ReminderNudgeOmit
   job?: Prisma.JobOmit
   notification?: Prisma.NotificationOmit
   notificationPreference?: Prisma.NotificationPreferenceOmit
