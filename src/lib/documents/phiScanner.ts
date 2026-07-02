@@ -1,8 +1,6 @@
 import { callVertexAI } from '@/lib/ai-client';
 import { logger } from '@/lib/logger';
 
-const PHI_FAIL_CLOSED = process.env.PHI_FAIL_CLOSED === 'true';
-
 export type PHIFinding = {
   type: 'DATE' | 'EMAIL' | 'PHONE' | 'SSN' | 'ZIP' | 'NAME' | 'ADDRESS' | 'OTHER';
   value: string;
@@ -13,10 +11,18 @@ export type PHIFinding = {
 export type ScanResult = {
   hasPHI: boolean;
   findings: PHIFinding[];
+  /**
+   * True when the scan could not be completed (AI error / malformed response)
+   * and the document was blocked as a precaution rather than because PHI was
+   * actually detected. Lets callers show a "couldn't verify" message that is
+   * distinct from a genuine PHI detection.
+   */
+  scanFailed?: boolean;
 };
 
 const failClosedResult: ScanResult = {
   hasPHI: true,
+  scanFailed: true,
   findings: [
     {
       type: 'OTHER',
@@ -27,13 +33,11 @@ const failClosedResult: ScanResult = {
   ],
 };
 
-function failOpenOrClosed(reason: string): ScanResult {
-  if (PHI_FAIL_CLOSED) {
-    logger.warn({ msg: `PHI scanner fail-closed: ${reason}` });
-    return failClosedResult;
-  }
-  logger.warn({ msg: `PHI scanner fail-open: ${reason}` });
-  return { hasPHI: false, findings: [] };
+// Compliance product: if we cannot verify a document is PHI-free, we block it
+// (fail-closed) rather than silently letting it through.
+function failClosed(reason: string): ScanResult {
+  logger.warn({ msg: `[doc] PHI scanner fail-closed: ${reason}` });
+  return failClosedResult;
 }
 
 export async function scanText(text: string): Promise<ScanResult> {
@@ -73,14 +77,14 @@ export async function scanText(text: string): Promise<ScanResult> {
     // JSON extraction
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return failOpenOrClosed('no JSON found in AI response');
+      return failClosed('no JSON found in AI response');
     }
 
     let data: Record<string, unknown>;
     try {
       data = JSON.parse(jsonMatch[0]);
     } catch {
-      return failOpenOrClosed('AI returned malformed JSON');
+      return failClosed('AI returned malformed JSON');
     }
 
     // Validate structure
@@ -96,9 +100,9 @@ export async function scanText(text: string): Promise<ScanResult> {
       };
     }
 
-    return failOpenOrClosed('AI response had unexpected structure');
+    return failClosed('AI response had unexpected structure');
   } catch (error) {
     logger.error({ msg: 'PHI scan failed', err: String(error) });
-    return failOpenOrClosed('scan exception — blocking document');
+    return failClosed('scan exception — blocking document');
   }
 }

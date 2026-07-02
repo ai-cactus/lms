@@ -24,6 +24,7 @@ const { prismaMock, mockHeaders, mockCheckRateLimit, mockSendEmailVerification }
       verificationToken: {
         deleteMany: vi.fn(),
         create: vi.fn(),
+        findFirst: vi.fn(),
       },
     };
 
@@ -57,9 +58,14 @@ vi.mock('@/lib/email', () => ({
 }));
 
 vi.mock('bcryptjs', () => ({
-  default: { hash: vi.fn().mockResolvedValue('hashed-pw') },
+  // authenticate() uses the default import (`bcrypt.compare`); signupWithRole
+  // uses it too (`bcrypt.hash`) — both must be present on `default`.
+  default: {
+    hash: vi.fn().mockResolvedValue('hashed-pw'),
+    compare: vi.fn().mockResolvedValue(false),
+  },
   hash: vi.fn().mockResolvedValue('hashed-pw'),
-  compare: vi.fn(),
+  compare: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('@/lib/logger', () => ({
@@ -82,7 +88,7 @@ vi.mock('@/lib/mfa-challenge', () => ({
 // ---------------------------------------------------------------------------
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
-import { signupWithRole } from './auth';
+import { signupWithRole, authenticate } from './auth';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -199,5 +205,66 @@ describe('signupWithRole — token expiry (EMAIL_VERIFICATION_EXPIRY_MS)', () =>
   it('expiry uses EMAIL_VERIFICATION_EXPIRY_MS (24 h), not a hardcoded value', () => {
     // Guard: if someone changes the constant this test catches the drift in meaning.
     expect(EMAIL_VERIFICATION_EXPIRY_MS).toBe(24 * 60 * 60 * 1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THER-015 #1: authenticate() — pending-verification hint for a missing user
+// ---------------------------------------------------------------------------
+
+function makeLoginFormData(email: string, password = 'whatever') {
+  const fd = new FormData();
+  fd.set('email', email);
+  fd.set('password', password);
+  return fd;
+}
+
+describe('authenticate — missing user hint (THER-015 #1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubHeadersIp();
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 9, resetInSeconds: 900 });
+    prismaMock.user.findUnique.mockResolvedValue(null); // no User row exists
+  });
+
+  it('returns the "verify your email" hint when a live email_verification token exists for that email', async () => {
+    prismaMock.verificationToken.findFirst.mockResolvedValue({ identifier: 'pending@example.com' });
+
+    const result = await authenticate(undefined, makeLoginFormData('pending@example.com'));
+
+    expect(result).toEqual({ error: 'Please verify your email to sign in.' });
+    expect(prismaMock.verificationToken.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          identifier: 'pending@example.com',
+          type: 'email_verification',
+        }),
+      }),
+    );
+  });
+
+  it('returns the generic "Invalid credentials." message when there is no pending verification token', async () => {
+    prismaMock.verificationToken.findFirst.mockResolvedValue(null);
+
+    const result = await authenticate(undefined, makeLoginFormData('nobody@example.com'));
+
+    expect(result).toEqual({ error: 'Invalid credentials.' });
+  });
+
+  it('still runs the dummy bcrypt compare (timing equalization) before checking for a pending token', async () => {
+    prismaMock.verificationToken.findFirst.mockResolvedValue(null);
+    const bcrypt = await import('bcryptjs');
+
+    await authenticate(undefined, makeLoginFormData('nobody@example.com'));
+
+    // authenticate() calls the DEFAULT import's compare (`import bcrypt from 'bcryptjs'`).
+    expect(bcrypt.default.compare).toHaveBeenCalledWith('dummy', expect.any(String));
+  });
+
+  it('does not query for a verification token when no email was submitted', async () => {
+    const result = await authenticate(undefined, makeLoginFormData(''));
+
+    expect(result).toEqual({ error: 'Invalid credentials.' });
+    expect(prismaMock.verificationToken.findFirst).not.toHaveBeenCalled();
   });
 });

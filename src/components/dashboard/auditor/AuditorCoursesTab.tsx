@@ -16,25 +16,27 @@ import { Button } from '@/components/ui/button';
 import { getAuditorCourses } from '@/app/actions/auditor';
 import type { AuditorCourseRow } from '@/app/actions/auditor';
 import { useExportJobs } from './ExportJobsProvider';
+import { useAuditFilter, toRangeInput } from './AuditFilterProvider';
 
 export default function AuditorCoursesTab() {
   const [courses, setCourses] = useState<AuditorCourseRow[]>([]);
   const [search, setSearch] = useState('');
   const [isPending, startTransition] = useTransition();
+  const { range } = useAuditFilter();
 
   useEffect(() => {
     const timer = setTimeout(() => {
       startTransition(async () => {
-        const data = await getAuditorCourses(search || undefined);
+        const data = await getAuditorCourses(search || undefined, toRangeInput(range));
         setCourses(data);
       });
     }, 300);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, range]);
 
   const { startExport } = useExportJobs();
   const handleExportAll = () => {
-    startExport({ scope: 'org', label: 'All courses report' });
+    startExport({ scope: 'all-courses', label: 'All courses report', ...toRangeInput(range) });
   };
 
   return (
@@ -128,6 +130,7 @@ export default function AuditorCoursesTab() {
                           scope: 'course',
                           scopeId: course.id,
                           label: `Course: ${course.title}`,
+                          ...toRangeInput(range),
                         })
                       }
                       className="text-sm font-semibold text-primary hover:underline"

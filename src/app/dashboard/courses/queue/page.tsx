@@ -1,12 +1,6 @@
 import { auth } from '@/auth';
+import { JobStatusBadge } from '@/components/jobs/JobStatusBadge';
 import prisma from '@/lib/prisma';
-
-const statusStyles: Record<string, string> = {
-  queued: 'bg-background-secondary text-text-secondary',
-  processing: 'bg-[#dbeafe] text-[#1e40af]',
-  completed: 'bg-[#ecfdf5] text-[#059669]',
-  failed: 'bg-[#fef2f2] text-[#dc2626]',
-};
 
 export default async function QueuePage() {
   const session = await auth();
@@ -33,11 +27,7 @@ export default async function QueuePage() {
                 Created: {job.createdAt.toLocaleTimeString()}
               </span>
             </div>
-            <span
-              className={`rounded-full px-3 py-1 text-sm font-semibold capitalize ${statusStyles[job.status] ?? ''}`}
-            >
-              {job.status}
-            </span>
+            <JobStatusBadge status={job.status} />
           </div>
         ))}
         {jobs.length === 0 && <p className="text-gray-500">No active jobs.</p>}

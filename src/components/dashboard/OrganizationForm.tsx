@@ -186,7 +186,7 @@ function FormSelect({
 }) {
   return (
     <>
-      <Select value={value || undefined} onValueChange={onValueChange} disabled={disabled}>
+      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
         <SelectTrigger className="w-full" aria-invalid={!!error}>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>

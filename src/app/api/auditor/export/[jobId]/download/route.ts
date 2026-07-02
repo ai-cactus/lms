@@ -4,6 +4,63 @@ import { auth } from '@/auth';
 import * as XLSX from 'xlsx';
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 import { logger } from '@/lib/logger';
+import type { AuditReportResult } from '@/lib/audit-reports/types';
+
+/** Flatten a report result into tabular rows for the CSV/DOCX secondary formats. */
+function flattenResult(result: AuditReportResult): Record<string, unknown>[] {
+  switch (result.scope) {
+    case 'org':
+      return result.activity.map((a) => ({
+        'Staff Name': a.staffName,
+        'Course Title': a.courseTitle,
+        Category: a.category ?? '',
+        Status: a.status,
+        Score: a.score ?? 'N/A',
+        'Date Assigned': a.dateAssigned,
+        'Date Completed': a.dateCompleted ?? '',
+      }));
+    case 'staff':
+      return result.transcript.map((t) => ({
+        'Course Title': t.courseTitle,
+        Type: t.type,
+        Category: t.category ?? '',
+        Status: t.status,
+        Score: t.score ?? 'N/A',
+        Attempts: t.attempts,
+        'Date Assigned': t.dateAssigned,
+        'Date Completed': t.dateCompleted ?? '',
+      }));
+    case 'course':
+      return result.staffPerformance.map((s) => ({
+        'Course Title': result.course.title,
+        'Staff Name': s.staffName,
+        Status: s.status,
+        Score: s.score ?? 'N/A',
+        Attempts: s.attempts,
+        'Date Completed': s.completedAt ?? '',
+      }));
+    case 'all-courses':
+      return result.courses.map((c) => ({
+        'Course Title': c.courseTitle,
+        Category: c.category ?? '',
+        Type: c.type,
+        Status: c.status,
+        'Assigned Staff': c.assignedStaff,
+        Completed: c.completed,
+        'Completion Rate (%)': c.completionRate,
+      }));
+    case 'all-staff':
+      return result.staff.map((s) => ({
+        'Staff Name': s.staffName,
+        Role: s.roleLabel,
+        Email: s.email,
+        'Courses Assigned': s.coursesAssigned,
+        'Courses Completed': s.coursesCompleted,
+        'Completion Rate (%)': s.completionRate,
+        'Last Activity': s.lastActivity ?? '',
+      }));
+  }
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
   try {
@@ -85,36 +142,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
     }
 
     // ── Flatten the result into rows for CSV/DOCX (secondary formats) ──
-    const flatRows: Record<string, unknown>[] =
-      result.scope === 'org'
-        ? result.activity.map((a) => ({
-            'Staff Name': a.staffName,
-            'Course Title': a.courseTitle,
-            Category: a.category ?? '',
-            Status: a.status,
-            Score: a.score ?? 'N/A',
-            'Date Assigned': a.dateAssigned,
-            'Date Completed': a.dateCompleted ?? '',
-          }))
-        : result.scope === 'staff'
-          ? result.transcript.map((t) => ({
-              'Course Title': t.courseTitle,
-              Type: t.type,
-              Category: t.category ?? '',
-              Status: t.status,
-              Score: t.score ?? 'N/A',
-              Attempts: t.attempts,
-              'Date Assigned': t.dateAssigned,
-              'Date Completed': t.dateCompleted ?? '',
-            }))
-          : result.staffPerformance.map((s) => ({
-              'Course Title': result.course.title,
-              'Staff Name': s.staffName,
-              Status: s.status,
-              Score: s.score ?? 'N/A',
-              Attempts: s.attempts,
-              'Date Completed': s.completedAt ?? '',
-            }));
+    const flatRows: Record<string, unknown>[] = flattenResult(result);
 
     if (format === 'csv') {
       const worksheet = XLSX.utils.json_to_sheet(flatRows);

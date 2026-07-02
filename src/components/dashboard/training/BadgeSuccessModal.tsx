@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Star, CheckCircle2 } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
 interface BadgeSuccessModalProps {
@@ -11,7 +11,7 @@ interface BadgeSuccessModalProps {
   onClose: () => void;
   courseName: string;
   organizationName: string;
-  badgeId?: string;
+  badgeId: string;
   issuedDate: string;
   courseId?: string; // Optional for navigation
 }
@@ -21,7 +21,7 @@ export default function BadgeSuccessModal({
   onClose,
   courseName,
   organizationName,
-  badgeId = 'LMS-104',
+  badgeId,
   issuedDate,
   courseId,
 }: BadgeSuccessModalProps) {
@@ -46,6 +46,7 @@ export default function BadgeSuccessModal({
         showCloseButton={false}
         className="max-w-[90vw] gap-0 overflow-hidden p-0 sm:max-w-3xl"
       >
+        <DialogTitle className="sr-only">Certificate earned</DialogTitle>
         <div className="flex min-h-[480px] w-full flex-col-reverse overflow-hidden bg-background md:flex-row">
           <div className="flex flex-1 flex-col items-center p-6 text-center sm:p-10">
             <div className="relative mb-6">

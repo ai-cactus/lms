@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { getAuditorStaff } from '@/app/actions/auditor';
 import { useExportJobs } from './ExportJobsProvider';
+import { useAuditFilter, toRangeInput } from './AuditFilterProvider';
 import type { AuditorStaffRow } from '@/app/actions/auditor';
 
 export default function AuditorStaffTab() {
@@ -21,16 +22,17 @@ export default function AuditorStaffTab() {
   const [search, setSearch] = useState('');
   const [isPending, startTransition] = useTransition();
   const { startExport } = useExportJobs();
+  const { range } = useAuditFilter();
 
   useEffect(() => {
     const timer = setTimeout(() => {
       startTransition(async () => {
-        const data = await getAuditorStaff(search || undefined);
+        const data = await getAuditorStaff(search || undefined, toRangeInput(range));
         setStaff(data);
       });
     }, 300);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, range]);
 
   return (
     <div className="rounded-xl border border-border bg-background p-6">
@@ -49,7 +51,9 @@ export default function AuditorStaffTab() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => startExport({ scope: 'org', label: 'All staff report' })}
+            onClick={() =>
+              startExport({ scope: 'all-staff', label: 'All staff report', ...toRangeInput(range) })
+            }
             title="Export all (PDF)"
           >
             <Download className="size-3.5" />
@@ -122,6 +126,7 @@ export default function AuditorStaffTab() {
                           scope: 'staff',
                           scopeId: member.id,
                           label: `Staff: ${member.name}`,
+                          ...toRangeInput(range),
                         })
                       }
                       className="text-sm font-semibold text-primary hover:underline"

@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { GraduationCap, UserPlus, CheckCircle2, Info, Download } from 'lucide-react';
 import {
   Table,
@@ -11,18 +12,51 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import type { AuditorOverviewStats, AuditorCourseRow } from '@/app/actions/auditor';
+import {
+  getAuditorOverviewStats,
+  getAuditorCourses,
+  type AuditorOverviewStats,
+  type AuditorCourseRow,
+} from '@/app/actions/auditor';
 import { useExportJobs } from './ExportJobsProvider';
+import { useAuditFilter, toRangeInput } from './AuditFilterProvider';
 
 interface Props {
   stats: AuditorOverviewStats;
   courses: AuditorCourseRow[];
 }
 
-export default function AuditorOverviewTab({ stats, courses }: Props) {
+export default function AuditorOverviewTab({
+  stats: initialStats,
+  courses: initialCourses,
+}: Props) {
   const { startExport } = useExportJobs();
+  const { range } = useAuditFilter();
+  const [stats, setStats] = useState<AuditorOverviewStats>(initialStats);
+  const [courses, setCourses] = useState<AuditorCourseRow[]>(initialCourses);
+  const [, startTransition] = useTransition();
+  // The server-provided props already reflect the empty ("all time") range, so
+  // skip the first fetch and only refetch when the range actually changes.
+  const didMount = useRef(false);
+
+  useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
+    startTransition(async () => {
+      const rangeInput = toRangeInput(range);
+      const [nextStats, nextCourses] = await Promise.all([
+        getAuditorOverviewStats(rangeInput),
+        getAuditorCourses(undefined, rangeInput),
+      ]);
+      setStats(nextStats);
+      setCourses(nextCourses);
+    });
+  }, [range]);
+
   const handleExport = () => {
-    startExport({ scope: 'org', label: 'Organization report' });
+    startExport({ scope: 'org', label: 'Organization report', ...toRangeInput(range) });
   };
 
   return (

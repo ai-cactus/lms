@@ -46,6 +46,52 @@ class InsufficientSourceError extends Error {
   }
 }
 
+// ─── Generation timeout + user-safe messaging (THER-002, THER-013) ──
+
+// Wall-clock bound for the whole v4.6 pipeline. A hung stage (e.g. a stuck
+// Vertex AI call) must never leave a Job in `processing` forever. Overridable
+// via env so ops can tune it without a redeploy; falls back to 10 minutes.
+const DEFAULT_GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
+
+function getGenerationTimeoutMs(): number {
+  const parsed = Number(process.env.V46_GENERATION_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_GENERATION_TIMEOUT_MS;
+}
+
+// Extra grace beyond the wall-clock timeout before the poll endpoint treats a
+// still-`processing` Job as stale/orphaned (e.g. after a server restart that
+// killed the background worker mid-run).
+const STALE_JOB_GRACE_MS = 60 * 1000;
+
+// Single user-facing failure message. Raw internal error detail (RAG context,
+// stack traces, validation dumps) is logged server-side only and NEVER returned
+// to the client — it previously leaked backend internals straight into the UI.
+const GENERATION_FAILED_USER_MESSAGE =
+  "We couldn't generate a course from this document — it may be too short or lack detail. Please try a more detailed document, or try again.";
+
+// Thrown when the pipeline exceeds the wall-clock timeout.
+class GenerationTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Generation exceeded ${timeoutMs}ms wall-clock timeout`);
+    this.name = 'GenerationTimeoutError';
+  }
+}
+
+/**
+ * Marks a Job as failed, storing the raw detail in the payload for server-side
+ * debugging. The raw detail is sanitised at the API boundary
+ * (checkCourseGenerationJobV46) before it can ever reach the client.
+ */
+async function markJobFailedV46(jobId: string, rawDetail: string): Promise<void> {
+  await prisma.job.update({
+    where: { id: jobId },
+    data: {
+      status: 'failed',
+      payload: { error: rawDetail } as unknown as Prisma.InputJsonValue,
+    },
+  });
+}
+
 // ─── Types ───────────────────────────────────────
 
 interface CourseDataV46 {
@@ -559,8 +605,61 @@ async function processBackgroundV46(
   docFilename: string,
   rawData: string,
 ) {
+  const timeoutMs = getGenerationTimeoutMs();
+
+  // Guards the terminal status write: whichever finishes first — the pipeline
+  // or the wall-clock timeout — settles the Job; the loser becomes a no-op.
+  // This stops a timed-out job from later flipping back to `completed`.
+  let settled = false;
+  const settle = (): boolean => {
+    if (settled) return false;
+    settled = true;
+    return true;
+  };
+
+  // Wall-clock timeout: rejects the race even if a stage is mid-await, so a
+  // stuck pipeline still marks the Job failed instead of hanging forever.
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => reject(new GenerationTimeoutError(timeoutMs)), timeoutMs);
+  });
+
+  try {
+    await Promise.race([
+      runPipelineV46(jobId, sourceText, docFilename, rawData, settle),
+      timeoutPromise,
+    ]);
+  } catch (err: unknown) {
+    const error = err as Error;
+    logger.error({ msg: `[v4.6 Background] Job ${jobId} aborted:`, err: error.message });
+    // Only write failed if the pipeline hasn't already settled the Job.
+    if (settle()) {
+      try {
+        await markJobFailedV46(
+          jobId,
+          error.message || 'Unknown server error during background processing',
+        );
+      } catch (updateErr) {
+        logger.error({
+          msg: `[v4.6 Background] CRITICAL: Failed to mark job ${jobId} as failed:`,
+          err: updateErr,
+        });
+      }
+    }
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
+async function runPipelineV46(
+  jobId: string,
+  sourceText: string,
+  docFilename: string,
+  rawData: string,
+  settle: () => boolean,
+) {
   logger.info({
-    msg: `[v4.6 Background] processBackgroundV46 ENTERED for job ${jobId}. sourceText length: ${sourceText.length}, docFilename: ${docFilename}`,
+    msg: `[v4.6 Background] runPipelineV46 ENTERED for job ${jobId}. sourceText length: ${sourceText.length}, docFilename: ${docFilename}`,
   });
   try {
     const data: CourseDataV46 = JSON.parse(rawData);
@@ -652,10 +751,14 @@ async function processBackgroundV46(
     }
 
     if (!articleMeta || !articleMarkdown || articleMeta.meta.status === 'needs_sources') {
-      await prisma.job.update({
-        where: { id: jobId },
-        data: { status: 'failed', payload: { error: `Stage A failed: ${errorMsg}` } },
-      });
+      // Store the raw Stage A detail for server-side debugging only; it is
+      // sanitised at the API boundary before reaching the client.
+      if (settle()) {
+        await prisma.job.update({
+          where: { id: jobId },
+          data: { status: 'failed', payload: { error: `Stage A failed: ${errorMsg}` } },
+        });
+      }
       return;
     }
 
@@ -795,33 +898,38 @@ async function processBackgroundV46(
     };
 
     logger.info({ msg: `[v4.6 Background] About to mark job ${jobId} as COMPLETED.` });
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { status: 'completed', result: resultPayload as unknown as Prisma.InputJsonValue }, // Cast to unknown before InputJsonValue for Prisma Json
-    });
-    logger.info({ msg: `[v4.6 Background] Job ${jobId} marked as COMPLETED successfully.` });
+    // Skip the completed write if the wall-clock timeout already settled the Job.
+    if (settle()) {
+      await prisma.job.update({
+        where: { id: jobId },
+        data: { status: 'completed', result: resultPayload as unknown as Prisma.InputJsonValue }, // Cast to unknown before InputJsonValue for Prisma Json
+      });
+      logger.info({ msg: `[v4.6 Background] Job ${jobId} marked as COMPLETED successfully.` });
+    } else {
+      logger.warn({
+        msg: `[v4.6 Background] Job ${jobId} already settled (timed out) — discarding completed result.`,
+      });
+    }
   } catch (err: unknown) {
     const error = err as Error;
     logger.error({ msg: `[v4.6 Background] Uncaught fatal error in job ${jobId}:`, err: error });
-    try {
-      await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'failed',
-          payload: {
-            error: error.message || 'Unknown server error during background processing',
-          } as unknown as Prisma.InputJsonValue,
-        },
-      });
-      logger.error({ msg: `[v4.6 Background] Job ${jobId} marked as FAILED.` });
-    } catch (updateErr) {
-      logger.error({
-        msg: `[v4.6 Background] CRITICAL: Failed to update job ${jobId} status to failed:`,
-        err: updateErr,
-      });
+    // Skip if the wall-clock timeout already settled the Job.
+    if (settle()) {
+      try {
+        await markJobFailedV46(
+          jobId,
+          error.message || 'Unknown server error during background processing',
+        );
+        logger.error({ msg: `[v4.6 Background] Job ${jobId} marked as FAILED.` });
+      } catch (updateErr) {
+        logger.error({
+          msg: `[v4.6 Background] CRITICAL: Failed to update job ${jobId} status to failed:`,
+          err: updateErr,
+        });
+      }
     }
   }
-  logger.info({ msg: `[v4.6 Background] processBackgroundV46 EXITED for job ${jobId}.` });
+  logger.info({ msg: `[v4.6 Background] runPipelineV46 EXITED for job ${jobId}.` });
 }
 
 export async function checkCourseGenerationJobV46(
@@ -836,11 +944,47 @@ export async function checkCourseGenerationJobV46(
 
     logger.info({ msg: `[v4.6 checkJob] Job ${jobId} status: ${job.status}` });
 
+    // Stale-job reconciler: a Job stuck in `processing` well past the wall-clock
+    // timeout (e.g. the background worker died before it could self-fail) is
+    // treated as failed so the client stops polling forever (THER-002).
+    if (job.status === 'processing') {
+      const staleAfterMs = getGenerationTimeoutMs() + STALE_JOB_GRACE_MS;
+      const ageMs = Date.now() - new Date(job.updatedAt).getTime();
+      if (ageMs > staleAfterMs) {
+        logger.warn({
+          msg: `[v4.6 checkJob] Job ${jobId} stale (age ${ageMs}ms > ${staleAfterMs}ms) — reconciling to failed`,
+        });
+        // Best-effort write-back so the record reflects reality for all readers.
+        // Scoped to `processing` so we never clobber a concurrently-settled Job.
+        try {
+          await prisma.job.updateMany({
+            where: { id: jobId, status: 'processing' },
+            data: {
+              status: 'failed',
+              payload: {
+                error: 'Generation timed out (stale job reconciled)',
+              } as unknown as Prisma.InputJsonValue,
+            },
+          });
+        } catch (reconErr) {
+          logger.error({
+            msg: `[v4.6 checkJob] Failed to reconcile stale job ${jobId}:`,
+            err: reconErr,
+          });
+        }
+        return { status: 'failed', error: GENERATION_FAILED_USER_MESSAGE };
+      }
+    }
+
     if (job.status === 'completed') {
       return { status: 'completed', result: job.result as unknown as GeneratedCourseV46 };
     } else if (job.status === 'failed') {
+      // Log the raw internal detail for debugging; return ONLY a safe, generic
+      // message to the client so backend internals never leak into the UI.
       const payload = job.payload as Record<string, unknown>;
-      return { status: 'failed', error: (payload?.error as string) || 'Generation failed' };
+      const rawDetail = (payload?.error as string) || 'Generation failed';
+      logger.error({ msg: `[v4.6 checkJob] Job ${jobId} failed`, err: rawDetail });
+      return { status: 'failed', error: GENERATION_FAILED_USER_MESSAGE };
     }
 
     return { status: job.status as JobStatus };

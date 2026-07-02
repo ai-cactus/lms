@@ -52,14 +52,28 @@ export async function uploadDocument(
   try {
     phiResult = await scanText(textContent);
   } catch (e) {
-    logger.error({ msg: 'PHI scan error', err: e });
-    return { error: 'Security Check Failed: Unable to scan document for PHI.' };
+    logger.error({ msg: '[doc] PHI scan error', err: e });
+    return {
+      error: 'We could not verify this document for PHI. Please try again in a moment.',
+    };
   }
 
-  const rejectOnPHI = formData.get('rejectOnPHI') === 'true';
-  const failClosed = process.env.PHI_FAIL_CLOSED === 'true';
-  if (phiResult.hasPHI && (rejectOnPHI || failClosed)) {
-    return { error: 'PHI Detected in document.', phiDetected: true };
+  // Compliance product: never store a document we could not confirm is
+  // PHI-free. A scan that failed to complete is blocked with a distinct,
+  // retry-able message; a genuine PHI detection is blocked with a clear reason.
+  if (phiResult.scanFailed) {
+    logger.warn({ msg: '[doc] Upload blocked — PHI scan could not complete', userId });
+    return {
+      error: 'We could not verify this document for PHI. Please try again in a moment.',
+    };
+  }
+
+  if (phiResult.hasPHI) {
+    logger.warn({ msg: '[doc] Upload blocked — PHI detected', userId });
+    return {
+      error: 'This document appears to contain PHI (e.g. SSN/DOB/MRN) and cannot be uploaded.',
+      phiDetected: true,
+    };
   }
 
   // 4. Upload to cloud storage (GCS → MinIO fallback)

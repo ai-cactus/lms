@@ -5,9 +5,11 @@ import { Award, Check, Download } from 'lucide-react';
 import CertificateModal from './CertificateModal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { formatCertificateId } from '@/lib/certificate-id';
 
 interface CertificateData {
   id: string;
+  enrollmentId: string;
   course: {
     title: string;
   };
@@ -29,14 +31,26 @@ export default function CertificateCardList({
 }: CertificateCardListProps) {
   const [selectedCertId, setSelectedCertId] = useState<string | null>(null);
 
+  // Pin a fixed timeZone so the server (UTC) and browser (local) render the
+  // same string — otherwise React reports a hydration mismatch (#418).
   const formatIssueDate = (dateString: Date | string) => {
     const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
   };
 
   const formatIssueTime = (dateString: Date | string) => {
     const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'UTC',
+    });
   };
 
   const handleExportAll = () => {
@@ -45,7 +59,10 @@ export default function CertificateCardList({
       'data:text/csv;charset=utf-8,' +
       'Certificate ID,Course,Issued Date\n' +
       certificates
-        .map((c) => `${c.id},"${c.course.title}",${new Date(c.issuedAt).toISOString()}`)
+        .map(
+          (c) =>
+            `${formatCertificateId(c.enrollmentId)},"${c.course.title}",${new Date(c.issuedAt).toISOString()}`,
+        )
         .join('\n');
 
     const encodedUri = encodeURI(csvContent);
@@ -106,7 +123,7 @@ export default function CertificateCardList({
                     {cert.course.title}
                   </h3>
                   <span className="text-sm text-text-secondary">
-                    Certificate ID: #{cert.id.substring(0, 8).toUpperCase()}
+                    Certificate ID: {formatCertificateId(cert.enrollmentId)}
                   </span>
                 </div>
               </div>

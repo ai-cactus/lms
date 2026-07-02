@@ -31,6 +31,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  Send,
+  Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +45,8 @@ interface StaffEntry {
   jobTitle: string;
   dateInvited: Date;
   isPending: boolean;
+  isExpired: boolean;
+  token: string | null;
 }
 
 import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
@@ -50,7 +54,7 @@ import InviteStaffModal from './InviteStaffModal';
 import RevokeInviteModal from './RevokeInviteModal';
 import RemoveStaffModal from './RemoveStaffModal';
 import WorkerLimitModal from './WorkerLimitModal';
-import { generateStaffActivityPdfAndEmail } from '@/app/actions/staff';
+import { generateStaffActivityPdfAndEmail, resendInvite } from '@/app/actions/staff';
 
 interface StaffListClientProps {
   users: StaffEntry[];
@@ -90,6 +94,14 @@ export default function StaffListClient({
   // Export state: tracks which user ID is currently being exported
   const [exportingUserId, setExportingUserId] = useState<string | null>(null);
   const [exportFeedback, setExportFeedback] = useState<{
+    id: string;
+    ok: boolean;
+    msg: string;
+  } | null>(null);
+  // Tracks the invite currently being resent, plus inline feedback for
+  // resend/copy-link actions (keyed by the invite row id).
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
+  const [inviteFeedback, setInviteFeedback] = useState<{
     id: string;
     ok: boolean;
     msg: string;
@@ -155,6 +167,40 @@ export default function StaffListClient({
       // Auto-clear feedback after 5 s
       setTimeout(() => setExportFeedback(null), 5000);
     }
+  };
+
+  // Resend a pending/expired invite — regenerates its token + expiry server-side
+  // and refreshes the list so the row reflects the new (unexpired) state.
+  const handleResendInvite = async (inviteId: string) => {
+    setResendingInviteId(inviteId);
+    setInviteFeedback(null);
+    try {
+      const result = await resendInvite(inviteId);
+      setInviteFeedback({
+        id: inviteId,
+        ok: result.success,
+        msg: result.success
+          ? 'Invite resent successfully.'
+          : (result.error ?? 'Failed to resend invite.'),
+      });
+      if (result.success) router.refresh();
+    } finally {
+      setResendingInviteId(null);
+      setTimeout(() => setInviteFeedback(null), 5000);
+    }
+  };
+
+  // Copy the invite's join link to the clipboard for manual sharing.
+  const handleCopyInviteLink = async (entry: StaffEntry) => {
+    if (!entry.token) return;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+    try {
+      await navigator.clipboard.writeText(`${baseUrl}/join/${entry.token}`);
+      setInviteFeedback({ id: entry.id, ok: true, msg: 'Invite link copied to clipboard.' });
+    } catch {
+      setInviteFeedback({ id: entry.id, ok: false, msg: 'Could not copy invite link.' });
+    }
+    setTimeout(() => setInviteFeedback(null), 5000);
   };
 
   return (
@@ -265,11 +311,16 @@ export default function StaffListClient({
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2 font-semibold text-[#1a202c]">
                           {user.email}
-                          {user.isPending && (
-                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-[#EBF4FF] text-[#3182CE] tracking-wide">
-                              Pending
-                            </span>
-                          )}
+                          {user.isPending &&
+                            (user.isExpired ? (
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-[#FFFAF0] text-[#DD6B20] tracking-wide">
+                                Expired
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-[#EBF4FF] text-[#3182CE] tracking-wide">
+                                Pending
+                              </span>
+                            ))}
                         </div>
                         <div className="text-xs text-[#718096]">{user.jobTitle}</div>
                       </div>
@@ -289,6 +340,15 @@ export default function StaffListClient({
                         {exportFeedback.msg}
                       </div>
                     )}
+                    {inviteFeedback?.id === user.id && (
+                      <div
+                        className={`mt-1 text-[11px] font-medium ${
+                          inviteFeedback.ok ? 'text-green-600' : 'text-red-600'
+                        }`}
+                      >
+                        {inviteFeedback.msg}
+                      </div>
+                    )}
                   </TableCell>
 
                   {/* Kebab action cell — always visible */}
@@ -298,9 +358,23 @@ export default function StaffListClient({
                         user.isPending
                           ? [
                               {
+                                label:
+                                  resendingInviteId === user.id ? 'Resending…' : 'Resend Invite',
+                                icon: <Send className="size-4" />,
+                                disabled: resendingInviteId === user.id,
+                                onSelect: () => handleResendInvite(user.id),
+                              },
+                              {
+                                label: 'Copy invite link',
+                                icon: <Copy className="size-4" />,
+                                disabled: !user.token,
+                                onSelect: () => handleCopyInviteLink(user),
+                              },
+                              {
                                 label: 'Revoke Invite',
                                 icon: <XCircle className="size-4" />,
                                 variant: 'destructive',
+                                separatorBefore: true,
                                 onSelect: () => setRevokeTarget({ id: user.id, email: user.email }),
                               },
                             ]
@@ -425,6 +499,7 @@ export default function StaffListClient({
         organizationId={organizationId}
         remainingSeats={planLimit !== null ? Math.max(0, planLimit - totalUsed) : null}
         planName={planName}
+        existingEmails={initialUsers.map((u) => u.email)}
       />
       {/* Revoke Invite Modal */}
       {revokeTarget && (
