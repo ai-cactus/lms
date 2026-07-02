@@ -1,7 +1,0 @@
-Stage,Trigger Timeline,Target Audience,Delivery Channel,Email Subject Line / Notification Text,Action Required
-1. Initial Launch,Day course is published,Worker,Email / In-App,📋 New Required Training Assigned: [Course Name],Review details and log in to begin the course.
-2. Friendly Reminder,14 days before deadline,Worker,Email / In-App,⏳ Upcoming Deadline: [Course Name],Complete the training within the next two weeks to stay current.
-3. Urgent Reminder,3 days before deadline,Worker,Email / In-App,⚠️ Action Required: [Course Name] expires in 3 days,Finish the modules immediately to prevent gap in compliance.
-4. Day of Deadline,Day of deadline,Worker,Email / In-App,🚨 Final Notice: [Course Name] is due today,Complete training before midnight tonight.
-5. Grace Period (Soft Escalation),3 days past deadline,Worker & Admin,Email / In-App,🛑 OVERDUE: [Worker Name] - [Course Name] Training,Worker: Complete immediately.Admin: Notified of worker non-compliance.
-6. Hard Escalation,7 days past deadline,Admin (Manager),Email / Dashboard Alert,📉 Compliance Alert: Action required for [Worker Name],Admin intervention required. Manual follow-up or temporary restriction of duties.
