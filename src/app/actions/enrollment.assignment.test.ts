@@ -33,6 +33,8 @@ vi.mock('@/lib/prisma', () => {
     orgCourseOffering: { findUnique: mockOfferingFindUnique, upsert: mockOfferingUpsert },
     courseAssignment: { create: mockAssignmentCreate },
     enrollment: { findFirst: mockEnrollmentFindFirst, create: mockEnrollmentCreate },
+    // Added in facility split: enrollUsers resolves facilityId for new users.
+    facility: { findFirst: vi.fn().mockResolvedValue(null) },
   };
   return { prisma, default: prisma };
 });
@@ -64,7 +66,8 @@ beforeEach(() => {
   mockUserFindUnique
     .mockResolvedValueOnce({
       id: 'admin-1',
-      role: 'admin',
+      // After RBAC migration: 'admin' is retired; 'owner' is an admin role.
+      role: 'owner',
       organizationId: 'org-1',
       organization: { name: 'Org' },
     })

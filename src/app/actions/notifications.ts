@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { logger } from '@/lib/logger';
+import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -267,7 +268,7 @@ export async function notifyOrganizationAdmins(
     const admins = await prisma.user.findMany({
       where: {
         organizationId: organizationId,
-        role: 'admin',
+        role: { in: [...ADMIN_ROLES] },
       },
       select: { id: true },
     });

@@ -33,6 +33,7 @@ import {
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { Role } from '@/types/next-auth';
 
 interface StaffEntry {
   id: string;
@@ -60,6 +61,7 @@ interface StaffListClientProps {
   planName: string;
   currentWorkerCount: number;
   pendingInviteCount: number;
+  inviterRole: Role;
 }
 
 export default function StaffListClient({
@@ -70,6 +72,7 @@ export default function StaffListClient({
   planName,
   currentWorkerCount,
   pendingInviteCount,
+  inviterRole,
 }: StaffListClientProps) {
   // Total seats consumed = active workers + pending invites
   const totalUsed = currentWorkerCount + pendingInviteCount;
@@ -204,7 +207,7 @@ export default function StaffListClient({
           }}
         >
           <Plus className="size-4" />
-          Add Worker
+          Add Staff
         </Button>
       </div>
 
@@ -425,6 +428,7 @@ export default function StaffListClient({
         organizationId={organizationId}
         remainingSeats={planLimit !== null ? Math.max(0, planLimit - totalUsed) : null}
         planName={planName}
+        inviterRole={inviterRole}
       />
       {/* Revoke Invite Modal */}
       {revokeTarget && (

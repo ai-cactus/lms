@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -1250,7 +1251,7 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     select: { role: true },
   });
 
-  if (!adminUser || adminUser.role !== 'admin') {
+  if (!adminUser || !isAdminRole(adminUser.role)) {
     throw new Error('Insufficient permissions');
   }
 

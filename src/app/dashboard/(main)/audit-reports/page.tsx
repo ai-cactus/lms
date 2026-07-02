@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { Circle } from 'lucide-react';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
@@ -36,7 +37,7 @@ export default async function AuditorPackPage() {
   });
 
   // Only admin users may access this page
-  if (!user || user.role !== 'admin') {
+  if (!user || !isAdminRole(user.role)) {
     redirect('/dashboard');
   }
 

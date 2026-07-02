@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, AlertTriangle, Trash2 } from 'lucide-react';
@@ -88,10 +89,9 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
     .toUpperCase()
     .slice(0, 2);
 
-  const roleBadgeClass =
-    user.role === 'admin'
-      ? 'bg-primary/10 text-primary'
-      : 'bg-background-secondary text-text-secondary';
+  const roleBadgeClass = isAdminRole(user.role)
+    ? 'bg-primary/10 text-primary'
+    : 'bg-background-secondary text-text-secondary';
 
   return (
     <>

@@ -16,7 +16,7 @@ async function main() {
       email: `test-${Date.now()}@example.com`,
       password: 'hashed_password',
       organizationId: org.id,
-      role: 'admin',
+      role: 'supervisor',
     },
   });
   console.log(`   User created: ${user.email} (${user.id})`);

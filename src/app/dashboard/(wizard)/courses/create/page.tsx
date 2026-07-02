@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
@@ -32,7 +33,7 @@ export default async function CreateCoursePage() {
     },
   });
 
-  if (!user || user.role !== 'admin') {
+  if (!user || !isAdminRole(user.role)) {
     redirect('/dashboard');
   }
 

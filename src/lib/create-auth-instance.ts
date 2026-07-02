@@ -6,16 +6,17 @@ import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 import { logger, maskEmail } from '@/lib/logger';
 import { isSessionMfaVerified } from '@/lib/session-mfa';
-type Role = 'admin' | 'worker';
+import { ADMIN_ROLES, WORKER_ROLES, ALL_ROLES } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 
 interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
-  allowedRole: Role;
+  allowedRoles: readonly Role[];
   basePath: string; // "/api/auth" | "/api/auth-worker"
 }
 
 export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
-  const { cookiePrefix, allowedRole, basePath } = instanceConfig;
+  const { cookiePrefix, allowedRoles, basePath } = instanceConfig;
   const useSecureCookies = process.env.NODE_ENV === 'production';
 
   // Fail fast at startup — prevents silent session failures in production.
@@ -24,11 +25,18 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
     process.env.NODE_ENV === 'test' ||
     process.env.NEXT_PHASE === 'phase-production-build' ||
     process.env.CI === 'true';
+  // Resolve the secret used to ENCRYPT the session JWT. This MUST match the value
+  // the proxy uses to DECRYPT it (see src/proxy.ts) — same vars, same order:
+  // AUTH_SECRET first, then NEXTAUTH_SECRET.
   const authSecret =
-    process.env.NEXTAUTH_SECRET || (isBuildOrTest ? 'build-time-dummy-secret' : undefined);
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    (isBuildOrTest ? 'build-time-dummy-secret' : undefined);
 
   if (!authSecret) {
-    throw new Error('[Auth] NEXTAUTH_SECRET is not defined. Set it in your environment variables.');
+    throw new Error(
+      '[Auth] Neither AUTH_SECRET nor NEXTAUTH_SECRET is defined. Set one in your environment variables.',
+    );
   }
 
   const config: NextAuthConfig = {
@@ -88,11 +96,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             return null;
           }
 
-          if (user.role !== allowedRole) {
+          if (!allowedRoles.includes(user.role as Role)) {
             logger.warn({
               msg: 'Auth login failed: role mismatch',
               role: user.role,
-              allowed: allowedRole,
+              allowed: allowedRoles.join(','),
               instance: cookiePrefix,
             });
             return null;
@@ -151,20 +159,23 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           if (!dbUser) {
             // New user Signup Flow
+            // D3: a brand-new admin-instance user with no invite becomes `owner`
+            // (they are founding an organisation). A worker-instance user with no
+            // invite becomes `worker`.
+            let matchedOrgId = null;
+            let matchedRole: Role = allowedRoles.includes('worker') ? 'worker' : 'owner';
+
             logger.info({
               msg: 'OAuth: creating new user',
               email: maskEmail(user.email!),
-              role: allowedRole,
+              role: matchedRole,
             });
-
-            let matchedOrgId = null;
-            let matchedRole = allowedRole;
 
             if (pendingInvite) {
               matchedOrgId = pendingInvite.organizationId;
               const inviteRole = pendingInvite.role;
-              matchedRole =
-                inviteRole === 'admin' || inviteRole === 'worker' ? inviteRole : 'worker';
+              const isValidRole = (r: unknown): r is Role => ALL_ROLES.includes(r as Role);
+              matchedRole = isValidRole(inviteRole) ? inviteRole : 'worker';
               logger.info({
                 msg: 'OAuth: pending invite found',
                 email: maskEmail(user.email!),
@@ -178,6 +189,16 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               12,
             );
 
+            // Attach to the org's facility when joining via invite; null otherwise.
+            const matchedFacilityId = matchedOrgId
+              ? ((
+                  await prisma.facility.findFirst({
+                    where: { organizationId: matchedOrgId },
+                    select: { id: true },
+                  })
+                )?.id ?? null)
+              : null;
+
             dbUser = await prisma.user.create({
               data: {
                 email: user.email!,
@@ -185,6 +206,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 authProvider: 'microsoft-entra-id',
                 role: matchedRole,
                 organizationId: matchedOrgId,
+                facilityId: matchedFacilityId,
                 emailVerified: true, // Trust OAuth provider email verification
               },
               select: { id: true, organizationId: true, role: true },
@@ -206,14 +228,18 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 email: maskEmail(user.email!),
                 orgId: pendingInvite.organizationId,
               });
+              const inviteFacility = await prisma.facility.findFirst({
+                where: { organizationId: pendingInvite.organizationId },
+                select: { id: true },
+              });
               dbUser = await prisma.user.update({
                 where: { id: dbUser.id },
                 data: {
                   organizationId: pendingInvite.organizationId,
-                  role:
-                    pendingInvite.role === 'admin' || pendingInvite.role === 'worker'
-                      ? pendingInvite.role
-                      : 'worker',
+                  facilityId: inviteFacility?.id ?? null,
+                  role: ALL_ROLES.includes(pendingInvite.role as Role)
+                    ? pendingInvite.role
+                    : 'worker',
                 },
                 select: { id: true, organizationId: true, role: true },
               });
@@ -227,15 +253,15 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           if (!dbUser.role) {
             logger.info({ msg: 'OAuth: user has no role, continuing for onboarding' });
-          } else if (dbUser.role !== allowedRole) {
+          } else if (!allowedRoles.includes(dbUser.role as Role)) {
             logger.warn({
               msg: 'OAuth: role mismatch, routing to correct instance',
-              expected: allowedRole,
+              expected: allowedRoles.join(','),
               got: dbUser.role,
             });
-            if (dbUser.role === 'worker')
+            if (WORKER_ROLES.includes(dbUser.role as Role))
               return '/api/auth-worker/signin/microsoft-entra-id?callbackUrl=/worker';
-            if (dbUser.role === 'admin')
+            if (ADMIN_ROLES.includes(dbUser.role as Role))
               return '/api/auth/signin/microsoft-entra-id?callbackUrl=/dashboard';
             return `${config.pages?.signIn}?error=AccessDenied`;
           }
@@ -299,6 +325,17 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
         // ✅ Re-validate against DB on every decode
         if (token.id) {
+          // Retired-role guard: the legacy `admin` role no longer exists. Any JWT
+          // still carrying it predates the RBAC rollout and must be forced to
+          // re-authenticate. NOTE: `worker` is NOT retired — worker sessions stay.
+          if (token.role === 'admin') {
+            logger.warn({
+              msg: '[Auth] Stale JWT with retired admin role detected, forcing re-auth',
+              instance: cookiePrefix,
+            });
+            return null;
+          }
+
           let freshUser;
           try {
             freshUser = await prisma.user.findUnique({
@@ -325,7 +362,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           }
 
           if (!freshUser) return null; // User was deleted — invalidate
-          if (freshUser.role !== allowedRole) return null; // Role changed — invalidate
+          if (!allowedRoles.includes(freshUser.role as Role)) return null; // Role changed — invalidate
 
           token.role = freshUser.role as Role;
           token.organizationId = freshUser.organizationId;

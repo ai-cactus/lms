@@ -112,11 +112,13 @@ export async function verifyOrganizationCode(code: string) {
         id: true,
         name: true,
         joinCodeExpiresAt: true,
-        programServices: true,
         primaryBusinessType: true,
-        country: true,
-        phone: true,
         primaryContact: true,
+        // Location/services fields now live on the facility.
+        facilities: {
+          select: { programServices: true, country: true, phone: true },
+          take: 1,
+        },
       },
     });
 
@@ -128,15 +130,17 @@ export async function verifyOrganizationCode(code: string) {
       return { success: false, error: 'This code has expired.' };
     }
 
+    const facility = org.facilities[0];
+
     return {
       success: true,
       organization: {
         id: org.id,
         name: org.name,
         type: org.primaryBusinessType,
-        services: org.programServices,
-        country: org.country,
-        phone: org.phone,
+        services: facility?.programServices ?? [],
+        country: facility?.country ?? null,
+        phone: facility?.phone ?? null,
         contactName: org.primaryContact,
       },
     };
@@ -165,11 +169,21 @@ export async function joinOrganization(code: string) {
 
     const orgId = verifyResult.organization.id;
 
-    // Update user to link to organization
+    // Attach the worker to the org's facility (one per org today).
+    const facility = await prisma.facility.findFirst({
+      where: { organizationId: orgId },
+      select: { id: true },
+    });
+    if (!facility) {
+      logger.warn({ msg: '[org-code] joinOrganization: no facility for organization', orgId });
+    }
+
+    // Update user to link to organization + facility
     await prisma.user.update({
       where: { id: userId },
       data: {
         organizationId: orgId,
+        facilityId: facility?.id ?? null,
         role: 'worker', // Ensure role is worker
       },
     });

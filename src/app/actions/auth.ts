@@ -186,7 +186,11 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
       where: { identifier: email, type: 'email_verification' },
     });
 
-    // Create verification token with pending user data including role (24 hour expiry)
+    // Create verification token with pending user data including role (24 hour expiry).
+    // The signup UI offers a binary "admin vs worker" choice; persist it as the
+    // RBAC role the account will be created with. "admin" means founding an
+    // organisation, so the account becomes an `owner`.
+    const persistedRole = role === 'admin' ? 'owner' : 'worker';
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MS);
 
@@ -199,7 +203,7 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
         password: hashedPassword,
         firstName,
         lastName,
-        role,
+        role: persistedRole,
       },
     });
 

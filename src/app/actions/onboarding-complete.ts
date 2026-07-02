@@ -63,6 +63,18 @@ export async function completeOnboarding(data: OnboardingData) {
     return { success: false, error: 'Missing Organization Data (Step 1)' };
   }
 
+  // One organisation per user — a user already in an org cannot create another.
+  const existingMembership = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { organizationId: true },
+  });
+  if (existingMembership?.organizationId) {
+    return {
+      success: false,
+      error: 'You already belong to an organization and cannot create another.',
+    };
+  }
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       // 1. Check for existing organization
@@ -90,36 +102,46 @@ export async function completeOnboarding(data: OnboardingData) {
           name: step1.legalName,
           dba: step1.dba,
           ein: step1.ein,
-          staffCount: step1.staffCount,
           primaryContact: step1.primaryContactName,
           primaryEmail: step1.primaryContactEmail,
+          slug: slug,
+          // Step 2 Data (org-level)
+          isHipaaCompliant: step2?.hipaaCompliant === 'yes',
+          // Step 3 Data (org-level)
+          primaryBusinessType: step3?.primaryBusinessType,
+          additionalBusinessTypes: step3?.additionalBusinessType
+            ? [step3.additionalBusinessType]
+            : step3?.additionalBusinessTypes || [],
+        },
+      });
+      logger.info({ msg: '[completeOnboarding] Organization Created:', data: org.id });
+
+      // 1b. Create the organisation's first facility (location/compliance fields).
+      const facility = await tx.facility.create({
+        data: {
+          organizationId: org.id,
+          name: step1.legalName,
+          staffCount: step1.staffCount,
           phone: step1.phone,
           country: step1.country,
           address: step1.streetAddress,
           zipCode: step1.zipCode,
           city: step1.city,
           state: step1.state,
-          slug: slug,
-          // Step 2 Data
-          isHipaaCompliant: step2?.hipaaCompliant === 'yes',
           licenseNumber: step2?.licenseNumber,
-          // Step 3 Data
-          primaryBusinessType: step3?.primaryBusinessType,
-          additionalBusinessTypes: step3?.additionalBusinessType
-            ? [step3.additionalBusinessType]
-            : step3?.additionalBusinessTypes || [],
-          programServices: step3?.services || [], // Mapped from 'services' in frontend to 'programServices' in DB
+          programServices: step3?.services || [], // Mapped from 'services' in frontend
         },
       });
-      logger.info({ msg: '[completeOnboarding] Organization Created:', data: org.id });
+      logger.info({ msg: '[completeOnboarding] Facility Created:', data: facility.id });
 
-      // 2. Link Admin User
+      // 2. Link founding user as the organisation `owner`, attached to the facility.
       logger.info({ msg: '[completeOnboarding] Linking User:', data: userId });
       await tx.user.update({
         where: { id: userId },
         data: {
           organizationId: org.id,
-          role: 'admin',
+          facilityId: facility.id,
+          role: 'owner',
         },
       });
 

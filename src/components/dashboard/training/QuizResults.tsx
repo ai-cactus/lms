@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import CircularProgress from '@/components/ui/CircularProgress';
 import AttestationModal from './AttestationModal';
 import BadgeSuccessModal from './BadgeSuccessModal';
+import { isWorkerRole } from '@/lib/rbac/role-utils';
 
 interface QuizResultsProps {
   courseId: string;
@@ -91,7 +92,9 @@ export default function QuizResults({
     }
   };
 
-  const dashboardPath = userRole === 'admin' ? '/dashboard' : '/worker';
+  // Any non-worker viewer (admin-tier roles, or the legacy "admin" view flag)
+  // returns to the admin dashboard; workers return to the worker area.
+  const dashboardPath = isWorkerRole(userRole) ? '/worker' : '/dashboard';
 
   return (
     <div className="mx-auto max-w-[1000px] p-6">

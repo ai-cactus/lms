@@ -1,4 +1,5 @@
 import React from 'react';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
@@ -46,7 +47,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   // Surface a site-wide banner to admins while billing is paused.
   const subscription = user?.organization?.subscription;
-  const pauseState = role === 'admin' ? getPauseState(subscription) : 'none';
+  const pauseState = isAdminRole(role) ? getPauseState(subscription) : 'none';
 
   return (
     <AdminSessionProvider>

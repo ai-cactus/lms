@@ -20,6 +20,8 @@ const { prismaMock, mockAdminAuth, mockWorkerAuth } = vi.hoisted(() => {
     orgCourseOffering: { findUnique: vi.fn(), upsert: vi.fn() },
     courseAssignment: { create: vi.fn() },
     enrollment: { findFirst: vi.fn(), create: vi.fn() },
+    // Added in facility split: enrollUsers looks up facilityId for new users.
+    facility: { findFirst: vi.fn() },
   };
   const mockAdminAuth = vi.fn();
   const mockWorkerAuth = vi.fn();
@@ -85,7 +87,8 @@ const globalVideoCourse = {
 
 const adminUser = {
   id: ADMIN_ID,
-  role: 'admin',
+  // After RBAC migration: 'admin' is retired; 'owner' is the new admin-role equivalent.
+  role: 'owner',
   organizationId: ORG_ID,
   organization: { id: ORG_ID, name: 'Acme Corp' },
 };

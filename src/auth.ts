@@ -2,7 +2,7 @@ import { createAuthInstance } from '@/lib/create-auth-instance';
 
 const adminAuth = createAuthInstance({
   cookiePrefix: 'admin',
-  allowedRole: 'admin',
+  allowedRoles: ['owner', 'supervisor', 'hr', 'clinical_director', 'finance'],
   basePath: '/api/auth',
 });
 

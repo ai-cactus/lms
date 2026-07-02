@@ -11,8 +11,18 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui';
+import { Field } from '@/components/ui/field';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { createInvites } from '@/app/actions/invite';
 import { useRouter } from 'next/navigation';
+import { GRANTABLE_ROLES, getRoleDisplayName } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 
 interface InviteStaffModalProps {
   isOpen: boolean;
@@ -25,6 +35,8 @@ interface InviteStaffModalProps {
   /** Seats remaining under the current plan. null = unlimited (enterprise). */
   remainingSeats: number | null;
   planName: string;
+  /** The current admin's role — determines which roles they may grant. */
+  inviterRole: Role;
 }
 
 export default function InviteStaffModal({
@@ -32,14 +44,19 @@ export default function InviteStaffModal({
   onClose,
   remainingSeats,
   planName,
+  inviterRole,
 }: InviteStaffModalProps) {
+  const grantableRoles = GRANTABLE_ROLES[inviterRole];
   const isLimitedPlan = remainingSeats !== null;
   const seatsExhausted = isLimitedPlan && remainingSeats === 0;
   const [emails, setEmails] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const [selectedRole, setSelectedRole] = useState<Role>('worker');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const router = useRouter();
+  // Owner is seat-exempt (D2); every other role consumes a plan seat.
+  const seatCapApplies = selectedRole !== 'owner';
 
   const isValidEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -85,7 +102,7 @@ export default function InviteStaffModal({
     setMessage(null);
 
     try {
-      const result = await createInvites(finalEmails);
+      const result = await createInvites(finalEmails, selectedRole);
 
       if (result.success) {
         // Analyze results
@@ -183,12 +200,32 @@ export default function InviteStaffModal({
             </p>
           </div>
 
+          {grantableRoles.length > 0 && (
+            <Field label="Role">
+              <Select
+                value={selectedRole}
+                onValueChange={(value) => setSelectedRole(value as Role)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {grantableRoles.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {getRoleDisplayName(role)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+
           {message && (
             <Alert variant={message.type === 'success' ? 'success' : 'error'}>{message.text}</Alert>
           )}
 
-          {/* Seats remaining hint */}
-          {isLimitedPlan && (
+          {/* Seats remaining hint — owner is seat-exempt (D2), so hide when owner selected */}
+          {isLimitedPlan && seatCapApplies && (
             <p
               className={
                 seatsExhausted
@@ -210,7 +247,7 @@ export default function InviteStaffModal({
               variant="default"
               type="submit"
               loading={isLoading}
-              disabled={(emails.length === 0 && !inputValue) || seatsExhausted}
+              disabled={(emails.length === 0 && !inputValue) || (seatsExhausted && seatCapApplies)}
             >
               Send Invites
             </Button>

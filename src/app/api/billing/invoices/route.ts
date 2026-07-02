@@ -1,28 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { authorize } from '@/lib/rbac/authorize';
+import { apiError } from '@/lib/api-response';
 
 // GET /api/billing/invoices?page=1 — returns paginated invoice list
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authResult = await authorize('billing.read');
+    if (!authResult.ok) return authResult.response;
+    const { ctx } = authResult;
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true },
-    });
-
-    if (!user || user.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!ctx.organizationId) {
+      return apiError('No organization found', 404);
     }
-
-    if (!user.organizationId) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
+    const organizationId = ctx.organizationId;
 
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
@@ -31,13 +23,13 @@ export async function GET(request: NextRequest) {
 
     const [invoices, total] = await Promise.all([
       prisma.invoice.findMany({
-        where: { organizationId: user.organizationId },
+        where: { organizationId },
         orderBy: { createdAt: 'desc' },
         skip,
         take: pageSize,
       }),
       prisma.invoice.count({
-        where: { organizationId: user.organizationId },
+        where: { organizationId },
       }),
     ]);
 

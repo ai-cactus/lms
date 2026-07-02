@@ -5,6 +5,9 @@ import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { getSignedUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
+import type { Role } from '@/types/next-auth';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -18,13 +21,16 @@ export default async function ProfilePage() {
     where: { id: session.user.id },
   });
 
-  // Fetch user with organization
+  // Fetch user with organization + facility
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    include: { organization: true },
+    include: { organization: true, facility: true },
   });
 
-  const role = user?.role || 'worker';
+  const role = (user?.role || 'worker') as Role;
+  const roleKey = dbRoleToRoleKey(role);
+  const canReadFacility = can(roleKey, 'facility.read');
+  const canEditFacility = can(roleKey, 'facility.edit');
 
   logger.info({ msg: 'ProfilePage Session:', data: session?.user?.id });
   logger.info({ msg: 'ProfilePage Profile:', data: profile });
@@ -45,7 +51,7 @@ export default async function ProfilePage() {
     first_name: profile?.firstName || '',
     last_name: profile?.lastName || '',
     email: user?.email || session.user.email || '',
-    role: role as 'admin' | 'worker',
+    role,
     company_name: profile?.companyName || '',
     jobTitle: profile?.jobTitle || '',
     avatarUrl: profile?.avatarUrl || null,
@@ -53,34 +59,51 @@ export default async function ProfilePage() {
     authProvider: user?.authProvider || 'credentials',
   };
 
-  // Construct organization data
+  // Organization data — org-level fields only.
   const organizationData = user?.organization
     ? {
         id: user.organization.id,
         name: user.organization.name,
         dba: user.organization.dba,
         ein: user.organization.ein,
-        staffCount: user.organization.staffCount,
         primaryContact: user.organization.primaryContact,
         primaryEmail: user.organization.primaryEmail,
-        phone: user.organization.phone,
-        address: user.organization.address,
-        city: user.organization.city,
-        country: user.organization.country,
-        state: user.organization.state,
-        zipCode: user.organization.zipCode,
-        licenseNumber: user.organization.licenseNumber,
         isHipaaCompliant: user.organization.isHipaaCompliant,
         primaryBusinessType: user.organization.primaryBusinessType,
         additionalBusinessTypes: user.organization.additionalBusinessTypes || [],
-        programServices: user.organization.programServices || [],
-        complianceDocumentUrl: user.organization.complianceDocumentUrl,
-        complianceDocumentName: user.organization.complianceDocumentName,
-        complianceDocumentDisplayUrl: user.organization.complianceDocumentUrl
-          ? await getSignedUrl(user.organization.complianceDocumentUrl).catch(() => null)
+      }
+    : null;
+
+  // Facility data — location/compliance fields now live on the facility.
+  const facility = user?.facility;
+  const facilityData = facility
+    ? {
+        id: facility.id,
+        name: facility.name,
+        staffCount: facility.staffCount,
+        phone: facility.phone,
+        address: facility.address,
+        city: facility.city,
+        country: facility.country,
+        state: facility.state,
+        zipCode: facility.zipCode,
+        licenseNumber: facility.licenseNumber,
+        programServices: facility.programServices || [],
+        complianceDocumentUrl: facility.complianceDocumentUrl,
+        complianceDocumentName: facility.complianceDocumentName,
+        complianceDocumentDisplayUrl: facility.complianceDocumentUrl
+          ? await getSignedUrl(facility.complianceDocumentUrl).catch(() => null)
           : null,
       }
     : null;
 
-  return <ProfileForm initialData={initialData} organizationData={organizationData} />;
+  return (
+    <ProfileForm
+      initialData={initialData}
+      organizationData={organizationData}
+      facilityData={facilityData}
+      canReadFacility={canReadFacility}
+      canEditFacility={canEditFacility}
+    />
+  );
 }

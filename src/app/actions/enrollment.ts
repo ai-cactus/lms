@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -8,7 +9,7 @@ import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
-import { RenewalCycle } from '@/generated/prisma/enums';
+import { RenewalCycle, type UserRole } from '@/generated/prisma/enums';
 
 export interface AssignmentSettingsInput {
   scheduleAt?: string | Date | null;
@@ -94,7 +95,7 @@ export async function enrollUsers(
   // Enrolling staff is an admin-only action. The session check above only
   // proves *someone* is logged in (a worker session would pass it); require
   // the admin role explicitly (mirrors assertOrgAdmin in offering.ts).
-  if (currentUser?.role !== 'admin') {
+  if (!isAdminRole(currentUser?.role)) {
     throw new Error('Forbidden');
   }
 
@@ -176,6 +177,17 @@ export async function enrollUsers(
   const crypto = await import('crypto');
   const { sendCourseInviteEmail, sendCourseEnrollmentEmail } = await import('@/lib/email');
 
+  // Resolve the org's facility ONCE (not per-iteration). New CSV users are
+  // attached to it; null if the org has no facility yet.
+  const facilityId = organizationId
+    ? ((
+        await prisma.facility.findFirst({
+          where: { organizationId },
+          select: { id: true },
+        })
+      )?.id ?? null)
+    : null;
+
   for (const entry of staffEntries) {
     const normalizedEmail = entry.email.toLowerCase().trim();
 
@@ -191,8 +203,10 @@ export async function enrollUsers(
     const lastName = entry.lastName?.trim() || undefined;
     const fullName =
       firstName && lastName ? `${firstName} ${lastName}` : (firstName ?? lastName ?? undefined);
-    // Only allow 'admin' or 'worker'; default to 'worker' for safety.
-    const userRole: 'admin' | 'worker' = entry.role === 'admin' ? 'admin' : 'worker';
+    // CSV supplies a coarse "admin" / "worker" token (entry.role is the literal
+    // 'admin' | 'worker'). Map "admin" to the RBAC successor `supervisor`
+    // (facility admin); everything else is a worker.
+    const userRole: UserRole = entry.role === 'admin' ? 'supervisor' : 'worker';
 
     // Find existing user by email.
     let user = await prisma.user.findUnique({
@@ -213,6 +227,7 @@ export async function enrollUsers(
             role: userRole,
             emailVerified: true,
             organizationId: currentUser?.organizationId || null,
+            facilityId,
             // Hydrate profile immediately so the worker's name is visible
             // throughout the app without requiring them to edit their profile.
             profile:

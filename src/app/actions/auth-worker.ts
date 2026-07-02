@@ -1,6 +1,7 @@
 'use server';
 
 import { signIn } from '@/auth.worker';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { AuthError } from 'next-auth';
 import prisma from '@/lib/prisma';
 
@@ -18,7 +19,7 @@ export async function authenticateWorker(
     const email = formData.get('email') as string;
     if (email) {
       const user = await prisma.user.findUnique({ where: { email }, select: { role: true } });
-      if (user && user.role === 'admin') {
+      if (user && isAdminRole(user.role)) {
         return { redirect: '/login' };
       }
     }

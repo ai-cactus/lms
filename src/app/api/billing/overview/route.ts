@@ -1,39 +1,27 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import stripe from '@/lib/stripe';
 import { logger } from '@/lib/logger';
+import { authorize } from '@/lib/rbac/authorize';
+import { apiError } from '@/lib/api-response';
 
 // GET /api/billing/overview — returns current plan, staff usage, payment method, last 2 invoices
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authResult = await authorize('billing.read');
+    if (!authResult.ok) return authResult.response;
+    const { ctx } = authResult;
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true },
-    });
-
-    if (!user || user.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!ctx.organizationId) {
+      return apiError('No organization found', 404);
     }
-
-    if (!user.organizationId) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
+    const organizationId = ctx.organizationId;
 
     const organization = await prisma.organization.findUnique({
-      where: { id: user.organizationId },
+      where: { id: organizationId },
       select: {
         name: true,
-        staffCount: true,
-        address: true,
-        city: true,
-        state: true,
-        country: true,
+        facilities: { select: { staffCount: true }, take: 1 },
         stripeCustomerId: true,
         subscription: true,
       },
@@ -46,7 +34,7 @@ export async function GET() {
     // Count active staff members
     const activeStaffCount = await prisma.user.count({
       where: {
-        organizationId: user.organizationId,
+        organizationId,
         role: 'worker',
       },
     });
@@ -111,7 +99,7 @@ export async function GET() {
 
     // Recent invoices (last 2)
     const recentInvoices = await prisma.invoice.findMany({
-      where: { organizationId: user.organizationId },
+      where: { organizationId },
       orderBy: { createdAt: 'desc' },
       take: 2,
     });
@@ -119,7 +107,7 @@ export async function GET() {
     return NextResponse.json({
       organization: {
         name: organization.name,
-        staffCount: organization.staffCount,
+        staffCount: organization.facilities[0]?.staffCount ?? null,
       },
       subscription: organization.subscription,
       activeStaffCount,

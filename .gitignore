@@ -63,3 +63,6 @@ vm-setup.md
 plans/
 commands
 docs/hack-check.md
+
+# Playwright MCP run artifacts
+.playwright-mcp/

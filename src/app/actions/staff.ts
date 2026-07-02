@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import type { UserRole } from '@/generated/prisma/enums';
@@ -110,17 +111,27 @@ export async function updateStaffDetails(
   },
 ) {
   const session = await auth();
-  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
+  if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
     return { success: false, error: 'Unauthorized' };
   }
 
   // Tenant isolation: an admin may only edit users that belong to their own org.
   const target = await prisma.user.findUnique({
     where: { id: userId },
-    select: { organizationId: true },
+    select: { organizationId: true, role: true },
   });
   if (!target || target.organizationId !== session.user.organizationId) {
     return { success: false, error: 'Forbidden' };
+  }
+
+  // `owner` is established only at organisation creation (one owner per org) and
+  // can never be granted here. Promoting a non-owner to owner is rejected; an
+  // existing owner keeping their role (e.g. during a name/job-title edit) is fine.
+  if (data.role === 'owner' && target.role !== 'owner') {
+    return {
+      success: false,
+      error: 'The Owner role cannot be assigned. It is set only when an organization is created.',
+    };
   }
 
   try {
@@ -273,7 +284,7 @@ export async function removeStaff(userId: string) {
       },
     });
 
-    if (!admin || admin.role !== 'admin' || !admin.organization) {
+    if (!admin || !isAdminRole(admin.role) || !admin.organization) {
       throw new Error('Insufficient permissions or organization not found');
     }
 
@@ -341,7 +352,7 @@ export async function revokeInvite(inviteId: string) {
     select: { role: true, organizationId: true },
   });
 
-  if (!admin || admin.role !== 'admin') {
+  if (!admin || !isAdminRole(admin.role)) {
     throw new Error('Insufficient permissions');
   }
 
@@ -390,7 +401,7 @@ export async function generateStaffActivityPdfAndEmail(
       },
     });
 
-    if (!admin || admin.role !== 'admin' || !admin.organizationId) {
+    if (!admin || !isAdminRole(admin.role) || !admin.organizationId) {
       return { success: false, error: 'Forbidden' };
     }
 

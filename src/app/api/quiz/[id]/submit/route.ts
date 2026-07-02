@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { callVertexAI } from '@/lib/ai-client';
 import { logger } from '@/lib/logger';
+import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
 const submitQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
   answers: z.array(
@@ -256,7 +257,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
         if (!existingNotification) {
           const admins = await prisma.user.findMany({
-            where: { organizationId: orgId, role: 'admin' },
+            where: { organizationId: orgId, role: { in: [...ADMIN_ROLES] } },
             select: { id: true, email: true },
           });
 

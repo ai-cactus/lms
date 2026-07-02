@@ -4,14 +4,16 @@ import StaffListClient from '@/components/dashboard/staff/StaffListClient';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { BILLING_PLANS } from '@/lib/billing-plans';
+import type { Role } from '@/types/next-auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffPage() {
   const session = await auth();
-  const sessionUser = session?.user as { organizationId?: string } | undefined;
+  const sessionUser = session?.user as { organizationId?: string; role?: Role } | undefined;
   const hasOrganization = !!sessionUser?.organizationId;
   const organizationId = sessionUser?.organizationId;
+  const inviterRole: Role = sessionUser?.role ?? 'worker';
 
   // Only fetch users if org exists, otherwise return empty list
   const users = hasOrganization ? await getStaffUsers() : [];
@@ -28,12 +30,14 @@ export default async function StaffPage() {
         where: { organizationId },
         select: { plan: true, status: true },
       }),
+      // D2: every role except `owner` consumes a plan seat.
       prisma.user.count({
-        where: { organizationId, role: 'worker' },
+        where: { organizationId, role: { not: 'owner' } },
       }),
       prisma.invite.count({
         where: {
           organizationId,
+          role: { not: 'owner' },
           status: 'pending',
           expiresAt: { gt: new Date() },
         },
@@ -61,6 +65,7 @@ export default async function StaffPage() {
       planName={planName}
       currentWorkerCount={currentWorkerCount}
       pendingInviteCount={pendingInviteCount}
+      inviterRole={inviterRole}
     />
   );
 }

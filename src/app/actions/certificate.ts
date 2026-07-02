@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -35,7 +36,8 @@ export async function issueCertificate(enrollmentId: string) {
   // Ensure user is authorized (either the user themselves, or their admin)
   const isWorker = enrollment.userId === session.user.id;
   const isAdmin =
-    session.user.role === 'admin' && enrollment.user.organizationId === session.user.organizationId;
+    isAdminRole(session.user.role) &&
+    enrollment.user.organizationId === session.user.organizationId;
 
   if (!isWorker && !isAdmin) {
     throw new Error('Unauthorized');
@@ -106,7 +108,7 @@ export async function getWorkerCertificates() {
 
 export async function getAdminWorkerCertificates(workerId: string) {
   const session = await adminAuth();
-  if (!session?.user?.id || session.user.role !== 'admin') {
+  if (!session?.user?.id || !isAdminRole(session.user.role)) {
     throw new Error('Unauthorized');
   }
 
@@ -147,7 +149,7 @@ export async function getCertificateDetails(certificateId: string) {
   // Ensure user is authorized
   const isWorker = certificate.userId === session.user.id;
   const isAdmin =
-    session.user.role === 'admin' &&
+    isAdminRole(session.user.role) &&
     certificate.user.organizationId === session.user.organizationId;
 
   if (!isWorker && !isAdmin) {

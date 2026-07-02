@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { Eye, Trash2 } from 'lucide-react';
 import { getAllUsers, getUserDeletePreview } from '@/app/actions/system-admin';
 import type { SystemUserRow, DeletePreview } from '@/app/actions/system-admin';
@@ -92,7 +93,7 @@ export default function SystemUsersClient({
   }
 
   // Count stats
-  const adminCount = users.filter((u) => u.role === 'admin').length;
+  const adminCount = users.filter((u) => isAdminRole(u.role)).length;
   const workerCount = users.filter((u) => u.role === 'worker').length;
 
   function getInitials(user: SystemUserRow): string {
@@ -235,7 +236,7 @@ export default function SystemUsersClient({
                     <TableCell className="hidden md:table-cell">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                          user.role === 'admin'
+                          isAdminRole(user.role)
                             ? 'bg-primary/10 text-primary'
                             : 'bg-background-secondary text-text-secondary'
                         }`}

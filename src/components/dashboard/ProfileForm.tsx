@@ -13,9 +13,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { updateProfile, uploadAvatar } from '@/app/actions/user';
+import { isAdminRole } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import OrganizationForm from './OrganizationForm';
+import FacilityForm from './FacilityForm';
 import { ChangePasswordTab } from './ChangePasswordTab';
 import { TwoFactorAuthTab } from './TwoFactorAuthTab';
 
@@ -24,7 +27,7 @@ interface ProfileData {
   first_name: string;
   last_name: string;
   email: string;
-  role: 'admin' | 'worker';
+  role: Role;
   jobTitle?: string;
   company_name?: string;
   avatarUrl?: string | null;
@@ -37,9 +40,17 @@ interface OrganizationData {
   name: string;
   dba?: string | null;
   ein?: string | null;
-  staffCount?: string | null;
   primaryContact?: string | null;
   primaryEmail?: string | null;
+  isHipaaCompliant?: boolean;
+  primaryBusinessType?: string | null;
+  additionalBusinessTypes?: string[];
+}
+
+interface FacilityData {
+  id: string;
+  name: string;
+  staffCount?: string | null;
   phone?: string | null;
   address?: string | null;
   country?: string | null;
@@ -47,7 +58,7 @@ interface OrganizationData {
   zipCode?: string | null;
   city?: string | null;
   licenseNumber?: string | null;
-  isHipaaCompliant?: boolean;
+  programServices?: string[];
   complianceDocumentUrl?: string | null;
   complianceDocumentName?: string | null;
   complianceDocumentDisplayUrl?: string | null;
@@ -56,19 +67,28 @@ interface OrganizationData {
 interface ProfileFormProps {
   initialData: ProfileData;
   organizationData?: OrganizationData | null;
+  facilityData?: FacilityData | null;
+  canReadFacility?: boolean;
+  canEditFacility?: boolean;
 }
 
-const TABS = [
-  { key: 'profile', label: 'EDIT PROFILE' },
-  { key: 'organization', label: 'YOUR ORGANIZATION' },
-  { key: 'password', label: 'CHANGE PASSWORD' },
-  { key: '2fa', label: 'TWO FACTOR AUTH (2FA)' },
-] as const;
+type TabKey = 'profile' | 'organization' | 'facility' | 'password' | '2fa';
 
-export default function ProfileForm({ initialData, organizationData }: ProfileFormProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'organization' | 'password' | '2fa'>(
-    'profile',
-  );
+export default function ProfileForm({
+  initialData,
+  organizationData,
+  facilityData,
+  canReadFacility = false,
+  canEditFacility = false,
+}: ProfileFormProps) {
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'profile', label: 'EDIT PROFILE' },
+    { key: 'organization', label: 'YOUR ORGANIZATION' },
+    ...(canReadFacility ? [{ key: 'facility' as const, label: 'YOUR FACILITY' }] : []),
+    { key: 'password', label: 'CHANGE PASSWORD' },
+    { key: '2fa', label: 'TWO FACTOR AUTH (2FA)' },
+  ];
+  const [activeTab, setActiveTab] = useState<TabKey>('profile');
   const [baseData, setBaseData] = useState(initialData);
   const [formData, setFormData] = useState(initialData);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialData.avatarUrl || null);
@@ -179,7 +199,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
   // Email is read-only, so we won't block saving if it's missing/invalid from the DB side,
   // though it ideally should be there.
 
-  const isAdmin = initialData.role === 'admin';
+  const isAdmin = isAdminRole(initialData.role);
 
   return (
     <div className="flex min-h-[calc(100vh-100px)] flex-col items-center justify-center p-6">
@@ -196,7 +216,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
       <div className="flex min-h-[600px] w-full max-w-[900px] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
         <div className="px-6 sm:px-10">
           <div className="flex items-center gap-8 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {TABS.map((tab) => (
+            {tabs.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
@@ -302,18 +322,14 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
                 </Field>
               </div>
 
-              {/* Country & Phone */}
+              {/* Country & Phone (facility location, read-only here) */}
               <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <Field label="Country">
-                  <Input
-                    value={organizationData?.country || ''}
-                    disabled
-                    placeholder="Your country"
-                  />
+                  <Input value={facilityData?.country || ''} disabled placeholder="Your country" />
                 </Field>
                 <Field label="Phone">
                   <Input
-                    value={organizationData?.phone || ''}
+                    value={facilityData?.phone || ''}
                     disabled
                     placeholder="Your phone number"
                   />
@@ -324,7 +340,7 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
               <div className="mb-6">
                 <Field label="Business Address">
                   <Input
-                    value={organizationData?.address || ''}
+                    value={facilityData?.address || ''}
                     disabled
                     placeholder="Your business address"
                   />
@@ -334,17 +350,13 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
               {/* City, State & Zip Code */}
               <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
                 <Field label="City">
-                  <Input value={organizationData?.city || ''} disabled placeholder="Your city" />
+                  <Input value={facilityData?.city || ''} disabled placeholder="Your city" />
                 </Field>
                 <Field label="State">
-                  <Input value={organizationData?.state || ''} disabled placeholder="Your state" />
+                  <Input value={facilityData?.state || ''} disabled placeholder="Your state" />
                 </Field>
                 <Field label="Zip Code">
-                  <Input
-                    value={organizationData?.zipCode || ''}
-                    disabled
-                    placeholder="Your zip code"
-                  />
+                  <Input value={facilityData?.zipCode || ''} disabled placeholder="Your zip code" />
                 </Field>
               </div>
 
@@ -386,6 +398,10 @@ export default function ProfileForm({ initialData, organizationData }: ProfileFo
 
         {activeTab === 'organization' && (
           <OrganizationForm initialData={organizationData || null} isAdmin={isAdmin} />
+        )}
+
+        {activeTab === 'facility' && canReadFacility && (
+          <FacilityForm initialData={facilityData || null} canEdit={canEditFacility} />
         )}
 
         {activeTab === 'password' && <ChangePasswordTab authProvider={initialData.authProvider} />}

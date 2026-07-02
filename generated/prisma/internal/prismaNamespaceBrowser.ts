@@ -80,6 +80,7 @@ export const ModelName = {
   NotificationPreference: 'NotificationPreference',
   OrgCourseOffering: 'OrgCourseOffering',
   Organization: 'Organization',
+  Facility: 'Facility',
   Subscription: 'Subscription',
   Invoice: 'Invoice',
   Quiz: 'Quiz',
@@ -120,6 +121,7 @@ export const UserScalarFieldEnum = {
   password: 'password',
   passwordResetRequired: 'passwordResetRequired',
   organizationId: 'organizationId',
+  facilityId: 'facilityId',
   authProvider: 'authProvider',
   role: 'role',
   emailVerified: 'emailVerified',
@@ -518,33 +520,44 @@ export const OrganizationScalarFieldEnum = {
   slug: 'slug',
   dba: 'dba',
   ein: 'ein',
-  staffCount: 'staffCount',
   primaryContact: 'primaryContact',
   primaryEmail: 'primaryEmail',
-  phone: 'phone',
-  address: 'address',
-  city: 'city',
-  country: 'country',
-  state: 'state',
-  zipCode: 'zipCode',
-  licenseNumber: 'licenseNumber',
   isHipaaCompliant: 'isHipaaCompliant',
   hasAuditorAccess: 'hasAuditorAccess',
   primaryBusinessType: 'primaryBusinessType',
   additionalBusinessTypes: 'additionalBusinessTypes',
-  programServices: 'programServices',
   joinCode: 'joinCode',
   joinCodeExpiresAt: 'joinCodeExpiresAt',
   stripeCustomerId: 'stripeCustomerId',
   inactivityTimeoutMinutes: 'inactivityTimeoutMinutes',
   requireMfa: 'requireMfa',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type OrganizationScalarFieldEnum = (typeof OrganizationScalarFieldEnum)[keyof typeof OrganizationScalarFieldEnum]
+
+
+export const FacilityScalarFieldEnum = {
+  id: 'id',
+  organizationId: 'organizationId',
+  name: 'name',
+  address: 'address',
+  city: 'city',
+  state: 'state',
+  country: 'country',
+  zipCode: 'zipCode',
+  phone: 'phone',
+  licenseNumber: 'licenseNumber',
+  staffCount: 'staffCount',
+  programServices: 'programServices',
   complianceDocumentUrl: 'complianceDocumentUrl',
   complianceDocumentName: 'complianceDocumentName',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
 
-export type OrganizationScalarFieldEnum = (typeof OrganizationScalarFieldEnum)[keyof typeof OrganizationScalarFieldEnum]
+export type FacilityScalarFieldEnum = (typeof FacilityScalarFieldEnum)[keyof typeof FacilityScalarFieldEnum]
 
 
 export const SubscriptionScalarFieldEnum = {

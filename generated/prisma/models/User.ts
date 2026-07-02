@@ -30,6 +30,7 @@ export type UserMinAggregateOutputType = {
   password: string | null
   passwordResetRequired: boolean | null
   organizationId: string | null
+  facilityId: string | null
   authProvider: string | null
   role: $Enums.UserRole | null
   emailVerified: boolean | null
@@ -45,6 +46,7 @@ export type UserMaxAggregateOutputType = {
   password: string | null
   passwordResetRequired: boolean | null
   organizationId: string | null
+  facilityId: string | null
   authProvider: string | null
   role: $Enums.UserRole | null
   emailVerified: boolean | null
@@ -60,6 +62,7 @@ export type UserCountAggregateOutputType = {
   password: number
   passwordResetRequired: number
   organizationId: number
+  facilityId: number
   authProvider: number
   role: number
   emailVerified: number
@@ -77,6 +80,7 @@ export type UserMinAggregateInputType = {
   password?: true
   passwordResetRequired?: true
   organizationId?: true
+  facilityId?: true
   authProvider?: true
   role?: true
   emailVerified?: true
@@ -92,6 +96,7 @@ export type UserMaxAggregateInputType = {
   password?: true
   passwordResetRequired?: true
   organizationId?: true
+  facilityId?: true
   authProvider?: true
   role?: true
   emailVerified?: true
@@ -107,6 +112,7 @@ export type UserCountAggregateInputType = {
   password?: true
   passwordResetRequired?: true
   organizationId?: true
+  facilityId?: true
   authProvider?: true
   role?: true
   emailVerified?: true
@@ -195,6 +201,7 @@ export type UserGroupByOutputType = {
   password: string
   passwordResetRequired: boolean
   organizationId: string | null
+  facilityId: string | null
   authProvider: string
   role: $Enums.UserRole
   emailVerified: boolean
@@ -231,6 +238,7 @@ export type UserWhereInput = {
   password?: Prisma.StringFilter<"User"> | string
   passwordResetRequired?: Prisma.BoolFilter<"User"> | boolean
   organizationId?: Prisma.StringNullableFilter<"User"> | string | null
+  facilityId?: Prisma.StringNullableFilter<"User"> | string | null
   authProvider?: Prisma.StringFilter<"User"> | string
   role?: Prisma.EnumUserRoleFilter<"User"> | $Enums.UserRole
   emailVerified?: Prisma.BoolFilter<"User"> | boolean
@@ -245,6 +253,7 @@ export type UserWhereInput = {
   notificationPrefs?: Prisma.NotificationPreferenceListRelationFilter
   profile?: Prisma.XOR<Prisma.ProfileNullableScalarRelationFilter, Prisma.ProfileWhereInput> | null
   organization?: Prisma.XOR<Prisma.OrganizationNullableScalarRelationFilter, Prisma.OrganizationWhereInput> | null
+  facility?: Prisma.XOR<Prisma.FacilityNullableScalarRelationFilter, Prisma.FacilityWhereInput> | null
   mfaFactors?: Prisma.MfaFactorListRelationFilter
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeListRelationFilter
   certificates?: Prisma.CertificateListRelationFilter
@@ -257,6 +266,7 @@ export type UserOrderByWithRelationInput = {
   password?: Prisma.SortOrder
   passwordResetRequired?: Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  facilityId?: Prisma.SortOrderInput | Prisma.SortOrder
   authProvider?: Prisma.SortOrder
   role?: Prisma.SortOrder
   emailVerified?: Prisma.SortOrder
@@ -271,6 +281,7 @@ export type UserOrderByWithRelationInput = {
   notificationPrefs?: Prisma.NotificationPreferenceOrderByRelationAggregateInput
   profile?: Prisma.ProfileOrderByWithRelationInput
   organization?: Prisma.OrganizationOrderByWithRelationInput
+  facility?: Prisma.FacilityOrderByWithRelationInput
   mfaFactors?: Prisma.MfaFactorOrderByRelationAggregateInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeOrderByRelationAggregateInput
   certificates?: Prisma.CertificateOrderByRelationAggregateInput
@@ -286,6 +297,7 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   password?: Prisma.StringFilter<"User"> | string
   passwordResetRequired?: Prisma.BoolFilter<"User"> | boolean
   organizationId?: Prisma.StringNullableFilter<"User"> | string | null
+  facilityId?: Prisma.StringNullableFilter<"User"> | string | null
   authProvider?: Prisma.StringFilter<"User"> | string
   role?: Prisma.EnumUserRoleFilter<"User"> | $Enums.UserRole
   emailVerified?: Prisma.BoolFilter<"User"> | boolean
@@ -300,6 +312,7 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   notificationPrefs?: Prisma.NotificationPreferenceListRelationFilter
   profile?: Prisma.XOR<Prisma.ProfileNullableScalarRelationFilter, Prisma.ProfileWhereInput> | null
   organization?: Prisma.XOR<Prisma.OrganizationNullableScalarRelationFilter, Prisma.OrganizationWhereInput> | null
+  facility?: Prisma.XOR<Prisma.FacilityNullableScalarRelationFilter, Prisma.FacilityWhereInput> | null
   mfaFactors?: Prisma.MfaFactorListRelationFilter
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeListRelationFilter
   certificates?: Prisma.CertificateListRelationFilter
@@ -312,6 +325,7 @@ export type UserOrderByWithAggregationInput = {
   password?: Prisma.SortOrder
   passwordResetRequired?: Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  facilityId?: Prisma.SortOrderInput | Prisma.SortOrder
   authProvider?: Prisma.SortOrder
   role?: Prisma.SortOrder
   emailVerified?: Prisma.SortOrder
@@ -333,6 +347,7 @@ export type UserScalarWhereWithAggregatesInput = {
   password?: Prisma.StringWithAggregatesFilter<"User"> | string
   passwordResetRequired?: Prisma.BoolWithAggregatesFilter<"User"> | boolean
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
+  facilityId?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   authProvider?: Prisma.StringWithAggregatesFilter<"User"> | string
   role?: Prisma.EnumUserRoleWithAggregatesFilter<"User"> | $Enums.UserRole
   emailVerified?: Prisma.BoolWithAggregatesFilter<"User"> | boolean
@@ -361,6 +376,7 @@ export type UserCreateInput = {
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
@@ -373,6 +389,7 @@ export type UserUncheckedCreateInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -411,6 +428,7 @@ export type UserUpdateInput = {
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
@@ -423,6 +441,7 @@ export type UserUncheckedUpdateInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -448,6 +467,7 @@ export type UserCreateManyInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -477,6 +497,7 @@ export type UserUncheckedUpdateManyInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -492,6 +513,7 @@ export type UserCountOrderByAggregateInput = {
   password?: Prisma.SortOrder
   passwordResetRequired?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  facilityId?: Prisma.SortOrder
   authProvider?: Prisma.SortOrder
   role?: Prisma.SortOrder
   emailVerified?: Prisma.SortOrder
@@ -507,6 +529,7 @@ export type UserMaxOrderByAggregateInput = {
   password?: Prisma.SortOrder
   passwordResetRequired?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  facilityId?: Prisma.SortOrder
   authProvider?: Prisma.SortOrder
   role?: Prisma.SortOrder
   emailVerified?: Prisma.SortOrder
@@ -522,6 +545,7 @@ export type UserMinOrderByAggregateInput = {
   password?: Prisma.SortOrder
   passwordResetRequired?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
+  facilityId?: Prisma.SortOrder
   authProvider?: Prisma.SortOrder
   role?: Prisma.SortOrder
   emailVerified?: Prisma.SortOrder
@@ -747,6 +771,48 @@ export type UserUncheckedUpdateManyWithoutOrganizationNestedInput = {
   deleteMany?: Prisma.UserScalarWhereInput | Prisma.UserScalarWhereInput[]
 }
 
+export type UserCreateNestedManyWithoutFacilityInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutFacilityInput, Prisma.UserUncheckedCreateWithoutFacilityInput> | Prisma.UserCreateWithoutFacilityInput[] | Prisma.UserUncheckedCreateWithoutFacilityInput[]
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutFacilityInput | Prisma.UserCreateOrConnectWithoutFacilityInput[]
+  createMany?: Prisma.UserCreateManyFacilityInputEnvelope
+  connect?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+}
+
+export type UserUncheckedCreateNestedManyWithoutFacilityInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutFacilityInput, Prisma.UserUncheckedCreateWithoutFacilityInput> | Prisma.UserCreateWithoutFacilityInput[] | Prisma.UserUncheckedCreateWithoutFacilityInput[]
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutFacilityInput | Prisma.UserCreateOrConnectWithoutFacilityInput[]
+  createMany?: Prisma.UserCreateManyFacilityInputEnvelope
+  connect?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+}
+
+export type UserUpdateManyWithoutFacilityNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutFacilityInput, Prisma.UserUncheckedCreateWithoutFacilityInput> | Prisma.UserCreateWithoutFacilityInput[] | Prisma.UserUncheckedCreateWithoutFacilityInput[]
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutFacilityInput | Prisma.UserCreateOrConnectWithoutFacilityInput[]
+  upsert?: Prisma.UserUpsertWithWhereUniqueWithoutFacilityInput | Prisma.UserUpsertWithWhereUniqueWithoutFacilityInput[]
+  createMany?: Prisma.UserCreateManyFacilityInputEnvelope
+  set?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+  disconnect?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+  delete?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+  connect?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+  update?: Prisma.UserUpdateWithWhereUniqueWithoutFacilityInput | Prisma.UserUpdateWithWhereUniqueWithoutFacilityInput[]
+  updateMany?: Prisma.UserUpdateManyWithWhereWithoutFacilityInput | Prisma.UserUpdateManyWithWhereWithoutFacilityInput[]
+  deleteMany?: Prisma.UserScalarWhereInput | Prisma.UserScalarWhereInput[]
+}
+
+export type UserUncheckedUpdateManyWithoutFacilityNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutFacilityInput, Prisma.UserUncheckedCreateWithoutFacilityInput> | Prisma.UserCreateWithoutFacilityInput[] | Prisma.UserUncheckedCreateWithoutFacilityInput[]
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutFacilityInput | Prisma.UserCreateOrConnectWithoutFacilityInput[]
+  upsert?: Prisma.UserUpsertWithWhereUniqueWithoutFacilityInput | Prisma.UserUpsertWithWhereUniqueWithoutFacilityInput[]
+  createMany?: Prisma.UserCreateManyFacilityInputEnvelope
+  set?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+  disconnect?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+  delete?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+  connect?: Prisma.UserWhereUniqueInput | Prisma.UserWhereUniqueInput[]
+  update?: Prisma.UserUpdateWithWhereUniqueWithoutFacilityInput | Prisma.UserUpdateWithWhereUniqueWithoutFacilityInput[]
+  updateMany?: Prisma.UserUpdateManyWithWhereWithoutFacilityInput | Prisma.UserUpdateManyWithWhereWithoutFacilityInput[]
+  deleteMany?: Prisma.UserScalarWhereInput | Prisma.UserScalarWhereInput[]
+}
+
 export type UserCreateWithoutProfileInput = {
   id?: string
   email: string
@@ -765,6 +831,7 @@ export type UserCreateWithoutProfileInput = {
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
@@ -777,6 +844,7 @@ export type UserUncheckedCreateWithoutProfileInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -829,6 +897,7 @@ export type UserUpdateWithoutProfileInput = {
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
@@ -841,6 +910,7 @@ export type UserUncheckedUpdateWithoutProfileInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -878,6 +948,7 @@ export type UserCreateWithoutMfaFactorsInput = {
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
   approvedCourses?: Prisma.CourseCreateNestedManyWithoutApprovedByInput
@@ -889,6 +960,7 @@ export type UserUncheckedCreateWithoutMfaFactorsInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -942,6 +1014,7 @@ export type UserUpdateWithoutMfaFactorsInput = {
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
   approvedCourses?: Prisma.CourseUpdateManyWithoutApprovedByNestedInput
@@ -953,6 +1026,7 @@ export type UserUncheckedUpdateWithoutMfaFactorsInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -990,6 +1064,7 @@ export type UserCreateWithoutMfaRecoveryCodesInput = {
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
   approvedCourses?: Prisma.CourseCreateNestedManyWithoutApprovedByInput
@@ -1001,6 +1076,7 @@ export type UserUncheckedCreateWithoutMfaRecoveryCodesInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1054,6 +1130,7 @@ export type UserUpdateWithoutMfaRecoveryCodesInput = {
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
   approvedCourses?: Prisma.CourseUpdateManyWithoutApprovedByNestedInput
@@ -1065,6 +1142,7 @@ export type UserUncheckedUpdateWithoutMfaRecoveryCodesInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1102,6 +1180,7 @@ export type UserCreateWithoutApprovedCoursesInput = {
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
@@ -1113,6 +1192,7 @@ export type UserUncheckedCreateWithoutApprovedCoursesInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1154,6 +1234,7 @@ export type UserCreateWithoutCoursesInput = {
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
@@ -1166,6 +1247,7 @@ export type UserUncheckedCreateWithoutCoursesInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1219,6 +1301,7 @@ export type UserUpdateWithoutApprovedCoursesInput = {
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
@@ -1230,6 +1313,7 @@ export type UserUncheckedUpdateWithoutApprovedCoursesInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1277,6 +1361,7 @@ export type UserUpdateWithoutCoursesInput = {
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
@@ -1289,6 +1374,7 @@ export type UserUncheckedUpdateWithoutCoursesInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1325,6 +1411,7 @@ export type UserCreateWithoutDocumentsInput = {
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
@@ -1337,6 +1424,7 @@ export type UserUncheckedCreateWithoutDocumentsInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1389,6 +1477,7 @@ export type UserUpdateWithoutDocumentsInput = {
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
@@ -1401,6 +1490,7 @@ export type UserUncheckedUpdateWithoutDocumentsInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1437,6 +1527,7 @@ export type UserCreateWithoutEnrollmentsInput = {
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
@@ -1449,6 +1540,7 @@ export type UserUncheckedCreateWithoutEnrollmentsInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1501,6 +1593,7 @@ export type UserUpdateWithoutEnrollmentsInput = {
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
@@ -1513,6 +1606,7 @@ export type UserUncheckedUpdateWithoutEnrollmentsInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1550,6 +1644,7 @@ export type UserCreateWithoutCertificatesInput = {
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   approvedCourses?: Prisma.CourseCreateNestedManyWithoutApprovedByInput
@@ -1561,6 +1656,7 @@ export type UserUncheckedCreateWithoutCertificatesInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1614,6 +1710,7 @@ export type UserUpdateWithoutCertificatesInput = {
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   approvedCourses?: Prisma.CourseUpdateManyWithoutApprovedByNestedInput
@@ -1625,6 +1722,7 @@ export type UserUncheckedUpdateWithoutCertificatesInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1661,6 +1759,7 @@ export type UserCreateWithoutNotificationsInput = {
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
@@ -1673,6 +1772,7 @@ export type UserUncheckedCreateWithoutNotificationsInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1725,6 +1825,7 @@ export type UserUpdateWithoutNotificationsInput = {
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
@@ -1737,6 +1838,7 @@ export type UserUncheckedUpdateWithoutNotificationsInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1773,6 +1875,7 @@ export type UserCreateWithoutNotificationPrefsInput = {
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
   organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
@@ -1785,6 +1888,7 @@ export type UserUncheckedCreateWithoutNotificationPrefsInput = {
   password: string
   passwordResetRequired?: boolean
   organizationId?: string | null
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1837,6 +1941,7 @@ export type UserUpdateWithoutNotificationPrefsInput = {
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
   organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
@@ -1849,6 +1954,7 @@ export type UserUncheckedUpdateWithoutNotificationPrefsInput = {
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1885,6 +1991,7 @@ export type UserCreateWithoutOrganizationInput = {
   notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
   notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
   profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
+  facility?: Prisma.FacilityCreateNestedOneWithoutUsersInput
   mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
   certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
@@ -1896,6 +2003,7 @@ export type UserUncheckedCreateWithoutOrganizationInput = {
   email: string
   password: string
   passwordResetRequired?: boolean
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1950,6 +2058,7 @@ export type UserScalarWhereInput = {
   password?: Prisma.StringFilter<"User"> | string
   passwordResetRequired?: Prisma.BoolFilter<"User"> | boolean
   organizationId?: Prisma.StringNullableFilter<"User"> | string | null
+  facilityId?: Prisma.StringNullableFilter<"User"> | string | null
   authProvider?: Prisma.StringFilter<"User"> | string
   role?: Prisma.EnumUserRoleFilter<"User"> | $Enums.UserRole
   emailVerified?: Prisma.BoolFilter<"User"> | boolean
@@ -1959,11 +2068,88 @@ export type UserScalarWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
 }
 
+export type UserCreateWithoutFacilityInput = {
+  id?: string
+  email: string
+  password: string
+  passwordResetRequired?: boolean
+  authProvider?: string
+  role?: $Enums.UserRole
+  emailVerified?: boolean
+  mfaEnabled?: boolean
+  mfaVerifiedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
+  documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
+  enrollments?: Prisma.EnrollmentCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceCreateNestedManyWithoutUserInput
+  profile?: Prisma.ProfileCreateNestedOneWithoutUserInput
+  organization?: Prisma.OrganizationCreateNestedOneWithoutUsersInput
+  mfaFactors?: Prisma.MfaFactorCreateNestedManyWithoutUserInput
+  mfaRecoveryCodes?: Prisma.MfaRecoveryCodeCreateNestedManyWithoutUserInput
+  certificates?: Prisma.CertificateCreateNestedManyWithoutUserInput
+  approvedCourses?: Prisma.CourseCreateNestedManyWithoutApprovedByInput
+}
+
+export type UserUncheckedCreateWithoutFacilityInput = {
+  id?: string
+  email: string
+  password: string
+  passwordResetRequired?: boolean
+  organizationId?: string | null
+  authProvider?: string
+  role?: $Enums.UserRole
+  emailVerified?: boolean
+  mfaEnabled?: boolean
+  mfaVerifiedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  courses?: Prisma.CourseUncheckedCreateNestedManyWithoutCreatorInput
+  documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutUserInput
+  enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedCreateNestedManyWithoutUserInput
+  profile?: Prisma.ProfileUncheckedCreateNestedOneWithoutUserInput
+  mfaFactors?: Prisma.MfaFactorUncheckedCreateNestedManyWithoutUserInput
+  mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedCreateNestedManyWithoutUserInput
+  certificates?: Prisma.CertificateUncheckedCreateNestedManyWithoutUserInput
+  approvedCourses?: Prisma.CourseUncheckedCreateNestedManyWithoutApprovedByInput
+}
+
+export type UserCreateOrConnectWithoutFacilityInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutFacilityInput, Prisma.UserUncheckedCreateWithoutFacilityInput>
+}
+
+export type UserCreateManyFacilityInputEnvelope = {
+  data: Prisma.UserCreateManyFacilityInput | Prisma.UserCreateManyFacilityInput[]
+  skipDuplicates?: boolean
+}
+
+export type UserUpsertWithWhereUniqueWithoutFacilityInput = {
+  where: Prisma.UserWhereUniqueInput
+  update: Prisma.XOR<Prisma.UserUpdateWithoutFacilityInput, Prisma.UserUncheckedUpdateWithoutFacilityInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutFacilityInput, Prisma.UserUncheckedCreateWithoutFacilityInput>
+}
+
+export type UserUpdateWithWhereUniqueWithoutFacilityInput = {
+  where: Prisma.UserWhereUniqueInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutFacilityInput, Prisma.UserUncheckedUpdateWithoutFacilityInput>
+}
+
+export type UserUpdateManyWithWhereWithoutFacilityInput = {
+  where: Prisma.UserScalarWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateManyMutationInput, Prisma.UserUncheckedUpdateManyWithoutFacilityInput>
+}
+
 export type UserCreateManyOrganizationInput = {
   id?: string
   email: string
   password: string
   passwordResetRequired?: boolean
+  facilityId?: string | null
   authProvider?: string
   role?: $Enums.UserRole
   emailVerified?: boolean
@@ -1991,6 +2177,7 @@ export type UserUpdateWithoutOrganizationInput = {
   notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
   notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
   profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
+  facility?: Prisma.FacilityUpdateOneWithoutUsersNestedInput
   mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
   mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
   certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
@@ -2002,6 +2189,7 @@ export type UserUncheckedUpdateWithoutOrganizationInput = {
   email?: Prisma.StringFieldUpdateOperationsInput | string
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -2026,6 +2214,87 @@ export type UserUncheckedUpdateManyWithoutOrganizationInput = {
   email?: Prisma.StringFieldUpdateOperationsInput | string
   password?: Prisma.StringFieldUpdateOperationsInput | string
   passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  facilityId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  authProvider?: Prisma.StringFieldUpdateOperationsInput | string
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
+  emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+}
+
+export type UserCreateManyFacilityInput = {
+  id?: string
+  email: string
+  password: string
+  passwordResetRequired?: boolean
+  organizationId?: string | null
+  authProvider?: string
+  role?: $Enums.UserRole
+  emailVerified?: boolean
+  mfaEnabled?: boolean
+  mfaVerifiedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+}
+
+export type UserUpdateWithoutFacilityInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  password?: Prisma.StringFieldUpdateOperationsInput | string
+  passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  authProvider?: Prisma.StringFieldUpdateOperationsInput | string
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
+  emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
+  documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
+  enrollments?: Prisma.EnrollmentUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUpdateManyWithoutUserNestedInput
+  profile?: Prisma.ProfileUpdateOneWithoutUserNestedInput
+  organization?: Prisma.OrganizationUpdateOneWithoutUsersNestedInput
+  mfaFactors?: Prisma.MfaFactorUpdateManyWithoutUserNestedInput
+  mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUpdateManyWithoutUserNestedInput
+  certificates?: Prisma.CertificateUpdateManyWithoutUserNestedInput
+  approvedCourses?: Prisma.CourseUpdateManyWithoutApprovedByNestedInput
+}
+
+export type UserUncheckedUpdateWithoutFacilityInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  password?: Prisma.StringFieldUpdateOperationsInput | string
+  passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  authProvider?: Prisma.StringFieldUpdateOperationsInput | string
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
+  emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  courses?: Prisma.CourseUncheckedUpdateManyWithoutCreatorNestedInput
+  documents?: Prisma.DocumentUncheckedUpdateManyWithoutUserNestedInput
+  enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+  notificationPrefs?: Prisma.NotificationPreferenceUncheckedUpdateManyWithoutUserNestedInput
+  profile?: Prisma.ProfileUncheckedUpdateOneWithoutUserNestedInput
+  mfaFactors?: Prisma.MfaFactorUncheckedUpdateManyWithoutUserNestedInput
+  mfaRecoveryCodes?: Prisma.MfaRecoveryCodeUncheckedUpdateManyWithoutUserNestedInput
+  certificates?: Prisma.CertificateUncheckedUpdateManyWithoutUserNestedInput
+  approvedCourses?: Prisma.CourseUncheckedUpdateManyWithoutApprovedByNestedInput
+}
+
+export type UserUncheckedUpdateManyWithoutFacilityInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  password?: Prisma.StringFieldUpdateOperationsInput | string
+  passwordResetRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   authProvider?: Prisma.StringFieldUpdateOperationsInput | string
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -2144,6 +2413,7 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   password?: boolean
   passwordResetRequired?: boolean
   organizationId?: boolean
+  facilityId?: boolean
   authProvider?: boolean
   role?: boolean
   emailVerified?: boolean
@@ -2158,6 +2428,7 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   notificationPrefs?: boolean | Prisma.User$notificationPrefsArgs<ExtArgs>
   profile?: boolean | Prisma.User$profileArgs<ExtArgs>
   organization?: boolean | Prisma.User$organizationArgs<ExtArgs>
+  facility?: boolean | Prisma.User$facilityArgs<ExtArgs>
   mfaFactors?: boolean | Prisma.User$mfaFactorsArgs<ExtArgs>
   mfaRecoveryCodes?: boolean | Prisma.User$mfaRecoveryCodesArgs<ExtArgs>
   certificates?: boolean | Prisma.User$certificatesArgs<ExtArgs>
@@ -2171,6 +2442,7 @@ export type UserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   password?: boolean
   passwordResetRequired?: boolean
   organizationId?: boolean
+  facilityId?: boolean
   authProvider?: boolean
   role?: boolean
   emailVerified?: boolean
@@ -2179,6 +2451,7 @@ export type UserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   createdAt?: boolean
   updatedAt?: boolean
   organization?: boolean | Prisma.User$organizationArgs<ExtArgs>
+  facility?: boolean | Prisma.User$facilityArgs<ExtArgs>
 }, ExtArgs["result"]["user"]>
 
 export type UserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -2187,6 +2460,7 @@ export type UserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   password?: boolean
   passwordResetRequired?: boolean
   organizationId?: boolean
+  facilityId?: boolean
   authProvider?: boolean
   role?: boolean
   emailVerified?: boolean
@@ -2195,6 +2469,7 @@ export type UserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   createdAt?: boolean
   updatedAt?: boolean
   organization?: boolean | Prisma.User$organizationArgs<ExtArgs>
+  facility?: boolean | Prisma.User$facilityArgs<ExtArgs>
 }, ExtArgs["result"]["user"]>
 
 export type UserSelectScalar = {
@@ -2203,6 +2478,7 @@ export type UserSelectScalar = {
   password?: boolean
   passwordResetRequired?: boolean
   organizationId?: boolean
+  facilityId?: boolean
   authProvider?: boolean
   role?: boolean
   emailVerified?: boolean
@@ -2212,7 +2488,7 @@ export type UserSelectScalar = {
   updatedAt?: boolean
 }
 
-export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "password" | "passwordResetRequired" | "organizationId" | "authProvider" | "role" | "emailVerified" | "mfaEnabled" | "mfaVerifiedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
+export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "password" | "passwordResetRequired" | "organizationId" | "facilityId" | "authProvider" | "role" | "emailVerified" | "mfaEnabled" | "mfaVerifiedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
 export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   courses?: boolean | Prisma.User$coursesArgs<ExtArgs>
   documents?: boolean | Prisma.User$documentsArgs<ExtArgs>
@@ -2221,6 +2497,7 @@ export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   notificationPrefs?: boolean | Prisma.User$notificationPrefsArgs<ExtArgs>
   profile?: boolean | Prisma.User$profileArgs<ExtArgs>
   organization?: boolean | Prisma.User$organizationArgs<ExtArgs>
+  facility?: boolean | Prisma.User$facilityArgs<ExtArgs>
   mfaFactors?: boolean | Prisma.User$mfaFactorsArgs<ExtArgs>
   mfaRecoveryCodes?: boolean | Prisma.User$mfaRecoveryCodesArgs<ExtArgs>
   certificates?: boolean | Prisma.User$certificatesArgs<ExtArgs>
@@ -2229,9 +2506,11 @@ export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
 }
 export type UserIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   organization?: boolean | Prisma.User$organizationArgs<ExtArgs>
+  facility?: boolean | Prisma.User$facilityArgs<ExtArgs>
 }
 export type UserIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   organization?: boolean | Prisma.User$organizationArgs<ExtArgs>
+  facility?: boolean | Prisma.User$facilityArgs<ExtArgs>
 }
 
 export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -2244,6 +2523,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     notificationPrefs: Prisma.$NotificationPreferencePayload<ExtArgs>[]
     profile: Prisma.$ProfilePayload<ExtArgs> | null
     organization: Prisma.$OrganizationPayload<ExtArgs> | null
+    facility: Prisma.$FacilityPayload<ExtArgs> | null
     mfaFactors: Prisma.$MfaFactorPayload<ExtArgs>[]
     mfaRecoveryCodes: Prisma.$MfaRecoveryCodePayload<ExtArgs>[]
     certificates: Prisma.$CertificatePayload<ExtArgs>[]
@@ -2255,6 +2535,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     password: string
     passwordResetRequired: boolean
     organizationId: string | null
+    facilityId: string | null
     authProvider: string
     role: $Enums.UserRole
     emailVerified: boolean
@@ -2663,6 +2944,7 @@ export interface Prisma__UserClient<T, Null = never, ExtArgs extends runtime.Typ
   notificationPrefs<T extends Prisma.User$notificationPrefsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$notificationPrefsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$NotificationPreferencePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   profile<T extends Prisma.User$profileArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$profileArgs<ExtArgs>>): Prisma.Prisma__ProfileClient<runtime.Types.Result.GetResult<Prisma.$ProfilePayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   organization<T extends Prisma.User$organizationArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$organizationArgs<ExtArgs>>): Prisma.Prisma__OrganizationClient<runtime.Types.Result.GetResult<Prisma.$OrganizationPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+  facility<T extends Prisma.User$facilityArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$facilityArgs<ExtArgs>>): Prisma.Prisma__FacilityClient<runtime.Types.Result.GetResult<Prisma.$FacilityPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   mfaFactors<T extends Prisma.User$mfaFactorsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$mfaFactorsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$MfaFactorPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   mfaRecoveryCodes<T extends Prisma.User$mfaRecoveryCodesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$mfaRecoveryCodesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$MfaRecoveryCodePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   certificates<T extends Prisma.User$certificatesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$certificatesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$CertificatePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
@@ -2701,6 +2983,7 @@ export interface UserFieldRefs {
   readonly password: Prisma.FieldRef<"User", 'String'>
   readonly passwordResetRequired: Prisma.FieldRef<"User", 'Boolean'>
   readonly organizationId: Prisma.FieldRef<"User", 'String'>
+  readonly facilityId: Prisma.FieldRef<"User", 'String'>
   readonly authProvider: Prisma.FieldRef<"User", 'String'>
   readonly role: Prisma.FieldRef<"User", 'UserRole'>
   readonly emailVerified: Prisma.FieldRef<"User", 'Boolean'>
@@ -3264,6 +3547,25 @@ export type User$organizationArgs<ExtArgs extends runtime.Types.Extensions.Inter
    */
   include?: Prisma.OrganizationInclude<ExtArgs> | null
   where?: Prisma.OrganizationWhereInput
+}
+
+/**
+ * User.facility
+ */
+export type User$facilityArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Facility
+   */
+  select?: Prisma.FacilitySelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Facility
+   */
+  omit?: Prisma.FacilityOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.FacilityInclude<ExtArgs> | null
+  where?: Prisma.FacilityWhereInput
 }
 
 /**

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { sendEnterpriseInquiryEmail } from '@/lib/email';
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
       select: { role: true, organizationId: true, email: true },
     });
 
-    if (!user || user.role !== 'admin') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
     // Fetch organization for additional context
     const organization = await prisma.organization.findUnique({
       where: { id: user.organizationId ?? '' },
-      select: { name: true, primaryEmail: true, staffCount: true },
+      select: { name: true, primaryEmail: true },
     });
 
     const enterpriseEmail = process.env.ENTERPRISE_CONTACT_EMAIL ?? 'admin@theraptly.com';

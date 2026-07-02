@@ -1,1 +1,2 @@
 - [Video Upload Fix (GCS Resumable)](project_video_upload_fix.md) — 2026-06-27 plan to fix 524 timeout on video uploads; direct-to-GCS resumable signed URL flow
+- [RBAC Rollout](project_rbac_rollout.md) — 2026-06-30 six-role enum migration, auth rework, authorize helper, backfill script
