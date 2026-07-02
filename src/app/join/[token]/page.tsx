@@ -8,9 +8,10 @@ import prisma from '@/lib/prisma';
 import { Logo } from '@/components/ui';
 import { Button } from '@/components/ui/button';
 
-export default async function JoinPage({ params }: { params: { token: string } }) {
+export default async function JoinPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
   const invite = await prisma.invite.findFirst({
-    where: { token: params.token, status: 'pending' },
+    where: { token, status: 'pending' },
     include: { organization: true },
   });
 
@@ -23,7 +24,7 @@ export default async function JoinPage({ params }: { params: { token: string } }
   // that has already been accepted from a genuinely unknown/expired token so we
   // can show an actionable message instead of a bare 404.
   const anyInvite = await prisma.invite.findFirst({
-    where: { token: params.token },
+    where: { token },
     select: { status: true },
   });
 
