@@ -225,7 +225,16 @@ export default function SubscriptionTab({
         }
 
         if (data.url) {
+          // New subscription — redirect to Stripe Checkout.
           window.location.href = data.url;
+          return;
+        }
+
+        // Existing subscription was swapped in place (THER-001) — no redirect.
+        // Refresh so the new plan is reflected and send the admin to Overview.
+        if (data.updated) {
+          router.refresh();
+          onChangeTab('overview');
         }
       } catch (err) {
         setCheckoutError(err instanceof Error ? err.message : 'Unexpected error');
@@ -233,7 +242,7 @@ export default function SubscriptionTab({
         setCheckoutLoading(null);
       }
     },
-    [checkoutLoading, cycle],
+    [checkoutLoading, cycle, router, onChangeTab],
   );
 
   // ── Enterprise form field helper ───────────────────────────────────────────

@@ -6,6 +6,7 @@ import { ArrowLeft, Download } from 'lucide-react';
 import PdfViewer from '@/components/dashboard/documents/PdfViewer';
 import { getDocumentSignedUrl } from '@/app/actions/storage';
 import { logger } from '@/lib/logger';
+import { deriveDocumentStatus, DOCUMENT_STATUS_LABELS } from '@/lib/documents/status';
 
 export default async function DocumentViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -87,7 +88,7 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
           <div className="mb-4">
             <span className="mb-1 block text-xs text-text-secondary">Status</span>
             <div className="text-[0.9rem] font-medium text-foreground">
-              {courseLinks.length > 0 ? 'Converted to Course' : 'Uploaded'}
+              {DOCUMENT_STATUS_LABELS[deriveDocumentStatus(courseLinks.length > 0)]}
             </div>
           </div>
           {courseLinks.length > 0 && (

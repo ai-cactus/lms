@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   generateCourseAndQuizV46,
   checkCourseGenerationJobV46,
+  type GeneratedCourseV46,
 } from '@/app/actions/course-ai-v4.6';
+import { useJobStatus } from '@/hooks/use-job-status';
 
 // Reusable Components
 import CourseSlide from '@/components/courses/CourseSlide';
@@ -27,6 +29,20 @@ interface Step5ReviewProps {
   onComplete: (content: GeneratedCourse) => void;
   pendingJobId?: string | null;
 }
+
+// Poll cadence for the generation job status.
+const POLL_INTERVAL_MS = 3000;
+
+// Client-side backstop: stop polling after this long even if the server never
+// reaches a terminal state, so the UI can never spin forever (THER-002). Kept
+// slightly above the server wall-clock timeout so the server normally settles
+// the job first; this only catches a fully dead worker. Overridable via env.
+const MAX_POLL_MS = Number(process.env.NEXT_PUBLIC_V46_GENERATION_TIMEOUT_MS) || 11 * 60 * 1000;
+
+// Single user-safe failure message — internal backend detail never reaches the
+// client, so the UI always shows this generic, actionable copy (THER-013).
+const GENERATION_ERROR_MESSAGE =
+  "We couldn't generate a course from this document — it may be too short or lack detail. Please try a more detailed document, or try again.";
 
 /**
  * Converts v4.6 article Markdown into HTML for backward-compatible rendering.
@@ -284,7 +300,6 @@ const adaptModulesForRenderingV46 = (
 };
 
 import { QuizQuestion } from '@/types/quiz';
-import { logger } from '@/lib/logger';
 
 interface RawAIQuizQuestion {
   question: string;
@@ -384,11 +399,9 @@ export default function Step5Review({
   pendingJobId,
 }: Step5ReviewProps) {
   // Core State
-  const [isGenerating, setIsGenerating] = useState(!initialContent);
   const [generatedContent, setGeneratedContent] = useState<GeneratedCourse | null>(
     initialContent || null,
   );
-  const [error, setError] = useState<string | null>(null);
 
   // UI View State
   const [viewMode, setViewMode] = useState<'slides' | 'article'>('article');
@@ -397,117 +410,113 @@ export default function Step5Review({
     initialContent?.modules || [],
   );
 
-  // Generation Refs
-  const hasStartedRef = useRef(false);
-  // Stores the active jobId so the "Back to Dashboard" button can persist it to localStorage
-  const activeJobIdRef = useRef<string | null>(null);
   const hasInitialContent = !!initialContent;
 
-  // Generate Request — v4.6 five-stage pipeline
-  useEffect(() => {
-    if (hasInitialContent) return;
-    if (hasStartedRef.current) return;
-    hasStartedRef.current = true;
+  // Stores the active jobId so the "Back to Dashboard" button can persist it to localStorage
+  const activeJobIdRef = useRef<string | null>(null);
+  // The job currently being polled — set by createJob before polling starts.
+  const jobIdRef = useRef<string | null>(null);
+  // Only the first attempt resumes an in-flight job; a retry always starts fresh
+  // (the previous job already failed), so pendingJobId is ignored after attempt 0.
+  const attemptRef = useRef(0);
 
-    const generate = async () => {
-      try {
-        let jobId = pendingJobId;
+  // Adapts a completed v4.6 job result into the existing UI/course data flow.
+  const buildCourseFromResult = useCallback(
+    (result: GeneratedCourseV46) => {
+      const adaptedModules = adaptModulesForRenderingV46(
+        result.articleMeta,
+        result.articleMarkdown,
+        result.slidesJson,
+        parseInt(data.duration) || 60,
+      );
+      const adaptedQuiz = adaptQuizForRenderingV46(result.quizJson);
 
-        if (!jobId) {
-          const formData = new FormData();
-          formData.append('data', JSON.stringify(data));
+      const content: GeneratedCourse = {
+        title: data.title,
+        description: data.description,
+        difficulty: data.difficulty,
+        duration: data.duration,
+        objectives: data.objectives || [],
+        modules: adaptedModules,
+        quiz: adaptedQuiz,
+        // Preserve raw v4.6 JSON for DB persistence
+        rawArticleMeta: result.articleMeta,
+        rawArticleMarkdown: result.articleMarkdown,
+        rawSlidesJson: result.slidesJson,
+        rawJudgeJson: result.judgeJson,
+        rawQuizJson: result.quizJson,
+        sourceText: result.sourceText,
+        // Pass along any partial errors
+        ...(result.error ? { warning: result.error } : {}),
+      };
 
-          // Try to send the File blob if available (freshly uploaded)
-          const selectedDocWithFile = documents.find((d) => d.selected && d.file);
-          if (selectedDocWithFile?.file) {
-            formData.append('file', selectedDocWithFile.file);
-          }
+      setGeneratedContent(content);
+      if (content.modules) {
+        setEditedModules(content.modules);
+      }
+      onComplete(content);
+    },
+    [data, onComplete],
+  );
 
-          // Always pass the selected document ID so the server can
-          // read from DB if no File blob is available
-          const selectedDoc = documents.find((d) => d.selected);
-          if (selectedDoc) {
-            formData.append('documentId', selectedDoc.id);
-          }
+  // Generation lifecycle — polling cadence, poll cap, terminal-state handling
+  // and unmount cleanup all live in the transport-agnostic useJobStatus hook.
+  // `failed` still wins over a raw error (via fallbackError precedence in the
+  // hook) so the sanitized, user-safe message always shows (THER-013), and the
+  // client-side backstop guarantees the UI never spins forever (THER-002).
+  const { error, retry } = useJobStatus<GeneratedCourseV46>({
+    enabled: !hasInitialContent,
+    intervalMs: POLL_INTERVAL_MS,
+    maxPollMs: MAX_POLL_MS,
+    fallbackError: GENERATION_ERROR_MESSAGE,
+    onCompleted: buildCourseFromResult,
+    createJob: async () => {
+      // Only the first attempt resumes an in-flight job; retries start fresh.
+      const isFirstAttempt = attemptRef.current === 0;
+      attemptRef.current += 1;
+      let jobId: string | undefined = isFirstAttempt ? (pendingJobId ?? undefined) : undefined;
 
-          const { jobId: newJobId, error: startError } = await generateCourseAndQuizV46(formData);
+      if (!jobId) {
+        const formData = new FormData();
+        formData.append('data', JSON.stringify(data));
 
-          if (startError || !newJobId) {
-            setError(startError || 'Failed to start generation job');
-            setIsGenerating(false);
-            return;
-          }
-          jobId = newJobId;
+        // Try to send the File blob if available (freshly uploaded)
+        const selectedDocWithFile = documents.find((d) => d.selected && d.file);
+        if (selectedDocWithFile?.file) {
+          formData.append('file', selectedDocWithFile.file);
         }
 
-        // Store so the "Back to Dashboard" button can persist it
-        activeJobIdRef.current = jobId;
+        // Always pass the selected document ID so the server can
+        // read from DB if no File blob is available
+        const selectedDoc = documents.find((d) => d.selected);
+        if (selectedDoc) {
+          formData.append('documentId', selectedDoc.id);
+        }
 
-        const pollInterval = setInterval(async () => {
-          try {
-            const statusRes = await checkCourseGenerationJobV46(jobId);
+        const { jobId: newJobId, error: startError } = await generateCourseAndQuizV46(formData);
 
-            if (statusRes.error) {
-              clearInterval(pollInterval);
-              setError(statusRes.error);
-              setIsGenerating(false);
-            } else if (statusRes.status === 'failed') {
-              clearInterval(pollInterval);
-              setError('Generation failed during processing.');
-              setIsGenerating(false);
-            } else if (statusRes.status === 'completed' && statusRes.result) {
-              clearInterval(pollInterval);
-              const result = statusRes.result;
-
-              // Adapt v4.6 output for the existing UI flow
-              const adaptedModules = adaptModulesForRenderingV46(
-                result.articleMeta,
-                result.articleMarkdown,
-                result.slidesJson,
-                parseInt(data.duration) || 60,
-              );
-              const adaptedQuiz = adaptQuizForRenderingV46(result.quizJson);
-
-              const content: GeneratedCourse = {
-                title: data.title,
-                description: data.description,
-                difficulty: data.difficulty,
-                duration: data.duration,
-                objectives: data.objectives || [],
-                modules: adaptedModules,
-                quiz: adaptedQuiz,
-                // Preserve raw v4.6 JSON for DB persistence
-                rawArticleMeta: result.articleMeta,
-                rawArticleMarkdown: result.articleMarkdown,
-                rawSlidesJson: result.slidesJson,
-                rawJudgeJson: result.judgeJson,
-                rawQuizJson: result.quizJson,
-                sourceText: result.sourceText,
-                // Pass along any partial errors
-                ...(result.error ? { warning: result.error } : {}),
-              };
-
-              setGeneratedContent(content);
-              if (content.modules) {
-                setEditedModules(content.modules);
-              }
-              onComplete(content);
-              setIsGenerating(false);
-            }
-            // If status is 'processing', keep polling
-          } catch (pollErr) {
-            logger.error({ msg: 'Polling failed', err: pollErr });
-          }
-        }, 3000);
-      } catch (err) {
-        logger.error({ msg: 'Generation failed', err: err });
-        setError('An unexpected response was received from the server.');
-        setIsGenerating(false);
+        if (startError || !newJobId) {
+          return { error: startError || 'Failed to start generation job' };
+        }
+        jobId = newJobId;
       }
-    };
 
-    generate();
-  }, [data, documents, onComplete, hasInitialContent, pendingJobId]);
+      // Store so the "Back to Dashboard" button can persist it, and so poll() reads it.
+      activeJobIdRef.current = jobId;
+      jobIdRef.current = jobId;
+    },
+    poll: () => checkCourseGenerationJobV46(jobIdRef.current as string),
+  });
+
+  // Still generating until the job terminally completes or fails.
+  const isGenerating = !hasInitialContent && !generatedContent && !error;
+
+  // "Try Again" — real retry without a full-page reload (THER-013): the hook
+  // cancels any stale poll, clears error state, and re-runs createJob + polling.
+  const handleRetry = () => {
+    activeJobIdRef.current = null;
+    retry();
+  };
 
   // Called from the loading UI — saves job state so courses list can show a banner
   const handleBackToDashboard = (jobIdToSave: string) => {
@@ -539,7 +548,7 @@ export default function Step5Review({
         <div className="text-center">
           <h2 className="text-red-500 mb-2">Generation Failed</h2>
           <p className="text-[#6B7280] mb-4">{error}</p>
-          <Button variant="default" onClick={() => window.location.reload()}>
+          <Button variant="default" loading={isGenerating} onClick={handleRetry}>
             Try Again
           </Button>
         </div>

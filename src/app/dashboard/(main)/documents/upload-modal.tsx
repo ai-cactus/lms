@@ -114,12 +114,9 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {validationError && <Alert variant="error">{validationError}</Alert>}
-          {state?.error && <Alert variant="error">{state.error}</Alert>}
-
-          {state?.phiDetected && (
-            <Alert variant="warning" title="PHI Warning">
-              <strong>WARNING:</strong> Protected Health Information (PHI) detected. Ensure all
-              uploads comply with HIPAA regulations. Unauthorized disclosure is strictly prohibited.
+          {state?.error && (
+            <Alert variant="error" title={state.phiDetected ? 'PHI Detected' : undefined}>
+              {state.error}
             </Alert>
           )}
 
