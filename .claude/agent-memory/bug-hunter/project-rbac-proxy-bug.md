@@ -20,3 +20,5 @@ After the RBAC migration (roles: owner/supervisor/hr/clinical_director/finance/w
 **NEXTAUTH_SECRET vs AUTH_SECRET:** .env.local has two different values. create-auth-instance.ts reads NEXTAUTH_SECRET; proxy.ts reads AUTH_SECRET. In practice NextAuth v5 uses AUTH_SECRET internally (ignoring the secret option), so decoding succeeds. The NEXTAUTH_SECRET reference in create-auth-instance.ts is dead code — a separate cleanup candidate but NOT blocking login after the requiredRole fix.
 
 **How to apply:** When writing/running e2e login tests for admin-portal roles (supervisor/owner/hr/etc.), these tests will fail until code-ninja fixes `src/proxy.ts`. The tests themselves are correct.
+
+**RESOLVED (verified 2026-07-02, dev-merge commit 62874ec on branch `rbac`):** `src/proxy.ts` now imports `ADMIN_ROLES`/`WORKER_ROLES` from `@/lib/rbac/role-utils` and each `ROUTE_CONFIG` entry has an `allowedRoles` set; the check at the mismatch guard is `!cfg.allowedRoles.includes(token.role as Role)`. No scalar `requiredRole:'admin'` remains. Re-verify this file exists as described before relying on this memory again — the fix landed in a prior session not captured elsewhere.

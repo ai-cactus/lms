@@ -6,3 +6,4 @@
 - [RBAC proxy bug — admin login broken](project-rbac-proxy-bug.md) — proxy.ts requiredRole:'admin' rejects all post-migration roles; fix: use ADMIN_ROLES includes check
 - [Reminders engine test patterns](reminders-test-patterns.md) — DST midnight gotcha, P2002 mock class pattern, enrollment.findMany call ordering in sweep, fake timers for compliance
 - [QA wave 1 regression patterns](qa-wave1-regression-patterns.md) — billing double-charge/webhook guards, course-ai-v4.6 settle-race testing, PHI fail-closed, pdf-parse import crash, async server component testing
+- [Org/Facility split test patterns](org-facility-split-test-patterns.md) — DEFAULT_TZ-matches-fixture regression trap, facility.staffCount billing gotcha, clearAllMocks doesn't reset mockResolvedValue, Radix Select untested in this repo
