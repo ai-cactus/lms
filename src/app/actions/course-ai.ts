@@ -21,6 +21,15 @@ const CourseMetadataSchema = z.object({
 
 export type AnalyzedMetadata = z.infer<typeof CourseMetadataSchema> & { error?: string };
 
+// Single user-facing failure message for document analysis. Raw internal error
+// detail (Vertex AI errors, stack traces, validation dumps) is logged
+// server-side only and NEVER returned to the client — it previously leaked
+// backend internals (e.g. a raw "Vertex AI 404 Not Found: <!DOCTYPE html>...")
+// straight into the course wizard UI. Mirrors the THER-013 boundary fix in
+// course-ai-v4.6.ts.
+const ANALYSIS_FAILED_USER_MESSAGE =
+  "We couldn't analyze this document automatically. You can fill in the details manually or try again.";
+
 /**
  * Analyze a freshly-uploaded file to extract course metadata.
  * Used by CourseWizard when a new file is uploaded in-session.
@@ -46,9 +55,15 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
 
     if (!sourceText || sourceText.length < 50) {
       logger.error({ msg: `Extraction failed: Text length is ${sourceText?.length || 0}` });
-      throw new Error(
-        `Could not extract enough text (${sourceText?.length || 0} characters) from the file to analyze. Please ensure the PDF contains selectable text, not just images. If you cannot select the text with your mouse, it is likely an image scan.`,
-      );
+      return {
+        title: file.name,
+        description: 'Failed to analyze document automatically.',
+        objectives: ['Review the document content.'],
+        duration: '30',
+        quizTitle: `Quiz: ${file.name}`,
+        error:
+          'Could not extract enough text from the file. Please ensure the PDF contains selectable text, not just scanned images.',
+      };
     }
 
     // Truncate for analysis speed & cost
@@ -111,7 +126,7 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
       objectives: ['Review the document content.'],
       duration: '30',
       quizTitle: `Quiz: ${file.name}`,
-      error: err.message,
+      error: ANALYSIS_FAILED_USER_MESSAGE,
     };
   }
 }
@@ -228,7 +243,7 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
       objectives: ['Review the document content.'],
       duration: '30',
       quizTitle: 'Quiz',
-      error: err.message,
+      error: ANALYSIS_FAILED_USER_MESSAGE,
     };
   }
 }

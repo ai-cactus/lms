@@ -43,7 +43,7 @@ describe('JoinPage — pending, unexpired invite', () => {
       organization: { name: 'Acme Co' },
     });
 
-    const element = await JoinPage({ params: { token: 'tok-1' } });
+    const element = await JoinPage({ params: Promise.resolve({ token: 'tok-1' }) });
     render(element);
 
     expect(screen.getByTestId('join-page-client')).toHaveTextContent('Acme Co');
@@ -63,7 +63,7 @@ describe('JoinPage — already-accepted invite', () => {
     // Second (any-status) lookup finds it as accepted.
     prismaMock.invite.findFirst.mockResolvedValueOnce({ status: 'accepted' });
 
-    const element = await JoinPage({ params: { token: 'tok-2' } });
+    const element = await JoinPage({ params: Promise.resolve({ token: 'tok-2' }) });
     render(element);
 
     expect(screen.getByText('This invite has already been used')).toBeInTheDocument();
@@ -77,7 +77,9 @@ describe('JoinPage — unknown or genuinely expired token', () => {
     prismaMock.invite.findFirst.mockResolvedValueOnce(null); // strict lookup misses
     prismaMock.invite.findFirst.mockResolvedValueOnce(null); // any-status lookup also misses
 
-    await expect(JoinPage({ params: { token: 'nonexistent' } })).rejects.toThrow('NEXT_NOT_FOUND');
+    await expect(JoinPage({ params: Promise.resolve({ token: 'nonexistent' }) })).rejects.toThrow(
+      'NEXT_NOT_FOUND',
+    );
     expect(mockNotFound).toHaveBeenCalledOnce();
   });
 
@@ -94,7 +96,9 @@ describe('JoinPage — unknown or genuinely expired token', () => {
     // accepted-state branch, so it must fall through to notFound().
     prismaMock.invite.findFirst.mockResolvedValueOnce({ status: 'pending' });
 
-    await expect(JoinPage({ params: { token: 'tok-3' } })).rejects.toThrow('NEXT_NOT_FOUND');
+    await expect(JoinPage({ params: Promise.resolve({ token: 'tok-3' }) })).rejects.toThrow(
+      'NEXT_NOT_FOUND',
+    );
     expect(mockNotFound).toHaveBeenCalledOnce();
   });
 });
