@@ -12,6 +12,14 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Alert, FileUpload } from '@/components/ui';
+import { Field } from '@/components/ui/field';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { createInvites } from '@/app/actions/invite';
 import {
   readStaffSpreadsheetRows,
@@ -21,6 +29,8 @@ import {
 } from '@/lib/staff-csv';
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
+import { GRANTABLE_ROLES, getRoleDisplayName } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 
 interface InviteStaffModalProps {
   isOpen: boolean;
@@ -33,6 +43,8 @@ interface InviteStaffModalProps {
   /** Seats remaining under the current plan. null = unlimited (enterprise). */
   remainingSeats: number | null;
   planName: string;
+  /** The current admin's role — determines which roles they may grant. */
+  inviterRole: Role;
   /**
    * Emails already present as members or pending invites, used only to flag
    * such rows in the CSV import preview. The server action remains the source
@@ -46,12 +58,15 @@ export default function InviteStaffModal({
   onClose,
   remainingSeats,
   planName,
+  inviterRole,
   existingEmails = [],
 }: InviteStaffModalProps) {
+  const grantableRoles = GRANTABLE_ROLES[inviterRole];
   const isLimitedPlan = remainingSeats !== null;
   const seatsExhausted = isLimitedPlan && remainingSeats === 0;
   const [emails, setEmails] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const [selectedRole, setSelectedRole] = useState<Role>('worker');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -61,6 +76,8 @@ export default function InviteStaffModal({
   const [parseResult, setParseResult] = useState<StaffCsvParseResult | null>(null);
 
   const router = useRouter();
+  // Owner is seat-exempt (D2); every other role consumes a plan seat.
+  const seatCapApplies = selectedRole !== 'owner';
 
   const knownEmails = useMemo(
     () => new Set(existingEmails.map((e) => e.toLowerCase())),
@@ -79,7 +96,7 @@ export default function InviteStaffModal({
     setMessage(null);
 
     try {
-      const result = await createInvites(finalEmails);
+      const result = await createInvites(finalEmails, selectedRole);
 
       if (!result.success) {
         setMessage({ type: 'error', text: result.error || 'Failed to send invites' });
@@ -218,17 +235,21 @@ export default function InviteStaffModal({
     }
   };
 
-  const seatsHint = isLimitedPlan ? (
-    <p
-      className={
-        seatsExhausted ? 'text-[13px] font-semibold text-error' : 'text-[13px] text-text-secondary'
-      }
-    >
-      {seatsExhausted
-        ? `Your ${planName} plan has no remaining worker seats. Please upgrade to invite more.`
-        : `${remainingSeats} seat${remainingSeats !== 1 ? 's' : ''} remaining on your ${planName} plan.`}
-    </p>
-  ) : null;
+  // Owner is seat-exempt (D2); hide the seat hint when the selected role consumes no seat.
+  const seatsHint =
+    isLimitedPlan && seatCapApplies ? (
+      <p
+        className={
+          seatsExhausted
+            ? 'text-[13px] font-semibold text-error'
+            : 'text-[13px] text-text-secondary'
+        }
+      >
+        {seatsExhausted
+          ? `Your ${planName} plan has no remaining worker seats. Please upgrade to invite more.`
+          : `${remainingSeats} seat${remainingSeats !== 1 ? 's' : ''} remaining on your ${planName} plan.`}
+      </p>
+    ) : null;
 
   return (
     <Dialog
@@ -292,6 +313,26 @@ export default function InviteStaffModal({
                 </p>
               </div>
 
+              {grantableRoles.length > 0 && (
+                <Field label="Role">
+                  <Select
+                    value={selectedRole}
+                    onValueChange={(value) => setSelectedRole(value as Role)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {grantableRoles.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {getRoleDisplayName(role)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+
               {message && (
                 <Alert variant={message.type === 'success' ? 'success' : 'error'}>
                   {message.text}
@@ -308,7 +349,9 @@ export default function InviteStaffModal({
                   variant="default"
                   type="submit"
                   loading={isLoading}
-                  disabled={(emails.length === 0 && !inputValue) || seatsExhausted}
+                  disabled={
+                    (emails.length === 0 && !inputValue) || (seatsExhausted && seatCapApplies)
+                  }
                 >
                   Send Invites
                 </Button>
@@ -441,7 +484,7 @@ export default function InviteStaffModal({
                     csvParsing ||
                     !parseResult ||
                     parseResult.validEmails.length === 0 ||
-                    seatsExhausted
+                    (seatsExhausted && seatCapApplies)
                   }
                 >
                   {parseResult && parseResult.validCount > 0

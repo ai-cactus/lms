@@ -74,7 +74,7 @@ function makeEnrollment(
       email: `worker-${id}@test.com`,
       profile: fullName !== null ? { fullName } : null,
       manager: managerName !== null ? { profile: { fullName: managerName } } : null,
-      organization: timezone !== null ? { timezone } : null,
+      facility: timezone !== null ? { timezone } : null,
     },
   };
 }
@@ -169,7 +169,7 @@ describe('getOverdueComplianceForOrg', () => {
     expect(rows[0].managerName).toBeNull();
   });
 
-  it('uses DEFAULT_TZ when organization timezone is null', async () => {
+  it('uses DEFAULT_TZ when facility timezone is null', async () => {
     // dueAt = June 5 noon UTC; with DEFAULT_TZ (America/New_York) daysOverdue = 10
     prismaMock.enrollment.findMany.mockResolvedValue([
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { timezone: null }),
@@ -178,6 +178,28 @@ describe('getOverdueComplianceForOrg', () => {
     const { rows } = await getOverdueComplianceForOrg('org-1');
     // Should still compute 10 days using the fallback timezone
     expect(rows[0].daysOverdue).toBe(10);
+  });
+
+  it('reads timezone from the worker facility, not organization — regression guard', async () => {
+    // dueAt = 2024-06-05T05:00:00Z straddles midnight differently per zone:
+    //   America/New_York (EDT, UTC-4): 05:00 - 4h = 01:00 June 5  → local date June 5
+    //   America/Los_Angeles (PDT, UTC-7): 05:00 - 7h = 22:00 June 4 → local date June 4
+    // So the DEFAULT_TZ fallback would compute 10 days overdue, while the real
+    // facility timezone (LA) computes 11. If the code regressed to reading
+    // organization.timezone (a field removed from the select entirely), the
+    // facility value below would never be reached, `?? DEFAULT_TZ` would
+    // silently kick in, and this assertion would fail (10 !== 11).
+    prismaMock.enrollment.findMany.mockResolvedValue([
+      makeEnrollment('e1', '2024-06-05T05:00:00Z', { timezone: 'America/Los_Angeles' }),
+    ]);
+
+    const { rows } = await getOverdueComplianceForOrg('org-1');
+
+    expect(rows[0].daysOverdue).toBe(11);
+
+    const call = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(call.select.user.select.facility).toEqual({ select: { timezone: true } });
+    expect(call.select.user.select.organization).toBeUndefined();
   });
 
   it('queries with the correct orgId filter (passes it to prisma)', async () => {

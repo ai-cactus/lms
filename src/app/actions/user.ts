@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { logger } from '@/lib/logger';
 import bcrypt from 'bcryptjs';
+import type { UserRole } from '@/generated/prisma/enums';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -51,7 +52,8 @@ export async function getStaffUsers() {
       prisma.user.findMany({
         where: {
           organizationId: currentUser.organizationId,
-          role: { not: 'admin' },
+          // Show every seat-consuming staff member (all roles except owner).
+          role: { not: 'owner' },
         },
         include: { profile: true },
         orderBy: { createdAt: 'desc' },
@@ -131,7 +133,7 @@ export async function searchStaffUsers(query: string) {
     const users = await prisma.user.findMany({
       where: {
         organizationId: currentUser.organizationId,
-        role: { not: 'admin' },
+        role: { not: 'owner' },
         OR: [
           { email: { contains: query, mode: 'insensitive' } },
           { profile: { fullName: { contains: query, mode: 'insensitive' } } },
@@ -159,6 +161,10 @@ export async function searchStaffUsers(query: string) {
 // --- Onboarding / Profile Management ---
 
 export async function updateRole(role: 'admin' | 'worker') {
+  // The onboarding UI offers a binary "admin vs worker" choice. Map it to the
+  // RBAC role stored in the DB: choosing "admin" means founding an organisation,
+  // so the user becomes an `owner`.
+  const dbRole: UserRole = role === 'admin' ? 'owner' : 'worker';
   const session = await resolveSession();
 
   if (!session?.user?.email || !session?.user?.id) {
@@ -188,7 +194,7 @@ export async function updateRole(role: 'admin' | 'worker') {
       where: {
         email: session.user.email,
       },
-      data: { role },
+      data: { role: dbRole },
     });
 
     revalidatePath('/dashboard');

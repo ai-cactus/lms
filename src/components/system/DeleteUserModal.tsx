@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { AlertTriangle } from 'lucide-react';
 import { deleteUserWithRelations } from '@/app/actions/system-admin';
 import type { DeletePreview } from '@/app/actions/system-admin';
@@ -125,7 +126,7 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             <div className="mt-1">
               <span
                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                  user.role === 'admin'
+                  isAdminRole(user.role)
                     ? 'bg-primary/10 text-primary'
                     : 'bg-background-secondary text-text-secondary'
                 }`}

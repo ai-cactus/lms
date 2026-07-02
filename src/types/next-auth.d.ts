@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'worker';
+export type Role = 'owner' | 'supervisor' | 'hr' | 'clinical_director' | 'finance' | 'worker';
 import 'next-auth';
 import 'next-auth/jwt';
 

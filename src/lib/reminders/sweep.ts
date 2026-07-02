@@ -128,7 +128,7 @@ async function runTrackA(
           id: true,
           email: true,
           profile: { select: { fullName: true } },
-          organization: { select: { timezone: true } },
+          facility: { select: { timezone: true } },
         },
       },
     },
@@ -149,7 +149,7 @@ async function runTrackA(
       const dueAt = enrollment.dueAt;
       if (!dueAt) continue; // Defensive: the query already filters non-null.
 
-      const tz = enrollment.user.organization?.timezone ?? DEFAULT_TZ;
+      const tz = enrollment.user.facility?.timezone ?? DEFAULT_TZ;
       const dueStart = startOfDayInTz(dueAt, tz);
       const stageConfig = enrollment.assignment?.reminderStages ?? [];
       const worker = {

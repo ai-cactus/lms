@@ -3,12 +3,17 @@ import { NextRequest, NextResponse } from 'next/server';
 // @ts-ignore - NextAuth does not reliably export decode type in this scope
 import { decode, JWT } from 'next-auth/jwt';
 import { logger, maskEmail } from '@/lib/logger';
+import { ADMIN_ROLES, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 
-// All route rules live in one config object — easy to audit and extend
+// All route rules live in one config object — easy to audit and extend.
+// `allowedRoles` is a set: after the RBAC migration the admin portal is shared by
+// every admin-tier role (owner/supervisor/hr/clinical_director/finance), while the
+// worker portal is `worker` only.
 const ROUTE_CONFIG = {
   worker: {
     cookiePrefix: 'worker',
-    requiredRole: 'worker',
+    allowedRoles: WORKER_ROLES,
     loginPath: '/login',
     // All paths that belong to the worker context
     paths: ['/worker', '/onboarding-worker', '/api/auth-worker'],
@@ -18,7 +23,7 @@ const ROUTE_CONFIG = {
   },
   admin: {
     cookiePrefix: 'admin',
-    requiredRole: 'admin',
+    allowedRoles: ADMIN_ROLES,
     loginPath: '/login',
     paths: ['/dashboard', '/onboarding', '/login', '/api/auth'],
     homePath: '/dashboard',
@@ -45,7 +50,10 @@ export async function proxy(req: NextRequest) {
   if (!context) return NextResponse.next();
 
   const cfg = ROUTE_CONFIG[context];
-  const secret = process.env.AUTH_SECRET!;
+  // Must match the encoder in src/lib/create-auth-instance.ts — same vars, same
+  // order (AUTH_SECRET first, then NEXTAUTH_SECRET) — or decryption fails and the
+  // proxy would wrongly discard a valid session.
+  const secret = (process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET)!;
   const useSecureCookies = process.env.NODE_ENV === 'production';
 
   const cookieName = `${useSecureCookies ? '__Secure-' : ''}${cfg.cookiePrefix}.session-token`;
@@ -86,8 +94,9 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
-  // ✅ Role mismatch at the token level (e.g., role changed in DB via jwt callback)
-  if (token.role !== cfg.requiredRole) {
+  // ✅ Role mismatch at the token level (e.g., role changed in DB via jwt callback).
+  // The token role must belong to this context's allowed set.
+  if (!cfg.allowedRoles.includes(token.role as Role)) {
     const res = NextResponse.redirect(new URL(cfg.loginPath, req.url));
     res.cookies.delete(cookieName);
     return res;

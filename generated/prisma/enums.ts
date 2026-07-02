@@ -10,7 +10,11 @@
 */
 
 export const UserRole = {
-  admin: 'admin',
+  owner: 'owner',
+  supervisor: 'supervisor',
+  hr: 'hr',
+  clinical_director: 'clinical_director',
+  finance: 'finance',
   worker: 'worker'
 } as const
 

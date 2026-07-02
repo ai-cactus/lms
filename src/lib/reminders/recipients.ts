@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { isAdminRole, ADMIN_ROLES } from '@/lib/rbac/role-utils';
 
 /**
  * Escalation recipient resolution.
@@ -48,7 +49,7 @@ export async function resolveEscalationRecipients(enrollment: {
       },
     });
 
-    if (manager && manager.organizationId === worker.organizationId && manager.role === 'admin') {
+    if (manager && manager.organizationId === worker.organizationId && isAdminRole(manager.role)) {
       return {
         userIds: [manager.id],
         emails: [{ email: manager.email, name: manager.profile?.fullName ?? null }],
@@ -58,7 +59,7 @@ export async function resolveEscalationRecipients(enrollment: {
 
   // Fall back to all org admins.
   const admins = await prisma.user.findMany({
-    where: { organizationId: worker.organizationId, role: 'admin' },
+    where: { organizationId: worker.organizationId, role: { in: [...ADMIN_ROLES] } },
     select: { id: true, email: true, profile: { select: { fullName: true } } },
   });
 

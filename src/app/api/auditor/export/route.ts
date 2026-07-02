@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { generateAuditorPackCsv } from '@/app/actions/auditor';
@@ -16,7 +17,7 @@ export async function GET() {
       select: { role: true, organizationId: true },
     });
 
-    if (!user || user.role !== 'admin' || !user.organizationId) {
+    if (!user || !isAdminRole(user.role) || !user.organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

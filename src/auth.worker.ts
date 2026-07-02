@@ -2,7 +2,7 @@ import { createAuthInstance } from '@/lib/create-auth-instance';
 
 const workerAuth = createAuthInstance({
   cookiePrefix: 'worker',
-  allowedRole: 'worker',
+  allowedRoles: ['worker'],
   basePath: '/api/auth-worker',
 });
 

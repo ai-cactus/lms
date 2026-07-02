@@ -76,7 +76,8 @@ const ORG_ID = 'org-1';
 function setupAdminSession() {
   mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
   mockWorkerAuth.mockResolvedValue(null);
-  mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'admin' });
+  // After RBAC migration: 'admin' is retired; use 'owner' which is an admin role.
+  mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'owner' });
 }
 
 beforeEach(() => {
@@ -165,7 +166,7 @@ describe('listAvailableVideoCourses', () => {
   it('throws No organization when user has no organizationId', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: null, role: 'admin' });
+    mockUserFindUnique.mockResolvedValue({ organizationId: null, role: 'owner' });
 
     await expect(listAvailableVideoCourses()).rejects.toThrow('No organization');
   });

@@ -1,4 +1,5 @@
 import { auth } from '@/auth';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import BillingPage from '@/components/billing/BillingPage';
@@ -21,7 +22,7 @@ export default async function BillingPageRoute() {
     select: { role: true, organizationId: true },
   });
 
-  if (!user || user.role !== 'admin') {
+  if (!user || !isAdminRole(user.role)) {
     redirect('/dashboard');
   }
 
@@ -30,7 +31,7 @@ export default async function BillingPageRoute() {
     ? await prisma.organization.findUnique({
         where: { id: user.organizationId },
         select: {
-          staffCount: true,
+          facilities: { select: { staffCount: true }, take: 1 },
           subscription: {
             select: { plan: true, status: true, pausedAt: true, pauseEndsAt: true },
           },
@@ -39,6 +40,7 @@ export default async function BillingPageRoute() {
     : null;
 
   const sub = organization?.subscription;
+  const staffCount = organization?.facilities[0]?.staffCount ?? null;
 
   // Expose the plan key only when the subscription is in a billable state.
   // A paused subscription keeps a Stripe status of `active`, so it still counts
@@ -50,7 +52,7 @@ export default async function BillingPageRoute() {
 
   return (
     <BillingPage
-      staffCount={organization?.staffCount ?? null}
+      staffCount={staffCount}
       currentPlan={activePlan}
       pausedAt={sub?.pausedAt ? sub.pausedAt.toISOString() : null}
       pauseEndsAt={sub?.pauseEndsAt ? sub.pauseEndsAt.toISOString() : null}

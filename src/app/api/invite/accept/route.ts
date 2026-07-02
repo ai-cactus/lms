@@ -29,7 +29,6 @@ export async function POST(req: Request) {
 
     const { token, firstName, lastName, password } = result.data;
 
-    // Server-side password policy enforcement (beyond basic zod length checks)
     const pwCheck = validatePassword(password);
     if (!pwCheck.valid) {
       return NextResponse.json(
@@ -38,7 +37,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Find pending invite
     const invite = await prisma.invite.findUnique({
       where: { token, status: 'pending' },
     });
@@ -47,7 +45,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid or expired invite' }, { status: 400 });
     }
 
-    // 3. Check if user already exists (just in case they signed up manually in the meantime)
     const existingUser = await prisma.user.findUnique({
       where: { email: invite.email },
     });
@@ -56,17 +53,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User with this email already exists' }, { status: 400 });
     }
 
-    // 4. Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 5. Create User and Profile within a transaction
-    // Using transaction ensures atomicity
+    const facility = await prisma.facility.findFirst({
+      where: { organizationId: invite.organizationId },
+      select: { id: true },
+    });
+    if (!facility) {
+      logger.warn({
+        msg: '[invite] Accepting invite: no facility for organization',
+        organizationId: invite.organizationId,
+      });
+    }
+
     const newUser = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           email: invite.email,
+          emailVerified: true,
           password: hashedPassword,
           organizationId: invite.organizationId,
+          facilityId: facility?.id ?? null,
           role: invite.role,
           profile: {
             create: {

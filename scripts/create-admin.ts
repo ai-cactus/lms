@@ -26,7 +26,7 @@ async function main() {
       create: {
         email: adminEmail,
         password: hashedPassword,
-        role: UserRole.admin,
+        role: UserRole.supervisor,
         profile: {
           create: {
             email: adminEmail,

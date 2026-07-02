@@ -12,7 +12,8 @@ export async function getOrCreateSystemUser() {
       email: SYSTEM_USER_EMAIL,
       // Never logs in: a random non-bcrypt string can never match bcrypt.compare.
       password: crypto.randomBytes(32).toString('hex'),
-      role: 'admin',
+      // Internal platform user (no org). Maps to the legacy `admin` successor.
+      role: 'supervisor',
       organizationId: null,
       emailVerified: true,
     },

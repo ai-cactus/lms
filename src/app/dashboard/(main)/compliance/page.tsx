@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getOverdueComplianceForOrg } from '@/lib/reminders/compliance';
 import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import ComplianceTableClient, {
   type ComplianceRowView,
 } from '@/components/dashboard/compliance/ComplianceTableClient';
@@ -29,7 +30,7 @@ export default async function CompliancePage() {
   });
 
   // Only admin users may access this page.
-  if (!user || user.role !== 'admin') {
+  if (!user || !isAdminRole(user.role)) {
     redirect('/dashboard');
   }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { Logo } from '@/components/ui';
 import Header from '@/components/dashboard/Header';
 import Link from 'next/link';
@@ -140,7 +141,7 @@ export default function DashboardLayoutClient({
           </div>
 
           {/* PERFORMANCE Section — admin only */}
-          {role === 'admin' && (
+          {isAdminRole(role) && (
             <div className="flex flex-col gap-2">
               <h4 className={navSectionLabelCls}>PERFORMANCE</h4>
 
@@ -171,7 +172,7 @@ export default function DashboardLayoutClient({
           )}
 
           {/* SETTINGS Section — admin only */}
-          {role === 'admin' && (
+          {isAdminRole(role) && (
             <div className="flex flex-col gap-2">
               <h4 className={navSectionLabelCls}>SETTINGS</h4>
 

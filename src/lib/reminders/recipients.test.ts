@@ -43,7 +43,7 @@ const WORKER = { id: 'user-1', organizationId: 'org-1', managerId: null };
 const MANAGER_ADMIN = {
   id: 'mgr-1',
   email: 'manager@test.com',
-  role: 'admin',
+  role: 'owner',
   organizationId: 'org-1',
   profile: { fullName: 'Alice Manager' },
 };

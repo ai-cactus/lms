@@ -1,6 +1,7 @@
 'use server';
 
 import { auth } from '@/auth';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { startedAtWhere, type AuditDateRangeInput } from '@/lib/audit-reports/date-range';
@@ -46,7 +47,7 @@ async function requireAdminSession() {
     where: { id: session.user.id },
     select: { role: true, organizationId: true },
   });
-  if (!user || user.role !== 'admin' || !user.organizationId) {
+  if (!user || !isAdminRole(user.role) || !user.organizationId) {
     throw new Error('Unauthorized');
   }
   return { userId: session.user.id, organizationId: user.organizationId };

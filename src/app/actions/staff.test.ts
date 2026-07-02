@@ -1,5 +1,11 @@
 /**
- * THER-007 regression tests for resendInvite:
+ * Unit tests for src/app/actions/staff.ts
+ *
+ * updateStaffDetails() — Owner role is established ONLY at org creation:
+ *   - Promoting a non-owner to owner via updateStaffDetails must be rejected.
+ *   - An existing owner keeping their role while editing name/title is allowed.
+ *
+ * resendInvite() — THER-007 regression tests:
  *   - Authorization: caller must be an authenticated admin who owns the
  *     invite's organization.
  *   - Token + expiry regeneration: a fresh token and a ~7-day expiry window
@@ -7,31 +13,75 @@
  *   - Status reset to 'pending' so an expired invite becomes usable again.
  *   - An already-accepted invite is not silently "resent" — it returns a
  *     distinct, non-throwing error instead.
+ *
+ * External deps (@/auth, @/lib/prisma, next/cache, @/lib/email) are mocked.
  */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, prismaMock, mockSendInviteEmail } = vi.hoisted(() => ({
-  mockAuth: vi.fn(),
-  prismaMock: {
-    user: { findUnique: vi.fn() },
-    invite: { findUnique: vi.fn(), update: vi.fn() },
-  },
-  mockSendInviteEmail: vi.fn(),
-}));
+// ── Hoisted mocks ─────────────────────────────────────────────────────────────
+
+const {
+  mockAuth,
+  mockUserFindUnique,
+  mockUserUpdate,
+  mockProfileUpsert,
+  mockInviteFindUnique,
+  mockInviteUpdate,
+  mockRevalidatePath,
+  mockSendInviteEmail,
+  prismaMock,
+} = vi.hoisted(() => {
+  const mockUserFindUnique = vi.fn();
+  const mockUserUpdate = vi.fn();
+  const mockProfileUpsert = vi.fn();
+  const mockInviteFindUnique = vi.fn();
+  const mockInviteUpdate = vi.fn();
+  const prismaMock = {
+    user: { findUnique: mockUserFindUnique, update: mockUserUpdate },
+    profile: { upsert: mockProfileUpsert },
+    invite: { findUnique: mockInviteFindUnique, update: mockInviteUpdate },
+  };
+  return {
+    mockAuth: vi.fn(),
+    mockUserFindUnique,
+    mockUserUpdate,
+    mockProfileUpsert,
+    mockInviteFindUnique,
+    mockInviteUpdate,
+    mockRevalidatePath: vi.fn(),
+    mockSendInviteEmail: vi.fn(),
+    prismaMock,
+  };
+});
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('next/cache', () => ({ revalidatePath: mockRevalidatePath }));
 vi.mock('@/lib/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  maskEmail: (e: string) => e,
 }));
 // resendInvite dynamically imports '@/lib/email' — mock the module path.
 vi.mock('@/lib/email', () => ({ sendInviteEmail: mockSendInviteEmail }));
 
-import { resendInvite } from './staff';
+import { updateStaffDetails, resendInvite } from './staff';
 
-const ADMIN = { role: 'admin', organizationId: 'org-1' };
+// ── Helpers & fixtures ──────────────────────────────────────────────────────────
+
+function makeAdminSession(role = 'owner') {
+  return {
+    user: { id: 'admin-1', email: 'admin@acme.com', role, organizationId: 'org-1' },
+  };
+}
+
+const baseData = {
+  firstName: 'Jane',
+  lastName: 'Doe',
+  role: 'worker' as const,
+  jobTitle: 'Nurse',
+};
+
+const ADMIN = { role: 'owner', organizationId: 'org-1' };
 const PENDING_INVITE = {
   organizationId: 'org-1',
   email: 'newstaff@example.com',
@@ -44,11 +94,131 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_APP_URL = 'https://app.example.com';
   mockAuth.mockResolvedValue({ user: { id: 'admin-1' } });
-  prismaMock.user.findUnique.mockResolvedValue(ADMIN);
-  prismaMock.invite.findUnique.mockResolvedValue(PENDING_INVITE);
-  prismaMock.invite.update.mockResolvedValue({});
+  mockUserFindUnique.mockResolvedValue(ADMIN);
+  mockUserUpdate.mockResolvedValue({ id: 'target-1', email: 'target@acme.com' });
+  mockProfileUpsert.mockResolvedValue({});
+  mockInviteFindUnique.mockResolvedValue(PENDING_INVITE);
+  mockInviteUpdate.mockResolvedValue({});
   mockSendInviteEmail.mockResolvedValue(undefined);
 });
+
+// ── updateStaffDetails() ────────────────────────────────────────────────────────
+
+// ── Auth guard ────────────────────────────────────────────────────────────────
+
+describe('updateStaffDetails() — auth guard', () => {
+  it('returns Unauthorized when there is no session', async () => {
+    mockAuth.mockResolvedValue(null);
+    const result = await updateStaffDetails('target-1', baseData);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Unauthorized');
+  });
+
+  it('returns Unauthorized when the requester is a worker', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'w-1', email: 'w@a.com', role: 'worker', organizationId: 'org-1' },
+    });
+    const result = await updateStaffDetails('target-1', baseData);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Unauthorized');
+  });
+});
+
+// ── Owner-promotion guard ─────────────────────────────────────────────────────
+
+describe('updateStaffDetails() — owner role cannot be granted via edit (one-owner invariant)', () => {
+  it('rejects promotion of a worker to owner', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    // Target is currently a worker (non-owner)
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'worker' });
+
+    const result = await updateStaffDetails('target-1', {
+      ...baseData,
+      role: 'owner',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Owner role cannot be assigned/i);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects promotion of a supervisor to owner', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'supervisor' });
+
+    const result = await updateStaffDetails('target-1', {
+      ...baseData,
+      role: 'owner',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Owner role cannot be assigned/i);
+  });
+
+  it('allows an existing owner to keep their role while changing name/title', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    // Target is already an owner — keeping their role is allowed
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'owner' });
+
+    const result = await updateStaffDetails('target-1', {
+      firstName: 'Alice',
+      lastName: 'Smith',
+      role: 'owner',
+      jobTitle: 'CEO',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockUserUpdate).toHaveBeenCalledOnce();
+  });
+});
+
+// ── Tenant isolation ──────────────────────────────────────────────────────────
+
+describe('updateStaffDetails() — tenant isolation', () => {
+  it('rejects when the target user belongs to a different org', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    // Target is in a different org
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-OTHER', role: 'worker' });
+
+    const result = await updateStaffDetails('target-1', baseData);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Forbidden');
+  });
+
+  it('rejects when the target user is not found', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    mockUserFindUnique.mockResolvedValue(null);
+
+    const result = await updateStaffDetails('target-1', baseData);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Forbidden');
+  });
+});
+
+// ── Happy path ────────────────────────────────────────────────────────────────
+
+describe('updateStaffDetails() — happy path', () => {
+  it('updates the user role and profile when all checks pass', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'worker' });
+
+    const result = await updateStaffDetails('target-1', {
+      firstName: 'Jane',
+      lastName: 'Doe',
+      role: 'supervisor',
+      jobTitle: 'Supervisor',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockUserUpdate).toHaveBeenCalledOnce();
+    expect(mockUserUpdate.mock.calls[0][0].data.role).toBe('supervisor');
+    expect(mockProfileUpsert).toHaveBeenCalledOnce();
+  });
+});
+
+// ── resendInvite() ──────────────────────────────────────────────────────────────
 
 describe('resendInvite — authorization', () => {
   it('rejects when there is no session', async () => {

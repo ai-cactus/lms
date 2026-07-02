@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
+import { ALL_ROLES } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 
 const getBaseUrl = () => {
   return (
@@ -72,8 +74,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'invalid_data' }, { status: 400 });
     }
 
-    // Default to 'worker' if role not set
-    const userRole = (verificationToken.role || UserRole.worker) as UserRole;
+    // Validate the pending role against the current role set before trusting it.
+    // A token minted before the RBAC rollout may still carry a retired value
+    // (e.g. `admin`); anything not in ALL_ROLES falls back to `worker`.
+    const pendingRole = verificationToken.role;
+    const userRole: UserRole =
+      pendingRole && ALL_ROLES.includes(pendingRole as Role)
+        ? (pendingRole as UserRole)
+        : UserRole.worker;
 
     await prisma.$transaction(async (tx) => {
       // Create the user

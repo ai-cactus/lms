@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -24,7 +25,7 @@ async function resolveOrg(userId: string): Promise<string> {
   if (!user?.organizationId) {
     throw new Error('No organization');
   }
-  if (user.role !== 'admin') {
+  if (!isAdminRole(user.role)) {
     throw new Error('Forbidden');
   }
   return user.organizationId;

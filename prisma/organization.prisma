@@ -25,30 +25,19 @@ model Organization {
   slug                     String              @unique
   dba                      String?
   ein                      String?
-  staffCount               String?             @map("staff_count")
   primaryContact           String?             @map("primary_contact")
   primaryEmail             String?             @map("primary_email")
-  phone                    String?
-  address                  String?
-  city                     String?
-  country                  String?
-  state                    String?
-  zipCode                  String?             @map("zip_code")
-  licenseNumber            String?             @map("license_number")
   isHipaaCompliant         Boolean             @default(false) @map("is_hipaa_compliant")
   hasAuditorAccess         Boolean             @default(false) @map("has_auditor_access")
   primaryBusinessType      String?             @map("primary_business_type")
   additionalBusinessTypes  String[]            @default([]) @map("additional_business_types")
-  programServices          String[]            @default([]) @map("program_services")
   joinCode                 String?             @unique @map("join_code")
   joinCodeExpiresAt        DateTime?           @map("join_code_expires_at")
   stripeCustomerId         String?             @unique @map("stripe_customer_id")
   inactivityTimeoutMinutes Int                 @default(15) @map("inactivity_timeout_minutes")
   requireMfa               Boolean             @default(false) @map("require_mfa")
-  complianceDocumentUrl    String?             @map("compliance_document_url")
-  complianceDocumentName   String?             @map("compliance_document_name")
-  timezone                 String?             @map("timezone")
   users                    User[]
+  facilities               Facility[]
   createdAt                DateTime            @default(now()) @map("created_at")
   updatedAt                DateTime            @updatedAt @map("updated_at")
   invites                  Invite[]
@@ -59,6 +48,31 @@ model Organization {
   courseAssignments        CourseAssignment[]
 
   @@map("organizations")
+}
+
+model Facility {
+  id                     String       @id @default(uuid())
+  organizationId         String       @map("organization_id")
+  name                   String
+  address                String?
+  city                   String?
+  state                  String?
+  country                String?
+  zipCode                String?      @map("zip_code")
+  phone                  String?
+  licenseNumber          String?      @map("license_number")
+  staffCount             String?      @map("staff_count")
+  programServices        String[]     @default([]) @map("program_services")
+  complianceDocumentUrl  String?      @map("compliance_document_url")
+  complianceDocumentName String?      @map("compliance_document_name")
+  timezone               String?      @map("timezone")
+  createdAt              DateTime     @default(now()) @map("created_at")
+  updatedAt              DateTime     @updatedAt @map("updated_at")
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users                  User[]
+
+  @@index([organizationId])
+  @@map("facilities")
 }
 
 model Subscription {

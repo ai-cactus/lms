@@ -4,8 +4,16 @@ import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { sendInviteEmail } from '@/lib/email';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 import { BILLING_PLANS } from '@/lib/billing-plans';
+import { can } from '@/lib/rbac/permissions';
+import {
+  ADMIN_ROLES,
+  ALL_ROLES,
+  GRANTABLE_ROLES,
+  dbRoleToRoleKey,
+  getRoleDisplayName,
+} from '@/lib/rbac/role-utils';
 import type { InviteStatus, UserRole } from '@/generated/prisma/enums';
 
 export interface InviteResultItem {
@@ -26,23 +34,46 @@ interface InviteResult {
   };
 }
 
-export async function createInvites(emails: string[]): Promise<InviteResult> {
-  // SECURITY: `role`, `organizationId`, and `inviterId` are intentionally NOT
-  // accepted from the client. They are derived from the authenticated admin
-  // session below to prevent cross-org invite injection / privilege escalation.
+export async function createInvites(emails: string[], role: UserRole): Promise<InviteResult> {
+  // SECURITY: `organizationId` and `inviterId` are intentionally NOT accepted
+  // from the client — they are derived from the authenticated admin session below
+  // to prevent cross-org invite injection. The requested `role` IS a parameter,
+  // but it is validated against the inviter's grant matrix before use.
   if (!emails.length) return { success: false, results: [], error: 'No emails provided' };
 
   // ── Authorization: only an authenticated org admin may create invites, and the
   //    target organization + inviter are taken from the session — never the client.
   const session = await auth();
-  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
+  if (!session?.user?.id) {
     return { success: false, results: [], error: 'Unauthorized' };
   }
+  if (!ADMIN_ROLES.includes(session.user.role) || !session.user.organizationId) {
+    return { success: false, results: [], error: 'Unauthorized' };
+  }
+
+  // Must hold the invite.create permission for their role.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!can(roleKey, 'invite.create')) {
+    return { success: false, results: [], error: 'Forbidden' };
+  }
+
+  // The requested role must be a real role...
+  if (!ALL_ROLES.includes(role)) {
+    return { success: false, results: [], error: 'Invalid role' };
+  }
+  // ...and one the inviter is permitted to grant (privilege-escalation fence).
+  if (!GRANTABLE_ROLES[session.user.role].includes(role)) {
+    logger.warn({
+      msg: '[invite] Role grant denied',
+      inviterRole: session.user.role,
+      requestedRole: role,
+      email: maskEmail(session.user.email),
+    });
+    return { success: false, results: [], error: 'You cannot grant the requested role' };
+  }
+
   const organizationId = session.user.organizationId;
   const inviterId = session.user.id;
-  // This self-service path only ever provisions workers. Admin role is granted
-  // exclusively through onboarding/signup, not via invite.
-  const role: UserRole = 'worker';
 
   const results: InviteResultItem[] = [];
 
@@ -65,17 +96,19 @@ export async function createInvites(emails: string[]): Promise<InviteResult> {
       if (planConfig && planConfig.staffMax !== null) {
         const staffMax = planConfig.staffMax;
 
-        // Count active workers + non-expired pending invites in parallel
+        // Count seat-consuming members + non-expired pending invites in parallel.
+        // D2: every role EXCEPT `owner` consumes a plan seat.
         const [activeWorkerCount, pendingInviteCount] = await Promise.all([
           prisma.user.count({
             where: {
               organizationId,
-              role: 'worker',
+              role: { not: 'owner' },
             },
           }),
           prisma.invite.count({
             where: {
               organizationId,
+              role: { not: 'owner' },
               status: 'pending',
               expiresAt: { gt: new Date() },
             },
@@ -212,23 +245,31 @@ export async function createInvites(emails: string[]): Promise<InviteResult> {
     // Batch insert new invites
     if (newInvitesData.length > 0) {
       await prisma.invite.createMany({ data: newInvitesData });
+      logger.info({
+        msg: '[invite] Invites created',
+        organizationId,
+        role,
+        count: newInvitesData.length,
+      });
     }
 
     // Send / resend emails concurrently
     const emailPromises = emails.map(async (email) => {
       if (existingUserMap.has(email)) return; // Already handled above
 
+      const roleDisplayName = getRoleDisplayName(role);
+
       const existingInvite = existingInviteMap.get(email);
       if (existingInvite) {
         const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/join/${existingInvite.token}`;
-        await sendInviteEmail(email, inviteLink, org.name, role);
+        await sendInviteEmail(email, inviteLink, org.name, roleDisplayName);
         return { email, status: 'resent' as const, message: 'Invitation resent.' };
       }
 
       const newInvite = newInvitesMap.get(email);
       if (newInvite) {
         const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/join/${newInvite.token}`;
-        await sendInviteEmail(email, inviteLink, org.name, role);
+        await sendInviteEmail(email, inviteLink, org.name, roleDisplayName);
         return { email, status: 'sent' as const, message: 'Invitation sent.' };
       }
     });

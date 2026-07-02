@@ -1,7 +1,11 @@
 // ── Authentication & User Management ──────────────────────────────────────────
 
 enum UserRole {
-  admin
+  owner
+  supervisor
+  hr
+  clinical_director
+  finance
   worker
 }
 
@@ -17,6 +21,7 @@ model User {
   password              String
   passwordResetRequired Boolean           @default(false) @map("password_reset_required")
   organizationId        String?           @map("organization_id")
+  facilityId            String?           @map("facility_id")
   authProvider          String            @default("credentials") @map("auth_provider")
   role                  UserRole          @default(worker)
   emailVerified         Boolean           @default(false) @map("email_verified")
@@ -32,6 +37,7 @@ model User {
   notificationPrefs     NotificationPreference[]
   profile               Profile?
   organization          Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  facility              Facility?         @relation(fields: [facilityId], references: [id], onDelete: Restrict)
   manager               User?             @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
   reports               User[]            @relation("UserManager")
   mfaFactors            MfaFactor[]
@@ -40,6 +46,7 @@ model User {
   approvedCourses       Course[]          @relation("CourseApprover")
 
   @@index([organizationId])
+  @@index([facilityId])
   @@index([managerId])
   @@map("users")
 }
@@ -66,7 +73,7 @@ model Invite {
   email          String
   token          String       @unique
   organizationId String       @map("organization_id")
-  role           UserRole     @default(worker)
+  role           UserRole
   status         InviteStatus @default(pending)
   expiresAt      DateTime     @map("expires_at")
   createdAt      DateTime     @default(now()) @map("created_at")
