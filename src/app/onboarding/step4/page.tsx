@@ -47,7 +47,11 @@ export default function OnboardingStep4() {
       // Add Step 4 data
       allData.step4 = { workerEmails: allEmails };
 
-      logger.info({ msg: 'Submitting Full Onboarding Data:', data: allData });
+      logger.info({
+        msg: '[onboarding] Submitting full onboarding data',
+        stepCount: Object.keys(allData).length,
+        inviteCount: allEmails.length,
+      });
 
       // 2. Call Server Action
       const { completeOnboarding } = await import('@/app/actions/onboarding-complete');
@@ -134,7 +138,7 @@ export default function OnboardingStep4() {
 
   return (
     <div className="w-full max-w-[1000px]">
-      <Stepper currentStep={5} />
+      <Stepper currentStep={4} />
 
       <h1 className="mb-2 text-center text-[22px] font-bold text-foreground md:text-[28px]">
         Invite your Workers/Staffs

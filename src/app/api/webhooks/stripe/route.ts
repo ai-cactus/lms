@@ -107,8 +107,29 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const isPaused = !!sub.pause_collection;
   const existing = await prisma.subscription.findUnique({
     where: { organizationId: organization.id },
-    select: { pausedAt: true, pauseEndsAt: true },
+    select: { pausedAt: true, pauseEndsAt: true, stripeSubscriptionId: true },
   });
+
+  // THER-010: protect the canonical subscription row from last-writer-wins
+  // clobbering. If we already track a DIFFERENT subscription for this org and
+  // the incoming event is for a subscription that is not itself active/trialing
+  // (e.g. a superseded duplicate being canceled after a plan swap), ignore it —
+  // otherwise a stale duplicate would overwrite the current plan and make the
+  // UI flip-flop / show "renews automatically" after a cancel. An incoming
+  // active/trialing subscription is allowed through and becomes canonical.
+  const incomingIsActive = sub.status === 'active' || sub.status === 'trialing';
+  if (
+    existing?.stripeSubscriptionId &&
+    existing.stripeSubscriptionId !== sub.id &&
+    !incomingIsActive
+  ) {
+    logger.warn({
+      msg: '[Stripe Webhook] Ignoring non-active duplicate subscription to protect canonical row',
+      organizationId: organization.id,
+    });
+    return;
+  }
+
   const pausedAt = isPaused ? (existing?.pausedAt ?? new Date()) : null;
   const pauseEndsAt = isPaused ? (existing?.pauseEndsAt ?? null) : null;
   const hasAuditorAccess = (sub.status === 'active' || sub.status === 'trialing') && !isPaused;

@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
+import crypto from 'crypto';
 import type { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
@@ -459,6 +460,83 @@ export async function revokeInvite(inviteId: string) {
 
   revalidatePath('/dashboard/staff');
   return { success: true };
+}
+
+/**
+ * Resends a pending invite, regenerating its token and 7-day expiry so an
+ * expired (or soon-to-expire) invite becomes usable again. Used by the staff
+ * list to recover invites that lapsed before the recipient accepted them.
+ */
+export async function resendInvite(
+  inviteId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      throw new Error('Unauthorized');
+    }
+
+    const admin = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true, organizationId: true },
+    });
+
+    if (!admin || admin.role !== 'admin' || !admin.organizationId) {
+      throw new Error('Insufficient permissions');
+    }
+
+    const invite = await prisma.invite.findUnique({
+      where: { id: inviteId },
+      select: {
+        organizationId: true,
+        email: true,
+        role: true,
+        status: true,
+        organization: { select: { name: true } },
+      },
+    });
+
+    if (!invite) {
+      throw new Error('Invite not found');
+    }
+
+    if (invite.organizationId !== admin.organizationId) {
+      throw new Error('Invite does not belong to your organization');
+    }
+
+    if (invite.status === 'accepted') {
+      return { success: false, error: 'This invite has already been accepted.' };
+    }
+
+    // Regenerate the token + expiry so any previously-shared (now stale) link is
+    // invalidated and the recipient gets a fresh 7-day window.
+    const token = crypto.randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    await prisma.invite.update({
+      where: { id: inviteId },
+      data: { token, expiresAt, status: 'pending' },
+    });
+
+    const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/join/${token}`;
+    const { sendInviteEmail } = await import('@/lib/email');
+    await sendInviteEmail(
+      invite.email,
+      inviteLink,
+      invite.organization?.name ?? 'your organization',
+      invite.role,
+    );
+
+    logger.info({ msg: '[staff] Invite resent', inviteId, organizationId: admin.organizationId });
+
+    revalidatePath('/dashboard/staff');
+    return { success: true };
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to resend invite';
+    logger.error({ msg: 'Error resending invite:', err: error });
+    return { success: false, error: errorMessage };
+  }
 }
 
 /**

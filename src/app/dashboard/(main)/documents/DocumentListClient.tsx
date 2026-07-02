@@ -31,8 +31,14 @@ import {
   CheckCircle2,
   FileText,
   FileX2,
+  ShieldAlert,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatFileSize } from '@/lib/utils';
+import {
+  deriveDocumentStatus,
+  DOCUMENT_STATUS_LABELS,
+  type DocumentLifecycleStatus,
+} from '@/lib/documents/status';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +54,7 @@ interface CourseVersionEntry {
 interface DocumentVersionEntry {
   version: number;
   courseVersions: CourseVersionEntry[];
+  phiReport?: { hasPHI: boolean } | null;
 }
 
 interface DocumentRow {
@@ -66,14 +73,6 @@ interface DocumentListClientProps {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function deriveStatus(
-  courseVersions: CourseVersionEntry[],
-): 'completed' | 'in-progress' | 'not-started' {
-  if (courseVersions.length === 0) return 'not-started';
-  if (courseVersions.some((cv) => cv.course.status === 'published')) return 'completed';
-  return 'in-progress';
-}
-
 function getFileIcon(mimeType: string, filename: string) {
   const isPdf = mimeType === 'application/pdf' || filename.endsWith('.pdf');
   const isDoc =
@@ -93,26 +92,18 @@ function getFileIcon(mimeType: string, filename: string) {
   );
 }
 
-function StatusBadge({ status }: { status: 'completed' | 'in-progress' | 'not-started' }) {
-  if (status === 'completed') {
+function StatusBadge({ status }: { status: DocumentLifecycleStatus }) {
+  if (status === 'converted') {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
         <CheckCircle2 className="size-3.5" />
-        Completed
-      </span>
-    );
-  }
-  if (status === 'in-progress') {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning">
-        <span className="size-1.5 rounded-full bg-warning" />
-        In Progress
+        {DOCUMENT_STATUS_LABELS.converted}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-      Not Started
+      {DOCUMENT_STATUS_LABELS.uploaded}
     </span>
   );
 }
@@ -333,8 +324,9 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
               pagedDocs.map((doc) => {
                 const latest = doc.versions[0];
                 const courseVersions = latest?.courseVersions || [];
-                const status = deriveStatus(courseVersions);
                 const hasCourse = courseVersions.length > 0;
+                const status = deriveDocumentStatus(hasCourse);
+                const hasPHI = latest?.phiReport?.hasPHI ?? false;
                 const isDeleting = deletingId === doc.id;
 
                 return (
@@ -352,7 +344,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                         <div>
                           <div className="font-semibold text-[#1a202c]">{doc.filename}</div>
                           <div className="text-xs text-[#718096]">
-                            {(doc.size / 1024 / 1024).toFixed(1)} MB
+                            {formatFileSize(doc.size)}
                             {latest?.version && ` • v${latest.version}`}
                           </div>
                         </div>
@@ -370,7 +362,18 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
 
                     {/* Status */}
                     <TableCell className="hidden md:table-cell">
-                      <StatusBadge status={status} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge status={status} />
+                        {hasPHI && (
+                          <span
+                            className="inline-flex items-center gap-1.5 rounded-full bg-error/10 px-2.5 py-1 text-xs font-medium text-error"
+                            title="This document was flagged as containing PHI"
+                          >
+                            <ShieldAlert className="size-3.5" />
+                            PHI Flagged
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
 
                     {/* Action – RowActionsMenu */}

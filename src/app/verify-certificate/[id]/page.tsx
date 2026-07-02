@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { BadgeCheck, ShieldX } from 'lucide-react';
 import prisma from '@/lib/prisma';
 import Logo from '@/components/ui/Logo';
+import { formatCertificateId } from '@/lib/certificate-id';
 
 export const metadata: Metadata = {
   title: 'Verify Certificate · Theraptly',
@@ -25,11 +26,6 @@ function formatIssueDate(date: Date | string): string {
     month: 'short',
     year: 'numeric',
   });
-}
-
-/** Same human-readable id shown on the certificate artwork. */
-function readableCertId(enrollmentId: string): string {
-  return `CERT-${enrollmentId.substring(0, 8).toUpperCase()}`;
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -87,7 +83,7 @@ export default async function VerifyCertificatePage(props: { params: Promise<{ i
                 <Field label="Issued by" value={certificate.user.organization.name} />
               ) : null}
               <Field label="Issued on" value={formatIssueDate(certificate.issuedAt)} />
-              <Field label="Certificate ID" value={readableCertId(certificate.enrollmentId)} />
+              <Field label="Certificate ID" value={formatCertificateId(certificate.enrollmentId)} />
             </div>
           </div>
         ) : (
