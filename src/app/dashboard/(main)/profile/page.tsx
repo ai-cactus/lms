@@ -87,6 +87,7 @@ export default async function ProfilePage() {
         country: facility.country,
         state: facility.state,
         zipCode: facility.zipCode,
+        timezone: facility.timezone,
         licenseNumber: facility.licenseNumber,
         programServices: facility.programServices || [],
         complianceDocumentUrl: facility.complianceDocumentUrl,

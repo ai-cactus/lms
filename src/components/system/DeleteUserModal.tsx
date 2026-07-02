@@ -84,6 +84,7 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
     return (
       <Dialog open>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <DialogTitle className="sr-only">User deleted</DialogTitle>
           <Alert variant="success" title="User deleted">
             User <strong>{user.email}</strong> has been permanently deleted with all related
             records. Redirecting...

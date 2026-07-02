@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import { isAdminRole } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { startedAtWhere, type AuditDateRangeInput } from '@/lib/audit-reports/date-range';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,8 +74,11 @@ export async function checkAuditorAccess(): Promise<boolean> {
 // Overview Stats
 // ---------------------------------------------------------------------------
 
-export async function getAuditorOverviewStats(): Promise<AuditorOverviewStats> {
+export async function getAuditorOverviewStats(
+  range?: AuditDateRangeInput,
+): Promise<AuditorOverviewStats> {
   const { organizationId } = await requireAdminSession();
+  const dateWhere = startedAtWhere(range);
 
   // Courses created within this org (by any admin/user in the org)
   const orgUserIds = await prisma.user
@@ -89,9 +93,9 @@ export async function getAuditorOverviewStats(): Promise<AuditorOverviewStats> {
     prisma.course.count({
       where: { createdBy: { in: orgUserIds }, status: 'published' },
     }),
-    // Enrollment stats for all org workers
+    // Enrollment stats for all org workers (completion rate respects the range)
     prisma.enrollment.findMany({
-      where: { userId: { in: orgUserIds } },
+      where: { userId: { in: orgUserIds }, ...dateWhere },
       select: { status: true },
     }),
     // Staff count (workers only)
@@ -127,8 +131,12 @@ export async function getAuditorOverviewStats(): Promise<AuditorOverviewStats> {
 // Courses
 // ---------------------------------------------------------------------------
 
-export async function getAuditorCourses(search?: string): Promise<AuditorCourseRow[]> {
+export async function getAuditorCourses(
+  search?: string,
+  range?: AuditDateRangeInput,
+): Promise<AuditorCourseRow[]> {
   const { organizationId } = await requireAdminSession();
+  const dateWhere = startedAtWhere(range);
 
   const orgUserIds = await prisma.user
     .findMany({
@@ -150,6 +158,8 @@ export async function getAuditorCourses(search?: string): Promise<AuditorCourseR
       thumbnail: true,
       createdAt: true,
       enrollments: {
+        // Per-course stats reflect only enrollments started within the range.
+        where: dateWhere,
         select: { userId: true, status: true },
       },
     },
@@ -177,8 +187,12 @@ export async function getAuditorCourses(search?: string): Promise<AuditorCourseR
 // Staff
 // ---------------------------------------------------------------------------
 
-export async function getAuditorStaff(search?: string): Promise<AuditorStaffRow[]> {
+export async function getAuditorStaff(
+  search?: string,
+  range?: AuditDateRangeInput,
+): Promise<AuditorStaffRow[]> {
   const { organizationId } = await requireAdminSession();
+  const dateWhere = startedAtWhere(range);
 
   const workers = await prisma.user.findMany({
     where: {
@@ -202,6 +216,8 @@ export async function getAuditorStaff(search?: string): Promise<AuditorStaffRow[
       email: true,
       profile: { select: { fullName: true } },
       enrollments: {
+        // Per-staff stats reflect only enrollments started within the range.
+        where: dateWhere,
         select: { status: true, completedAt: true },
         orderBy: { startedAt: 'desc' },
       },

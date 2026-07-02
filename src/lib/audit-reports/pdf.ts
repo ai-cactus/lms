@@ -21,6 +21,11 @@ import type {
   QuizRuleRow,
   StaffTranscriptRow,
   OrgActivityRow,
+  AllCoursesReportResult,
+  AllCoursesRow,
+  AllStaffReportResult,
+  AllStaffRow,
+  ReportPeriod,
 } from './types';
 
 const score = (s: number | null) => (s === null || s === undefined ? '—' : String(s));
@@ -34,6 +39,28 @@ const timestamp = (gen: string) =>
     hour12: true,
   })}`;
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const periodDate = (value: string): string =>
+  new Date(DATE_ONLY.test(value) ? `${value}T00:00:00.000Z` : value).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+
+const periodLabel = (period: ReportPeriod): string => {
+  const from = period.from ? periodDate(period.from) : 'Earliest';
+  const to = period.to ? periodDate(period.to) : 'Latest';
+  return `${from} – ${to}`;
+};
+
+/** Header subtitle: generated timestamp, plus the selected period when filtered. */
+const subtitle = (gen: string, period?: ReportPeriod): string => {
+  const base = timestamp(gen);
+  if (!period || (!period.from && !period.to)) return base;
+  return `${base}   ·   Period: ${periodLabel(period)}`;
+};
+
 export function generateAuditReportPdf(result: AuditReportResult): Promise<Buffer> {
   switch (result.scope) {
     case 'course':
@@ -42,13 +69,22 @@ export function generateAuditReportPdf(result: AuditReportResult): Promise<Buffe
       return renderStaff(result);
     case 'org':
       return renderOrg(result);
+    case 'all-courses':
+      return renderAllCourses(result);
+    case 'all-staff':
+      return renderAllStaff(result);
   }
 }
 
 async function renderCourse(r: CourseReportResult): Promise<Buffer> {
   const doc = createDoc(`Course Audit — ${r.course.title}`);
   doc.addPage();
-  let y = drawTitle(doc, `Course Audit — ${r.course.title}`, timestamp(r.generatedAt), MARGIN);
+  let y = drawTitle(
+    doc,
+    `Course Audit — ${r.course.title}`,
+    subtitle(r.generatedAt, r.period),
+    MARGIN,
+  );
 
   y = drawSectionHeading(doc, 'Course Details', y);
   y = drawKeyValues(
@@ -106,7 +142,12 @@ async function renderCourse(r: CourseReportResult): Promise<Buffer> {
 async function renderStaff(r: StaffReportResult): Promise<Buffer> {
   const doc = createDoc(`Staff Audit — ${r.staff.name}`);
   doc.addPage();
-  let y = drawTitle(doc, `Staff Audit — ${r.staff.name}`, timestamp(r.generatedAt), MARGIN);
+  let y = drawTitle(
+    doc,
+    `Staff Audit — ${r.staff.name}`,
+    subtitle(r.generatedAt, r.period),
+    MARGIN,
+  );
 
   y = drawSectionHeading(doc, 'Staff', y);
   y = drawKeyValues(
@@ -143,7 +184,12 @@ async function renderStaff(r: StaffReportResult): Promise<Buffer> {
 async function renderOrg(r: OrgReportResult): Promise<Buffer> {
   const doc = createDoc(`Organization Audit — ${r.orgName}`);
   doc.addPage();
-  let y = drawTitle(doc, `Organization Audit — ${r.orgName}`, timestamp(r.generatedAt), MARGIN);
+  let y = drawTitle(
+    doc,
+    `Organization Audit — ${r.orgName}`,
+    subtitle(r.generatedAt, r.period),
+    MARGIN,
+  );
 
   y = drawSectionHeading(doc, 'Summary', y);
   y = drawKeyValues(
@@ -171,6 +217,91 @@ async function renderOrg(r: OrgReportResult): Promise<Buffer> {
     drawTable(doc, cols, r.activity, y);
   } else {
     drawKeyValues(doc, [['', 'No activity recorded.']], y);
+  }
+
+  return finalize(doc, r.orgName);
+}
+
+async function renderAllCourses(r: AllCoursesReportResult): Promise<Buffer> {
+  const doc = createDoc(`All Courses Audit — ${r.orgName}`);
+  doc.addPage();
+  let y = drawTitle(
+    doc,
+    `All Courses Audit — ${r.orgName}`,
+    subtitle(r.generatedAt, r.period),
+    MARGIN,
+  );
+
+  y = drawSectionHeading(doc, 'Summary', y);
+  y = drawKeyValues(
+    doc,
+    [
+      ['Total Courses', String(r.summary.totalCourses)],
+      ['Total Staff', String(r.summary.totalStaff)],
+      ['Completion Rate', `${r.summary.completionRate}%`],
+    ],
+    y,
+  );
+
+  y = ensureSpace(doc, y, 80);
+  y = drawSectionHeading(doc, 'Courses', y);
+  const cols: Column<AllCoursesRow>[] = [
+    { label: 'Course', width: 230, align: 'left', value: (c) => truncate(c.courseTitle, 46) },
+    { label: 'Category', width: 110, align: 'left', value: (c) => truncate(c.category || '—', 20) },
+    { label: 'Type', width: 70, align: 'left', value: (c) => c.type },
+    { label: 'Staff', width: 70, align: 'right', value: (c) => String(c.assignedStaff) },
+    { label: 'Completed', width: 90, align: 'right', value: (c) => String(c.completed) },
+    { label: 'Completion', width: 85, align: 'right', value: (c) => `${c.completionRate}%` },
+  ];
+  if (r.courses.length) {
+    drawTable(doc, cols, r.courses, y);
+  } else {
+    drawKeyValues(doc, [['', 'No published courses in this organization.']], y);
+  }
+
+  return finalize(doc, r.orgName);
+}
+
+async function renderAllStaff(r: AllStaffReportResult): Promise<Buffer> {
+  const doc = createDoc(`All Staff Audit — ${r.orgName}`);
+  doc.addPage();
+  let y = drawTitle(
+    doc,
+    `All Staff Audit — ${r.orgName}`,
+    subtitle(r.generatedAt, r.period),
+    MARGIN,
+  );
+
+  y = drawSectionHeading(doc, 'Summary', y);
+  y = drawKeyValues(
+    doc,
+    [
+      ['Total Courses', String(r.summary.totalCourses)],
+      ['Total Staff', String(r.summary.totalStaff)],
+      ['Completion Rate', `${r.summary.completionRate}%`],
+    ],
+    y,
+  );
+
+  y = ensureSpace(doc, y, 80);
+  y = drawSectionHeading(doc, 'Staff', y);
+  const cols: Column<AllStaffRow>[] = [
+    { label: 'Staff', width: 190, align: 'left', value: (s) => truncate(s.staffName, 38) },
+    { label: 'Role', width: 130, align: 'left', value: (s) => truncate(s.roleLabel, 24) },
+    { label: 'Assigned', width: 80, align: 'right', value: (s) => String(s.coursesAssigned) },
+    { label: 'Completed', width: 85, align: 'right', value: (s) => String(s.coursesCompleted) },
+    { label: 'Completion', width: 85, align: 'right', value: (s) => `${s.completionRate}%` },
+    {
+      label: 'Last Activity',
+      width: 95,
+      align: 'center',
+      value: (s) => formatDate(s.lastActivity),
+    },
+  ];
+  if (r.staff.length) {
+    drawTable(doc, cols, r.staff, y);
+  } else {
+    drawKeyValues(doc, [['', 'No staff members in this organization.']], y);
   }
 
   return finalize(doc, r.orgName);

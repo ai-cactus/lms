@@ -38,6 +38,7 @@ export type FacilityMinAggregateOutputType = {
   staffCount: string | null
   complianceDocumentUrl: string | null
   complianceDocumentName: string | null
+  timezone: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -56,6 +57,7 @@ export type FacilityMaxAggregateOutputType = {
   staffCount: string | null
   complianceDocumentUrl: string | null
   complianceDocumentName: string | null
+  timezone: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -75,6 +77,7 @@ export type FacilityCountAggregateOutputType = {
   programServices: number
   complianceDocumentUrl: number
   complianceDocumentName: number
+  timezone: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -95,6 +98,7 @@ export type FacilityMinAggregateInputType = {
   staffCount?: true
   complianceDocumentUrl?: true
   complianceDocumentName?: true
+  timezone?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -113,6 +117,7 @@ export type FacilityMaxAggregateInputType = {
   staffCount?: true
   complianceDocumentUrl?: true
   complianceDocumentName?: true
+  timezone?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -132,6 +137,7 @@ export type FacilityCountAggregateInputType = {
   programServices?: true
   complianceDocumentUrl?: true
   complianceDocumentName?: true
+  timezone?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -224,6 +230,7 @@ export type FacilityGroupByOutputType = {
   programServices: string[]
   complianceDocumentUrl: string | null
   complianceDocumentName: string | null
+  timezone: string | null
   createdAt: Date
   updatedAt: Date
   _count: FacilityCountAggregateOutputType | null
@@ -264,6 +271,7 @@ export type FacilityWhereInput = {
   programServices?: Prisma.StringNullableListFilter<"Facility">
   complianceDocumentUrl?: Prisma.StringNullableFilter<"Facility"> | string | null
   complianceDocumentName?: Prisma.StringNullableFilter<"Facility"> | string | null
+  timezone?: Prisma.StringNullableFilter<"Facility"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Facility"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Facility"> | Date | string
   organization?: Prisma.XOR<Prisma.OrganizationScalarRelationFilter, Prisma.OrganizationWhereInput>
@@ -285,6 +293,7 @@ export type FacilityOrderByWithRelationInput = {
   programServices?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrderInput | Prisma.SortOrder
+  timezone?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   organization?: Prisma.OrganizationOrderByWithRelationInput
@@ -309,6 +318,7 @@ export type FacilityWhereUniqueInput = Prisma.AtLeast<{
   programServices?: Prisma.StringNullableListFilter<"Facility">
   complianceDocumentUrl?: Prisma.StringNullableFilter<"Facility"> | string | null
   complianceDocumentName?: Prisma.StringNullableFilter<"Facility"> | string | null
+  timezone?: Prisma.StringNullableFilter<"Facility"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Facility"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Facility"> | Date | string
   organization?: Prisma.XOR<Prisma.OrganizationScalarRelationFilter, Prisma.OrganizationWhereInput>
@@ -330,6 +340,7 @@ export type FacilityOrderByWithAggregationInput = {
   programServices?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrderInput | Prisma.SortOrder
+  timezone?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.FacilityCountOrderByAggregateInput
@@ -355,6 +366,7 @@ export type FacilityScalarWhereWithAggregatesInput = {
   programServices?: Prisma.StringNullableListFilter<"Facility">
   complianceDocumentUrl?: Prisma.StringNullableWithAggregatesFilter<"Facility"> | string | null
   complianceDocumentName?: Prisma.StringNullableWithAggregatesFilter<"Facility"> | string | null
+  timezone?: Prisma.StringNullableWithAggregatesFilter<"Facility"> | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Facility"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Facility"> | Date | string
 }
@@ -373,6 +385,7 @@ export type FacilityCreateInput = {
   programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   organization: Prisma.OrganizationCreateNestedOneWithoutFacilitiesInput
@@ -394,6 +407,7 @@ export type FacilityUncheckedCreateInput = {
   programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutFacilityInput
@@ -413,6 +427,7 @@ export type FacilityUpdateInput = {
   programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   organization?: Prisma.OrganizationUpdateOneRequiredWithoutFacilitiesNestedInput
@@ -434,6 +449,7 @@ export type FacilityUncheckedUpdateInput = {
   programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutFacilityNestedInput
@@ -454,6 +470,7 @@ export type FacilityCreateManyInput = {
   programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -472,6 +489,7 @@ export type FacilityUpdateManyMutationInput = {
   programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -491,6 +509,7 @@ export type FacilityUncheckedUpdateManyInput = {
   programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -525,6 +544,7 @@ export type FacilityCountOrderByAggregateInput = {
   programServices?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrder
+  timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -543,6 +563,7 @@ export type FacilityMaxOrderByAggregateInput = {
   staffCount?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrder
+  timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -561,6 +582,7 @@ export type FacilityMinOrderByAggregateInput = {
   staffCount?: Prisma.SortOrder
   complianceDocumentUrl?: Prisma.SortOrder
   complianceDocumentName?: Prisma.SortOrder
+  timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -646,6 +668,7 @@ export type FacilityCreateWithoutUsersInput = {
   programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   organization: Prisma.OrganizationCreateNestedOneWithoutFacilitiesInput
@@ -666,6 +689,7 @@ export type FacilityUncheckedCreateWithoutUsersInput = {
   programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -700,6 +724,7 @@ export type FacilityUpdateWithoutUsersInput = {
   programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   organization?: Prisma.OrganizationUpdateOneRequiredWithoutFacilitiesNestedInput
@@ -720,6 +745,7 @@ export type FacilityUncheckedUpdateWithoutUsersInput = {
   programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -738,6 +764,7 @@ export type FacilityCreateWithoutOrganizationInput = {
   programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutFacilityInput
@@ -757,6 +784,7 @@ export type FacilityUncheckedCreateWithoutOrganizationInput = {
   programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutFacilityInput
@@ -806,6 +834,7 @@ export type FacilityScalarWhereInput = {
   programServices?: Prisma.StringNullableListFilter<"Facility">
   complianceDocumentUrl?: Prisma.StringNullableFilter<"Facility"> | string | null
   complianceDocumentName?: Prisma.StringNullableFilter<"Facility"> | string | null
+  timezone?: Prisma.StringNullableFilter<"Facility"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Facility"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Facility"> | Date | string
 }
@@ -824,6 +853,7 @@ export type FacilityCreateManyOrganizationInput = {
   programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
   complianceDocumentUrl?: string | null
   complianceDocumentName?: string | null
+  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -842,6 +872,7 @@ export type FacilityUpdateWithoutOrganizationInput = {
   programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutFacilityNestedInput
@@ -861,6 +892,7 @@ export type FacilityUncheckedUpdateWithoutOrganizationInput = {
   programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutFacilityNestedInput
@@ -880,6 +912,7 @@ export type FacilityUncheckedUpdateManyWithoutOrganizationInput = {
   programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
   complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -930,6 +963,7 @@ export type FacilitySelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   programServices?: boolean
   complianceDocumentUrl?: boolean
   complianceDocumentName?: boolean
+  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
@@ -952,6 +986,7 @@ export type FacilitySelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   programServices?: boolean
   complianceDocumentUrl?: boolean
   complianceDocumentName?: boolean
+  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
@@ -972,6 +1007,7 @@ export type FacilitySelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   programServices?: boolean
   complianceDocumentUrl?: boolean
   complianceDocumentName?: boolean
+  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
@@ -992,11 +1028,12 @@ export type FacilitySelectScalar = {
   programServices?: boolean
   complianceDocumentUrl?: boolean
   complianceDocumentName?: boolean
+  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type FacilityOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "name" | "address" | "city" | "state" | "country" | "zipCode" | "phone" | "licenseNumber" | "staffCount" | "programServices" | "complianceDocumentUrl" | "complianceDocumentName" | "createdAt" | "updatedAt", ExtArgs["result"]["facility"]>
+export type FacilityOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "name" | "address" | "city" | "state" | "country" | "zipCode" | "phone" | "licenseNumber" | "staffCount" | "programServices" | "complianceDocumentUrl" | "complianceDocumentName" | "timezone" | "createdAt" | "updatedAt", ExtArgs["result"]["facility"]>
 export type FacilityInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
   users?: boolean | Prisma.Facility$usersArgs<ExtArgs>
@@ -1030,6 +1067,7 @@ export type $FacilityPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     programServices: string[]
     complianceDocumentUrl: string | null
     complianceDocumentName: string | null
+    timezone: string | null
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["facility"]>
@@ -1471,6 +1509,7 @@ export interface FacilityFieldRefs {
   readonly programServices: Prisma.FieldRef<"Facility", 'String[]'>
   readonly complianceDocumentUrl: Prisma.FieldRef<"Facility", 'String'>
   readonly complianceDocumentName: Prisma.FieldRef<"Facility", 'String'>
+  readonly timezone: Prisma.FieldRef<"Facility", 'String'>
   readonly createdAt: Prisma.FieldRef<"Facility", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Facility", 'DateTime'>
 }

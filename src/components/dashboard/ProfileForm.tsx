@@ -57,6 +57,7 @@ interface FacilityData {
   state?: string | null;
   zipCode?: string | null;
   city?: string | null;
+  timezone?: string | null;
   licenseNumber?: string | null;
   programServices?: string[];
   complianceDocumentUrl?: string | null;

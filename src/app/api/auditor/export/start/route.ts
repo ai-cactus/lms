@@ -5,8 +5,9 @@ import { auth } from '@/auth';
 import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
 import { getExportWorker } from '@/lib/queue/auditor-export-worker';
 import { logger } from '@/lib/logger';
+import { resolveDateRange } from '@/lib/audit-reports/date-range';
 
-type Scope = 'org' | 'course' | 'staff';
+type Scope = 'org' | 'course' | 'staff' | 'all-courses' | 'all-staff';
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,9 +34,24 @@ export async function POST(req: NextRequest) {
       scope?: Scope;
       scopeId?: string;
       label?: string;
+      from?: string;
+      to?: string;
     };
     const scope: Scope = body.scope ?? 'org';
     const scopeId = body.scopeId;
+
+    // Validate the optional date range up front (from <= to, parseable). An
+    // empty range is allowed and means "no filter".
+    try {
+      resolveDateRange({ from: body.from, to: body.to });
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'Invalid date range' },
+        { status: 400 },
+      );
+    }
+    const from = body.from || null;
+    const to = body.to || null;
 
     // ── Authorize scopeId belongs to this org ──
     if (scope === 'course') {
@@ -63,7 +79,11 @@ export async function POST(req: NextRequest) {
         ? 'Course report'
         : scope === 'staff'
           ? 'Staff report'
-          : 'Organization report');
+          : scope === 'all-courses'
+            ? 'All courses report'
+            : scope === 'all-staff'
+              ? 'All staff report'
+              : 'Organization report');
 
     const dbJob = await prisma.job.create({
       data: {
@@ -76,6 +96,8 @@ export async function POST(req: NextRequest) {
           scope,
           scopeId: scopeId ?? null,
           label,
+          from,
+          to,
         },
       },
     });
@@ -88,6 +110,8 @@ export async function POST(req: NextRequest) {
       dbJobId: dbJob.id,
       scope,
       scopeId,
+      from,
+      to,
     });
 
     return NextResponse.json({ jobId: dbJob.id, scope, label });

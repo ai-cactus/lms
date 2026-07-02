@@ -121,9 +121,7 @@ describe('GRANTABLE_ROLES — owner can grant all non-owner roles', () => {
 
 describe('GRANTABLE_ROLES — supervisor mirrors owner grantable set', () => {
   it('supervisor grantable set equals owner grantable set', () => {
-    expect([...GRANTABLE_ROLES['supervisor']].sort()).toEqual(
-      [...GRANTABLE_ROLES['owner']].sort(),
-    );
+    expect([...GRANTABLE_ROLES['supervisor']].sort()).toEqual([...GRANTABLE_ROLES['owner']].sort());
   });
 });
 

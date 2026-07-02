@@ -20,8 +20,18 @@ export type CourseAssignmentModel = runtime.Types.Result.DefaultSelection<Prisma
 
 export type AggregateCourseAssignment = {
   _count: CourseAssignmentCountAggregateOutputType | null
+  _avg: CourseAssignmentAvgAggregateOutputType | null
+  _sum: CourseAssignmentSumAggregateOutputType | null
   _min: CourseAssignmentMinAggregateOutputType | null
   _max: CourseAssignmentMaxAggregateOutputType | null
+}
+
+export type CourseAssignmentAvgAggregateOutputType = {
+  dueWindowDays: number | null
+}
+
+export type CourseAssignmentSumAggregateOutputType = {
+  dueWindowDays: number | null
 }
 
 export type CourseAssignmentMinAggregateOutputType = {
@@ -30,6 +40,9 @@ export type CourseAssignmentMinAggregateOutputType = {
   courseId: string | null
   assignedByAdminId: string | null
   scheduleAt: Date | null
+  dueAt: Date | null
+  dueWindowDays: number | null
+  remindersEnabled: boolean | null
   renewalCycle: $Enums.RenewalCycle | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -41,6 +54,9 @@ export type CourseAssignmentMaxAggregateOutputType = {
   courseId: string | null
   assignedByAdminId: string | null
   scheduleAt: Date | null
+  dueAt: Date | null
+  dueWindowDays: number | null
+  remindersEnabled: boolean | null
   renewalCycle: $Enums.RenewalCycle | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -52,6 +68,9 @@ export type CourseAssignmentCountAggregateOutputType = {
   courseId: number
   assignedByAdminId: number
   scheduleAt: number
+  dueAt: number
+  dueWindowDays: number
+  remindersEnabled: number
   renewalCycle: number
   createdAt: number
   updatedAt: number
@@ -59,12 +78,23 @@ export type CourseAssignmentCountAggregateOutputType = {
 }
 
 
+export type CourseAssignmentAvgAggregateInputType = {
+  dueWindowDays?: true
+}
+
+export type CourseAssignmentSumAggregateInputType = {
+  dueWindowDays?: true
+}
+
 export type CourseAssignmentMinAggregateInputType = {
   id?: true
   organizationId?: true
   courseId?: true
   assignedByAdminId?: true
   scheduleAt?: true
+  dueAt?: true
+  dueWindowDays?: true
+  remindersEnabled?: true
   renewalCycle?: true
   createdAt?: true
   updatedAt?: true
@@ -76,6 +106,9 @@ export type CourseAssignmentMaxAggregateInputType = {
   courseId?: true
   assignedByAdminId?: true
   scheduleAt?: true
+  dueAt?: true
+  dueWindowDays?: true
+  remindersEnabled?: true
   renewalCycle?: true
   createdAt?: true
   updatedAt?: true
@@ -87,6 +120,9 @@ export type CourseAssignmentCountAggregateInputType = {
   courseId?: true
   assignedByAdminId?: true
   scheduleAt?: true
+  dueAt?: true
+  dueWindowDays?: true
+  remindersEnabled?: true
   renewalCycle?: true
   createdAt?: true
   updatedAt?: true
@@ -131,6 +167,18 @@ export type CourseAssignmentAggregateArgs<ExtArgs extends runtime.Types.Extensio
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    * 
+   * Select which fields to average
+  **/
+  _avg?: CourseAssignmentAvgAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
+   * Select which fields to sum
+  **/
+  _sum?: CourseAssignmentSumAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
    * Select which fields to find the minimum value
   **/
   _min?: CourseAssignmentMinAggregateInputType
@@ -161,6 +209,8 @@ export type CourseAssignmentGroupByArgs<ExtArgs extends runtime.Types.Extensions
   take?: number
   skip?: number
   _count?: CourseAssignmentCountAggregateInputType | true
+  _avg?: CourseAssignmentAvgAggregateInputType
+  _sum?: CourseAssignmentSumAggregateInputType
   _min?: CourseAssignmentMinAggregateInputType
   _max?: CourseAssignmentMaxAggregateInputType
 }
@@ -171,10 +221,15 @@ export type CourseAssignmentGroupByOutputType = {
   courseId: string
   assignedByAdminId: string
   scheduleAt: Date | null
+  dueAt: Date | null
+  dueWindowDays: number | null
+  remindersEnabled: boolean
   renewalCycle: $Enums.RenewalCycle
   createdAt: Date
   updatedAt: Date
   _count: CourseAssignmentCountAggregateOutputType | null
+  _avg: CourseAssignmentAvgAggregateOutputType | null
+  _sum: CourseAssignmentSumAggregateOutputType | null
   _min: CourseAssignmentMinAggregateOutputType | null
   _max: CourseAssignmentMaxAggregateOutputType | null
 }
@@ -203,12 +258,15 @@ export type CourseAssignmentWhereInput = {
   courseId?: Prisma.StringFilter<"CourseAssignment"> | string
   assignedByAdminId?: Prisma.StringFilter<"CourseAssignment"> | string
   scheduleAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
+  dueAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
+  dueWindowDays?: Prisma.IntNullableFilter<"CourseAssignment"> | number | null
+  remindersEnabled?: Prisma.BoolFilter<"CourseAssignment"> | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFilter<"CourseAssignment"> | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFilter<"CourseAssignment"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"CourseAssignment"> | Date | string
   organization?: Prisma.XOR<Prisma.OrganizationScalarRelationFilter, Prisma.OrganizationWhereInput>
   course?: Prisma.XOR<Prisma.CourseScalarRelationFilter, Prisma.CourseWhereInput>
-  reminders?: Prisma.AssignmentReminderListRelationFilter
+  reminderStages?: Prisma.AssignmentReminderStageListRelationFilter
   enrollments?: Prisma.EnrollmentListRelationFilter
 }
 
@@ -218,12 +276,15 @@ export type CourseAssignmentOrderByWithRelationInput = {
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
   scheduleAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  dueAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  dueWindowDays?: Prisma.SortOrderInput | Prisma.SortOrder
+  remindersEnabled?: Prisma.SortOrder
   renewalCycle?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   organization?: Prisma.OrganizationOrderByWithRelationInput
   course?: Prisma.CourseOrderByWithRelationInput
-  reminders?: Prisma.AssignmentReminderOrderByRelationAggregateInput
+  reminderStages?: Prisma.AssignmentReminderStageOrderByRelationAggregateInput
   enrollments?: Prisma.EnrollmentOrderByRelationAggregateInput
 }
 
@@ -236,12 +297,15 @@ export type CourseAssignmentWhereUniqueInput = Prisma.AtLeast<{
   courseId?: Prisma.StringFilter<"CourseAssignment"> | string
   assignedByAdminId?: Prisma.StringFilter<"CourseAssignment"> | string
   scheduleAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
+  dueAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
+  dueWindowDays?: Prisma.IntNullableFilter<"CourseAssignment"> | number | null
+  remindersEnabled?: Prisma.BoolFilter<"CourseAssignment"> | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFilter<"CourseAssignment"> | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFilter<"CourseAssignment"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"CourseAssignment"> | Date | string
   organization?: Prisma.XOR<Prisma.OrganizationScalarRelationFilter, Prisma.OrganizationWhereInput>
   course?: Prisma.XOR<Prisma.CourseScalarRelationFilter, Prisma.CourseWhereInput>
-  reminders?: Prisma.AssignmentReminderListRelationFilter
+  reminderStages?: Prisma.AssignmentReminderStageListRelationFilter
   enrollments?: Prisma.EnrollmentListRelationFilter
 }, "id">
 
@@ -251,12 +315,17 @@ export type CourseAssignmentOrderByWithAggregationInput = {
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
   scheduleAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  dueAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  dueWindowDays?: Prisma.SortOrderInput | Prisma.SortOrder
+  remindersEnabled?: Prisma.SortOrder
   renewalCycle?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.CourseAssignmentCountOrderByAggregateInput
+  _avg?: Prisma.CourseAssignmentAvgOrderByAggregateInput
   _max?: Prisma.CourseAssignmentMaxOrderByAggregateInput
   _min?: Prisma.CourseAssignmentMinOrderByAggregateInput
+  _sum?: Prisma.CourseAssignmentSumOrderByAggregateInput
 }
 
 export type CourseAssignmentScalarWhereWithAggregatesInput = {
@@ -268,6 +337,9 @@ export type CourseAssignmentScalarWhereWithAggregatesInput = {
   courseId?: Prisma.StringWithAggregatesFilter<"CourseAssignment"> | string
   assignedByAdminId?: Prisma.StringWithAggregatesFilter<"CourseAssignment"> | string
   scheduleAt?: Prisma.DateTimeNullableWithAggregatesFilter<"CourseAssignment"> | Date | string | null
+  dueAt?: Prisma.DateTimeNullableWithAggregatesFilter<"CourseAssignment"> | Date | string | null
+  dueWindowDays?: Prisma.IntNullableWithAggregatesFilter<"CourseAssignment"> | number | null
+  remindersEnabled?: Prisma.BoolWithAggregatesFilter<"CourseAssignment"> | boolean
   renewalCycle?: Prisma.EnumRenewalCycleWithAggregatesFilter<"CourseAssignment"> | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"CourseAssignment"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"CourseAssignment"> | Date | string
@@ -277,12 +349,15 @@ export type CourseAssignmentCreateInput = {
   id?: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
   organization: Prisma.OrganizationCreateNestedOneWithoutCourseAssignmentsInput
   course: Prisma.CourseCreateNestedOneWithoutAssignmentsInput
-  reminders?: Prisma.AssignmentReminderCreateNestedManyWithoutAssignmentInput
+  reminderStages?: Prisma.AssignmentReminderStageCreateNestedManyWithoutAssignmentInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutAssignmentInput
 }
 
@@ -292,10 +367,13 @@ export type CourseAssignmentUncheckedCreateInput = {
   courseId: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
-  reminders?: Prisma.AssignmentReminderUncheckedCreateNestedManyWithoutAssignmentInput
+  reminderStages?: Prisma.AssignmentReminderStageUncheckedCreateNestedManyWithoutAssignmentInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutAssignmentInput
 }
 
@@ -303,12 +381,15 @@ export type CourseAssignmentUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   organization?: Prisma.OrganizationUpdateOneRequiredWithoutCourseAssignmentsNestedInput
   course?: Prisma.CourseUpdateOneRequiredWithoutAssignmentsNestedInput
-  reminders?: Prisma.AssignmentReminderUpdateManyWithoutAssignmentNestedInput
+  reminderStages?: Prisma.AssignmentReminderStageUpdateManyWithoutAssignmentNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutAssignmentNestedInput
 }
 
@@ -318,10 +399,13 @@ export type CourseAssignmentUncheckedUpdateInput = {
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  reminders?: Prisma.AssignmentReminderUncheckedUpdateManyWithoutAssignmentNestedInput
+  reminderStages?: Prisma.AssignmentReminderStageUncheckedUpdateManyWithoutAssignmentNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutAssignmentNestedInput
 }
 
@@ -331,6 +415,9 @@ export type CourseAssignmentCreateManyInput = {
   courseId: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -340,6 +427,9 @@ export type CourseAssignmentUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -351,6 +441,9 @@ export type CourseAssignmentUncheckedUpdateManyInput = {
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -372,9 +465,16 @@ export type CourseAssignmentCountOrderByAggregateInput = {
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
   scheduleAt?: Prisma.SortOrder
+  dueAt?: Prisma.SortOrder
+  dueWindowDays?: Prisma.SortOrder
+  remindersEnabled?: Prisma.SortOrder
   renewalCycle?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+}
+
+export type CourseAssignmentAvgOrderByAggregateInput = {
+  dueWindowDays?: Prisma.SortOrder
 }
 
 export type CourseAssignmentMaxOrderByAggregateInput = {
@@ -383,6 +483,9 @@ export type CourseAssignmentMaxOrderByAggregateInput = {
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
   scheduleAt?: Prisma.SortOrder
+  dueAt?: Prisma.SortOrder
+  dueWindowDays?: Prisma.SortOrder
+  remindersEnabled?: Prisma.SortOrder
   renewalCycle?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -394,9 +497,16 @@ export type CourseAssignmentMinOrderByAggregateInput = {
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
   scheduleAt?: Prisma.SortOrder
+  dueAt?: Prisma.SortOrder
+  dueWindowDays?: Prisma.SortOrder
+  remindersEnabled?: Prisma.SortOrder
   renewalCycle?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+}
+
+export type CourseAssignmentSumOrderByAggregateInput = {
+  dueWindowDays?: Prisma.SortOrder
 }
 
 export type CourseAssignmentScalarRelationFilter = {
@@ -455,18 +565,18 @@ export type EnumRenewalCycleFieldUpdateOperationsInput = {
   set?: $Enums.RenewalCycle
 }
 
-export type CourseAssignmentCreateNestedOneWithoutRemindersInput = {
-  create?: Prisma.XOR<Prisma.CourseAssignmentCreateWithoutRemindersInput, Prisma.CourseAssignmentUncheckedCreateWithoutRemindersInput>
-  connectOrCreate?: Prisma.CourseAssignmentCreateOrConnectWithoutRemindersInput
+export type CourseAssignmentCreateNestedOneWithoutReminderStagesInput = {
+  create?: Prisma.XOR<Prisma.CourseAssignmentCreateWithoutReminderStagesInput, Prisma.CourseAssignmentUncheckedCreateWithoutReminderStagesInput>
+  connectOrCreate?: Prisma.CourseAssignmentCreateOrConnectWithoutReminderStagesInput
   connect?: Prisma.CourseAssignmentWhereUniqueInput
 }
 
-export type CourseAssignmentUpdateOneRequiredWithoutRemindersNestedInput = {
-  create?: Prisma.XOR<Prisma.CourseAssignmentCreateWithoutRemindersInput, Prisma.CourseAssignmentUncheckedCreateWithoutRemindersInput>
-  connectOrCreate?: Prisma.CourseAssignmentCreateOrConnectWithoutRemindersInput
-  upsert?: Prisma.CourseAssignmentUpsertWithoutRemindersInput
+export type CourseAssignmentUpdateOneRequiredWithoutReminderStagesNestedInput = {
+  create?: Prisma.XOR<Prisma.CourseAssignmentCreateWithoutReminderStagesInput, Prisma.CourseAssignmentUncheckedCreateWithoutReminderStagesInput>
+  connectOrCreate?: Prisma.CourseAssignmentCreateOrConnectWithoutReminderStagesInput
+  upsert?: Prisma.CourseAssignmentUpsertWithoutReminderStagesInput
   connect?: Prisma.CourseAssignmentWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.CourseAssignmentUpdateToOneWithWhereWithoutRemindersInput, Prisma.CourseAssignmentUpdateWithoutRemindersInput>, Prisma.CourseAssignmentUncheckedUpdateWithoutRemindersInput>
+  update?: Prisma.XOR<Prisma.XOR<Prisma.CourseAssignmentUpdateToOneWithWhereWithoutReminderStagesInput, Prisma.CourseAssignmentUpdateWithoutReminderStagesInput>, Prisma.CourseAssignmentUncheckedUpdateWithoutReminderStagesInput>
 }
 
 export type CourseAssignmentCreateNestedOneWithoutEnrollmentsInput = {
@@ -531,11 +641,14 @@ export type CourseAssignmentCreateWithoutCourseInput = {
   id?: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
   organization: Prisma.OrganizationCreateNestedOneWithoutCourseAssignmentsInput
-  reminders?: Prisma.AssignmentReminderCreateNestedManyWithoutAssignmentInput
+  reminderStages?: Prisma.AssignmentReminderStageCreateNestedManyWithoutAssignmentInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutAssignmentInput
 }
 
@@ -544,10 +657,13 @@ export type CourseAssignmentUncheckedCreateWithoutCourseInput = {
   organizationId: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
-  reminders?: Prisma.AssignmentReminderUncheckedCreateNestedManyWithoutAssignmentInput
+  reminderStages?: Prisma.AssignmentReminderStageUncheckedCreateNestedManyWithoutAssignmentInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutAssignmentInput
 }
 
@@ -586,15 +702,21 @@ export type CourseAssignmentScalarWhereInput = {
   courseId?: Prisma.StringFilter<"CourseAssignment"> | string
   assignedByAdminId?: Prisma.StringFilter<"CourseAssignment"> | string
   scheduleAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
+  dueAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
+  dueWindowDays?: Prisma.IntNullableFilter<"CourseAssignment"> | number | null
+  remindersEnabled?: Prisma.BoolFilter<"CourseAssignment"> | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFilter<"CourseAssignment"> | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFilter<"CourseAssignment"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"CourseAssignment"> | Date | string
 }
 
-export type CourseAssignmentCreateWithoutRemindersInput = {
+export type CourseAssignmentCreateWithoutReminderStagesInput = {
   id?: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -603,38 +725,44 @@ export type CourseAssignmentCreateWithoutRemindersInput = {
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutAssignmentInput
 }
 
-export type CourseAssignmentUncheckedCreateWithoutRemindersInput = {
+export type CourseAssignmentUncheckedCreateWithoutReminderStagesInput = {
   id?: string
   organizationId: string
   courseId: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutAssignmentInput
 }
 
-export type CourseAssignmentCreateOrConnectWithoutRemindersInput = {
+export type CourseAssignmentCreateOrConnectWithoutReminderStagesInput = {
   where: Prisma.CourseAssignmentWhereUniqueInput
-  create: Prisma.XOR<Prisma.CourseAssignmentCreateWithoutRemindersInput, Prisma.CourseAssignmentUncheckedCreateWithoutRemindersInput>
+  create: Prisma.XOR<Prisma.CourseAssignmentCreateWithoutReminderStagesInput, Prisma.CourseAssignmentUncheckedCreateWithoutReminderStagesInput>
 }
 
-export type CourseAssignmentUpsertWithoutRemindersInput = {
-  update: Prisma.XOR<Prisma.CourseAssignmentUpdateWithoutRemindersInput, Prisma.CourseAssignmentUncheckedUpdateWithoutRemindersInput>
-  create: Prisma.XOR<Prisma.CourseAssignmentCreateWithoutRemindersInput, Prisma.CourseAssignmentUncheckedCreateWithoutRemindersInput>
+export type CourseAssignmentUpsertWithoutReminderStagesInput = {
+  update: Prisma.XOR<Prisma.CourseAssignmentUpdateWithoutReminderStagesInput, Prisma.CourseAssignmentUncheckedUpdateWithoutReminderStagesInput>
+  create: Prisma.XOR<Prisma.CourseAssignmentCreateWithoutReminderStagesInput, Prisma.CourseAssignmentUncheckedCreateWithoutReminderStagesInput>
   where?: Prisma.CourseAssignmentWhereInput
 }
 
-export type CourseAssignmentUpdateToOneWithWhereWithoutRemindersInput = {
+export type CourseAssignmentUpdateToOneWithWhereWithoutReminderStagesInput = {
   where?: Prisma.CourseAssignmentWhereInput
-  data: Prisma.XOR<Prisma.CourseAssignmentUpdateWithoutRemindersInput, Prisma.CourseAssignmentUncheckedUpdateWithoutRemindersInput>
+  data: Prisma.XOR<Prisma.CourseAssignmentUpdateWithoutReminderStagesInput, Prisma.CourseAssignmentUncheckedUpdateWithoutReminderStagesInput>
 }
 
-export type CourseAssignmentUpdateWithoutRemindersInput = {
+export type CourseAssignmentUpdateWithoutReminderStagesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -643,12 +771,15 @@ export type CourseAssignmentUpdateWithoutRemindersInput = {
   enrollments?: Prisma.EnrollmentUpdateManyWithoutAssignmentNestedInput
 }
 
-export type CourseAssignmentUncheckedUpdateWithoutRemindersInput = {
+export type CourseAssignmentUncheckedUpdateWithoutReminderStagesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -659,12 +790,15 @@ export type CourseAssignmentCreateWithoutEnrollmentsInput = {
   id?: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
   organization: Prisma.OrganizationCreateNestedOneWithoutCourseAssignmentsInput
   course: Prisma.CourseCreateNestedOneWithoutAssignmentsInput
-  reminders?: Prisma.AssignmentReminderCreateNestedManyWithoutAssignmentInput
+  reminderStages?: Prisma.AssignmentReminderStageCreateNestedManyWithoutAssignmentInput
 }
 
 export type CourseAssignmentUncheckedCreateWithoutEnrollmentsInput = {
@@ -673,10 +807,13 @@ export type CourseAssignmentUncheckedCreateWithoutEnrollmentsInput = {
   courseId: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
-  reminders?: Prisma.AssignmentReminderUncheckedCreateNestedManyWithoutAssignmentInput
+  reminderStages?: Prisma.AssignmentReminderStageUncheckedCreateNestedManyWithoutAssignmentInput
 }
 
 export type CourseAssignmentCreateOrConnectWithoutEnrollmentsInput = {
@@ -699,12 +836,15 @@ export type CourseAssignmentUpdateWithoutEnrollmentsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   organization?: Prisma.OrganizationUpdateOneRequiredWithoutCourseAssignmentsNestedInput
   course?: Prisma.CourseUpdateOneRequiredWithoutAssignmentsNestedInput
-  reminders?: Prisma.AssignmentReminderUpdateManyWithoutAssignmentNestedInput
+  reminderStages?: Prisma.AssignmentReminderStageUpdateManyWithoutAssignmentNestedInput
 }
 
 export type CourseAssignmentUncheckedUpdateWithoutEnrollmentsInput = {
@@ -713,21 +853,27 @@ export type CourseAssignmentUncheckedUpdateWithoutEnrollmentsInput = {
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  reminders?: Prisma.AssignmentReminderUncheckedUpdateManyWithoutAssignmentNestedInput
+  reminderStages?: Prisma.AssignmentReminderStageUncheckedUpdateManyWithoutAssignmentNestedInput
 }
 
 export type CourseAssignmentCreateWithoutOrganizationInput = {
   id?: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
   course: Prisma.CourseCreateNestedOneWithoutAssignmentsInput
-  reminders?: Prisma.AssignmentReminderCreateNestedManyWithoutAssignmentInput
+  reminderStages?: Prisma.AssignmentReminderStageCreateNestedManyWithoutAssignmentInput
   enrollments?: Prisma.EnrollmentCreateNestedManyWithoutAssignmentInput
 }
 
@@ -736,10 +882,13 @@ export type CourseAssignmentUncheckedCreateWithoutOrganizationInput = {
   courseId: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
-  reminders?: Prisma.AssignmentReminderUncheckedCreateNestedManyWithoutAssignmentInput
+  reminderStages?: Prisma.AssignmentReminderStageUncheckedCreateNestedManyWithoutAssignmentInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutAssignmentInput
 }
 
@@ -774,6 +923,9 @@ export type CourseAssignmentCreateManyCourseInput = {
   organizationId: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -783,11 +935,14 @@ export type CourseAssignmentUpdateWithoutCourseInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   organization?: Prisma.OrganizationUpdateOneRequiredWithoutCourseAssignmentsNestedInput
-  reminders?: Prisma.AssignmentReminderUpdateManyWithoutAssignmentNestedInput
+  reminderStages?: Prisma.AssignmentReminderStageUpdateManyWithoutAssignmentNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutAssignmentNestedInput
 }
 
@@ -796,10 +951,13 @@ export type CourseAssignmentUncheckedUpdateWithoutCourseInput = {
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  reminders?: Prisma.AssignmentReminderUncheckedUpdateManyWithoutAssignmentNestedInput
+  reminderStages?: Prisma.AssignmentReminderStageUncheckedUpdateManyWithoutAssignmentNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutAssignmentNestedInput
 }
 
@@ -808,6 +966,9 @@ export type CourseAssignmentUncheckedUpdateManyWithoutCourseInput = {
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -818,6 +979,9 @@ export type CourseAssignmentCreateManyOrganizationInput = {
   courseId: string
   assignedByAdminId: string
   scheduleAt?: Date | string | null
+  dueAt?: Date | string | null
+  dueWindowDays?: number | null
+  remindersEnabled?: boolean
   renewalCycle?: $Enums.RenewalCycle
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -827,11 +991,14 @@ export type CourseAssignmentUpdateWithoutOrganizationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   course?: Prisma.CourseUpdateOneRequiredWithoutAssignmentsNestedInput
-  reminders?: Prisma.AssignmentReminderUpdateManyWithoutAssignmentNestedInput
+  reminderStages?: Prisma.AssignmentReminderStageUpdateManyWithoutAssignmentNestedInput
   enrollments?: Prisma.EnrollmentUpdateManyWithoutAssignmentNestedInput
 }
 
@@ -840,10 +1007,13 @@ export type CourseAssignmentUncheckedUpdateWithoutOrganizationInput = {
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  reminders?: Prisma.AssignmentReminderUncheckedUpdateManyWithoutAssignmentNestedInput
+  reminderStages?: Prisma.AssignmentReminderStageUncheckedUpdateManyWithoutAssignmentNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutAssignmentNestedInput
 }
 
@@ -852,6 +1022,9 @@ export type CourseAssignmentUncheckedUpdateManyWithoutOrganizationInput = {
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  remindersEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   renewalCycle?: Prisma.EnumRenewalCycleFieldUpdateOperationsInput | $Enums.RenewalCycle
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -863,12 +1036,12 @@ export type CourseAssignmentUncheckedUpdateManyWithoutOrganizationInput = {
  */
 
 export type CourseAssignmentCountOutputType = {
-  reminders: number
+  reminderStages: number
   enrollments: number
 }
 
 export type CourseAssignmentCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  reminders?: boolean | CourseAssignmentCountOutputTypeCountRemindersArgs
+  reminderStages?: boolean | CourseAssignmentCountOutputTypeCountReminderStagesArgs
   enrollments?: boolean | CourseAssignmentCountOutputTypeCountEnrollmentsArgs
 }
 
@@ -885,8 +1058,8 @@ export type CourseAssignmentCountOutputTypeDefaultArgs<ExtArgs extends runtime.T
 /**
  * CourseAssignmentCountOutputType without action
  */
-export type CourseAssignmentCountOutputTypeCountRemindersArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.AssignmentReminderWhereInput
+export type CourseAssignmentCountOutputTypeCountReminderStagesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.AssignmentReminderStageWhereInput
 }
 
 /**
@@ -903,12 +1076,15 @@ export type CourseAssignmentSelect<ExtArgs extends runtime.Types.Extensions.Inte
   courseId?: boolean
   assignedByAdminId?: boolean
   scheduleAt?: boolean
+  dueAt?: boolean
+  dueWindowDays?: boolean
+  remindersEnabled?: boolean
   renewalCycle?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
   course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>
-  reminders?: boolean | Prisma.CourseAssignment$remindersArgs<ExtArgs>
+  reminderStages?: boolean | Prisma.CourseAssignment$reminderStagesArgs<ExtArgs>
   enrollments?: boolean | Prisma.CourseAssignment$enrollmentsArgs<ExtArgs>
   _count?: boolean | Prisma.CourseAssignmentCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["courseAssignment"]>
@@ -919,6 +1095,9 @@ export type CourseAssignmentSelectCreateManyAndReturn<ExtArgs extends runtime.Ty
   courseId?: boolean
   assignedByAdminId?: boolean
   scheduleAt?: boolean
+  dueAt?: boolean
+  dueWindowDays?: boolean
+  remindersEnabled?: boolean
   renewalCycle?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -932,6 +1111,9 @@ export type CourseAssignmentSelectUpdateManyAndReturn<ExtArgs extends runtime.Ty
   courseId?: boolean
   assignedByAdminId?: boolean
   scheduleAt?: boolean
+  dueAt?: boolean
+  dueWindowDays?: boolean
+  remindersEnabled?: boolean
   renewalCycle?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -945,16 +1127,19 @@ export type CourseAssignmentSelectScalar = {
   courseId?: boolean
   assignedByAdminId?: boolean
   scheduleAt?: boolean
+  dueAt?: boolean
+  dueWindowDays?: boolean
+  remindersEnabled?: boolean
   renewalCycle?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type CourseAssignmentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "courseId" | "assignedByAdminId" | "scheduleAt" | "renewalCycle" | "createdAt" | "updatedAt", ExtArgs["result"]["courseAssignment"]>
+export type CourseAssignmentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "courseId" | "assignedByAdminId" | "scheduleAt" | "dueAt" | "dueWindowDays" | "remindersEnabled" | "renewalCycle" | "createdAt" | "updatedAt", ExtArgs["result"]["courseAssignment"]>
 export type CourseAssignmentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
   course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>
-  reminders?: boolean | Prisma.CourseAssignment$remindersArgs<ExtArgs>
+  reminderStages?: boolean | Prisma.CourseAssignment$reminderStagesArgs<ExtArgs>
   enrollments?: boolean | Prisma.CourseAssignment$enrollmentsArgs<ExtArgs>
   _count?: boolean | Prisma.CourseAssignmentCountOutputTypeDefaultArgs<ExtArgs>
 }
@@ -972,7 +1157,7 @@ export type $CourseAssignmentPayload<ExtArgs extends runtime.Types.Extensions.In
   objects: {
     organization: Prisma.$OrganizationPayload<ExtArgs>
     course: Prisma.$CoursePayload<ExtArgs>
-    reminders: Prisma.$AssignmentReminderPayload<ExtArgs>[]
+    reminderStages: Prisma.$AssignmentReminderStagePayload<ExtArgs>[]
     enrollments: Prisma.$EnrollmentPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
@@ -981,6 +1166,9 @@ export type $CourseAssignmentPayload<ExtArgs extends runtime.Types.Extensions.In
     courseId: string
     assignedByAdminId: string
     scheduleAt: Date | null
+    dueAt: Date | null
+    dueWindowDays: number | null
+    remindersEnabled: boolean
     renewalCycle: $Enums.RenewalCycle
     createdAt: Date
     updatedAt: Date
@@ -1380,7 +1568,7 @@ export interface Prisma__CourseAssignmentClient<T, Null = never, ExtArgs extends
   readonly [Symbol.toStringTag]: "PrismaPromise"
   organization<T extends Prisma.OrganizationDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.OrganizationDefaultArgs<ExtArgs>>): Prisma.Prisma__OrganizationClient<runtime.Types.Result.GetResult<Prisma.$OrganizationPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   course<T extends Prisma.CourseDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.CourseDefaultArgs<ExtArgs>>): Prisma.Prisma__CourseClient<runtime.Types.Result.GetResult<Prisma.$CoursePayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
-  reminders<T extends Prisma.CourseAssignment$remindersArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.CourseAssignment$remindersArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$AssignmentReminderPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  reminderStages<T extends Prisma.CourseAssignment$reminderStagesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.CourseAssignment$reminderStagesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$AssignmentReminderStagePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   enrollments<T extends Prisma.CourseAssignment$enrollmentsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.CourseAssignment$enrollmentsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$EnrollmentPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
@@ -1416,6 +1604,9 @@ export interface CourseAssignmentFieldRefs {
   readonly courseId: Prisma.FieldRef<"CourseAssignment", 'String'>
   readonly assignedByAdminId: Prisma.FieldRef<"CourseAssignment", 'String'>
   readonly scheduleAt: Prisma.FieldRef<"CourseAssignment", 'DateTime'>
+  readonly dueAt: Prisma.FieldRef<"CourseAssignment", 'DateTime'>
+  readonly dueWindowDays: Prisma.FieldRef<"CourseAssignment", 'Int'>
+  readonly remindersEnabled: Prisma.FieldRef<"CourseAssignment", 'Boolean'>
   readonly renewalCycle: Prisma.FieldRef<"CourseAssignment", 'RenewalCycle'>
   readonly createdAt: Prisma.FieldRef<"CourseAssignment", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"CourseAssignment", 'DateTime'>
@@ -1820,27 +2011,27 @@ export type CourseAssignmentDeleteManyArgs<ExtArgs extends runtime.Types.Extensi
 }
 
 /**
- * CourseAssignment.reminders
+ * CourseAssignment.reminderStages
  */
-export type CourseAssignment$remindersArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+export type CourseAssignment$reminderStagesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   /**
-   * Select specific fields to fetch from the AssignmentReminder
+   * Select specific fields to fetch from the AssignmentReminderStage
    */
-  select?: Prisma.AssignmentReminderSelect<ExtArgs> | null
+  select?: Prisma.AssignmentReminderStageSelect<ExtArgs> | null
   /**
-   * Omit specific fields from the AssignmentReminder
+   * Omit specific fields from the AssignmentReminderStage
    */
-  omit?: Prisma.AssignmentReminderOmit<ExtArgs> | null
+  omit?: Prisma.AssignmentReminderStageOmit<ExtArgs> | null
   /**
    * Choose, which related nodes to fetch as well
    */
-  include?: Prisma.AssignmentReminderInclude<ExtArgs> | null
-  where?: Prisma.AssignmentReminderWhereInput
-  orderBy?: Prisma.AssignmentReminderOrderByWithRelationInput | Prisma.AssignmentReminderOrderByWithRelationInput[]
-  cursor?: Prisma.AssignmentReminderWhereUniqueInput
+  include?: Prisma.AssignmentReminderStageInclude<ExtArgs> | null
+  where?: Prisma.AssignmentReminderStageWhereInput
+  orderBy?: Prisma.AssignmentReminderStageOrderByWithRelationInput | Prisma.AssignmentReminderStageOrderByWithRelationInput[]
+  cursor?: Prisma.AssignmentReminderStageWhereUniqueInput
   take?: number
   skip?: number
-  distinct?: Prisma.AssignmentReminderScalarFieldEnum | Prisma.AssignmentReminderScalarFieldEnum[]
+  distinct?: Prisma.AssignmentReminderStageScalarFieldEnum | Prisma.AssignmentReminderStageScalarFieldEnum[]
 }
 
 /**

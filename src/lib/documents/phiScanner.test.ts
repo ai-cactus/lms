@@ -75,7 +75,13 @@ describe('phiScanner', () => {
     expect(result).toEqual({ hasPHI: false, findings: [] });
   });
 
-  it('should handle malformed JSON from AI gracefully', async () => {
+  // THER-003: the scanner now ALWAYS fails closed — a scan that could not be
+  // completed (no JSON, malformed JSON, unexpected structure, thrown error)
+  // is treated as blocked/unverified (hasPHI: true, scanFailed: true), never
+  // silently passed through as PHI-free. This is a behavior change from the
+  // old fail-open-unless-PHI_FAIL_CLOSED default; these three tests replace
+  // the previous fail-open expectations.
+  it('fails CLOSED (blocked, scanFailed) when the AI response has no JSON block', async () => {
     const text = 'Some longer text that should be scanned.'.padEnd(50, ' ');
     mockedCallVertexAI.mockResolvedValue(
       'I am an AI and I think this text has PHI, but I forgot to output JSON.',
@@ -83,25 +89,53 @@ describe('phiScanner', () => {
 
     const result = await scanText(text);
 
-    expect(result).toEqual({ hasPHI: false, findings: [] });
+    expect(result.hasPHI).toBe(true);
+    expect(result.scanFailed).toBe(true);
   });
 
-  it('should handle missing fields in AI JSON response gracefully', async () => {
+  it('fails CLOSED (blocked, scanFailed) when the AI JSON response has unexpected structure', async () => {
     const text = 'Some longer text that should be scanned.'.padEnd(50, ' ');
     mockedCallVertexAI.mockResolvedValue('```json\n{"wrongField": true}\n```');
 
     const result = await scanText(text);
 
-    expect(result).toEqual({ hasPHI: false, findings: [] });
+    expect(result.hasPHI).toBe(true);
+    expect(result.scanFailed).toBe(true);
   });
 
-  it('should return no PHI if the AI API call throws an error', async () => {
+  it('fails CLOSED (blocked, scanFailed) when the AI API call throws — never silently lets a document through', async () => {
     const text = 'Some longer text that should be scanned.'.padEnd(50, ' ');
     mockedCallVertexAI.mockRejectedValue(new Error('Vertex AI rate limit exceeded'));
 
     const result = await scanText(text);
 
-    expect(result).toEqual({ hasPHI: false, findings: [] });
+    expect(result.hasPHI).toBe(true);
+    expect(result.scanFailed).toBe(true);
+  });
+
+  it('fails CLOSED when the AI returns malformed (unparseable) JSON', async () => {
+    const text = 'Some longer text that should be scanned.'.padEnd(50, ' ');
+    mockedCallVertexAI.mockResolvedValue('```json\n{ this is not valid json \n```');
+
+    const result = await scanText(text);
+
+    expect(result.hasPHI).toBe(true);
+    expect(result.scanFailed).toBe(true);
+  });
+
+  it('a genuine PHI detection is NOT flagged as scanFailed (distinct from a failed scan)', async () => {
+    const text = 'Patient John Doe (DOB 01/01/1980) visited today.'.padEnd(50, ' ');
+    mockedCallVertexAI.mockResolvedValue(
+      JSON.stringify({
+        hasPHI: true,
+        findings: [{ type: 'NAME', value: 'John Doe', confidence: 0.95 }],
+      }),
+    );
+
+    const result = await scanText(text);
+
+    expect(result.hasPHI).toBe(true);
+    expect(result.scanFailed).toBeUndefined();
   });
 
   it('should truncate text to 15000 characters before calling AI', async () => {

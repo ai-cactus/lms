@@ -65,6 +65,7 @@ model Facility {
   programServices        String[]     @default([]) @map("program_services")
   complianceDocumentUrl  String?      @map("compliance_document_url")
   complianceDocumentName String?      @map("compliance_document_name")
+  timezone               String?      @map("timezone")
   createdAt              DateTime     @default(now()) @map("created_at")
   updatedAt              DateTime     @updatedAt @map("updated_at")
   organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

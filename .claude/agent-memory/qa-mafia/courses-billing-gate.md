@@ -1,0 +1,31 @@
+---
+name: courses-billing-gate
+description: Custom AI course creation is billing-gated with no free tier; the separate video-course catalog is NOT gated and is a viable substitute for assign/view testing
+metadata:
+  type: reference
+---
+
+**Custom course creation requires an active PAID subscription — no free/trial tier exists.** Clicking "Create Course" on `/dashboard/courses` (My Courses tab) shows a blocking dialog "A plan is required to create courses" if the org has no active plan. `/dashboard/billing` → Subscription tab shows only paid plans: Starter $99/mo (1-10 staff), Professional $149/mo (11-50 staff, "POPULAR"), Enterprise (custom/"Contact sales") — confirmed 2026-07-01, org "LMS QA Test Org LLC" had no payment method on file.
+
+**Do NOT attempt to subscribe / enter payment details without explicit user authorization and user-supplied real card data.** This is a hard, unavoidable blocker for testing: course creation from a policy doc, its configuration options, and async/non-blocking generation behavior — all require an active plan. If asked to test these again, either confirm a plan is now active, or stop and ask the orchestrator/user how to proceed (real subscription payment vs. an out-of-band comp'd plan from engineering/ops vs. accepting the block).
+
+**Workaround used successfully: the "Available Video Courses" tab is a SEPARATE, pre-built global course catalog that is NOT gated by billing.** `/dashboard/courses?tab=available` lists dozens of ready-made courses (categories: Health & Safety, Compliance & Legal, Human Resources, Patient Care & Experience, Information Security), each linking to `/dashboard/training/courses/<uuid>` (detail: title, "System Training" badge, pass mark e.g. 80%, stats, Enrolled Staff/Certificates Issued tabs, Preview + Assign actions) and `/dashboard/training/courses/<uuid>/preview` (rich structure: Overview, What You'll Learn, Table of Contents, Course Contents [quiz question count], Course Details, Included Modules with video duration).
+
+**Assign flow (works identically whether reached from a video course or would-be custom course):** detail page "Assign" button → `/assign` route with an "Assign To" chip-based email field (type email + click "Invite" to add as a removable chip — no autocomplete dropdown of existing pending staff observed), "Training Schedule" date picker, "Renewal Settings" dropdown (defaults "Annual Renewal (12 Months)"), "Reminder" dropdown (defaults "30 minutes before") + "Add reminder". "Assign Course" button submits `POST .../assign` → success dialog "Course Assigned Successfully" with "Back to Dashboard"/"Go to Courses" buttons. Confirmed on the course detail page afterward: "Total Learners" increments, Enrolled Staff table shows the assignee with role and "Not Started" status. The assigned course also appears in the org's own "My Courses" list with `Type: "Video course"` (distinguishing it from would-be AI-generated custom courses).
+
+**Recurring accessibility issue:** the same Radix `DialogContent requires a DialogTitle` console error/warning (seen across Phases 1b/3/4) fires on the billing-gate dialog and the assign-flow dialogs too — a systemic, unaddressed pattern across many dialogs in this app, not isolated to one screen.
+
+**Custom course creation wizard (once billing gate is lifted) — 7 steps, confirmed 2026-07-01:**
+1. Category (required dropdown: Administrative Procedures, Clinical Practices, Compliance & Legal, Equipment & Technology, Health & Safety, Human Resources, Information Security, Leadership & Management, ...).
+2. Upload Training Documents — pick from already-uploaded Document Hub files via checkbox (multi-select UI, only tested single-select).
+3. Course Details — auto-generated (from doc + org name) Course Title/Short Description (both editable), read-only auto-calculated Estimated Duration, "No of Notes/Slides" dropdown (10/15/20/25), and 5 auto-generated Learning Objectives (min 3 required, each editable/removable, "+ Add Objective"). Content quality/relevance to source doc was consistently good in testing.
+4. Course Quiz — Quiz Title (editable), Number of Questions (spinbutton 1-25, default 15, shows a "quality may drop with more questions" warning), Difficulty (Easy/Medium/Hard, default Medium), Estimated Duration (read-only, recalculates live), Pass Mark (spinbutton %, default 80), Attempts (spinbutton, default 2).
+5. Generation (async) — explicit copy: "You can go back to the dashboard — generation will continue and you can resume from there." Confirmed navigating away (Dashboard, Documents, Courses list) works cleanly with 0 new console errors while generation proceeds server-side.
+6 & 7. Not yet observed (generation never completed within ~7.5 min in testing so far) — likely a content review/edit step and a publish/attestation step per the wizard's own framing, but unconfirmed.
+
+**KNOWN ISSUES with custom course generation (2026-07-01):**
+- **Fails fast (~2 min) with a technical, backend-leaking error** ("Stage A failed: Insufficient source material... RAG Context was not provided...") when given a short/thin source document (a few hundred words of generic filler). Use a SUBSTANTIAL source doc (~1000+ words across multiple detailed real sections) to avoid this — a short Lorem-ipsum-style fixture (like the ones from [[document-hub-patterns]]'s Phase 3 testing) is NOT enough.
+- **"Try Again" on a failure does not actually retry generation** — it navigates to a "Resume your draft?" prompt, and resuming just re-shows the same failed state; you have to start a genuinely new attempt (re-upload/re-select doc, redo config) to try again.
+- **Even with a substantial (~1200 word, 8-section) source doc, generation had not completed after ~7.5 minutes**, with **zero visible status signal** anywhere (no "Generating" row in My Courses, no toast, and the "Resume your draft?" prompt didn't even reappear on this attempt) — this is either a slow but working pipeline (unconfirmed beyond the observation window) or a silent failure; could not distinguish via black-box testing. If retesting, allow significantly more time (well beyond 10 min) and/or check backend/pipeline logs directly rather than relying on the UI alone.
+
+See [[document-hub-patterns]] and [[production-env-access]] for related production-environment findings.

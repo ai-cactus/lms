@@ -1,6 +1,6 @@
 -- Organization → Organization + Facility split.
 -- Creates a `facilities` table, seeds one facility per existing organisation
--- (carrying over the moved location/compliance fields), attaches every user to
+-- (carrying over the moved location/compliance/timezone fields), attaches every user to
 -- their org's facility, then drops the moved columns from `organizations`.
 -- Sequenced AFTER 20260701120000_rbac_roles. Authored-only — not yet applied.
 
@@ -22,6 +22,7 @@ CREATE TABLE "facilities" (
   "program_services"         TEXT[]       NOT NULL DEFAULT '{}',
   "compliance_document_url"  TEXT,
   "compliance_document_name" TEXT,
+  "timezone"                 TEXT,
   "created_at"               TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at"               TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "facilities_pkey" PRIMARY KEY ("id"),
@@ -34,11 +35,11 @@ CREATE INDEX "facilities_organization_id_idx" ON "facilities"("organization_id")
 INSERT INTO "facilities" (
   "id","organization_id","name","address","city","state","country","zip_code",
   "phone","license_number","staff_count","program_services",
-  "compliance_document_url","compliance_document_name","created_at","updated_at"
+  "compliance_document_url","compliance_document_name","timezone","created_at","updated_at"
 )
 SELECT gen_random_uuid(), "id","name","address","city","state","country","zip_code",
   "phone","license_number","staff_count","program_services",
-  "compliance_document_url","compliance_document_name","created_at",CURRENT_TIMESTAMP
+  "compliance_document_url","compliance_document_name","timezone","created_at",CURRENT_TIMESTAMP
 FROM "organizations";
 
 ALTER TABLE "users" ADD COLUMN "facility_id" TEXT;
@@ -59,4 +60,4 @@ ALTER TABLE "organizations"
   DROP COLUMN "country", DROP COLUMN "zip_code", DROP COLUMN "phone",
   DROP COLUMN "license_number", DROP COLUMN "staff_count",
   DROP COLUMN "program_services", DROP COLUMN "compliance_document_url",
-  DROP COLUMN "compliance_document_name";
+  DROP COLUMN "compliance_document_name", DROP COLUMN "timezone";

@@ -62,11 +62,12 @@ export async function getStaffUsers() {
         where: {
           organizationId: currentUser.organizationId,
           status: 'pending',
-          expiresAt: { gt: new Date() },
         },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
+
+    const now = new Date();
 
     // Build a set of emails that already have accounts to avoid duplication
     const acceptedEmails = new Set(users.map((u) => u.email.toLowerCase()));
@@ -80,20 +81,27 @@ export async function getStaffUsers() {
       jobTitle: user.profile?.jobTitle || 'Staff Member',
       dateInvited: user.createdAt,
       isPending: false,
+      isExpired: false,
+      token: null as string | null,
     }));
 
     const pendingEntries = invites
       .filter((invite) => !acceptedEmails.has(invite.email.toLowerCase()))
-      .map((invite) => ({
-        id: invite.id,
-        name: invite.email.split('@')[0],
-        email: invite.email,
-        avatarUrl: null,
-        role: invite.role || 'worker',
-        jobTitle: 'Pending Invite',
-        dateInvited: invite.createdAt,
-        isPending: true,
-      }));
+      .map((invite) => {
+        const isExpired = invite.expiresAt <= now;
+        return {
+          id: invite.id,
+          name: invite.email.split('@')[0],
+          email: invite.email,
+          avatarUrl: null,
+          role: invite.role || 'worker',
+          jobTitle: isExpired ? 'Expired Invite' : 'Pending Invite',
+          dateInvited: invite.createdAt,
+          isPending: true,
+          isExpired,
+          token: invite.token as string | null,
+        };
+      });
 
     // Accepted users first, then pending invites (both already ordered desc by createdAt)
     return [...acceptedEntries, ...pendingEntries];

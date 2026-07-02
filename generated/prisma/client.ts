@@ -134,10 +134,10 @@ export type CourseVersion = Prisma.CourseVersionModel
  */
 export type CourseAssignment = Prisma.CourseAssignmentModel
 /**
- * Model AssignmentReminder
+ * Model AssignmentReminderStage
  * 
  */
-export type AssignmentReminder = Prisma.AssignmentReminderModel
+export type AssignmentReminderStage = Prisma.AssignmentReminderStageModel
 /**
  * Model Document
  * 
@@ -168,6 +168,16 @@ export type Enrollment = Prisma.EnrollmentModel
  * 
  */
 export type Certificate = Prisma.CertificateModel
+/**
+ * Model ReminderLog
+ * 
+ */
+export type ReminderLog = Prisma.ReminderLogModel
+/**
+ * Model ReminderNudge
+ * 
+ */
+export type ReminderNudge = Prisma.ReminderNudgeModel
 /**
  * Model Job
  * 

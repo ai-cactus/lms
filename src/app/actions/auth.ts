@@ -60,6 +60,24 @@ export async function authenticate(
 
     if (!lookupUser) {
       await bcrypt.compare('dummy', DUMMY_BCRYPT_HASH);
+
+      // A signup that hasn't verified its email exists only as a live
+      // email_verification token (no User row yet). Surface an actionable hint
+      // so the user isn't stuck on a generic "Invalid credentials." message.
+      if (email) {
+        const pendingVerification = await prisma.verificationToken.findFirst({
+          where: {
+            identifier: email,
+            type: 'email_verification',
+            expires: { gt: new Date() },
+          },
+          select: { identifier: true },
+        });
+        if (pendingVerification) {
+          return { error: 'Please verify your email to sign in.' };
+        }
+      }
+
       return { error: 'Invalid credentials.' };
     }
 

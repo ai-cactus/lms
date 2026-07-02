@@ -68,13 +68,15 @@ export const ModelName = {
   CourseArtifact: 'CourseArtifact',
   CourseVersion: 'CourseVersion',
   CourseAssignment: 'CourseAssignment',
-  AssignmentReminder: 'AssignmentReminder',
+  AssignmentReminderStage: 'AssignmentReminderStage',
   Document: 'Document',
   DocumentVersion: 'DocumentVersion',
   PhiReport: 'PhiReport',
   MappingEvidence: 'MappingEvidence',
   Enrollment: 'Enrollment',
   Certificate: 'Certificate',
+  ReminderLog: 'ReminderLog',
+  ReminderNudge: 'ReminderNudge',
   Job: 'Job',
   Notification: 'Notification',
   NotificationPreference: 'NotificationPreference',
@@ -127,6 +129,7 @@ export const UserScalarFieldEnum = {
   emailVerified: 'emailVerified',
   mfaEnabled: 'mfaEnabled',
   mfaVerifiedAt: 'mfaVerifiedAt',
+  managerId: 'managerId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -350,6 +353,9 @@ export const CourseAssignmentScalarFieldEnum = {
   courseId: 'courseId',
   assignedByAdminId: 'assignedByAdminId',
   scheduleAt: 'scheduleAt',
+  dueAt: 'dueAt',
+  dueWindowDays: 'dueWindowDays',
+  remindersEnabled: 'remindersEnabled',
   renewalCycle: 'renewalCycle',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -358,14 +364,16 @@ export const CourseAssignmentScalarFieldEnum = {
 export type CourseAssignmentScalarFieldEnum = (typeof CourseAssignmentScalarFieldEnum)[keyof typeof CourseAssignmentScalarFieldEnum]
 
 
-export const AssignmentReminderScalarFieldEnum = {
+export const AssignmentReminderStageScalarFieldEnum = {
   id: 'id',
   assignmentId: 'assignmentId',
-  offsetMinutes: 'offsetMinutes',
-  channel: 'channel'
+  stage: 'stage',
+  offsetDays: 'offsetDays',
+  enabled: 'enabled',
+  channels: 'channels'
 } as const
 
-export type AssignmentReminderScalarFieldEnum = (typeof AssignmentReminderScalarFieldEnum)[keyof typeof AssignmentReminderScalarFieldEnum]
+export type AssignmentReminderStageScalarFieldEnum = (typeof AssignmentReminderStageScalarFieldEnum)[keyof typeof AssignmentReminderStageScalarFieldEnum]
 
 
 export const DocumentScalarFieldEnum = {
@@ -438,7 +446,8 @@ export const EnrollmentScalarFieldEnum = {
   retakeOf: 'retakeOf',
   retakeReason: 'retakeReason',
   assignmentId: 'assignmentId',
-  accessAt: 'accessAt'
+  accessAt: 'accessAt',
+  dueAt: 'dueAt'
 } as const
 
 export type EnrollmentScalarFieldEnum = (typeof EnrollmentScalarFieldEnum)[keyof typeof EnrollmentScalarFieldEnum]
@@ -456,6 +465,29 @@ export const CertificateScalarFieldEnum = {
 } as const
 
 export type CertificateScalarFieldEnum = (typeof CertificateScalarFieldEnum)[keyof typeof CertificateScalarFieldEnum]
+
+
+export const ReminderLogScalarFieldEnum = {
+  id: 'id',
+  enrollmentId: 'enrollmentId',
+  stage: 'stage',
+  channels: 'channels',
+  targetDate: 'targetDate',
+  sentAt: 'sentAt'
+} as const
+
+export type ReminderLogScalarFieldEnum = (typeof ReminderLogScalarFieldEnum)[keyof typeof ReminderLogScalarFieldEnum]
+
+
+export const ReminderNudgeScalarFieldEnum = {
+  id: 'id',
+  enrollmentId: 'enrollmentId',
+  kind: 'kind',
+  lastSentAt: 'lastSentAt',
+  count: 'count'
+} as const
+
+export type ReminderNudgeScalarFieldEnum = (typeof ReminderNudgeScalarFieldEnum)[keyof typeof ReminderNudgeScalarFieldEnum]
 
 
 export const JobScalarFieldEnum = {
@@ -553,6 +585,7 @@ export const FacilityScalarFieldEnum = {
   programServices: 'programServices',
   complianceDocumentUrl: 'complianceDocumentUrl',
   complianceDocumentName: 'complianceDocumentName',
+  timezone: 'timezone',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const

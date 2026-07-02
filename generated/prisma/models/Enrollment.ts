@@ -57,6 +57,7 @@ export type EnrollmentMinAggregateOutputType = {
   retakeReason: string | null
   assignmentId: string | null
   accessAt: Date | null
+  dueAt: Date | null
 }
 
 export type EnrollmentMaxAggregateOutputType = {
@@ -78,6 +79,7 @@ export type EnrollmentMaxAggregateOutputType = {
   retakeReason: string | null
   assignmentId: string | null
   accessAt: Date | null
+  dueAt: Date | null
 }
 
 export type EnrollmentCountAggregateOutputType = {
@@ -99,6 +101,7 @@ export type EnrollmentCountAggregateOutputType = {
   retakeReason: number
   assignmentId: number
   accessAt: number
+  dueAt: number
   _all: number
 }
 
@@ -134,6 +137,7 @@ export type EnrollmentMinAggregateInputType = {
   retakeReason?: true
   assignmentId?: true
   accessAt?: true
+  dueAt?: true
 }
 
 export type EnrollmentMaxAggregateInputType = {
@@ -155,6 +159,7 @@ export type EnrollmentMaxAggregateInputType = {
   retakeReason?: true
   assignmentId?: true
   accessAt?: true
+  dueAt?: true
 }
 
 export type EnrollmentCountAggregateInputType = {
@@ -176,6 +181,7 @@ export type EnrollmentCountAggregateInputType = {
   retakeReason?: true
   assignmentId?: true
   accessAt?: true
+  dueAt?: true
   _all?: true
 }
 
@@ -284,6 +290,7 @@ export type EnrollmentGroupByOutputType = {
   retakeReason: string | null
   assignmentId: string | null
   accessAt: Date | null
+  dueAt: Date | null
   _count: EnrollmentCountAggregateOutputType | null
   _avg: EnrollmentAvgAggregateOutputType | null
   _sum: EnrollmentSumAggregateOutputType | null
@@ -328,11 +335,14 @@ export type EnrollmentWhereInput = {
   retakeReason?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   assignmentId?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   accessAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
+  dueAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
   assignment?: Prisma.XOR<Prisma.CourseAssignmentNullableScalarRelationFilter, Prisma.CourseAssignmentWhereInput> | null
   course?: Prisma.XOR<Prisma.CourseScalarRelationFilter, Prisma.CourseWhereInput>
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   quizAttempts?: Prisma.QuizAttemptListRelationFilter
   certificate?: Prisma.XOR<Prisma.CertificateNullableScalarRelationFilter, Prisma.CertificateWhereInput> | null
+  reminderLogs?: Prisma.ReminderLogListRelationFilter
+  reminderNudges?: Prisma.ReminderNudgeListRelationFilter
 }
 
 export type EnrollmentOrderByWithRelationInput = {
@@ -354,11 +364,14 @@ export type EnrollmentOrderByWithRelationInput = {
   retakeReason?: Prisma.SortOrderInput | Prisma.SortOrder
   assignmentId?: Prisma.SortOrderInput | Prisma.SortOrder
   accessAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  dueAt?: Prisma.SortOrderInput | Prisma.SortOrder
   assignment?: Prisma.CourseAssignmentOrderByWithRelationInput
   course?: Prisma.CourseOrderByWithRelationInput
   user?: Prisma.UserOrderByWithRelationInput
   quizAttempts?: Prisma.QuizAttemptOrderByRelationAggregateInput
   certificate?: Prisma.CertificateOrderByWithRelationInput
+  reminderLogs?: Prisma.ReminderLogOrderByRelationAggregateInput
+  reminderNudges?: Prisma.ReminderNudgeOrderByRelationAggregateInput
 }
 
 export type EnrollmentWhereUniqueInput = Prisma.AtLeast<{
@@ -383,11 +396,14 @@ export type EnrollmentWhereUniqueInput = Prisma.AtLeast<{
   retakeReason?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   assignmentId?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   accessAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
+  dueAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
   assignment?: Prisma.XOR<Prisma.CourseAssignmentNullableScalarRelationFilter, Prisma.CourseAssignmentWhereInput> | null
   course?: Prisma.XOR<Prisma.CourseScalarRelationFilter, Prisma.CourseWhereInput>
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   quizAttempts?: Prisma.QuizAttemptListRelationFilter
   certificate?: Prisma.XOR<Prisma.CertificateNullableScalarRelationFilter, Prisma.CertificateWhereInput> | null
+  reminderLogs?: Prisma.ReminderLogListRelationFilter
+  reminderNudges?: Prisma.ReminderNudgeListRelationFilter
 }, "id">
 
 export type EnrollmentOrderByWithAggregationInput = {
@@ -409,6 +425,7 @@ export type EnrollmentOrderByWithAggregationInput = {
   retakeReason?: Prisma.SortOrderInput | Prisma.SortOrder
   assignmentId?: Prisma.SortOrderInput | Prisma.SortOrder
   accessAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  dueAt?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.EnrollmentCountOrderByAggregateInput
   _avg?: Prisma.EnrollmentAvgOrderByAggregateInput
   _max?: Prisma.EnrollmentMaxOrderByAggregateInput
@@ -438,6 +455,7 @@ export type EnrollmentScalarWhereWithAggregatesInput = {
   retakeReason?: Prisma.StringNullableWithAggregatesFilter<"Enrollment"> | string | null
   assignmentId?: Prisma.StringNullableWithAggregatesFilter<"Enrollment"> | string | null
   accessAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Enrollment"> | Date | string | null
+  dueAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Enrollment"> | Date | string | null
 }
 
 export type EnrollmentCreateInput = {
@@ -456,11 +474,14 @@ export type EnrollmentCreateInput = {
   retakeOf?: string | null
   retakeReason?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
   course: Prisma.CourseCreateNestedOneWithoutEnrollmentsInput
   user: Prisma.UserCreateNestedOneWithoutEnrollmentsInput
   quizAttempts?: Prisma.QuizAttemptCreateNestedManyWithoutEnrollmentInput
   certificate?: Prisma.CertificateCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentUncheckedCreateInput = {
@@ -482,8 +503,11 @@ export type EnrollmentUncheckedCreateInput = {
   retakeReason?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedCreateNestedManyWithoutEnrollmentInput
   certificate?: Prisma.CertificateUncheckedCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogUncheckedCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentUpdateInput = {
@@ -502,11 +526,14 @@ export type EnrollmentUpdateInput = {
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
   course?: Prisma.CourseUpdateOneRequiredWithoutEnrollmentsNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutEnrollmentsNestedInput
   quizAttempts?: Prisma.QuizAttemptUpdateManyWithoutEnrollmentNestedInput
   certificate?: Prisma.CertificateUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentUncheckedUpdateInput = {
@@ -528,8 +555,11 @@ export type EnrollmentUncheckedUpdateInput = {
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedUpdateManyWithoutEnrollmentNestedInput
   certificate?: Prisma.CertificateUncheckedUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUncheckedUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentCreateManyInput = {
@@ -551,6 +581,7 @@ export type EnrollmentCreateManyInput = {
   retakeReason?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
 }
 
 export type EnrollmentUpdateManyMutationInput = {
@@ -569,6 +600,7 @@ export type EnrollmentUpdateManyMutationInput = {
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type EnrollmentUncheckedUpdateManyInput = {
@@ -590,6 +622,7 @@ export type EnrollmentUncheckedUpdateManyInput = {
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type EnrollmentListRelationFilter = {
@@ -621,6 +654,7 @@ export type EnrollmentCountOrderByAggregateInput = {
   retakeReason?: Prisma.SortOrder
   assignmentId?: Prisma.SortOrder
   accessAt?: Prisma.SortOrder
+  dueAt?: Prisma.SortOrder
 }
 
 export type EnrollmentAvgOrderByAggregateInput = {
@@ -648,6 +682,7 @@ export type EnrollmentMaxOrderByAggregateInput = {
   retakeReason?: Prisma.SortOrder
   assignmentId?: Prisma.SortOrder
   accessAt?: Prisma.SortOrder
+  dueAt?: Prisma.SortOrder
 }
 
 export type EnrollmentMinOrderByAggregateInput = {
@@ -669,6 +704,7 @@ export type EnrollmentMinOrderByAggregateInput = {
   retakeReason?: Prisma.SortOrder
   assignmentId?: Prisma.SortOrder
   accessAt?: Prisma.SortOrder
+  dueAt?: Prisma.SortOrder
 }
 
 export type EnrollmentSumOrderByAggregateInput = {
@@ -826,6 +862,34 @@ export type EnrollmentUpdateOneRequiredWithoutCertificateNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.EnrollmentUpdateToOneWithWhereWithoutCertificateInput, Prisma.EnrollmentUpdateWithoutCertificateInput>, Prisma.EnrollmentUncheckedUpdateWithoutCertificateInput>
 }
 
+export type EnrollmentCreateNestedOneWithoutReminderLogsInput = {
+  create?: Prisma.XOR<Prisma.EnrollmentCreateWithoutReminderLogsInput, Prisma.EnrollmentUncheckedCreateWithoutReminderLogsInput>
+  connectOrCreate?: Prisma.EnrollmentCreateOrConnectWithoutReminderLogsInput
+  connect?: Prisma.EnrollmentWhereUniqueInput
+}
+
+export type EnrollmentUpdateOneRequiredWithoutReminderLogsNestedInput = {
+  create?: Prisma.XOR<Prisma.EnrollmentCreateWithoutReminderLogsInput, Prisma.EnrollmentUncheckedCreateWithoutReminderLogsInput>
+  connectOrCreate?: Prisma.EnrollmentCreateOrConnectWithoutReminderLogsInput
+  upsert?: Prisma.EnrollmentUpsertWithoutReminderLogsInput
+  connect?: Prisma.EnrollmentWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.EnrollmentUpdateToOneWithWhereWithoutReminderLogsInput, Prisma.EnrollmentUpdateWithoutReminderLogsInput>, Prisma.EnrollmentUncheckedUpdateWithoutReminderLogsInput>
+}
+
+export type EnrollmentCreateNestedOneWithoutReminderNudgesInput = {
+  create?: Prisma.XOR<Prisma.EnrollmentCreateWithoutReminderNudgesInput, Prisma.EnrollmentUncheckedCreateWithoutReminderNudgesInput>
+  connectOrCreate?: Prisma.EnrollmentCreateOrConnectWithoutReminderNudgesInput
+  connect?: Prisma.EnrollmentWhereUniqueInput
+}
+
+export type EnrollmentUpdateOneRequiredWithoutReminderNudgesNestedInput = {
+  create?: Prisma.XOR<Prisma.EnrollmentCreateWithoutReminderNudgesInput, Prisma.EnrollmentUncheckedCreateWithoutReminderNudgesInput>
+  connectOrCreate?: Prisma.EnrollmentCreateOrConnectWithoutReminderNudgesInput
+  upsert?: Prisma.EnrollmentUpsertWithoutReminderNudgesInput
+  connect?: Prisma.EnrollmentWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.EnrollmentUpdateToOneWithWhereWithoutReminderNudgesInput, Prisma.EnrollmentUpdateWithoutReminderNudgesInput>, Prisma.EnrollmentUncheckedUpdateWithoutReminderNudgesInput>
+}
+
 export type EnrollmentCreateNestedOneWithoutQuizAttemptsInput = {
   create?: Prisma.XOR<Prisma.EnrollmentCreateWithoutQuizAttemptsInput, Prisma.EnrollmentUncheckedCreateWithoutQuizAttemptsInput>
   connectOrCreate?: Prisma.EnrollmentCreateOrConnectWithoutQuizAttemptsInput
@@ -856,10 +920,13 @@ export type EnrollmentCreateWithoutUserInput = {
   retakeOf?: string | null
   retakeReason?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
   course: Prisma.CourseCreateNestedOneWithoutEnrollmentsInput
   quizAttempts?: Prisma.QuizAttemptCreateNestedManyWithoutEnrollmentInput
   certificate?: Prisma.CertificateCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentUncheckedCreateWithoutUserInput = {
@@ -880,8 +947,11 @@ export type EnrollmentUncheckedCreateWithoutUserInput = {
   retakeReason?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedCreateNestedManyWithoutEnrollmentInput
   certificate?: Prisma.CertificateUncheckedCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogUncheckedCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentCreateOrConnectWithoutUserInput = {
@@ -932,6 +1002,7 @@ export type EnrollmentScalarWhereInput = {
   retakeReason?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   assignmentId?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   accessAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
+  dueAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
 }
 
 export type EnrollmentCreateWithoutCourseInput = {
@@ -950,10 +1021,13 @@ export type EnrollmentCreateWithoutCourseInput = {
   retakeOf?: string | null
   retakeReason?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
   user: Prisma.UserCreateNestedOneWithoutEnrollmentsInput
   quizAttempts?: Prisma.QuizAttemptCreateNestedManyWithoutEnrollmentInput
   certificate?: Prisma.CertificateCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentUncheckedCreateWithoutCourseInput = {
@@ -974,8 +1048,11 @@ export type EnrollmentUncheckedCreateWithoutCourseInput = {
   retakeReason?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedCreateNestedManyWithoutEnrollmentInput
   certificate?: Prisma.CertificateUncheckedCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogUncheckedCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentCreateOrConnectWithoutCourseInput = {
@@ -1020,10 +1097,13 @@ export type EnrollmentCreateWithoutAssignmentInput = {
   retakeOf?: string | null
   retakeReason?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   course: Prisma.CourseCreateNestedOneWithoutEnrollmentsInput
   user: Prisma.UserCreateNestedOneWithoutEnrollmentsInput
   quizAttempts?: Prisma.QuizAttemptCreateNestedManyWithoutEnrollmentInput
   certificate?: Prisma.CertificateCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentUncheckedCreateWithoutAssignmentInput = {
@@ -1044,8 +1124,11 @@ export type EnrollmentUncheckedCreateWithoutAssignmentInput = {
   retakeOf?: string | null
   retakeReason?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedCreateNestedManyWithoutEnrollmentInput
   certificate?: Prisma.CertificateUncheckedCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogUncheckedCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentCreateOrConnectWithoutAssignmentInput = {
@@ -1090,10 +1173,13 @@ export type EnrollmentCreateWithoutCertificateInput = {
   retakeOf?: string | null
   retakeReason?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
   course: Prisma.CourseCreateNestedOneWithoutEnrollmentsInput
   user: Prisma.UserCreateNestedOneWithoutEnrollmentsInput
   quizAttempts?: Prisma.QuizAttemptCreateNestedManyWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentUncheckedCreateWithoutCertificateInput = {
@@ -1115,7 +1201,10 @@ export type EnrollmentUncheckedCreateWithoutCertificateInput = {
   retakeReason?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedCreateNestedManyWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogUncheckedCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentCreateOrConnectWithoutCertificateInput = {
@@ -1150,10 +1239,13 @@ export type EnrollmentUpdateWithoutCertificateInput = {
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
   course?: Prisma.CourseUpdateOneRequiredWithoutEnrollmentsNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutEnrollmentsNestedInput
   quizAttempts?: Prisma.QuizAttemptUpdateManyWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentUncheckedUpdateWithoutCertificateInput = {
@@ -1175,7 +1267,242 @@ export type EnrollmentUncheckedUpdateWithoutCertificateInput = {
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedUpdateManyWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUncheckedUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedUpdateManyWithoutEnrollmentNestedInput
+}
+
+export type EnrollmentCreateWithoutReminderLogsInput = {
+  id?: string
+  status?: $Enums.EnrollmentStatus
+  progress?: number
+  videoPositionSeconds?: number | null
+  score?: number | null
+  startedAt?: Date | string
+  completedAt?: Date | string | null
+  attestedAt?: Date | string | null
+  attestationSignature?: string | null
+  attestationRole?: string | null
+  assignedByAdminId?: string | null
+  lockedAt?: Date | string | null
+  retakeOf?: string | null
+  retakeReason?: string | null
+  accessAt?: Date | string | null
+  dueAt?: Date | string | null
+  assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
+  course: Prisma.CourseCreateNestedOneWithoutEnrollmentsInput
+  user: Prisma.UserCreateNestedOneWithoutEnrollmentsInput
+  quizAttempts?: Prisma.QuizAttemptCreateNestedManyWithoutEnrollmentInput
+  certificate?: Prisma.CertificateCreateNestedOneWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeCreateNestedManyWithoutEnrollmentInput
+}
+
+export type EnrollmentUncheckedCreateWithoutReminderLogsInput = {
+  id?: string
+  userId: string
+  courseId: string
+  status?: $Enums.EnrollmentStatus
+  progress?: number
+  videoPositionSeconds?: number | null
+  score?: number | null
+  startedAt?: Date | string
+  completedAt?: Date | string | null
+  attestedAt?: Date | string | null
+  attestationSignature?: string | null
+  attestationRole?: string | null
+  assignedByAdminId?: string | null
+  lockedAt?: Date | string | null
+  retakeOf?: string | null
+  retakeReason?: string | null
+  assignmentId?: string | null
+  accessAt?: Date | string | null
+  dueAt?: Date | string | null
+  quizAttempts?: Prisma.QuizAttemptUncheckedCreateNestedManyWithoutEnrollmentInput
+  certificate?: Prisma.CertificateUncheckedCreateNestedOneWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedCreateNestedManyWithoutEnrollmentInput
+}
+
+export type EnrollmentCreateOrConnectWithoutReminderLogsInput = {
+  where: Prisma.EnrollmentWhereUniqueInput
+  create: Prisma.XOR<Prisma.EnrollmentCreateWithoutReminderLogsInput, Prisma.EnrollmentUncheckedCreateWithoutReminderLogsInput>
+}
+
+export type EnrollmentUpsertWithoutReminderLogsInput = {
+  update: Prisma.XOR<Prisma.EnrollmentUpdateWithoutReminderLogsInput, Prisma.EnrollmentUncheckedUpdateWithoutReminderLogsInput>
+  create: Prisma.XOR<Prisma.EnrollmentCreateWithoutReminderLogsInput, Prisma.EnrollmentUncheckedCreateWithoutReminderLogsInput>
+  where?: Prisma.EnrollmentWhereInput
+}
+
+export type EnrollmentUpdateToOneWithWhereWithoutReminderLogsInput = {
+  where?: Prisma.EnrollmentWhereInput
+  data: Prisma.XOR<Prisma.EnrollmentUpdateWithoutReminderLogsInput, Prisma.EnrollmentUncheckedUpdateWithoutReminderLogsInput>
+}
+
+export type EnrollmentUpdateWithoutReminderLogsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumEnrollmentStatusFieldUpdateOperationsInput | $Enums.EnrollmentStatus
+  progress?: Prisma.IntFieldUpdateOperationsInput | number
+  videoPositionSeconds?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  score?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  startedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  completedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  attestedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  attestationSignature?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  attestationRole?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  assignedByAdminId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
+  course?: Prisma.CourseUpdateOneRequiredWithoutEnrollmentsNestedInput
+  user?: Prisma.UserUpdateOneRequiredWithoutEnrollmentsNestedInput
+  quizAttempts?: Prisma.QuizAttemptUpdateManyWithoutEnrollmentNestedInput
+  certificate?: Prisma.CertificateUpdateOneWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUpdateManyWithoutEnrollmentNestedInput
+}
+
+export type EnrollmentUncheckedUpdateWithoutReminderLogsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  courseId?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumEnrollmentStatusFieldUpdateOperationsInput | $Enums.EnrollmentStatus
+  progress?: Prisma.IntFieldUpdateOperationsInput | number
+  videoPositionSeconds?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  score?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  startedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  completedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  attestedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  attestationSignature?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  attestationRole?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  assignedByAdminId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  quizAttempts?: Prisma.QuizAttemptUncheckedUpdateManyWithoutEnrollmentNestedInput
+  certificate?: Prisma.CertificateUncheckedUpdateOneWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedUpdateManyWithoutEnrollmentNestedInput
+}
+
+export type EnrollmentCreateWithoutReminderNudgesInput = {
+  id?: string
+  status?: $Enums.EnrollmentStatus
+  progress?: number
+  videoPositionSeconds?: number | null
+  score?: number | null
+  startedAt?: Date | string
+  completedAt?: Date | string | null
+  attestedAt?: Date | string | null
+  attestationSignature?: string | null
+  attestationRole?: string | null
+  assignedByAdminId?: string | null
+  lockedAt?: Date | string | null
+  retakeOf?: string | null
+  retakeReason?: string | null
+  accessAt?: Date | string | null
+  dueAt?: Date | string | null
+  assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
+  course: Prisma.CourseCreateNestedOneWithoutEnrollmentsInput
+  user: Prisma.UserCreateNestedOneWithoutEnrollmentsInput
+  quizAttempts?: Prisma.QuizAttemptCreateNestedManyWithoutEnrollmentInput
+  certificate?: Prisma.CertificateCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogCreateNestedManyWithoutEnrollmentInput
+}
+
+export type EnrollmentUncheckedCreateWithoutReminderNudgesInput = {
+  id?: string
+  userId: string
+  courseId: string
+  status?: $Enums.EnrollmentStatus
+  progress?: number
+  videoPositionSeconds?: number | null
+  score?: number | null
+  startedAt?: Date | string
+  completedAt?: Date | string | null
+  attestedAt?: Date | string | null
+  attestationSignature?: string | null
+  attestationRole?: string | null
+  assignedByAdminId?: string | null
+  lockedAt?: Date | string | null
+  retakeOf?: string | null
+  retakeReason?: string | null
+  assignmentId?: string | null
+  accessAt?: Date | string | null
+  dueAt?: Date | string | null
+  quizAttempts?: Prisma.QuizAttemptUncheckedCreateNestedManyWithoutEnrollmentInput
+  certificate?: Prisma.CertificateUncheckedCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogUncheckedCreateNestedManyWithoutEnrollmentInput
+}
+
+export type EnrollmentCreateOrConnectWithoutReminderNudgesInput = {
+  where: Prisma.EnrollmentWhereUniqueInput
+  create: Prisma.XOR<Prisma.EnrollmentCreateWithoutReminderNudgesInput, Prisma.EnrollmentUncheckedCreateWithoutReminderNudgesInput>
+}
+
+export type EnrollmentUpsertWithoutReminderNudgesInput = {
+  update: Prisma.XOR<Prisma.EnrollmentUpdateWithoutReminderNudgesInput, Prisma.EnrollmentUncheckedUpdateWithoutReminderNudgesInput>
+  create: Prisma.XOR<Prisma.EnrollmentCreateWithoutReminderNudgesInput, Prisma.EnrollmentUncheckedCreateWithoutReminderNudgesInput>
+  where?: Prisma.EnrollmentWhereInput
+}
+
+export type EnrollmentUpdateToOneWithWhereWithoutReminderNudgesInput = {
+  where?: Prisma.EnrollmentWhereInput
+  data: Prisma.XOR<Prisma.EnrollmentUpdateWithoutReminderNudgesInput, Prisma.EnrollmentUncheckedUpdateWithoutReminderNudgesInput>
+}
+
+export type EnrollmentUpdateWithoutReminderNudgesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumEnrollmentStatusFieldUpdateOperationsInput | $Enums.EnrollmentStatus
+  progress?: Prisma.IntFieldUpdateOperationsInput | number
+  videoPositionSeconds?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  score?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  startedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  completedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  attestedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  attestationSignature?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  attestationRole?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  assignedByAdminId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
+  course?: Prisma.CourseUpdateOneRequiredWithoutEnrollmentsNestedInput
+  user?: Prisma.UserUpdateOneRequiredWithoutEnrollmentsNestedInput
+  quizAttempts?: Prisma.QuizAttemptUpdateManyWithoutEnrollmentNestedInput
+  certificate?: Prisma.CertificateUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUpdateManyWithoutEnrollmentNestedInput
+}
+
+export type EnrollmentUncheckedUpdateWithoutReminderNudgesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  courseId?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumEnrollmentStatusFieldUpdateOperationsInput | $Enums.EnrollmentStatus
+  progress?: Prisma.IntFieldUpdateOperationsInput | number
+  videoPositionSeconds?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  score?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  startedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  completedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  attestedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  attestationSignature?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  attestationRole?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  assignedByAdminId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  quizAttempts?: Prisma.QuizAttemptUncheckedUpdateManyWithoutEnrollmentNestedInput
+  certificate?: Prisma.CertificateUncheckedUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUncheckedUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentCreateWithoutQuizAttemptsInput = {
@@ -1194,10 +1521,13 @@ export type EnrollmentCreateWithoutQuizAttemptsInput = {
   retakeOf?: string | null
   retakeReason?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
   course: Prisma.CourseCreateNestedOneWithoutEnrollmentsInput
   user: Prisma.UserCreateNestedOneWithoutEnrollmentsInput
   certificate?: Prisma.CertificateCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentUncheckedCreateWithoutQuizAttemptsInput = {
@@ -1219,7 +1549,10 @@ export type EnrollmentUncheckedCreateWithoutQuizAttemptsInput = {
   retakeReason?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
   certificate?: Prisma.CertificateUncheckedCreateNestedOneWithoutEnrollmentInput
+  reminderLogs?: Prisma.ReminderLogUncheckedCreateNestedManyWithoutEnrollmentInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedCreateNestedManyWithoutEnrollmentInput
 }
 
 export type EnrollmentCreateOrConnectWithoutQuizAttemptsInput = {
@@ -1254,10 +1587,13 @@ export type EnrollmentUpdateWithoutQuizAttemptsInput = {
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
   course?: Prisma.CourseUpdateOneRequiredWithoutEnrollmentsNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutEnrollmentsNestedInput
   certificate?: Prisma.CertificateUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentUncheckedUpdateWithoutQuizAttemptsInput = {
@@ -1279,7 +1615,10 @@ export type EnrollmentUncheckedUpdateWithoutQuizAttemptsInput = {
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   certificate?: Prisma.CertificateUncheckedUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUncheckedUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentCreateManyUserInput = {
@@ -1300,6 +1639,7 @@ export type EnrollmentCreateManyUserInput = {
   retakeReason?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
 }
 
 export type EnrollmentUpdateWithoutUserInput = {
@@ -1318,10 +1658,13 @@ export type EnrollmentUpdateWithoutUserInput = {
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
   course?: Prisma.CourseUpdateOneRequiredWithoutEnrollmentsNestedInput
   quizAttempts?: Prisma.QuizAttemptUpdateManyWithoutEnrollmentNestedInput
   certificate?: Prisma.CertificateUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentUncheckedUpdateWithoutUserInput = {
@@ -1342,8 +1685,11 @@ export type EnrollmentUncheckedUpdateWithoutUserInput = {
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedUpdateManyWithoutEnrollmentNestedInput
   certificate?: Prisma.CertificateUncheckedUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUncheckedUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentUncheckedUpdateManyWithoutUserInput = {
@@ -1364,6 +1710,7 @@ export type EnrollmentUncheckedUpdateManyWithoutUserInput = {
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type EnrollmentCreateManyCourseInput = {
@@ -1384,6 +1731,7 @@ export type EnrollmentCreateManyCourseInput = {
   retakeReason?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
 }
 
 export type EnrollmentUpdateWithoutCourseInput = {
@@ -1402,10 +1750,13 @@ export type EnrollmentUpdateWithoutCourseInput = {
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutEnrollmentsNestedInput
   quizAttempts?: Prisma.QuizAttemptUpdateManyWithoutEnrollmentNestedInput
   certificate?: Prisma.CertificateUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentUncheckedUpdateWithoutCourseInput = {
@@ -1426,8 +1777,11 @@ export type EnrollmentUncheckedUpdateWithoutCourseInput = {
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedUpdateManyWithoutEnrollmentNestedInput
   certificate?: Prisma.CertificateUncheckedUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUncheckedUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentUncheckedUpdateManyWithoutCourseInput = {
@@ -1448,6 +1802,7 @@ export type EnrollmentUncheckedUpdateManyWithoutCourseInput = {
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type EnrollmentCreateManyAssignmentInput = {
@@ -1468,6 +1823,7 @@ export type EnrollmentCreateManyAssignmentInput = {
   retakeOf?: string | null
   retakeReason?: string | null
   accessAt?: Date | string | null
+  dueAt?: Date | string | null
 }
 
 export type EnrollmentUpdateWithoutAssignmentInput = {
@@ -1486,10 +1842,13 @@ export type EnrollmentUpdateWithoutAssignmentInput = {
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   course?: Prisma.CourseUpdateOneRequiredWithoutEnrollmentsNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutEnrollmentsNestedInput
   quizAttempts?: Prisma.QuizAttemptUpdateManyWithoutEnrollmentNestedInput
   certificate?: Prisma.CertificateUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentUncheckedUpdateWithoutAssignmentInput = {
@@ -1510,8 +1869,11 @@ export type EnrollmentUncheckedUpdateWithoutAssignmentInput = {
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedUpdateManyWithoutEnrollmentNestedInput
   certificate?: Prisma.CertificateUncheckedUpdateOneWithoutEnrollmentNestedInput
+  reminderLogs?: Prisma.ReminderLogUncheckedUpdateManyWithoutEnrollmentNestedInput
+  reminderNudges?: Prisma.ReminderNudgeUncheckedUpdateManyWithoutEnrollmentNestedInput
 }
 
 export type EnrollmentUncheckedUpdateManyWithoutAssignmentInput = {
@@ -1532,6 +1894,7 @@ export type EnrollmentUncheckedUpdateManyWithoutAssignmentInput = {
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 
@@ -1541,10 +1904,14 @@ export type EnrollmentUncheckedUpdateManyWithoutAssignmentInput = {
 
 export type EnrollmentCountOutputType = {
   quizAttempts: number
+  reminderLogs: number
+  reminderNudges: number
 }
 
 export type EnrollmentCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   quizAttempts?: boolean | EnrollmentCountOutputTypeCountQuizAttemptsArgs
+  reminderLogs?: boolean | EnrollmentCountOutputTypeCountReminderLogsArgs
+  reminderNudges?: boolean | EnrollmentCountOutputTypeCountReminderNudgesArgs
 }
 
 /**
@@ -1562,6 +1929,20 @@ export type EnrollmentCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.E
  */
 export type EnrollmentCountOutputTypeCountQuizAttemptsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   where?: Prisma.QuizAttemptWhereInput
+}
+
+/**
+ * EnrollmentCountOutputType without action
+ */
+export type EnrollmentCountOutputTypeCountReminderLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.ReminderLogWhereInput
+}
+
+/**
+ * EnrollmentCountOutputType without action
+ */
+export type EnrollmentCountOutputTypeCountReminderNudgesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.ReminderNudgeWhereInput
 }
 
 
@@ -1584,11 +1965,14 @@ export type EnrollmentSelect<ExtArgs extends runtime.Types.Extensions.InternalAr
   retakeReason?: boolean
   assignmentId?: boolean
   accessAt?: boolean
+  dueAt?: boolean
   assignment?: boolean | Prisma.Enrollment$assignmentArgs<ExtArgs>
   course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   quizAttempts?: boolean | Prisma.Enrollment$quizAttemptsArgs<ExtArgs>
   certificate?: boolean | Prisma.Enrollment$certificateArgs<ExtArgs>
+  reminderLogs?: boolean | Prisma.Enrollment$reminderLogsArgs<ExtArgs>
+  reminderNudges?: boolean | Prisma.Enrollment$reminderNudgesArgs<ExtArgs>
   _count?: boolean | Prisma.EnrollmentCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["enrollment"]>
 
@@ -1611,6 +1995,7 @@ export type EnrollmentSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ex
   retakeReason?: boolean
   assignmentId?: boolean
   accessAt?: boolean
+  dueAt?: boolean
   assignment?: boolean | Prisma.Enrollment$assignmentArgs<ExtArgs>
   course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1635,6 +2020,7 @@ export type EnrollmentSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ex
   retakeReason?: boolean
   assignmentId?: boolean
   accessAt?: boolean
+  dueAt?: boolean
   assignment?: boolean | Prisma.Enrollment$assignmentArgs<ExtArgs>
   course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1659,15 +2045,18 @@ export type EnrollmentSelectScalar = {
   retakeReason?: boolean
   assignmentId?: boolean
   accessAt?: boolean
+  dueAt?: boolean
 }
 
-export type EnrollmentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "courseId" | "status" | "progress" | "videoPositionSeconds" | "score" | "startedAt" | "completedAt" | "attestedAt" | "attestationSignature" | "attestationRole" | "assignedByAdminId" | "lockedAt" | "retakeOf" | "retakeReason" | "assignmentId" | "accessAt", ExtArgs["result"]["enrollment"]>
+export type EnrollmentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "courseId" | "status" | "progress" | "videoPositionSeconds" | "score" | "startedAt" | "completedAt" | "attestedAt" | "attestationSignature" | "attestationRole" | "assignedByAdminId" | "lockedAt" | "retakeOf" | "retakeReason" | "assignmentId" | "accessAt" | "dueAt", ExtArgs["result"]["enrollment"]>
 export type EnrollmentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   assignment?: boolean | Prisma.Enrollment$assignmentArgs<ExtArgs>
   course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   quizAttempts?: boolean | Prisma.Enrollment$quizAttemptsArgs<ExtArgs>
   certificate?: boolean | Prisma.Enrollment$certificateArgs<ExtArgs>
+  reminderLogs?: boolean | Prisma.Enrollment$reminderLogsArgs<ExtArgs>
+  reminderNudges?: boolean | Prisma.Enrollment$reminderNudgesArgs<ExtArgs>
   _count?: boolean | Prisma.EnrollmentCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type EnrollmentIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -1689,6 +2078,8 @@ export type $EnrollmentPayload<ExtArgs extends runtime.Types.Extensions.Internal
     user: Prisma.$UserPayload<ExtArgs>
     quizAttempts: Prisma.$QuizAttemptPayload<ExtArgs>[]
     certificate: Prisma.$CertificatePayload<ExtArgs> | null
+    reminderLogs: Prisma.$ReminderLogPayload<ExtArgs>[]
+    reminderNudges: Prisma.$ReminderNudgePayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -1709,6 +2100,7 @@ export type $EnrollmentPayload<ExtArgs extends runtime.Types.Extensions.Internal
     retakeReason: string | null
     assignmentId: string | null
     accessAt: Date | null
+    dueAt: Date | null
   }, ExtArgs["result"]["enrollment"]>
   composites: {}
 }
@@ -2108,6 +2500,8 @@ export interface Prisma__EnrollmentClient<T, Null = never, ExtArgs extends runti
   user<T extends Prisma.UserDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.UserDefaultArgs<ExtArgs>>): Prisma.Prisma__UserClient<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   quizAttempts<T extends Prisma.Enrollment$quizAttemptsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Enrollment$quizAttemptsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$QuizAttemptPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   certificate<T extends Prisma.Enrollment$certificateArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Enrollment$certificateArgs<ExtArgs>>): Prisma.Prisma__CertificateClient<runtime.Types.Result.GetResult<Prisma.$CertificatePayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+  reminderLogs<T extends Prisma.Enrollment$reminderLogsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Enrollment$reminderLogsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ReminderLogPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  reminderNudges<T extends Prisma.Enrollment$reminderNudgesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Enrollment$reminderNudgesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ReminderNudgePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -2155,6 +2549,7 @@ export interface EnrollmentFieldRefs {
   readonly retakeReason: Prisma.FieldRef<"Enrollment", 'String'>
   readonly assignmentId: Prisma.FieldRef<"Enrollment", 'String'>
   readonly accessAt: Prisma.FieldRef<"Enrollment", 'DateTime'>
+  readonly dueAt: Prisma.FieldRef<"Enrollment", 'DateTime'>
 }
     
 
@@ -2615,6 +3010,54 @@ export type Enrollment$certificateArgs<ExtArgs extends runtime.Types.Extensions.
    */
   include?: Prisma.CertificateInclude<ExtArgs> | null
   where?: Prisma.CertificateWhereInput
+}
+
+/**
+ * Enrollment.reminderLogs
+ */
+export type Enrollment$reminderLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the ReminderLog
+   */
+  select?: Prisma.ReminderLogSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the ReminderLog
+   */
+  omit?: Prisma.ReminderLogOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.ReminderLogInclude<ExtArgs> | null
+  where?: Prisma.ReminderLogWhereInput
+  orderBy?: Prisma.ReminderLogOrderByWithRelationInput | Prisma.ReminderLogOrderByWithRelationInput[]
+  cursor?: Prisma.ReminderLogWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.ReminderLogScalarFieldEnum | Prisma.ReminderLogScalarFieldEnum[]
+}
+
+/**
+ * Enrollment.reminderNudges
+ */
+export type Enrollment$reminderNudgesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the ReminderNudge
+   */
+  select?: Prisma.ReminderNudgeSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the ReminderNudge
+   */
+  omit?: Prisma.ReminderNudgeOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.ReminderNudgeInclude<ExtArgs> | null
+  where?: Prisma.ReminderNudgeWhereInput
+  orderBy?: Prisma.ReminderNudgeOrderByWithRelationInput | Prisma.ReminderNudgeOrderByWithRelationInput[]
+  cursor?: Prisma.ReminderNudgeWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.ReminderNudgeScalarFieldEnum | Prisma.ReminderNudgeScalarFieldEnum[]
 }
 
 /**

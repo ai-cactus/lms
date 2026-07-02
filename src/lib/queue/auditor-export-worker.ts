@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { AUDITOR_EXPORT_QUEUE_NAME } from './auditor-export-queue';
 import { logger } from '@/lib/logger';
 import { Prisma } from '@/generated/prisma/browser';
+import { startedAtWhere, toReportPeriod } from '@/lib/audit-reports/date-range';
 
 export function getExportWorker() {
   const globalAny = globalThis as unknown as { __auditorWorker?: Worker };
@@ -19,13 +20,22 @@ export function getExportWorker() {
         dbJobId,
         scope = 'org',
         scopeId,
+        from,
+        to,
       } = job.data as {
         organizationId: string;
         dbJobId: string;
-        scope?: 'org' | 'course' | 'staff';
+        scope?: 'org' | 'course' | 'staff' | 'all-courses' | 'all-staff';
         scopeId?: string;
+        from?: string | null;
+        to?: string | null;
       };
       if (!organizationId) throw new Error('organizationId missing');
+
+      // Date-range predicate applied to every enrollment query, plus the
+      // JSON-serializable period surfaced in the report header.
+      const dateWhere = startedAtWhere({ from, to });
+      const period = toReportPeriod({ from, to });
 
       const updateDbJob = async (prog: number, message: string) => {
         if (dbJobId) {
@@ -58,8 +68,15 @@ export function getExportWorker() {
       await updateDbJob(15, 'Fetching records...');
       await new Promise((r) => setTimeout(r, 600));
 
-      const { buildCourseReport, buildStaffReport, buildOrgReport } =
-        await import('@/lib/audit-reports/report-data');
+      const {
+        buildCourseReport,
+        buildStaffReport,
+        buildOrgReport,
+        buildAllCoursesReport,
+        buildAllStaffReport,
+      } = await import('@/lib/audit-reports/report-data');
+
+      const isCompleted = (status: string) => ['completed', 'attested'].includes(status);
 
       let result;
 
@@ -72,7 +89,7 @@ export function getExportWorker() {
               include: { quiz: { include: { _count: { select: { questions: true } } } } },
             },
             enrollments: {
-              where: { userId: { in: orgUserIds } },
+              where: { userId: { in: orgUserIds }, ...dateWhere },
               include: { user: { include: { profile: true } }, quizAttempts: true },
             },
           },
@@ -112,6 +129,7 @@ export function getExportWorker() {
         result = buildCourseReport({
           orgName,
           generatedAt: new Date(),
+          period,
           course: {
             title: course.title,
             category: course.category,
@@ -141,6 +159,7 @@ export function getExportWorker() {
           include: {
             profile: true,
             enrollments: {
+              where: dateWhere,
               include: {
                 course: { select: { title: true, type: true, category: true } },
                 quizAttempts: true,
@@ -157,6 +176,7 @@ export function getExportWorker() {
         result = buildStaffReport({
           orgName,
           generatedAt: new Date(),
+          period,
           staff: {
             name: staff.profile?.fullName || staff.email.split('@')[0],
             roleLabel: staff.profile?.jobTitle || staff.role,
@@ -177,11 +197,99 @@ export function getExportWorker() {
         // scopeId was missing for a non-org scope — refuse rather than silently
         // producing an org-wide report.
         throw new Error(`scopeId required for ${scope} scope`);
+      } else if (scope === 'all-courses') {
+        const [courses, totalStaff] = await Promise.all([
+          prisma.course.findMany({
+            where: { createdBy: { in: orgUserIds }, status: 'published' },
+            select: {
+              title: true,
+              category: true,
+              type: true,
+              status: true,
+              enrollments: {
+                where: { userId: { in: orgUserIds }, ...dateWhere },
+                select: { status: true },
+              },
+            },
+            orderBy: { title: 'asc' },
+          }),
+          prisma.user.count({ where: { organizationId, role: 'worker' } }),
+        ]);
+
+        await updateDbJob(60, 'Aggregating course activity...');
+        await new Promise((r) => setTimeout(r, 600));
+
+        const totalEnrollments = courses.reduce((sum, c) => sum + c.enrollments.length, 0);
+        const completedEnrollments = courses.reduce(
+          (sum, c) => sum + c.enrollments.filter((e) => isCompleted(e.status)).length,
+          0,
+        );
+        const completionRate =
+          totalEnrollments > 0 ? Math.round((completedEnrollments / totalEnrollments) * 100) : 0;
+
+        result = buildAllCoursesReport({
+          orgName,
+          generatedAt: new Date(),
+          period,
+          summary: { totalCourses: courses.length, totalStaff, completionRate },
+          courses: courses.map((c) => ({
+            courseTitle: c.title,
+            category: c.category,
+            type: c.type,
+            status: c.status,
+            assignedStaff: c.enrollments.length,
+            completed: c.enrollments.filter((e) => isCompleted(e.status)).length,
+          })),
+        });
+      } else if (scope === 'all-staff') {
+        const [workers, totalCourses] = await Promise.all([
+          prisma.user.findMany({
+            where: { organizationId, role: 'worker' },
+            select: {
+              email: true,
+              role: true,
+              profile: { select: { fullName: true, jobTitle: true } },
+              enrollments: {
+                where: dateWhere,
+                select: { status: true, completedAt: true },
+                orderBy: { startedAt: 'desc' },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+          }),
+          prisma.course.count({ where: { createdBy: { in: orgUserIds }, status: 'published' } }),
+        ]);
+
+        await updateDbJob(60, 'Aggregating staff activity...');
+        await new Promise((r) => setTimeout(r, 600));
+
+        const totalEnrollments = workers.reduce((sum, w) => sum + w.enrollments.length, 0);
+        const completedEnrollments = workers.reduce(
+          (sum, w) => sum + w.enrollments.filter((e) => isCompleted(e.status)).length,
+          0,
+        );
+        const completionRate =
+          totalEnrollments > 0 ? Math.round((completedEnrollments / totalEnrollments) * 100) : 0;
+
+        result = buildAllStaffReport({
+          orgName,
+          generatedAt: new Date(),
+          period,
+          summary: { totalCourses, totalStaff: workers.length, completionRate },
+          staff: workers.map((w) => ({
+            staffName: w.profile?.fullName || w.email.split('@')[0],
+            roleLabel: w.profile?.jobTitle || w.role,
+            email: w.email,
+            coursesAssigned: w.enrollments.length,
+            coursesCompleted: w.enrollments.filter((e) => isCompleted(e.status)).length,
+            lastActivity: w.enrollments.find((e) => e.completedAt)?.completedAt ?? null,
+          })),
+        });
       } else {
         // org scope
         const [enrollments, totalCourses, totalStaff] = await Promise.all([
           prisma.enrollment.findMany({
-            where: { userId: { in: orgUserIds } },
+            where: { userId: { in: orgUserIds }, ...dateWhere },
             include: {
               user: { include: { profile: { select: { fullName: true } } } },
               course: { select: { title: true, category: true } },
@@ -204,6 +312,7 @@ export function getExportWorker() {
         result = buildOrgReport({
           orgName,
           generatedAt: new Date(),
+          period,
           summary: { totalCourses, totalStaff, completionRate },
           enrollments: enrollments.map((en) => ({
             staffName: en.user.profile?.fullName || en.user.email,

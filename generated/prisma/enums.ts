@@ -82,6 +82,26 @@ export const EnrollmentStatus = {
 export type EnrollmentStatus = (typeof EnrollmentStatus)[keyof typeof EnrollmentStatus]
 
 
+export const ReminderStage = {
+  INITIAL_LAUNCH: 'INITIAL_LAUNCH',
+  FRIENDLY_REMINDER: 'FRIENDLY_REMINDER',
+  URGENT_REMINDER: 'URGENT_REMINDER',
+  DAY_OF_DEADLINE: 'DAY_OF_DEADLINE',
+  GRACE_SOFT_ESCALATION: 'GRACE_SOFT_ESCALATION',
+  HARD_ESCALATION: 'HARD_ESCALATION'
+} as const
+
+export type ReminderStage = (typeof ReminderStage)[keyof typeof ReminderStage]
+
+
+export const ReminderNudgeKind = {
+  WORKER_RETAKE: 'WORKER_RETAKE',
+  ADMIN_REASSIGN: 'ADMIN_REASSIGN'
+} as const
+
+export type ReminderNudgeKind = (typeof ReminderNudgeKind)[keyof typeof ReminderNudgeKind]
+
+
 export const JobStatus = {
   queued: 'queued',
   processing: 'processing',

@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma';
 import { sendInviteEmail } from '@/lib/email';
 import type { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
+import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 
 // Define types for the data we expect
 // Note: We are using 'any' for simplicity here to match the flexible structure,
@@ -128,6 +129,7 @@ export async function completeOnboarding(data: OnboardingData) {
           zipCode: step1.zipCode,
           city: step1.city,
           state: step1.state,
+          timezone: deriveTimezoneFromState(step1.state),
           licenseNumber: step2?.licenseNumber,
           programServices: step3?.services || [], // Mapped from 'services' in frontend
         },

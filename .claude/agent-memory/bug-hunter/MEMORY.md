@@ -4,3 +4,5 @@
 - [Storage/sweep test files and patterns](project-storage-sweep-tests.md) — abort-cleanup route, GCS/MinIO list, listFiles dual-backend, runVideoSweep/getVideoSweepWorker tests
 - [Resumable upload test patterns](resumable-upload-tests.md) — 3 new test files for GCS upload feature; JSDoc */  gotcha; reject-before-runAllTimers pattern; e2e skipped (system admin cookie + GCS stub impractical)
 - [RBAC proxy bug — admin login broken](project-rbac-proxy-bug.md) — proxy.ts requiredRole:'admin' rejects all post-migration roles; fix: use ADMIN_ROLES includes check
+- [Reminders engine test patterns](reminders-test-patterns.md) — DST midnight gotcha, P2002 mock class pattern, enrollment.findMany call ordering in sweep, fake timers for compliance
+- [QA wave 1 regression patterns](qa-wave1-regression-patterns.md) — billing double-charge/webhook guards, course-ai-v4.6 settle-race testing, PHI fail-closed, pdf-parse import crash, async server component testing

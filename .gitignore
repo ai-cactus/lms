@@ -57,12 +57,18 @@ Lms Feedback 23_02_2026.md
 /qa-reports/
 # playwright-cli transient working dir (snapshots, console/network dumps)
 .playwright-cli/
+.pla
 todo.md
 vm-setup.md
 #docs/new-prompt-25-02.md
 plans/
 commands
 docs/hack-check.md
+docs/Reminders_and_Escalations.csv:Zone.Identifier
+docs/Reminders_and_Escalations.csv
+# QA report exports (PDF copies of the gitignored qa-reports/) — kept locally, never committed
+docs/Theraptly-LMS-Production-QA-Report.pdf
+docs/*QA-Report*.pdf
 
 # Playwright MCP run artifacts
 .playwright-mcp/

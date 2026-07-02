@@ -11,6 +11,7 @@ const {
   mockAssignmentCreate,
   mockEnrollmentFindFirst,
   mockEnrollmentCreate,
+  mockReminderLogCreate,
   mockNotificationCreate,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
@@ -23,6 +24,7 @@ const {
   mockAssignmentCreate: vi.fn(),
   mockEnrollmentFindFirst: vi.fn(),
   mockEnrollmentCreate: vi.fn(),
+  mockReminderLogCreate: vi.fn(),
   mockNotificationCreate: vi.fn(),
 }));
 
@@ -35,13 +37,14 @@ vi.mock('@/lib/prisma', () => {
     enrollment: { findFirst: mockEnrollmentFindFirst, create: mockEnrollmentCreate },
     // Added in facility split: enrollUsers resolves facilityId for new users.
     facility: { findFirst: vi.fn().mockResolvedValue(null) },
+    reminderLog: { create: mockReminderLogCreate },
   };
   return { prisma, default: prisma };
 });
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));
-vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
+vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock('./notifications', () => ({
   createNotification: mockNotificationCreate,
   notifyOrganizationAdmins: vi.fn(),
@@ -49,6 +52,7 @@ vi.mock('./notifications', () => ({
 vi.mock('@/lib/email', () => ({
   sendCourseInviteEmail: vi.fn(),
   sendCourseEnrollmentEmail: vi.fn(),
+  sendCourseLaunchEmail: vi.fn(),
 }));
 
 import { enrollUsers } from './enrollment';
@@ -75,6 +79,7 @@ beforeEach(() => {
   mockAssignmentCreate.mockResolvedValue({ id: 'assignment-1' });
   mockEnrollmentFindFirst.mockResolvedValue(null);
   mockEnrollmentCreate.mockResolvedValue({ id: 'enroll-1' });
+  mockReminderLogCreate.mockResolvedValue({ id: 'log-1' });
   mockOfferingFindUnique.mockResolvedValue(null);
   mockOfferingUpsert.mockResolvedValue({ id: 'offering-1' });
 });
@@ -84,7 +89,8 @@ describe('enrollUsers assignment batch', () => {
     await enrollUsers('course-1', [{ email: 'w@x.com' }], {
       scheduleAt: '2026-09-12T00:00:00.000Z',
       renewalCycle: 'annual',
-      reminders: [{ offsetMinutes: 30 }],
+      remindersEnabled: true,
+      stages: [{ stage: 'FRIENDLY_REMINDER', offsetDays: -14, enabled: true, channels: ['email'] }],
     });
 
     expect(mockAssignmentCreate).toHaveBeenCalledWith(
@@ -93,7 +99,12 @@ describe('enrollUsers assignment batch', () => {
           organizationId: 'org-1',
           courseId: 'course-1',
           renewalCycle: 'annual',
-          reminders: { create: [{ offsetMinutes: 30, channel: 'email' }] },
+          remindersEnabled: true,
+          reminderStages: {
+            create: [
+              { stage: 'FRIENDLY_REMINDER', offsetDays: -14, enabled: true, channels: ['email'] },
+            ],
+          },
         }),
       }),
     );

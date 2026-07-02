@@ -27,6 +27,7 @@ model User {
   emailVerified         Boolean           @default(false) @map("email_verified")
   mfaEnabled            Boolean           @default(false) @map("mfa_enabled")
   mfaVerifiedAt         DateTime?         @map("mfa_verified_at")
+  managerId             String?           @map("manager_id")
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
   courses               Course[]
@@ -37,6 +38,8 @@ model User {
   profile               Profile?
   organization          Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   facility              Facility?         @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+  manager               User?             @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports               User[]            @relation("UserManager")
   mfaFactors            MfaFactor[]
   mfaRecoveryCodes      MfaRecoveryCode[]
   certificates          Certificate[]
@@ -44,6 +47,7 @@ model User {
 
   @@index([organizationId])
   @@index([facilityId])
+  @@index([managerId])
   @@map("users")
 }
 

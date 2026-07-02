@@ -129,6 +129,6 @@ export type EnrollmentWithRelations = Prisma.EnrollmentGetPayload<{
 // queries aren't forced to include the assignment relation.
 export type EnrollmentWithAssignment = Prisma.EnrollmentGetPayload<{
   include: {
-    assignment: { include: { reminders: true } };
+    assignment: { include: { reminderStages: true } };
   };
 }>;

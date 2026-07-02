@@ -6,6 +6,7 @@ import { can } from '@/lib/rbac/permissions';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
+import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 
 interface OrganizationUpdateData {
   name?: string;
@@ -20,6 +21,7 @@ interface OrganizationUpdateData {
   state?: string;
   zipCode?: string;
   city?: string;
+  timezone?: string;
   licenseNumber?: string;
   isHipaaCompliant?: boolean;
   // Services fields (Step 3 data)
@@ -87,6 +89,7 @@ export async function updateOrganization(data: OrganizationUpdateData) {
           country: data.country,
           state: data.state,
           zipCode: data.zipCode,
+          timezone: data.timezone,
           licenseNumber: data.licenseNumber,
           programServices: data.programServices ?? undefined,
           complianceDocumentUrl: data.complianceDocumentUrl,
@@ -284,7 +287,7 @@ export async function createOrganization(data: OrganizationCreationData) {
         },
       });
 
-      // The organisation's first facility carries the location fields.
+      // The organisation's first facility carries the location + timezone fields.
       const facility = await tx.facility.create({
         data: {
           organizationId: org.id,
@@ -295,6 +298,7 @@ export async function createOrganization(data: OrganizationCreationData) {
           address: data.streetAddress,
           zipCode: data.zipCode,
           state: data.state,
+          timezone: deriveTimezoneFromState(data.state),
         },
       });
 

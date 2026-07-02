@@ -63,9 +63,10 @@ describe('can() — owner (everything including billing)', () => {
     const actions = ['create', 'read', 'edit', 'delete'] as const;
     for (const resource of RESOURCES) {
       for (const action of actions) {
-        expect(can('owner', `${resource}.${action}`), `owner should have ${resource}.${action}`).toBe(
-          true,
-        );
+        expect(
+          can('owner', `${resource}.${action}`),
+          `owner should have ${resource}.${action}`,
+        ).toBe(true);
       }
     }
   });
