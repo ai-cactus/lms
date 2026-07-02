@@ -6,8 +6,10 @@
 - [Production Env Access & Signup Flow](production-env-access.md) — training.theraptly.com, 3-step email signup, verification-gated login, unverified login copy issue
 - [Document Hub Patterns](document-hub-patterns.md) — upload/PHI-scan/viewer/rename/delete flow, PDF/DOCX fixture generation via Node when Python tooling absent, silent PHI-scan feedback gap
 - [Courses Billing Gate](courses-billing-gate.md) — custom course creation needs a paid plan (no free tier); video-course catalog is a non-gated substitute for assign/view testing
-- [Billing & Subscription Patterns](billing-subscription-patterns.md) — CRITICAL: upgrading a plan creates a duplicate Stripe subscription (double-billing bug); Stripe test-mode verification, portal access, card-field locators
-- [Staff Management Patterns](staff-management-patterns.md) — no CSV import in ongoing UI (only risky onboarding-wizard path), no real staff/worker role distinction ("Staff Member" = free-text Job Title), pending-vs-active row behavior
-- [Audit Reports Patterns](audit-reports-patterns.md) — Courses/Staff "Export all" silently uses org scope (mislabeled), NO date-range filtering exists, audit scope is enrollment-only (no docs/invites/billing), duplicate-download bug
-- [Worker Invite/Join Flow](worker-invite-join-flow.md) — /join/[token] 404s ambiguously for bad/expired/already-accepted invites; Phase 6 (2026-07-01) blocked by stale invite link, always use a freshly-issued link
+- [Billing & Subscription Patterns](billing-subscription-patterns.md) — duplicate-subscription bug FIXED 2026-07-02; Stripe test-mode verification, portal access, card-field locators
+- [Staff Management Patterns](staff-management-patterns.md) — no real staff/worker role distinction ("Staff Member" = free-text Job Title); note CSV import now appears in ongoing UI as of 2026-07-02 (unverified, was THER-009)
+- [Audit Reports Patterns](audit-reports-patterns.md) — export-scope bug + missing date-range filter + duplicate-download bug all FIXED 2026-07-02; feature map still accurate
+- [Worker Invite/Join Flow](worker-invite-join-flow.md) — ambiguous-404 FIXED 2026-07-02 (consumed→friendly page, expired→badge+Resend, unknown→404); always use a freshly-issued link for historical context
 - [Microsoft SSO Signup Flow](microsoft-sso-signup-flow.md) — tenant=common accepts personal accounts; KNOWN BUG: /signup/role-selection bounces authenticated OAuth users back to public /signup instead of dashboard
+- [Local Dev Env Setup](local-dev-env-setup.md) — Redis/Stripe-webhook/Vertex-AI gotchas on localhost:3000; how to simulate a signed Stripe webhook; diagnosed Vertex AI IAM/network failures (2026-07-02)
+- [Watch-Through Gate Testing](watch-through-gate-testing.md) — how to seed a real playable video lesson without AI/video-catalog, and the seek-block test matrix that rigorously proves the gate is not bypassable

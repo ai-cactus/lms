@@ -234,7 +234,7 @@ export default function CourseWizard() {
           setAnalysisProgress(100);
 
           if (result.error) {
-            logger.error({ msg: 'Analysis failed:', err: result.error });
+            logger.error({ msg: '[course] Stored document analysis failed', reason: result.error });
           } else {
             setFormData((prev) => ({
               ...prev,
@@ -410,7 +410,7 @@ export default function CourseWizard() {
       setAnalysisProgress(100);
 
       if (result.error) {
-        logger.error({ msg: 'Analysis Error:', err: result.error });
+        logger.error({ msg: '[course] Document analysis failed', reason: result.error });
         setUploadError(result.error);
       } else {
         setFormData((prev) => ({

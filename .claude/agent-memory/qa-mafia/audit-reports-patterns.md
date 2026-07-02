@@ -1,9 +1,13 @@
 ---
 name: audit-reports-patterns
-description: Audit Reports feature map, export scope bug (Courses/Staff "Export all" silently use org scope), no date-range filtering, narrow audit scope vs marketing copy
+description: Audit Reports feature map; the export-scope bug and missing date-range filter below are FIXED as of 2026-07-02 (fix/qa-report-001) — see the update note first
 metadata:
   type: reference
 ---
+
+**FIXED as of 2026-07-02 (branch `fix/qa-report-001`, tickets THER-004/THER-005) — re-verified live with real data.** Courses tab "Export all" now sends `{"scope":"all-courses",...}` and Staff tab sends `{"scope":"all-staff",...}` — genuinely distinct from each other and from the generic org export; the resulting PDFs have different headings and different table columns (Courses: Course/Category/Type/Staff/Completed/Completion; Staff: Staff/Role/Assigned/Completed/Completion/Last Activity) and are NOT byte-identical. A date-range control now exists ("Filter by date range" — presets Last 7/30/90 days + All time, plus a custom From/To calendar) and correctly filters BOTH the on-screen tables (confirmed: an out-of-range custom period changed a worker's on-screen "Courses Assigned" from 1→0 live) AND exports (the export request body gained `from`/`to` fields, and the downloaded PDF showed a "Period: ..." line in its header with matching zeroed-out content for the out-of-range case). The duplicate-download bug (3 toasts/requests per click) also appears resolved — only one download fired per export click in this retest. Full write-up: `qa-reports/feat-qa-002-validation.md` (Story 4). The historical description below (2026-07-01, pre-fix) is kept for context; don't treat it as current behavior.
+
+**HISTORICAL — pre-fix state, confirmed 2026-07-01, RESOLVED 2026-07-02.**
 
 **Location:** `/dashboard/audit-reports` (sidebar "Audit Reports", under PERFORMANCE). 4 tabs: **Overview** (stat tiles + "Recent Assigned Courses" panel with its own Export button), **Courses** (searchable table, "Export all" — table only shows published/custom org-authored courses, NOT video-catalog assignments, so it reads "No published courses" even when a video course is actively assigned), **Staff** (a "Staff Progress" table with a **per-row Export button** + a top-level "Export all"), **Export** ("System Bulk Export" — "Export PDF" primary action, plus CSV/DOCX secondary links, plus a "Recent exports" re-download list).
 
@@ -13,7 +17,7 @@ metadata:
 
 **Audit export scope is much narrower than the feature's own marketing copy implies.** The Export tab's own description says "Compiles all staffing, compliance, and material evidence into a formatted PDF," but every export tested (org-wide, worker-specific, mislabeled courses/staff) contains ONLY course-enrollment/completion records (Staff, Course, Category, Status, Score, Assigned, Completed) — no document uploads, no staff invite/revocation history, no billing/subscription events, despite this org having a rich history of exactly those activities. If a story expects a comprehensive audit trail, expect it to fail — only training/enrollment data is actually captured.
 
-**Reproducible duplicate-download bug:** a single click on ANY export button reliably fires 3 "report is ready / downloaded" toast notifications and 3 `GET .../download?format=pdf` requests — but only the 3rd succeeds; the first 2 fail with `net::ERR_ABORTED`. All 3 toasts still claim success. Net effect: one file actually lands, but the UI is confusingly noisy about it. Worth re-checking if this feature gets touched again.
+**Reproducible duplicate-download bug (2026-07-01) — FIXED 2026-07-02, see update note at top.** Was: a single click on ANY export button reliably fired 3 "report is ready / downloaded" toast notifications and 3 `GET .../download?format=pdf` requests, only the 3rd succeeding.
 
 **Export formats:** PDF (primary "Export PDF" button), CSV and DOCX (secondary links on the Export tab, and also appear per-export in "Need another format?"). PDF and CSV content were both verified accurate and mutually consistent (matching worker email, course name, category, status, and an ISO-formatted "Date Assigned" timestamp) wherever the scope itself was correct (i.e. for the per-worker export). Reading a downloaded PDF: use the `Read` tool directly on the `.pdf` path in `.playwright-cli/` (playwright-cli's download event log gives the exact local path) — it renders both extracted text and a page image.
 

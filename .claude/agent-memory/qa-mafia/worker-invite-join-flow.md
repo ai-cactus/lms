@@ -1,9 +1,13 @@
 ---
 name: worker-invite-join-flow
-description: Worker invite/join route logic, 404 failure mode, and Phase 6 blocker (2026-07-01)
+description: Worker invite/join route logic; the ambiguous-404 issue below is FIXED as of 2026-07-02 (fix/qa-report-001) — see the update note first
 metadata:
   type: project
 ---
+
+**FIXED as of 2026-07-02 (branch `fix/qa-report-001`, ticket THER-007) — re-verified live end-to-end.** `/join/[token]` now disambiguates its states: an **already-consumed** invite shows a friendly "This invite has already been used — An account has already been created with this invitation. Please log in to continue." page with a "Go to login" link (NOT a bare 404). A genuinely **unknown/garbage token** still correctly shows the generic "Page Not Found" 404 — the two are now visually and textually distinct. On the admin side, Staff Management now shows an explicit **"Expired" / "Expired Invite"** badge for expired invites (confirmed by manually setting `expires_at` to the past), and every pending/expired row's "Row actions" menu now offers **"Resend Invite"** and **"Copy invite link"** in addition to "Revoke Invite" — Resend mints a fresh token + future `expires_at` and the new link resolves correctly. Full write-up: `qa-reports/feat-qa-002-validation.md` (Story 5). The historical notes below (2026-07-01, pre-fix) are kept for context/regression reference; don't treat the "ambiguous 404" framing as current behavior.
+
+**HISTORICAL — pre-fix state, confirmed 2026-07-01, RESOLVED 2026-07-02.**
 
 **Route:** `/join/[token]` (`src/app/join/[token]/page.tsx`) — server component does `prisma.invite.findFirst({ where: { token, status: 'pending' } })`, joined with `organization`. Calls Next's `notFound()` (generic 404 page, not a custom "invalid/expired invite" screen) whenever the invite isn't found, isn't `status: 'pending'`, or `expiresAt` has passed. So a 404 on this route is **ambiguous by design** — it collapses "bad token", "already accepted", and "expired" into the same blank 404, with no distinguishing UI copy.
 
