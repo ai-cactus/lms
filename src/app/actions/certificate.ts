@@ -89,7 +89,7 @@ export async function issueCertificate(enrollmentId: string) {
       enrollmentId: enrollment.id,
       userId: enrollment.userId,
       courseId: enrollment.courseId,
-      score: enrollment.score || 100,
+      score: enrollment.score ?? 100,
       pdfStoragePath: uploadResult.storageUri,
       pdfGeneratedAt: new Date(),
       issuedAt: issueDate,

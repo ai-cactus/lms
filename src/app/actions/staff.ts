@@ -10,7 +10,7 @@ import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 
 export async function getStaffDetails(userId: string) {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
 
@@ -44,6 +44,16 @@ export async function getStaffDetails(userId: string) {
     });
 
     if (!user) return null;
+
+    // Tenant isolation: an admin may only view users that belong to their own org.
+    if (user.organizationId !== session.user.organizationId) {
+      logger.warn({
+        msg: '[staff] Cross-tenant staff detail access blocked',
+        userId: session.user.id,
+        targetUserId: userId,
+      });
+      return null;
+    }
 
     // Calculate Stats
     const totalCourses = user.enrollments.length || 0;
@@ -256,7 +266,7 @@ export async function setStaffManager(
 
 export async function getEnrollmentQuizResult(enrollmentId: string) {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
 
@@ -286,6 +296,18 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
     });
 
     if (!enrollment || enrollment.quizAttempts.length === 0) {
+      return null;
+    }
+
+    // Tenant isolation: an admin may only view quiz results for enrollments that
+    // belong to a user in their own organization — never expose correct answers
+    // or worker identity across tenants.
+    if (enrollment.user.organizationId !== session.user.organizationId) {
+      logger.warn({
+        msg: '[staff] Cross-tenant quiz result access blocked',
+        userId: session.user.id,
+        enrollmentId,
+      });
       return null;
     }
 

@@ -48,7 +48,6 @@ export default async function VerifyCertificatePage(props: { params: Promise<{ i
       course: { select: { title: true } },
       user: {
         select: {
-          email: true,
           profile: { select: { fullName: true } },
           organization: { select: { name: true } },
         },
@@ -76,7 +75,7 @@ export default async function VerifyCertificatePage(props: { params: Promise<{ i
             <div className="px-6 py-2">
               <Field
                 label="Recipient"
-                value={certificate.user.profile?.fullName || certificate.user.email}
+                value={certificate.user.profile?.fullName || 'Certificate holder'}
               />
               <Field label="Course" value={certificate.course.title} />
               {certificate.user.organization?.name ? (

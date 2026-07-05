@@ -7,6 +7,9 @@
  *   - Status reset to 'pending' so an expired invite becomes usable again.
  *   - An already-accepted invite is not silently "resent" — it returns a
  *     distinct, non-throwing error instead.
+ *
+ * F-009 / F-010 regression tests (org isolation) for getStaffDetails and
+ * getEnrollmentQuizResult — see their own describe blocks below.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -16,6 +19,7 @@ const { mockAuth, prismaMock, mockSendInviteEmail } = vi.hoisted(() => ({
   prismaMock: {
     user: { findUnique: vi.fn() },
     invite: { findUnique: vi.fn(), update: vi.fn() },
+    enrollment: { findUnique: vi.fn() },
   },
   mockSendInviteEmail: vi.fn(),
 }));
@@ -29,7 +33,7 @@ vi.mock('@/lib/logger', () => ({
 // resendInvite dynamically imports '@/lib/email' — mock the module path.
 vi.mock('@/lib/email', () => ({ sendInviteEmail: mockSendInviteEmail }));
 
-import { resendInvite } from './staff';
+import { resendInvite, getStaffDetails, getEnrollmentQuizResult } from './staff';
 
 const ADMIN = { role: 'admin', organizationId: 'org-1' };
 const PENDING_INVITE = {
@@ -142,5 +146,167 @@ describe('resendInvite — happy path (token + expiry regeneration, status reset
     const secondToken = prismaMock.invite.update.mock.calls[0][0].data.token;
 
     expect(secondToken).not.toBe(firstToken);
+  });
+});
+
+/**
+ * F-009 regression tests for getStaffDetails — cross-tenant isolation.
+ *
+ * Previously, any authenticated admin could pull another organization's
+ * worker details (courses, progress, manager) simply by knowing/guessing a
+ * user id, because the lookup never compared the target's organizationId to
+ * the caller's. The fix requires the caller be an admin WITH an
+ * organizationId and returns null when the target belongs to a different org.
+ */
+describe('getStaffDetails — org isolation (F-009)', () => {
+  const ADMIN_ORG_A = { id: 'admin-a', role: 'admin', organizationId: 'org-a' };
+
+  function makeTargetUser(organizationId: string) {
+    return {
+      id: 'target-1',
+      email: 'target@example.com',
+      role: 'worker',
+      organizationId,
+      profile: { fullName: 'Target User', avatarUrl: null, jobTitle: 'Nurse' },
+      manager: null,
+      managerId: null,
+      enrollments: [],
+    };
+  }
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({ user: ADMIN_ORG_A });
+  });
+
+  it('returns null when the target user belongs to a different organization (cross-tenant)', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeTargetUser('org-b'));
+
+    const result = await getStaffDetails('target-1');
+
+    expect(result).toBeNull();
+  });
+
+  it('returns the staff details when the target user belongs to the same organization', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeTargetUser('org-a'));
+
+    const result = await getStaffDetails('target-1');
+
+    expect(result).not.toBeNull();
+    expect(result?.user.email).toBe('target@example.com');
+    expect(result?.user.name).toBe('Target User');
+  });
+
+  it('rejects (throws) when the caller is not an admin', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'worker-1', role: 'worker', organizationId: 'org-a' },
+    });
+
+    await expect(getStaffDetails('target-1')).rejects.toThrow('Unauthorized');
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejects (throws) when the admin session has no organizationId', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'admin-a', role: 'admin', organizationId: null } });
+
+    await expect(getStaffDetails('target-1')).rejects.toThrow('Unauthorized');
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejects (throws) when there is no session at all', async () => {
+    mockAuth.mockResolvedValue(null);
+
+    await expect(getStaffDetails('target-1')).rejects.toThrow('Unauthorized');
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * F-010 regression tests for getEnrollmentQuizResult — cross-tenant isolation.
+ *
+ * Previously an admin could pull the full quiz breakdown (including the
+ * correct answers and the worker's name/email) for an enrollment belonging to
+ * a completely different organization. The fix returns null when the
+ * enrollment's user organizationId doesn't match the caller's.
+ */
+describe('getEnrollmentQuizResult — org isolation (F-010)', () => {
+  const ADMIN_ORG_A = { id: 'admin-a', role: 'admin', organizationId: 'org-a' };
+  const ENROLLMENT_ID = 'enrollment-1';
+
+  function makeEnrollment(organizationId: string) {
+    return {
+      id: ENROLLMENT_ID,
+      user: {
+        organizationId,
+        email: 'worker@example.com',
+        profile: { fullName: 'Worker Name' },
+        organization: { name: 'Acme Co' },
+      },
+      course: { title: 'Fire Safety' },
+      quizAttempts: [
+        {
+          score: 50,
+          timeTaken: 120,
+          attemptCount: 1,
+          answers: [{ questionId: 'q1', selectedAnswer: '4', explanation: 'basic math' }],
+          quiz: {
+            allowedAttempts: 3,
+            passingScore: 70,
+            questions: [
+              {
+                id: 'q1',
+                text: 'What is 2+2?',
+                options: ['3', '4', '5'],
+                correctAnswer: '4',
+              },
+            ],
+          },
+        },
+      ],
+    };
+  }
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({ user: ADMIN_ORG_A });
+  });
+
+  it('returns null for a cross-org enrollment (no correctAnswer or worker identity leaked)', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment('org-b'));
+
+    const result = await getEnrollmentQuizResult(ENROLLMENT_ID);
+
+    expect(result).toBeNull();
+  });
+
+  it('returns the quiz result for a same-org enrollment', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment('org-a'));
+
+    const result = await getEnrollmentQuizResult(ENROLLMENT_ID);
+
+    expect(result).not.toBeNull();
+    expect(result?.courseName).toBe('Fire Safety');
+    expect(result?.userName).toBe('Worker Name');
+    expect(result?.correct).toBe(1);
+    expect(result?.wrong).toBe(0);
+    expect(result?.questions[0].correctAnswer).toBe('B');
+  });
+
+  it('returns null when there are no quiz attempts yet, before the org check runs', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...makeEnrollment('org-a'),
+      quizAttempts: [],
+    });
+
+    const result = await getEnrollmentQuizResult(ENROLLMENT_ID);
+
+    expect(result).toBeNull();
+  });
+
+  it('rejects (throws) when the caller is not an admin', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'worker-1', role: 'worker', organizationId: 'org-a' },
+    });
+
+    await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+    expect(prismaMock.enrollment.findUnique).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getDocumentSignedUrl } from '@/app/actions/storage';
+import { logger } from '@/lib/logger';
 
 export async function GET(
   request: Request,
@@ -52,8 +53,8 @@ export async function GET(
         'Content-Disposition': `inline; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
       },
     });
-  } catch (err: unknown) {
-    const e = err as Error;
-    return new Response(`Error proxying document: ${e.message}`, { status: 500 });
+  } catch (err) {
+    logger.error({ msg: '[doc] preview proxy failed', err, versionId });
+    return new Response('Error retrieving document', { status: 500 });
   }
 }
