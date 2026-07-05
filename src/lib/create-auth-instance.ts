@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 import { logger, maskEmail } from '@/lib/logger';
 import { isSessionMfaVerified } from '@/lib/session-mfa';
+import { checkRateLimit } from '@/lib/rate-limit';
 type Role = 'admin' | 'worker';
 
 interface AuthInstanceConfig {
@@ -59,11 +60,36 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
     providers: [
       Credentials({
-        async authorize(credentials) {
+        async authorize(credentials, request) {
           const { email, password } = (credentials || {}) as {
             email: string;
             password: string;
           };
+
+          // F-033: Throttle at the credential layer so a direct POST to
+          // /api/auth/callback/credentials is rate-limited even when it bypasses
+          // the `authenticate` server action (which throttles per-IP on its own).
+          // Uses dedicated key namespaces so it doesn't share counters with the
+          // action's `login:${ip}` limiter. Returns null (a normal auth failure)
+          // when exceeded, preserving the existing timing/return behavior.
+          const ip =
+            request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+            request.headers.get('x-real-ip') ||
+            'unknown';
+          const normalizedEmail = email?.toLowerCase().trim();
+
+          const ipCheck = await checkRateLimit(`login:callback:ip:${ip}`, 10, 900);
+          const acctCheck = normalizedEmail
+            ? await checkRateLimit(`login:callback:acct:${normalizedEmail}`, 10, 900)
+            : { allowed: true };
+          if (!ipCheck.allowed || !acctCheck.allowed) {
+            logger.warn({
+              msg: 'Auth login throttled at credential layer',
+              instance: cookiePrefix,
+              ip,
+            });
+            return null;
+          }
 
           logger.info({
             msg: 'Auth login attempt',

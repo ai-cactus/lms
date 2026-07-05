@@ -15,7 +15,7 @@ metadata:
 
 **Session behavior:** Session persists across SPA navigation and hard page reload (Cmd+Shift+R). Session cookie/token survives browser cache bust. However, authenticated users visiting `/login` are NOT redirected to dashboard — login form is shown (middleware gap, low severity).
 
-**Known test account:** princecee15@gmail.com — Admin role, name "Chimezie Edeh", org "Chimezie Org". Credentials held by user; do not store here.
+**Known test account:** <test-admin — ask user> — Admin role, name "Chimezie Edeh", org "Chimezie Org". Credentials held by user; do not store here.
 
 **Key UI refs on login page (as of 2026-06-26):**
 Note: playwright-cli ref IDs are session-scoped and change across sessions. Use role-based locators instead:
@@ -27,7 +27,7 @@ Note: playwright-cli ref IDs are session-scoped and change across sessions. Use 
 
 **Wrong-password error:** "Invalid credentials." in red beneath email field + red border on email field. Generic (does not reveal which field was wrong — security best practice).
 
-**Onboarding panel on dashboard:** A getting-started panel ("Turn Your Healthcare Policies into Interactive Training in Minutes") is present in the main dashboard content. For the princecee15@gmail.com account on 2026-06-26 no blocking modal appeared — the panel is inline content, not a modal overlay.
+**Onboarding panel on dashboard:** A getting-started panel ("Turn Your Healthcare Policies into Interactive Training in Minutes") is present in the main dashboard content. For the <test-admin — ask user> account on 2026-06-26 no blocking modal appeared — the panel is inline content, not a modal overlay.
 
 **Known security defect (HIGH, open — reproduced 2026-06-26 re-run):** Login client logs raw plaintext password to browser console on every submit: `[Login Client] Submit clicked! Current form data: {"email":"...","password":"<plaintext>","rememberMe":false}`. Tagged `env: production`. Reproduces on both failed and successful logins. Reported in qa-reports/login-user-story.md ISSUE-1. Still unresolved as of second run on 2026-06-26.
 

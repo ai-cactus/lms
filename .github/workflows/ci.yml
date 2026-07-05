@@ -145,3 +145,144 @@ jobs:
 
       - name: Build application
         run: npm run build
+
+  # ──────────────────────────────────────────────
+  # Job 6: Dependency audit (security gate)
+  # REPORT-ONLY for now (continue-on-error): the tree currently has known
+  # HIGH advisories whose remediation is deferred (finding F-055 — e.g. xlsx
+  # has no npm-published fix, quill XSS is mitigated by DOMPurify). Surfacing
+  # them in CI is useful; hard-blocking every PR on them is not. Flip
+  # continue-on-error to false once F-055 remediation lands.
+  # ──────────────────────────────────────────────
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      # Reads package-lock.json and queries the advisory DB — no install needed.
+      # Exit code is non-zero when a HIGH or CRITICAL advisory is present.
+      - name: Run npm audit (high+)
+        run: npm audit --audit-level=high
+
+  # ──────────────────────────────────────────────
+  # Job 7: Secret scan (gitleaks)
+  # Scans the working tree — INCLUDING .claude/agent-memory/** — for
+  # committed secrets. Filesystem scan (--no-git), NOT git history, so
+  # pre-existing historical leaks don't permanently block CI; history
+  # scrubbing is tracked separately (see docs/deployment.md).
+  # ──────────────────────────────────────────────
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gitleaks
+        run: |
+          VERSION="$(curl -sSfL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # `detect --no-git` scans files on disk (working tree), so the scan
+      # covers committed paths like .claude/agent-memory/** without failing
+      # on secrets that only exist in older commits.
+      - name: Scan working tree for secrets
+        run: gitleaks detect --no-git --source . --config .gitleaks.toml --redact --verbose
+
+  # ──────────────────────────────────────────────
+  # Job 8: End-to-end tests (Playwright)
+  # Spins up Postgres (pgvector — migrations CREATE EXTENSION "vector")
+  # and Redis as services, applies migrations, then runs the e2e suite.
+  # REPORT-ONLY for now (continue-on-error): the existing e2e specs were
+  # written for local/manual runs and haven't been hardened for CI yet.
+  # Runs and uploads its report on every PR without blocking merges; flip
+  # continue-on-error to false once the suite is reliably green in CI.
+  # ──────────────────────────────────────────────
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: [lint, format, typecheck, test]
+    continue-on-error: true
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lms_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lms_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Playwright's webServer runs `npm run dev -- -p 3005`; these are read at
+      # runtime (dev mode), mirroring the Build job's dummy values. NOT secrets.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lms_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      NEXTAUTH_SECRET: ci-build-secret-not-used-in-production
+      AUTH_SECRET: ci-build-secret-not-used-in-production
+      NEXTAUTH_URL: http://localhost:3005
+      NEXT_PUBLIC_APP_URL: http://localhost:3005
+      APP_URL: http://localhost:3005
+      STRIPE_SECRET_KEY: sk_test_ci_dummy_key_not_real_000000000000
+      STRIPE_WEBHOOK_SECRET: whsec_ci_dummy_not_real
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_dummy_not_real
+      SMTP_USER: ci@example.com
+      SMTP_PASSWORD: ci_dummy_password
+      SMTP_HOST: smtp.example.com
+      SMTP_PORT: '465'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Install Playwright browser (chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright e2e tests
+        run: npx playwright test tests/e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

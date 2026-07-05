@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // @ts-ignore - NextAuth does not reliably export decode type in this scope
 import { decode, JWT } from 'next-auth/jwt';
 import { logger, maskEmail } from '@/lib/logger';
+import { runWithCorrelationId } from '@/lib/request-context';
 
 // All route rules live in one config object — easy to audit and extend
 const ROUTE_CONFIG = {
@@ -32,20 +33,50 @@ function getContext(pathname: string): 'worker' | 'admin' | null {
 }
 
 export async function proxy(req: NextRequest) {
+  // F-067: Assign a correlation ID per matched request. Honour an inbound
+  // x-correlation-id (distributed tracing) or mint a fresh one. Running the
+  // handler inside runWithCorrelationId ties every log emitted during proxy
+  // handling to this ID (the logger reads it from AsyncLocalStorage).
+  //
+  // NOTE: this only covers requests that hit the middleware matcher below.
+  // API routes outside the matcher won't get a proxy-assigned ID until a
+  // broader request wrap lands (F-013, deferred).
+  const correlationId = req.headers.get('x-correlation-id') ?? crypto.randomUUID();
+
+  return runWithCorrelationId(correlationId, async () => {
+    const res = await handleProxy(req, correlationId);
+    // Surface the correlation ID on the response so clients and log pipelines
+    // can tie a browser request to its server-side logs.
+    res.headers.set('x-correlation-id', correlationId);
+    return res;
+  });
+}
+
+async function handleProxy(req: NextRequest, correlationId: string): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
   const context = getContext(pathname);
+
+  // Forward the correlation ID to downstream handlers/pages as a request header
+  // so any pass-through response carries it into the route it serves.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-correlation-id', correlationId);
+  const passThrough = () => NextResponse.next({ request: { headers: requestHeaders } });
 
   // NextAuth API routes handle their own session parsing and JSON responses.
   // We MUST NOT intercept them to return HTML redirects!
   if (pathname.startsWith('/api/auth')) {
-    return NextResponse.next();
+    return passThrough();
   }
 
   // Not an auth-protected route — let it through
-  if (!context) return NextResponse.next();
+  if (!context) return passThrough();
 
   const cfg = ROUTE_CONFIG[context];
-  const secret = process.env.AUTH_SECRET!;
+  // F-035: decode with the SAME secret the encoder signs with.
+  // create-auth-instance.ts uses NEXTAUTH_SECRET; falling back to AUTH_SECRET
+  // preserves parity if only the legacy variable is set. Reading a different
+  // variable here than the encoder used would make every token fail to decode.
+  const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET!;
   const useSecureCookies = process.env.NODE_ENV === 'production';
 
   const cookieName = `${useSecureCookies ? '__Secure-' : ''}${cfg.cookiePrefix}.session-token`;
@@ -59,7 +90,7 @@ export async function proxy(req: NextRequest) {
   // Not logged in — send to the correct login page
   if (!rawToken) {
     // Don't redirect loop on the login page itself
-    if (pathname === cfg.loginPath) return NextResponse.next();
+    if (pathname === cfg.loginPath) return passThrough();
     return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
@@ -100,9 +131,9 @@ export async function proxy(req: NextRequest) {
   ) {
     const url = new URL('/reset-password', req.url);
     url.searchParams.set('force', 'true');
-    /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
-    // @ts-ignore - JWT email is injected natively but omitted from standard JWT definition
-    url.searchParams.set('email', token.email as string);
+    // F-057: The user's email is intentionally NOT placed in the URL — it
+    // previously leaked PII in the query string (and browser history/logs).
+    // The force-reset page resolves the user from the authenticated session.
     return NextResponse.redirect(url);
   }
 
@@ -143,9 +174,9 @@ export async function proxy(req: NextRequest) {
   }
 
   // ✅ Both admin and worker sessions can coexist independently.
-  // Each context reads ONLY its own cookie (line 48-49) and validates role (line 80).
+  // Each context reads ONLY its own cookie and validates role above.
   // Simultaneous admin + worker sessions in different tabs is expected behavior.
-  return NextResponse.next();
+  return passThrough();
 }
 
 export const config = {

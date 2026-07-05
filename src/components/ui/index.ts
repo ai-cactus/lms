@@ -9,6 +9,7 @@ export { PhoneInput } from './PhoneInput';
 export { default as EmptyTableState } from './EmptyTableState';
 export { default as CircularProgress } from './CircularProgress';
 export { default as PasswordStrengthIndicator } from './PasswordStrengthIndicator';
+export { default as HCaptcha } from './HCaptcha';
 export { default as TimePicker } from './TimePicker';
 export { default as DatePicker } from './DatePicker';
 export { default as SlideContentFitter } from './SlideContentFitter';

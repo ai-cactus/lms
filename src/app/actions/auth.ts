@@ -1,7 +1,7 @@
 'use server';
 
-import { signIn } from '@/auth';
-import { signIn as signInWorker } from '@/auth.worker';
+import { signIn, auth as adminAuth } from '@/auth';
+import { signIn as signInWorker, auth as workerAuth } from '@/auth.worker';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { validatePassword } from '@/lib/password-policy';
@@ -14,6 +14,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 import { logger, maskEmail } from '@/lib/logger';
 import { createMfaChallenge } from '@/lib/mfa-challenge';
+import { verifyCaptcha } from '@/lib/captcha';
 
 // Pre-computed dummy hash for constant-time response when a user email doesn't exist.
 // bcrypt runs its full ~100ms computation and returns false, preventing timing-based
@@ -158,10 +159,12 @@ interface SignupWithRoleData {
   firstName: string;
   lastName: string;
   role: 'admin' | 'worker';
+  /** Optional hCaptcha token; verified only when the feature is enabled (inert otherwise). */
+  captchaToken?: string;
 }
 
 export async function signupWithRole(data: SignupWithRoleData): Promise<SignupResult> {
-  const { email, password, firstName, lastName, role } = data;
+  const { email, password, firstName, lastName, role, captchaToken } = data;
 
   // Rate limiting — 5 attempts per IP per 10 minutes. Runs before any DB access
   // (existence check, token creation) and before any email send.
@@ -174,6 +177,13 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
   if (!allowed) {
     logger.warn({ msg: '[auth] Signup rate limit exceeded', ip });
     return { success: false, error: 'Too many signup attempts. Please try again later.' };
+  }
+
+  // Bot verification — no-op unless hCaptcha is enabled (see src/lib/captcha.ts).
+  const captchaValid = await verifyCaptcha(captchaToken, ip);
+  if (!captchaValid) {
+    logger.warn({ msg: '[auth] Signup captcha verification failed', ip });
+    return { success: false, error: 'Captcha verification failed. Please try again.' };
   }
 
   // Basic validation
@@ -335,10 +345,18 @@ export async function resetPasswordWithToken(
 }
 
 export async function forceResetPassword(
-  email: string,
   currentPassword: string,
   newPassword: string,
 ): Promise<AuthState> {
+  // Derive the account from the authenticated session, not from the URL/caller
+  // (F-057): the forced-reset flow is only reachable while signed in, so the
+  // email no longer needs to travel in the redirect query string.
+  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+  const email = admin?.user?.email ?? worker?.user?.email;
+  if (!email) {
+    return { error: 'Not authenticated.' };
+  }
+
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.password) {
     return { error: 'Invalid credentials.' };

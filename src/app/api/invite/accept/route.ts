@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { validatePassword, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '@/lib/password-policy';
 import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
+import { verifyCaptcha } from '@/lib/captcha';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -13,6 +14,8 @@ const acceptInviteSchema = z.object({
     .string()
     .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters long`)
     .max(PASSWORD_MAX_LENGTH, 'Password is too long'),
+  // Optional hCaptcha token; verified only when the feature is enabled (inert otherwise).
+  captchaToken: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -27,7 +30,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const { token, firstName, lastName, password } = result.data;
+    const { token, firstName, lastName, password, captchaToken } = result.data;
+
+    // Bot verification — no-op unless hCaptcha is enabled (see src/lib/captcha.ts).
+    const ip =
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      req.headers.get('x-real-ip') ??
+      'unknown';
+    const captchaValid = await verifyCaptcha(captchaToken, ip);
+    if (!captchaValid) {
+      logger.warn({ msg: '[invite] Accept-invite captcha verification failed', ip });
+      return NextResponse.json(
+        { error: 'Captcha verification failed. Please try again.' },
+        { status: 400 },
+      );
+    }
 
     // Server-side password policy enforcement (beyond basic zod length checks)
     const pwCheck = validatePassword(password);

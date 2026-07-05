@@ -9,6 +9,8 @@
  *   { errName, errMessage, errStack } so JSON.stringify doesn't lose them.
  */
 
+import { getCorrelationId } from '@/lib/request-context';
+
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 interface LogPayload {
@@ -59,10 +61,15 @@ function emit(level: LogLevel, payload: LogPayload): void {
 
   const { err, ...rest } = payload;
 
+  // Correlation ID is request-scoped (set by proxy.ts via runWithCorrelationId).
+  // When absent — e.g. background jobs or logs outside a request — omit the field.
+  const correlationId = getCorrelationId();
+
   const entry: Record<string, unknown> = {
     level,
     time: new Date().toISOString(),
     env: process.env.NODE_ENV,
+    ...(correlationId ? { correlationId } : {}),
     ...rest,
   };
 

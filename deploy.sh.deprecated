@@ -1,4 +1,13 @@
 #!/bin/bash
+# ⛔ DEPRECATED — DO NOT USE.
+#
+# This orchestrator ends by invoking deploy-staging.sh / deploy-production.sh,
+# which drive a stale PM2 path (/home/homepc/lms2*) the current CD never uses.
+# Deployment now happens automatically on push to the tracked branches, handled
+# by GitHub Actions + Docker Compose (the single source of truth):
+#   push → staging  → .github/workflows/deploy-staging.yml
+#   push → main     → .github/workflows/deploy-production.yml
+# See docs/deployment.md ("Single deploy path"). Kept for reference only.
 set -e
 
 # LMS2 Smart Deployer (Workflow V2)

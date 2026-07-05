@@ -7,6 +7,11 @@ export async function register() {
     const { logger } = await import('@/lib/logger');
     const { default: prisma } = await import('@/lib/prisma');
 
+    // F-042: Fail fast on missing required env vars at process start.
+    // No-ops under test/CI/build (see validateEnv's carve-out).
+    const { validateEnv } = await import('@/lib/env');
+    validateEnv();
+
     const cleanup = async (signal: string) => {
       logger.info({ msg: `Received ${signal}, shutting down gracefully...` });
 
