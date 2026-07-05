@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import stripe from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
+import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
 
 // POST /api/billing/subscription/resume — resumes a paused subscription
@@ -9,9 +10,17 @@ import { logger } from '@/lib/logger';
 export async function POST() {
   try {
     const session = await auth();
+    // F-012: enforce authentication + MFA step-up + admin role at the data
+    // layer, consistent with the shared guard used across billing routes.
+    const denied = guardApiSession(session, { role: 'admin' });
+    if (denied) return denied;
+    // The guard guarantees an authenticated session past this point; narrow the
+    // id for the DB lookup (guardApiSession does not narrow the session type).
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const stripe = getStripeClient();
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },

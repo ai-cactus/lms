@@ -145,10 +145,6 @@ export async function sendInviteEmail(
     `;
 
   try {
-    logger.info({ msg: `[Email Debug] Sending invite to: ${to}` });
-    logger.info({ msg: `[Email Debug] Invite Link: ${inviteLink}` });
-    logger.info({ msg: `[Email Debug] Org: ${orgName}` });
-
     const info = await sendMailTracked(
       {
         from: `"${appName}" <${user}>`,
@@ -158,10 +154,13 @@ export async function sendInviteEmail(
       },
       'invite',
     );
-    logger.info({ msg: 'Message sent: %s', data: info.messageId });
+    // Do NOT log the raw recipient or the tokenized invite link — the link
+    // embeds a bearer token (F-067). Mask the address and log only non-sensitive
+    // context.
+    logger.info({ msg: '[email] Invite email sent', messageId: info.messageId, to: maskEmail(to) });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    logger.error({ msg: 'Error sending email:', err: error });
+    logger.error({ msg: '[email] Error sending invite email', err: error, to: maskEmail(to) });
     return { success: false, error };
   }
 }

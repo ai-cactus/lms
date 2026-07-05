@@ -82,13 +82,14 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       // No active draft — start a new attempt, enforcing the limit against the
       // count of COMPLETED attempts (timeTaken !== null).
       const quiz = await tx.quiz.findUnique({ where: { id: quizId } });
-      const allowedAttempts = quiz?.allowedAttempts ?? 1;
 
       const completedCount = await tx.quizAttempt.count({
         where: { enrollmentId, quizId, timeTaken: { not: null } },
       });
 
-      if (completedCount >= allowedAttempts) {
+      // Consistent with the grading path in submit/route.ts: a null/0
+      // allowedAttempts means unlimited; only a positive limit locks out.
+      if (quiz?.allowedAttempts && completedCount >= quiz.allowedAttempts) {
         return { status: 'blocked' as const };
       }
 
