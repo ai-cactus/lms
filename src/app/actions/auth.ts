@@ -258,6 +258,21 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
 }
 
 export async function sendPasswordResetLink(email: string) {
+  // F-037: throttle reset requests per-IP — 5 attempts per 10 minutes. Runs
+  // before any DB access or email send. On limit we return the same no-op
+  // success shape used for a non-existent email, so an attacker can't tell
+  // whether they were throttled, and existence is never leaked.
+  const headersList = await headers();
+  const ip =
+    headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    headersList.get('x-real-ip') ??
+    'unknown';
+  const { allowed } = await checkRateLimit(`password-reset:${ip}`, 5, 600);
+  if (!allowed) {
+    logger.warn({ msg: '[auth] Password reset request rate limit exceeded', ip });
+    return { success: true }; // Security: don't reveal throttling or user existence
+  }
+
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     logger.info({
@@ -322,9 +337,11 @@ export async function resetPasswordWithToken(
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
 
+  // F-059: bump sessionVersion so completing the reset invalidates every other
+  // existing session (the jwt callback compares the token's version on decode).
   await prisma.user.update({
     where: { email: verificationToken.identifier },
-    data: { password: hashedPassword },
+    data: { password: hashedPassword, sessionVersion: { increment: 1 } },
   });
 
   // delete used token
@@ -374,9 +391,15 @@ export async function forceResetPassword(
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
 
+  // F-059: bump sessionVersion so the forced reset also logs out every other
+  // existing session (the jwt callback compares the token's version on decode).
   await prisma.user.update({
     where: { email },
-    data: { password: hashedPassword, passwordResetRequired: false },
+    data: {
+      password: hashedPassword,
+      passwordResetRequired: false,
+      sessionVersion: { increment: 1 },
+    },
   });
 
   logger.info({ msg: '[auth] Forced password reset completed', email: maskEmail(email) });

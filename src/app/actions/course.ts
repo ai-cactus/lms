@@ -283,7 +283,7 @@ export async function updateCourse(
 }
 
 // Publish a course
-export async function publishCourse(courseId: string) {
+export async function publishCourse(courseId: string, opts?: { acknowledgeWarnings?: boolean }) {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -299,12 +299,41 @@ export async function publishCourse(courseId: string) {
     throw new Error('Course not found');
   }
 
+  // Publish-review gate (F-051): a course flagged for review cannot be published
+  // until the caller explicitly acknowledges the quality warnings.
+  if (existing.reviewRequired && !opts?.acknowledgeWarnings) {
+    logger.warn({
+      msg: '[course] publishCourse blocked: review required',
+      courseId,
+      userId: session.user.id,
+      warnings: existing.qualityWarnings.length,
+    });
+    return {
+      success: false as const,
+      error: 'This course has quality warnings and requires review before publishing.',
+      warnings: existing.qualityWarnings,
+    };
+  }
+
   const course = await prisma.course.update({
     where: { id: courseId },
-    data: { status: 'published' },
+    data: {
+      status: 'published',
+      // Clear the gate once warnings have been acknowledged and published.
+      ...(existing.reviewRequired ? { reviewRequired: false } : {}),
+    },
   });
 
-  logger.info({ msg: '[course] Course published', courseId, userId: session.user.id });
+  if (existing.reviewRequired) {
+    logger.info({
+      msg: '[course] Published with warnings acknowledged',
+      courseId,
+      userId: session.user.id,
+      warnings: existing.qualityWarnings,
+    });
+  } else {
+    logger.info({ msg: '[course] Course published', courseId, userId: session.user.id });
+  }
   revalidatePath('/dashboard/training');
   return course;
 }
@@ -636,6 +665,102 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
 }
 
 // Create full course with content and assignments
+// Outcome of the server-side course quality assessment used by the publish-review
+// gate (F-051). `reviewRequired` gates publishing; `qualityWarnings` are the
+// human-readable reasons surfaced in the wizard.
+interface CourseQualityAssessment {
+  reviewRequired: boolean;
+  qualityWarnings: string[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Derive the publish-review gate from the raw AI artifacts persisted with a
+ * course. This runs SERVER-SIDE and never trusts a client-supplied flag: the
+ * assessment is computed purely from the generated artifacts so a degraded
+ * generation cannot be silently published.
+ *
+ * The slides / judge / article-meta checks are specific to the v4.6 pipeline
+ * (identified by the presence of `rawArticleMeta`); v3.1 and manually authored
+ * courses that never produce those artifacts are left untouched.
+ *
+ * Kept as an internal (non-exported) helper: `course.ts` is a `'use server'`
+ * module, so only async server actions may be exported. Its behaviour is
+ * covered through `createFullCourse` in the unit tests.
+ */
+function assessCourseQuality(input: {
+  quizQuestionCount: number;
+  rawQuizJson?: unknown;
+  rawSlidesJson?: unknown;
+  rawJudgeJson?: unknown;
+  rawArticleMeta?: unknown;
+}): CourseQualityAssessment {
+  const qualityWarnings: string[] = [];
+
+  // 1. Quiz — missing entirely, or fewer questions than requested. Only applies
+  //    when a quiz artifact exists (an AI generation attempted a quiz).
+  if (isRecord(input.rawQuizJson)) {
+    const quizMeta = isRecord(input.rawQuizJson.meta) ? input.rawQuizJson.meta : undefined;
+    const requestedQuestionCount =
+      typeof quizMeta?.requestedQuestionCount === 'number' ? quizMeta.requestedQuestionCount : 0;
+
+    if (input.quizQuestionCount === 0) {
+      qualityWarnings.push('No quiz questions were generated for this course.');
+    } else if (requestedQuestionCount > 0 && input.quizQuestionCount < requestedQuestionCount) {
+      qualityWarnings.push(
+        `The quiz has only ${input.quizQuestionCount} of the ${requestedQuestionCount} requested questions.`,
+      );
+    }
+  }
+
+  const isV46 = isRecord(input.rawArticleMeta);
+
+  // 2. Slides — a v4.6 course is expected to have generated slides.
+  if (isV46) {
+    const slides =
+      isRecord(input.rawSlidesJson) && Array.isArray(input.rawSlidesJson.slides)
+        ? input.rawSlidesJson.slides
+        : [];
+    if (slides.length === 0) {
+      qualityWarnings.push('No slides were generated for this course.');
+    }
+  }
+
+  // 3. Judge — the quiz reviewer flagged unresolved (ambiguous or invalid) questions.
+  if (isRecord(input.rawJudgeJson)) {
+    const ambiguousCount = Array.isArray(input.rawJudgeJson.ambiguous)
+      ? input.rawJudgeJson.ambiguous.length
+      : 0;
+    const invalidCount = Array.isArray(input.rawJudgeJson.invalid)
+      ? input.rawJudgeJson.invalid.length
+      : 0;
+    const flaggedCount = ambiguousCount + invalidCount;
+    if (flaggedCount > 0) {
+      qualityWarnings.push(
+        `The automated quiz review flagged ${flaggedCount} question${
+          flaggedCount === 1 ? '' : 's'
+        } as ambiguous or invalid.`,
+      );
+    }
+  }
+
+  // 4. Article meta — the source document lacked enough content for reliable training.
+  if (isV46) {
+    const articleMeta = input.rawArticleMeta as Record<string, unknown>;
+    const meta = isRecord(articleMeta.meta) ? articleMeta.meta : undefined;
+    if (meta?.status === 'needs_sources') {
+      qualityWarnings.push(
+        'The source document did not provide enough content to generate reliable training.',
+      );
+    }
+  }
+
+  return { reviewRequired: qualityWarnings.length > 0, qualityWarnings };
+}
+
 export async function createFullCourse(data: {
   title: string;
   description: string;
@@ -683,6 +808,16 @@ export async function createFullCourse(data: {
   // Detect prompt version
   const promptVersion = data.rawArticleMeta ? 'v4.6' : data.rawCourseJson ? 'v3.1' : undefined;
 
+  // Compute the publish-review gate SERVER-SIDE from the persisted artifacts.
+  // A degraded generation is saved as a draft with warnings rather than published.
+  const { reviewRequired, qualityWarnings } = assessCourseQuality({
+    quizQuestionCount: data.quiz.length,
+    rawQuizJson: data.rawQuizJson,
+    rawSlidesJson: data.rawSlidesJson,
+    rawJudgeJson: data.rawJudgeJson,
+    rawArticleMeta: data.rawArticleMeta,
+  });
+
   // 1. Create Course, Lessons, Quiz in one transaction (nested write)
   const course = await prisma.course.create({
     data: {
@@ -691,7 +826,9 @@ export async function createFullCourse(data: {
       categoryId: data.categoryId || null,
       duration: parseInt(data.duration) || 0,
       objectives: data.objectives || [],
-      status: 'published',
+      status: reviewRequired ? 'draft' : 'published',
+      reviewRequired,
+      qualityWarnings,
       createdBy: session.user.id,
       // Pipeline version tracking
       promptVersion,
@@ -792,6 +929,8 @@ export async function createFullCourse(data: {
       return {
         success: true,
         courseId: course.id,
+        reviewRequired,
+        qualityWarnings,
         inviteResults,
       };
     }
@@ -918,6 +1057,8 @@ export async function createFullCourse(data: {
     courseId: course.id,
     userId: session.user.id,
     promptVersion,
+    reviewRequired,
+    warnings: qualityWarnings.length,
     enrolled: inviteResults.existingEnrolled,
     invited: inviteResults.newInvited,
     failed: inviteResults.failed.length,
@@ -927,6 +1068,8 @@ export async function createFullCourse(data: {
   return {
     success: true,
     courseId: course.id,
+    reviewRequired,
+    qualityWarnings,
     inviteResults,
   };
 }

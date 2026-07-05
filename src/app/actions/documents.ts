@@ -5,8 +5,10 @@ import prisma from '@/lib/prisma';
 import { saveFile } from '@/lib/documents/uploadHandler';
 import { calculateHash } from '@/lib/documents/versioning';
 import { scanText } from '@/lib/documents/phiScanner';
+import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/documents/upload-config';
 import { extractTextFromFile } from '@/lib/file-parser';
 import { deleteFile } from '@/lib/storage';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
@@ -27,6 +29,13 @@ export async function uploadDocument(
     return { error: 'No file provided' };
   }
 
+  // F-017: reject oversized uploads BEFORE buffering the whole file into memory.
+  if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {
+    const maxMb = Math.round(MAX_DOCUMENT_UPLOAD_BYTES / (1024 * 1024));
+    logger.warn({ msg: '[doc] Upload rejected — file too large', userId, size: file.size });
+    return { error: `File is too large. The maximum document size is ${maxMb} MB.` };
+  }
+
   // 1. Calculate Hash & Check Duplicates (Conceptually)
   const buffer = Buffer.from(await file.arrayBuffer());
   const hash = await calculateHash(buffer);
@@ -45,6 +54,15 @@ export async function uploadDocument(
     const e = err as Error;
     logger.error({ msg: 'Text extraction failed', err: e.message });
     return { error: `Extraction Failed: ${e.message || 'Could not read text from document.'}` };
+  }
+
+  // F-018: rate-limit the expensive AI-backed PHI scan per user (20 / 5 min).
+  const { allowed, resetInSeconds } = await checkRateLimit(`phi-scan:${userId}`, 20, 300);
+  if (!allowed) {
+    logger.warn({ msg: '[doc] PHI scan rate limit exceeded', userId });
+    return {
+      error: `Too many uploads in a short period. Please wait ${resetInSeconds} seconds and try again.`,
+    };
   }
 
   // 3. Scan for PHI
@@ -127,12 +145,15 @@ export async function uploadDocument(
         },
       });
 
-      // Create PHI report for this version
+      // Create PHI report for this version.
+      // F-003: `phiResult.findings` is the value-free shape ({ type, offsetStart,
+      // offsetEnd, confidence }) — raw PHI/PII strings are NEVER persisted.
       await tx.phiReport.create({
         data: {
           documentVersionId: version.id,
           hasPHI: phiResult.hasPHI,
           detectedEntities: phiResult.findings as unknown as Prisma.InputJsonValue,
+          scannerVersion: 'v2',
         },
       });
     });

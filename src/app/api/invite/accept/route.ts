@@ -5,6 +5,8 @@ import { validatePassword, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '@/li
 import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 import { verifyCaptcha } from '@/lib/captcha';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { assertSeatAvailable, SeatLimitError } from '@/lib/seat-limits';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -37,6 +39,18 @@ export async function POST(req: Request) {
       req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
       req.headers.get('x-real-ip') ??
       'unknown';
+
+    // F-037: rate-limit accept attempts per IP to blunt token brute-forcing and
+    // abuse. 10 attempts / 15 minutes, consistent with other auth endpoints.
+    const rateLimit = await checkRateLimit(`invite-accept:${ip}`, 10, 900);
+    if (!rateLimit.allowed) {
+      logger.warn({ msg: '[invite] Accept-invite rate limit exceeded', ip });
+      return NextResponse.json(
+        { error: 'Too many attempts. Please try again later.' },
+        { status: 429 },
+      );
+    }
+
     const captchaValid = await verifyCaptcha(captchaToken, ip);
     if (!captchaValid) {
       logger.warn({ msg: '[invite] Accept-invite captcha verification failed', ip });
@@ -79,6 +93,13 @@ export async function POST(req: Request) {
     // 5. Create User and Profile within a transaction
     // Using transaction ensures atomicity
     const newUser = await prisma.$transaction(async (tx) => {
+      // F-022: re-check seat availability INSIDE the transaction so a seat that
+      // filled between invite issuance and acceptance (concurrent accepts, or
+      // seats consumed since the invite was sent) is caught race-safely. Counts
+      // workers against the org's plan staffMax via the shared BILLING_PLANS
+      // source; a no-op for unlimited plans / no active subscription.
+      await assertSeatAvailable(invite.organizationId, { seatsNeeded: 1, client: tx });
+
       const user = await tx.user.create({
         data: {
           email: invite.email,
@@ -107,6 +128,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, userId: newUser.id });
   } catch (error: unknown) {
+    // Seat limit hit between issuance and acceptance — surface a clear 409 with
+    // the user-safe message rather than a generic 500.
+    if (error instanceof SeatLimitError) {
+      logger.warn({ msg: '[invite] Accept blocked — plan seat limit reached' });
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     const err = error as Error;
     logger.error({ msg: 'Error accepting invite:', err: err });
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -28,6 +28,7 @@ export type PhiReportMinAggregateOutputType = {
   id: string | null
   documentVersionId: string | null
   hasPHI: boolean | null
+  scannerVersion: string | null
   scannedAt: Date | null
 }
 
@@ -35,6 +36,7 @@ export type PhiReportMaxAggregateOutputType = {
   id: string | null
   documentVersionId: string | null
   hasPHI: boolean | null
+  scannerVersion: string | null
   scannedAt: Date | null
 }
 
@@ -43,6 +45,7 @@ export type PhiReportCountAggregateOutputType = {
   documentVersionId: number
   hasPHI: number
   detectedEntities: number
+  scannerVersion: number
   scannedAt: number
   _all: number
 }
@@ -52,6 +55,7 @@ export type PhiReportMinAggregateInputType = {
   id?: true
   documentVersionId?: true
   hasPHI?: true
+  scannerVersion?: true
   scannedAt?: true
 }
 
@@ -59,6 +63,7 @@ export type PhiReportMaxAggregateInputType = {
   id?: true
   documentVersionId?: true
   hasPHI?: true
+  scannerVersion?: true
   scannedAt?: true
 }
 
@@ -67,6 +72,7 @@ export type PhiReportCountAggregateInputType = {
   documentVersionId?: true
   hasPHI?: true
   detectedEntities?: true
+  scannerVersion?: true
   scannedAt?: true
   _all?: true
 }
@@ -148,6 +154,7 @@ export type PhiReportGroupByOutputType = {
   documentVersionId: string
   hasPHI: boolean
   detectedEntities: runtime.JsonValue | null
+  scannerVersion: string | null
   scannedAt: Date
   _count: PhiReportCountAggregateOutputType | null
   _min: PhiReportMinAggregateOutputType | null
@@ -177,6 +184,7 @@ export type PhiReportWhereInput = {
   documentVersionId?: Prisma.StringFilter<"PhiReport"> | string
   hasPHI?: Prisma.BoolFilter<"PhiReport"> | boolean
   detectedEntities?: Prisma.JsonNullableFilter<"PhiReport">
+  scannerVersion?: Prisma.StringNullableFilter<"PhiReport"> | string | null
   scannedAt?: Prisma.DateTimeFilter<"PhiReport"> | Date | string
   documentVersion?: Prisma.XOR<Prisma.DocumentVersionScalarRelationFilter, Prisma.DocumentVersionWhereInput>
 }
@@ -186,6 +194,7 @@ export type PhiReportOrderByWithRelationInput = {
   documentVersionId?: Prisma.SortOrder
   hasPHI?: Prisma.SortOrder
   detectedEntities?: Prisma.SortOrderInput | Prisma.SortOrder
+  scannerVersion?: Prisma.SortOrderInput | Prisma.SortOrder
   scannedAt?: Prisma.SortOrder
   documentVersion?: Prisma.DocumentVersionOrderByWithRelationInput
 }
@@ -198,6 +207,7 @@ export type PhiReportWhereUniqueInput = Prisma.AtLeast<{
   NOT?: Prisma.PhiReportWhereInput | Prisma.PhiReportWhereInput[]
   hasPHI?: Prisma.BoolFilter<"PhiReport"> | boolean
   detectedEntities?: Prisma.JsonNullableFilter<"PhiReport">
+  scannerVersion?: Prisma.StringNullableFilter<"PhiReport"> | string | null
   scannedAt?: Prisma.DateTimeFilter<"PhiReport"> | Date | string
   documentVersion?: Prisma.XOR<Prisma.DocumentVersionScalarRelationFilter, Prisma.DocumentVersionWhereInput>
 }, "id" | "documentVersionId">
@@ -207,6 +217,7 @@ export type PhiReportOrderByWithAggregationInput = {
   documentVersionId?: Prisma.SortOrder
   hasPHI?: Prisma.SortOrder
   detectedEntities?: Prisma.SortOrderInput | Prisma.SortOrder
+  scannerVersion?: Prisma.SortOrderInput | Prisma.SortOrder
   scannedAt?: Prisma.SortOrder
   _count?: Prisma.PhiReportCountOrderByAggregateInput
   _max?: Prisma.PhiReportMaxOrderByAggregateInput
@@ -221,6 +232,7 @@ export type PhiReportScalarWhereWithAggregatesInput = {
   documentVersionId?: Prisma.StringWithAggregatesFilter<"PhiReport"> | string
   hasPHI?: Prisma.BoolWithAggregatesFilter<"PhiReport"> | boolean
   detectedEntities?: Prisma.JsonNullableWithAggregatesFilter<"PhiReport">
+  scannerVersion?: Prisma.StringNullableWithAggregatesFilter<"PhiReport"> | string | null
   scannedAt?: Prisma.DateTimeWithAggregatesFilter<"PhiReport"> | Date | string
 }
 
@@ -228,6 +240,7 @@ export type PhiReportCreateInput = {
   id?: string
   hasPHI?: boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: string | null
   scannedAt?: Date | string
   documentVersion: Prisma.DocumentVersionCreateNestedOneWithoutPhiReportInput
 }
@@ -237,6 +250,7 @@ export type PhiReportUncheckedCreateInput = {
   documentVersionId: string
   hasPHI?: boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: string | null
   scannedAt?: Date | string
 }
 
@@ -244,6 +258,7 @@ export type PhiReportUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   hasPHI?: Prisma.BoolFieldUpdateOperationsInput | boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scannedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   documentVersion?: Prisma.DocumentVersionUpdateOneRequiredWithoutPhiReportNestedInput
 }
@@ -253,6 +268,7 @@ export type PhiReportUncheckedUpdateInput = {
   documentVersionId?: Prisma.StringFieldUpdateOperationsInput | string
   hasPHI?: Prisma.BoolFieldUpdateOperationsInput | boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scannedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -261,6 +277,7 @@ export type PhiReportCreateManyInput = {
   documentVersionId: string
   hasPHI?: boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: string | null
   scannedAt?: Date | string
 }
 
@@ -268,6 +285,7 @@ export type PhiReportUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   hasPHI?: Prisma.BoolFieldUpdateOperationsInput | boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scannedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -276,6 +294,7 @@ export type PhiReportUncheckedUpdateManyInput = {
   documentVersionId?: Prisma.StringFieldUpdateOperationsInput | string
   hasPHI?: Prisma.BoolFieldUpdateOperationsInput | boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scannedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -289,6 +308,7 @@ export type PhiReportCountOrderByAggregateInput = {
   documentVersionId?: Prisma.SortOrder
   hasPHI?: Prisma.SortOrder
   detectedEntities?: Prisma.SortOrder
+  scannerVersion?: Prisma.SortOrder
   scannedAt?: Prisma.SortOrder
 }
 
@@ -296,6 +316,7 @@ export type PhiReportMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   documentVersionId?: Prisma.SortOrder
   hasPHI?: Prisma.SortOrder
+  scannerVersion?: Prisma.SortOrder
   scannedAt?: Prisma.SortOrder
 }
 
@@ -303,6 +324,7 @@ export type PhiReportMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   documentVersionId?: Prisma.SortOrder
   hasPHI?: Prisma.SortOrder
+  scannerVersion?: Prisma.SortOrder
   scannedAt?: Prisma.SortOrder
 }
 
@@ -342,6 +364,7 @@ export type PhiReportCreateWithoutDocumentVersionInput = {
   id?: string
   hasPHI?: boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: string | null
   scannedAt?: Date | string
 }
 
@@ -349,6 +372,7 @@ export type PhiReportUncheckedCreateWithoutDocumentVersionInput = {
   id?: string
   hasPHI?: boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: string | null
   scannedAt?: Date | string
 }
 
@@ -372,6 +396,7 @@ export type PhiReportUpdateWithoutDocumentVersionInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   hasPHI?: Prisma.BoolFieldUpdateOperationsInput | boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scannedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -379,6 +404,7 @@ export type PhiReportUncheckedUpdateWithoutDocumentVersionInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   hasPHI?: Prisma.BoolFieldUpdateOperationsInput | boolean
   detectedEntities?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  scannerVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   scannedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -389,6 +415,7 @@ export type PhiReportSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   documentVersionId?: boolean
   hasPHI?: boolean
   detectedEntities?: boolean
+  scannerVersion?: boolean
   scannedAt?: boolean
   documentVersion?: boolean | Prisma.DocumentVersionDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["phiReport"]>
@@ -398,6 +425,7 @@ export type PhiReportSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   documentVersionId?: boolean
   hasPHI?: boolean
   detectedEntities?: boolean
+  scannerVersion?: boolean
   scannedAt?: boolean
   documentVersion?: boolean | Prisma.DocumentVersionDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["phiReport"]>
@@ -407,6 +435,7 @@ export type PhiReportSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   documentVersionId?: boolean
   hasPHI?: boolean
   detectedEntities?: boolean
+  scannerVersion?: boolean
   scannedAt?: boolean
   documentVersion?: boolean | Prisma.DocumentVersionDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["phiReport"]>
@@ -416,10 +445,11 @@ export type PhiReportSelectScalar = {
   documentVersionId?: boolean
   hasPHI?: boolean
   detectedEntities?: boolean
+  scannerVersion?: boolean
   scannedAt?: boolean
 }
 
-export type PhiReportOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "documentVersionId" | "hasPHI" | "detectedEntities" | "scannedAt", ExtArgs["result"]["phiReport"]>
+export type PhiReportOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "documentVersionId" | "hasPHI" | "detectedEntities" | "scannerVersion" | "scannedAt", ExtArgs["result"]["phiReport"]>
 export type PhiReportInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   documentVersion?: boolean | Prisma.DocumentVersionDefaultArgs<ExtArgs>
 }
@@ -440,6 +470,7 @@ export type $PhiReportPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     documentVersionId: string
     hasPHI: boolean
     detectedEntities: runtime.JsonValue | null
+    scannerVersion: string | null
     scannedAt: Date
   }, ExtArgs["result"]["phiReport"]>
   composites: {}
@@ -869,6 +900,7 @@ export interface PhiReportFieldRefs {
   readonly documentVersionId: Prisma.FieldRef<"PhiReport", 'String'>
   readonly hasPHI: Prisma.FieldRef<"PhiReport", 'Boolean'>
   readonly detectedEntities: Prisma.FieldRef<"PhiReport", 'Json'>
+  readonly scannerVersion: Prisma.FieldRef<"PhiReport", 'String'>
   readonly scannedAt: Prisma.FieldRef<"PhiReport", 'DateTime'>
 }
     

@@ -46,6 +46,7 @@ const {
   prismaMock,
   mockDispatchLadderStage,
   mockDispatchNudge,
+  mockRetryReminderEmail,
   mockResolveEscalationRecipients,
   mockLoggerError,
 } = vi.hoisted(() => {
@@ -54,15 +55,18 @@ const {
     reminderLog: { findMany: vi.fn() },
     quizAttempt: { findMany: vi.fn() },
     notification: { updateMany: vi.fn() },
+    emailMessage: { findMany: vi.fn() },
   };
   const mockDispatchLadderStage = vi.fn();
   const mockDispatchNudge = vi.fn();
+  const mockRetryReminderEmail = vi.fn();
   const mockResolveEscalationRecipients = vi.fn();
   const mockLoggerError = vi.fn();
   return {
     prismaMock,
     mockDispatchLadderStage,
     mockDispatchNudge,
+    mockRetryReminderEmail,
     mockResolveEscalationRecipients,
     mockLoggerError,
   };
@@ -75,7 +79,8 @@ vi.mock('@/lib/prisma', () => ({ default: prismaMock, prisma: prismaMock }));
 vi.mock('@/lib/reminders/dispatch', () => ({
   dispatchLadderStage: mockDispatchLadderStage,
   dispatchNudge: mockDispatchNudge,
-  noopEmailSender: vi.fn(),
+  retryReminderEmail: mockRetryReminderEmail,
+  noopEmailSender: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
 vi.mock('@/lib/reminders/recipients', () => ({
@@ -178,8 +183,10 @@ beforeEach(() => {
   prismaMock.reminderLog.findMany.mockResolvedValue([]);
   prismaMock.quizAttempt.findMany.mockResolvedValue([]);
   prismaMock.notification.updateMany.mockResolvedValue({ count: 0 });
+  prismaMock.emailMessage.findMany.mockResolvedValue([]); // retry pre-pass: no failed rows
   mockDispatchLadderStage.mockResolvedValue({ sent: true, reason: 'sent' });
   mockDispatchNudge.mockResolvedValue({ sent: true, reason: 'sent' });
+  mockRetryReminderEmail.mockResolvedValue(true);
   mockResolveEscalationRecipients.mockResolvedValue({ userIds: [], emails: [] });
 });
 
@@ -486,6 +493,91 @@ describe('runReminderSweep — Track B (quiz nudges)', () => {
     expect(mockLoggerError).toHaveBeenCalledWith(
       expect.objectContaining({ msg: expect.stringContaining('Track B enrollment failed') }),
     );
+  });
+});
+
+// ─── Email retry pre-pass (F-020) ─────────────────────────────────────────────
+
+describe('runReminderSweep — email retry pre-pass', () => {
+  function makeFailedEmail(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'email-1',
+      toEmail: 'worker-e1@test.com',
+      attempts: 1,
+      maxAttempts: 3,
+      reminderLogId: 'log-1',
+      ...overrides,
+    };
+  }
+
+  function makeReminderLog(id = 'log-1') {
+    return {
+      id,
+      stage: 'FRIENDLY_REMINDER',
+      targetDate: new Date('2024-06-15T04:00:00Z'),
+      enrollment: {
+        dueAt: DUE_AT_FIRES_TODAY,
+        course: { title: 'Course e1' },
+        user: {
+          email: 'worker-e1@test.com',
+          profile: { fullName: 'Worker e1' },
+          organization: { timezone: null },
+        },
+      },
+    };
+  }
+
+  it('re-sends a failed reminder email that is under maxAttempts', async () => {
+    prismaMock.emailMessage.findMany.mockResolvedValue([makeFailedEmail()]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([makeReminderLog()]);
+    prismaMock.enrollment.findMany.mockResolvedValue([]); // both tracks empty
+    mockRetryReminderEmail.mockResolvedValue(true);
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(mockRetryReminderEmail).toHaveBeenCalledTimes(1);
+    expect(mockRetryReminderEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        emailMessage: { id: 'email-1', toEmail: 'worker-e1@test.com' },
+        stage: 'FRIENDLY_REMINDER',
+        courseTitle: 'Course e1',
+      }),
+    );
+    expect(summary.retriesSent).toBe(1);
+  });
+
+  it('does NOT re-send a row that has reached maxAttempts (cap)', async () => {
+    prismaMock.emailMessage.findMany.mockResolvedValue([
+      makeFailedEmail({ attempts: 3, maxAttempts: 3 }),
+    ]);
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+    // No reconstruction lookup either — the row is filtered out before the join.
+    expect(prismaMock.reminderLog.findMany).not.toHaveBeenCalled();
+    expect(summary.retriesSent).toBe(0);
+  });
+
+  it('skips a failed row with no reminderLogId (nudge / generic — not reconstructable)', async () => {
+    prismaMock.emailMessage.findMany.mockResolvedValue([makeFailedEmail({ reminderLogId: null })]);
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+    expect(summary.retriesSent).toBe(0);
+  });
+
+  it('does not run the retry pre-pass in dry-run mode', async () => {
+    prismaMock.emailMessage.findMany.mockResolvedValue([makeFailedEmail()]);
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    await runReminderSweep({ ...BASE_OPTS, dryRun: true });
+
+    expect(prismaMock.emailMessage.findMany).not.toHaveBeenCalled();
+    expect(mockRetryReminderEmail).not.toHaveBeenCalled();
   });
 });
 

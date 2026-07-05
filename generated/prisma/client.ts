@@ -159,6 +159,14 @@ export type PhiReport = Prisma.PhiReportModel
  */
 export type MappingEvidence = Prisma.MappingEvidenceModel
 /**
+ * Model EmailMessage
+ * Delivery-tracking record for a single outbound email. Written when an email
+ * is queued and updated as delivery is attempted (status/attempts/lastError).
+ * `reminderLogId` is a plain, unconstrained reference to a ReminderLog — kept
+ * decoupled (no relation/FK) so email delivery is independent of reminder data.
+ */
+export type EmailMessage = Prisma.EmailMessageModel
+/**
  * Model Enrollment
  * 
  */
@@ -214,6 +222,14 @@ export type Subscription = Prisma.SubscriptionModel
  * 
  */
 export type Invoice = Prisma.InvoiceModel
+/**
+ * Model ProcessedWebhookEvent
+ * Idempotency ledger for Stripe webhook delivery. Each Stripe event is
+ * recorded here on first successful processing; a duplicate delivery of the
+ * same `stripeEventId` is rejected by the unique constraint so handlers run
+ * at most once. Intentionally decoupled from Subscription/Invoice (no FK).
+ */
+export type ProcessedWebhookEvent = Prisma.ProcessedWebhookEventModel
 /**
  * Model Quiz
  * 

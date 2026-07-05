@@ -23,6 +23,7 @@ const {
   const prismaMock = {
     reminderLog: { create: vi.fn() },
     reminderNudge: { findUnique: vi.fn(), upsert: vi.fn() },
+    emailMessage: { create: vi.fn(), update: vi.fn() },
   };
   const mockCreateNotification = vi.fn();
   const mockResolveEscalationRecipients = vi.fn();
@@ -114,6 +115,8 @@ beforeEach(() => {
   mockResolveEscalationRecipients.mockResolvedValue(ESCALATION_RECIPIENTS);
   prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
   prismaMock.reminderNudge.upsert.mockResolvedValue({});
+  prismaMock.emailMessage.create.mockResolvedValue({ id: 'email-1' });
+  prismaMock.emailMessage.update.mockResolvedValue({});
 });
 
 // ─── dispatchLadderStage ──────────────────────────────────────────────────────
@@ -133,7 +136,7 @@ describe('dispatchLadderStage', () => {
 
   describe('happy path — FRIENDLY_REMINDER (audience: worker)', () => {
     it('creates the ReminderLog, notifies the worker in-app, and sends email to the worker', async () => {
-      const sendEmail = vi.fn().mockResolvedValue(undefined);
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
 
       const result = await dispatchLadderStage({
         ...baseLadderInput(),
@@ -175,7 +178,7 @@ describe('dispatchLadderStage', () => {
 
   describe('happy path — HARD_ESCALATION (audience: escalation only)', () => {
     it('notifies escalation recipients only — no worker notification', async () => {
-      const sendEmail = vi.fn().mockResolvedValue(undefined);
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
 
       const result = await dispatchLadderStage({
         ...baseLadderInput(),
@@ -218,7 +221,7 @@ describe('dispatchLadderStage', () => {
 
   describe('happy path — GRACE_SOFT_ESCALATION (audience: worker_and_escalation)', () => {
     it('notifies both the worker and escalation recipients', async () => {
-      const sendEmail = vi.fn().mockResolvedValue(undefined);
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
 
       const result = await dispatchLadderStage({
         ...baseLadderInput(),
@@ -279,13 +282,63 @@ describe('dispatchLadderStage', () => {
   });
 
   describe('resilience — sendEmail throws', () => {
-    it('returns {sent:false, reason:"error"} and does not propagate when sendEmail rejects', async () => {
+    it('isolates a thrown send: records the EmailMessage failed and still completes the stage', async () => {
       const sendEmail = vi.fn().mockRejectedValue(new Error('SMTP failure'));
 
       const result = await dispatchLadderStage({ ...baseLadderInput(), sendEmail });
 
-      expect(result).toEqual({ sent: false, reason: 'error' });
-      // The function must NOT throw — result (not an exception) is the contract
+      // Delivery is now decoupled from "stage claimed": the log + notification
+      // landed, so the stage is claimed; only the email failed (and is recorded).
+      expect(result).toEqual({ sent: true, reason: 'sent' });
+      expect(prismaMock.emailMessage.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'failed', attempts: { increment: 1 } }),
+        }),
+      );
+    });
+  });
+
+  describe('delivery tracking — EmailMessage source of truth (F-020/F-021)', () => {
+    it("records EmailMessage 'failed' (attempts=1) without re-firing the ReminderLog or notification", async () => {
+      const sendEmail = vi.fn().mockResolvedValue({ ok: false, error: new Error('550 bounce') });
+
+      const result = await dispatchLadderStage({ ...baseLadderInput(), sendEmail });
+
+      // The ReminderLog stays (dedup preserved); retry is driven off EmailMessage.
+      expect(result).toEqual({ sent: true, reason: 'sent' });
+
+      // Dedup row + notification each fired exactly once — a failed send re-fires neither.
+      expect(prismaMock.reminderLog.create).toHaveBeenCalledTimes(1);
+      expect(mockCreateNotification).toHaveBeenCalledTimes(1);
+
+      // EmailMessage: created 'queued' (linked to the log), then transitioned to 'failed'.
+      expect(prismaMock.emailMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            toEmail: 'worker@test.com',
+            kind: 'reminder_stage',
+            reminderLogId: 'log-1',
+            status: 'queued',
+          }),
+        }),
+      );
+      expect(prismaMock.emailMessage.update).toHaveBeenCalledWith({
+        where: { id: 'email-1' },
+        data: { status: 'failed', attempts: { increment: 1 }, lastError: '550 bounce' },
+      });
+    });
+
+    it("records EmailMessage 'sent' (with sentAt) on a successful delivery", async () => {
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+      await dispatchLadderStage({ ...baseLadderInput(), sendEmail });
+
+      expect(prismaMock.emailMessage.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'email-1' },
+          data: expect.objectContaining({ status: 'sent', sentAt: expect.any(Date) }),
+        }),
+      );
     });
   });
 });
@@ -306,14 +359,14 @@ describe('dispatchNudge', () => {
     attemptsRemaining: 2,
     now: NOW,
     dryRun: false,
-    sendEmail: vi.fn().mockResolvedValue(undefined),
+    sendEmail: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides,
   });
 
   describe('no existing nudge', () => {
     it('sends the notification, sends email, and upserts the ReminderNudge row', async () => {
       prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
-      const sendEmail = vi.fn().mockResolvedValue(undefined);
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
 
       const result = await dispatchNudge(baseNudgeInput({ sendEmail }));
 
@@ -387,7 +440,7 @@ describe('dispatchNudge', () => {
   describe('ADMIN_REASSIGN kind', () => {
     it('notifies escalation recipients and sends escalation email (not the worker)', async () => {
       prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
-      const sendEmail = vi.fn().mockResolvedValue(undefined);
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
       const recipients = {
         userIds: ['admin-1'],
         emails: [{ email: 'admin@test.com', name: 'Admin Name' }],
@@ -426,7 +479,7 @@ describe('dispatchNudge', () => {
   describe('WORKER_RETAKE — attemptsRemaining passed through', () => {
     it('includes attemptsRemaining in the email message', async () => {
       prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
-      const sendEmail = vi.fn().mockResolvedValue(undefined);
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
 
       await dispatchNudge(baseNudgeInput({ attemptsRemaining: 2, sendEmail }));
 

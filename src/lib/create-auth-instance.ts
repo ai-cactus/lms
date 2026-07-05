@@ -336,6 +336,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 mfaEnabled: true,
                 mfaVerifiedAt: true,
                 passwordResetRequired: true,
+                sessionVersion: true,
                 authProvider: true,
                 profile: { select: { fullName: true } },
               },
@@ -352,6 +353,22 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           if (!freshUser) return null; // User was deleted — invalidate
           if (freshUser.role !== allowedRole) return null; // Role changed — invalidate
+
+          // F-059: a completed password reset bumps `sessionVersion`, logging out
+          // every other existing session. On sign-in `token.sessionVersion` is
+          // still unset (or is a legacy token that predates this field), so we
+          // stamp it below rather than invalidate. Only a definite mismatch —
+          // a number on the token that differs from the freshly-read value —
+          // means the password was reset elsewhere, so invalidate. DB errors
+          // already returned above with the token intact, so a blip never
+          // mass-logs-out.
+          if (
+            typeof token.sessionVersion === 'number' &&
+            token.sessionVersion !== freshUser.sessionVersion
+          ) {
+            return null;
+          }
+          token.sessionVersion = freshUser.sessionVersion;
 
           token.role = freshUser.role as Role;
           token.organizationId = freshUser.organizationId;

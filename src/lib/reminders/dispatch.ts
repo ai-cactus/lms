@@ -50,10 +50,23 @@ export interface ReminderEmailMessage {
 }
 
 /**
- * Pluggable email sender. Phase 4 injects the real template-backed sender; until
- * then dispatch uses {@link noopEmailSender}.
+ * Outcome of a single email delivery attempt. The sender surfaces the *real*
+ * transport result (F-021) so dispatch can persist an accurate EmailMessage
+ * status instead of silently dropping a failed send (F-020).
  */
-export type ReminderEmailSender = (message: ReminderEmailMessage) => Promise<void>;
+export interface EmailDeliveryResult {
+  ok: boolean;
+  /** Transport error on failure; used only for the EmailMessage `lastError`. */
+  error?: unknown;
+}
+
+/**
+ * Pluggable email sender. Phase 4 injects the real template-backed sender; until
+ * then dispatch uses {@link noopEmailSender}. Returns the real delivery result so
+ * dispatch can record delivery/bounce state on the {@link ReminderEmailMessage}'s
+ * EmailMessage row.
+ */
+export type ReminderEmailSender = (message: ReminderEmailMessage) => Promise<EmailDeliveryResult>;
 
 /** Default sender: logs that email delivery is pending the Phase 4 wiring. */
 export const noopEmailSender: ReminderEmailSender = async (message) => {
@@ -64,7 +77,140 @@ export const noopEmailSender: ReminderEmailSender = async (message) => {
     kind: message.kind,
     recipientRole: message.recipientRole,
   });
+  return { ok: true };
 };
+
+/** EmailMessage `kind` for ladder-stage sends (Track A). */
+const EMAIL_KIND_STAGE = 'reminder_stage';
+/** EmailMessage `kind` for recurring nudge sends (Track B). */
+const EMAIL_KIND_NUDGE = 'reminder_nudge';
+
+/** Trim an unknown transport error down to a persistable message string. */
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Unknown email transport error';
+}
+
+/**
+ * Deliver one reminder email and record it as the delivery source of truth.
+ *
+ * Creates an EmailMessage row (`queued`), attempts delivery, then transitions it
+ * to `sent` (with `sentAt`) or `failed` (incrementing `attempts`, storing
+ * `lastError`) based on the real transport result. The ladder/nudge dedup rows
+ * mean "stage claimed"; this row means "message delivered" — decoupling the two
+ * so a failed send is retried by the sweep instead of being permanently
+ * suppressed (F-020/F-021).
+ *
+ * Never throws: tracking and transport failures are isolated so one bad send
+ * can neither abort the dispatch nor re-fire the already-sent notification.
+ */
+async function deliverReminderEmail(params: {
+  sendEmail: ReminderEmailSender;
+  message: ReminderEmailMessage;
+  kind: string;
+  /** ReminderLog id for ladder sends; null for nudges (no ReminderLog exists). */
+  reminderLogId: string | null;
+}): Promise<void> {
+  const { sendEmail, message, kind, reminderLogId } = params;
+
+  let record: { id: string } | null = null;
+  try {
+    record = await prisma.emailMessage.create({
+      data: { toEmail: message.to, kind, reminderLogId, status: 'queued' },
+    });
+  } catch (err) {
+    logger.error({ msg: '[reminders] Failed to record queued email', kind, reminderLogId, err });
+  }
+
+  let delivery: EmailDeliveryResult;
+  try {
+    delivery = await sendEmail(message);
+  } catch (err) {
+    delivery = { ok: false, error: err };
+  }
+
+  if (record) {
+    await finalizeEmailMessage(record.id, delivery);
+  }
+}
+
+/** Stamp the terminal delivery state on an EmailMessage row. Never throws. */
+async function finalizeEmailMessage(id: string, delivery: EmailDeliveryResult): Promise<void> {
+  try {
+    if (delivery.ok) {
+      await prisma.emailMessage.update({
+        where: { id },
+        data: { status: 'sent', sentAt: new Date() },
+      });
+    } else {
+      await prisma.emailMessage.update({
+        where: { id },
+        data: {
+          status: 'failed',
+          attempts: { increment: 1 },
+          lastError: describeError(delivery.error),
+        },
+      });
+    }
+  } catch (err) {
+    logger.error({ msg: '[reminders] Failed to finalize email delivery', emailMessageId: id, err });
+  }
+}
+
+/** Resolved inputs the sweep hands to {@link retryReminderEmail} per failed row. */
+export interface ReminderEmailRetryInput {
+  sendEmail: ReminderEmailSender;
+  /** The failed EmailMessage being re-attempted. */
+  emailMessage: { id: string; toEmail: string };
+  /** Claimed ladder stage (from the linked ReminderLog). */
+  stage: ReminderStage;
+  /** The stage's stored target date — recomputes `daysOverdue` for the copy. */
+  targetDate: Date;
+  courseTitle: string;
+  dueAt: Date | null;
+  timezone: string;
+  /** The subject worker — determines recipientRole vs. the stored `toEmail`. */
+  worker: { email: string; name: string | null };
+}
+
+/**
+ * Re-attempt a previously failed reminder-ladder email (sweep retry pre-pass,
+ * F-020). Reconstructs the {@link ReminderEmailMessage} from the claimed
+ * ReminderLog + enrollment context, resends via the injected sender, and stamps
+ * the terminal state on the EmailMessage row. Returns whether the resend
+ * succeeded. Never throws — a failed resend leaves the row `failed` with an
+ * incremented `attempts` so the cap eventually stops it.
+ */
+export async function retryReminderEmail(input: ReminderEmailRetryInput): Promise<boolean> {
+  const { sendEmail, emailMessage, stage, targetDate, courseTitle, dueAt, timezone, worker } =
+    input;
+
+  const recipientRole = emailMessage.toEmail === worker.email ? 'worker' : 'escalation';
+  const workerName = worker.name ?? worker.email;
+  const daysOverdue = dueAt ? Math.max(0, diffInDaysInTz(targetDate, dueAt, timezone)) : 0;
+
+  const message: ReminderEmailMessage = {
+    to: emailMessage.toEmail,
+    toName: recipientRole === 'worker' ? worker.name : null,
+    stage,
+    recipientRole,
+    courseTitle,
+    dueAt,
+    workerName,
+    daysOverdue,
+  };
+
+  let delivery: EmailDeliveryResult;
+  try {
+    delivery = await sendEmail(message);
+  } catch (err) {
+    delivery = { ok: false, error: err };
+  }
+
+  await finalizeEmailMessage(emailMessage.id, delivery);
+  return delivery.ok;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Result + copy helpers                                                      */
@@ -202,8 +348,11 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
 
   try {
     // Dedup: create the log row FIRST; a concurrent run loses the race via P2002.
+    // The log means "stage claimed"; delivery is tracked separately per-email on
+    // EmailMessage (keyed by this log id) so a failed send doesn't suppress retry.
+    let reminderLog: { id: string };
     try {
-      await prisma.reminderLog.create({
+      reminderLog = await prisma.reminderLog.create({
         data: { enrollmentId: enrollment.id, stage, channels, targetDate },
       });
     } catch (err) {
@@ -229,15 +378,20 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
         });
       }
       if (wantsEmail) {
-        await sendEmail({
-          to: worker.email,
-          toName: worker.name,
-          stage,
-          recipientRole: 'worker',
-          courseTitle,
-          dueAt,
-          workerName: worker.name ?? worker.email,
-          daysOverdue,
+        await deliverReminderEmail({
+          sendEmail,
+          kind: EMAIL_KIND_STAGE,
+          reminderLogId: reminderLog.id,
+          message: {
+            to: worker.email,
+            toName: worker.name,
+            stage,
+            recipientRole: 'worker',
+            courseTitle,
+            dueAt,
+            workerName: worker.name ?? worker.email,
+            daysOverdue,
+          },
         });
       }
     }
@@ -262,15 +416,20 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
       }
       if (wantsEmail) {
         for (const recipient of recipients.emails) {
-          await sendEmail({
-            to: recipient.email,
-            toName: recipient.name,
-            stage,
-            recipientRole: 'escalation',
-            courseTitle,
-            dueAt,
-            workerName,
-            daysOverdue,
+          await deliverReminderEmail({
+            sendEmail,
+            kind: EMAIL_KIND_STAGE,
+            reminderLogId: reminderLog.id,
+            message: {
+              to: recipient.email,
+              toName: recipient.name,
+              stage,
+              recipientRole: 'escalation',
+              courseTitle,
+              dueAt,
+              workerName,
+              daysOverdue,
+            },
           });
         }
       }
@@ -365,14 +524,19 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
         linkUrl: '/worker/trainings',
         metadata,
       });
-      await sendEmail({
-        to: worker.email,
-        toName: worker.name,
-        kind,
-        recipientRole: 'worker',
-        courseTitle,
-        dueAt: null,
-        attemptsRemaining: input.attemptsRemaining,
+      await deliverReminderEmail({
+        sendEmail,
+        kind: EMAIL_KIND_NUDGE,
+        reminderLogId: null,
+        message: {
+          to: worker.email,
+          toName: worker.name,
+          kind,
+          recipientRole: 'worker',
+          courseTitle,
+          dueAt: null,
+          attemptsRemaining: input.attemptsRemaining,
+        },
       });
     } else {
       const workerName = worker.name ?? worker.email;
@@ -387,14 +551,19 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
         });
       }
       for (const recipient of recipients.emails) {
-        await sendEmail({
-          to: recipient.email,
-          toName: recipient.name,
-          kind,
-          recipientRole: 'escalation',
-          courseTitle,
-          dueAt: null,
-          workerName,
+        await deliverReminderEmail({
+          sendEmail,
+          kind: EMAIL_KIND_NUDGE,
+          reminderLogId: null,
+          message: {
+            to: recipient.email,
+            toName: recipient.name,
+            kind,
+            recipientRole: 'escalation',
+            courseTitle,
+            dueAt: null,
+            workerName,
+          },
         });
       }
     }

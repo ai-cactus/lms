@@ -541,13 +541,10 @@ export async function submitQuizAttempt(
   const score = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
   const passed = score >= quiz.passingScore;
 
-  const existingAttempt = await prisma.quizAttempt.findUnique({
-    where: {
-      enrollmentId_quizId: {
-        enrollmentId,
-        quizId,
-      },
-    },
+  // Append-history: read the latest attempt for this enrollment+quiz.
+  const existingAttempt = await prisma.quizAttempt.findFirst({
+    where: { enrollmentId, quizId },
+    orderBy: { completedAt: 'desc' },
   });
 
   if (existingAttempt) {

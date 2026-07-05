@@ -451,14 +451,6 @@ export type StandardManualScalarRelationFilter = {
   isNot?: Prisma.StandardManualWhereInput
 }
 
-export type IntFieldUpdateOperationsInput = {
-  set?: number
-  increment?: number
-  decrement?: number
-  multiply?: number
-  divide?: number
-}
-
 export type StandardManualCreateNestedOneWithoutChunksInput = {
   create?: Prisma.XOR<Prisma.StandardManualCreateWithoutChunksInput, Prisma.StandardManualUncheckedCreateWithoutChunksInput>
   connectOrCreate?: Prisma.StandardManualCreateOrConnectWithoutChunksInput
