@@ -4,7 +4,6 @@ import bcrypt from 'bcryptjs'
 async function main() {
   console.log('Starting improved seed with quiz data...');
 
-  // Get the admin user (course creator)
   const admin = await prisma.user.findFirst({
     where: { role: 'admin' },
     include: { profile: true },
@@ -17,7 +16,6 @@ async function main() {
 
   console.log(`Seeding for admin: ${admin.email}`);
 
-  // Clean up old seed data
   console.log('Cleaning up old seed data...');
   await prisma.quizAttempt.deleteMany({});
   await prisma.enrollment.deleteMany({
@@ -41,7 +39,6 @@ async function main() {
     },
   });
 
-  // Create realistic staff users
   const staffData = [
     { email: 'sarah.johnson@company.com', firstName: 'Sarah', lastName: 'Johnson' },
     { email: 'michael.chen@company.com', firstName: 'Michael', lastName: 'Chen' },
@@ -73,7 +70,6 @@ async function main() {
     staffUsers.push(user);
   }
 
-  // Quiz questions template for each course
   const quizQuestions = {
     'HIPAA Privacy Training': [
       {
@@ -307,7 +303,6 @@ async function main() {
     ],
   };
 
-  // Course data with lessons
   const coursesData = [
     {
       title: 'HIPAA Privacy Training',
@@ -337,7 +332,6 @@ async function main() {
 
   const courseMap = new Map(existingCourses.map((c) => [c.title, c]));
 
-  // Identify courses that need to be created
   const coursesToCreate = coursesData.filter((c) => !courseMap.has(c.title));
 
   if (coursesToCreate.length > 0) {
@@ -382,7 +376,6 @@ async function main() {
       })
     );
 
-    // Add newly created courses to the map
     createdCourses.forEach((c) => courseMap.set(c.title, c));
   } else {
     console.log('All courses already exist. Skipping creation.');
@@ -391,7 +384,6 @@ async function main() {
   // Reconstruct the courses array in the original order for the enrollment steps
   const courses = coursesData.map((c) => courseMap.get(c.title));
 
-  // Enrollment patterns with varied scores
   const enrollmentPatterns = [
     // Sarah: High performer - completes all with high scores
     { staffIndex: 0, courseIndices: [0, 1, 2, 3, 4], status: 'completed', scoreRange: [85, 98] },
@@ -428,10 +420,8 @@ async function main() {
     for (const courseIndex of pattern.courseIndices) {
       const course = courses[courseIndex];
 
-      // Check if enrollment already exists
       if (enrollmentSet.has(`${staff.id}:${course.id}`)) continue;
 
-      // Generate score for completed enrollments
       const score = pattern.scoreRange
         ? Math.floor(Math.random() * (pattern.scoreRange[1] - pattern.scoreRange[0])) +
           pattern.scoreRange[0]
@@ -456,7 +446,6 @@ async function main() {
         },
       });
 
-      // Create QuizAttempt for completed enrollments
       if (pattern.status === 'completed' && course.lessons[0]?.quiz) {
         const quiz = course.lessons[0].quiz;
         const questions = quiz.questions;
@@ -491,7 +480,6 @@ async function main() {
     }
   }
 
-  // Summary stats
   const totalEnrollments = await prisma.enrollment.count({
     where: { course: { createdBy: admin.id } },
   });

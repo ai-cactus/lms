@@ -93,8 +93,6 @@ export interface OrgReportResult {
   activity: OrgActivityRow[];
 }
 
-// ── Category-level bulk reports (course-centric / staff-centric) ────────────
-
 export interface AllCoursesRow {
   courseTitle: string;
   category: string | null;
@@ -139,8 +137,6 @@ export type AuditReportResult =
   | OrgReportResult
   | AllCoursesReportResult
   | AllStaffReportResult;
-
-// ── Builder inputs (plain, DB-agnostic) ────────────────────────────────────
 
 export interface CourseReportInput {
   orgName: string;

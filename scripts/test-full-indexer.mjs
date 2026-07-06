@@ -109,7 +109,6 @@ async function run() {
   if (!manual) { console.error('No active manual'); return; }
   console.log(`\nManual: ${manual.filename} (${manual.id})`);
 
-  // Download
   console.log('\n─── Step 1: Download PDF...');
   const match = manual.storagePath.match(/^minio:\/\/([^/]+)\/(.+)$/);
   const stream = await MINIO.getObject(match[1], match[2]);
@@ -118,19 +117,16 @@ async function run() {
   const buf = Buffer.concat(bufChunks);
   console.log(`✓ ${buf.length} bytes | heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
 
-  // Extract text
   console.log('\n─── Step 2: Extract text via pdftotext...');
   const t0 = Date.now();
   const text = await extractText(buf);
   console.log(`✓ ${text.length} chars in ${((Date.now()-t0)/1000).toFixed(1)}s | heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
 
-  // Chunk
   const allChunks = chunkText(text.trim());
   const limit     = TEST_ALL ? allChunks.length : BATCH_SIZE * TEST_BATCHES;
   const chunks    = allChunks.slice(0, limit);
   console.log(`\n─── Step 3: Chunks: ${allChunks.length} total, testing ${chunks.length} (${Math.ceil(chunks.length / BATCH_SIZE)} batches)...`);
 
-  // Clear old
   await prisma.manualChunk.deleteMany({ where: { manualId: manual.id } });
   console.log('✓ Cleared existing chunks');
 

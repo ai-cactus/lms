@@ -12,8 +12,6 @@
 import { describe, it, expect } from 'vitest';
 import { can, RESOURCES } from './permissions';
 
-// ── Supervisor ────────────────────────────────────────────────────────────────
-
 describe('can() — supervisor (everything except billing)', () => {
   it('supervisor is denied billing.read', () => {
     expect(can('supervisor', 'billing.read')).toBe(false);
@@ -44,8 +42,6 @@ describe('can() — supervisor (everything except billing)', () => {
   });
 });
 
-// ── Owner ─────────────────────────────────────────────────────────────────────
-
 describe('can() — owner (everything including billing)', () => {
   it('owner has billing.read', () => {
     expect(can('owner', 'billing.read')).toBe(true);
@@ -72,8 +68,6 @@ describe('can() — owner (everything including billing)', () => {
   });
 });
 
-// ── HR ────────────────────────────────────────────────────────────────────────
-
 describe('can() — hr', () => {
   it('hr is denied facility.read', () => {
     expect(can('hr', 'facility.read')).toBe(false);
@@ -94,8 +88,6 @@ describe('can() — hr', () => {
     expect(can('hr', 'enrollment.create')).toBe(true);
   });
 });
-
-// ── Finance ───────────────────────────────────────────────────────────────────
 
 describe('can() — finance', () => {
   it('finance has billing.read', () => {
@@ -118,8 +110,6 @@ describe('can() — finance', () => {
   });
 });
 
-// ── Clinical Director ─────────────────────────────────────────────────────────
-
 describe('can() — clinicalDirector', () => {
   it('clinicalDirector has course.create', () => {
     expect(can('clinicalDirector', 'course.create')).toBe(true);
@@ -137,8 +127,6 @@ describe('can() — clinicalDirector', () => {
     expect(can('clinicalDirector', 'invite.create')).toBe(false);
   });
 });
-
-// ── Worker ────────────────────────────────────────────────────────────────────
 
 describe('can() — worker', () => {
   it('worker is denied billing.read', () => {
@@ -163,8 +151,6 @@ describe('can() — worker', () => {
     expect(can('worker', 'certificate.read')).toBe(true);
   });
 });
-
-// ── Facility permission ownership ─────────────────────────────────────────────
 
 describe('facility.* permissions are held only by owner and supervisor', () => {
   const facilityActions = ['create', 'read', 'edit', 'delete'] as const;

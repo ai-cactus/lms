@@ -16,10 +16,6 @@ import { diffInDaysInTz } from './time';
  * non-throwing `createNotification`).
  */
 
-/* -------------------------------------------------------------------------- */
-/* Email seam (Phase 4 wires real templates)                                  */
-/* -------------------------------------------------------------------------- */
-
 /**
  * A single reminder email to send. Carries enough context for Phase 4 to pick
  * the right Nodemailer template (`src/lib/email.ts`) without this module taking
@@ -65,10 +61,6 @@ export const noopEmailSender: ReminderEmailSender = async (message) => {
     recipientRole: message.recipientRole,
   });
 };
-
-/* -------------------------------------------------------------------------- */
-/* Result + copy helpers                                                      */
-/* -------------------------------------------------------------------------- */
 
 export type DispatchReason = 'sent' | 'dry-run' | 'duplicate' | 'throttled' | 'error';
 
@@ -149,10 +141,6 @@ function escalationStageCopy(
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Track A — ladder stage dispatch                                            */
-/* -------------------------------------------------------------------------- */
-
 export interface LadderStageInput {
   enrollment: { id: string; userId: string; courseId: string };
   courseTitle: string;
@@ -215,7 +203,6 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
 
     const metadata = { enrollmentId: enrollment.id, courseId: enrollment.courseId, stage };
 
-    // Worker-facing notification: 'worker' and 'worker_and_escalation' stages.
     if (audience === 'worker' || audience === 'worker_and_escalation') {
       const copy = workerStageCopy(stage, courseTitle);
       if (wantsInApp) {
@@ -242,7 +229,6 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
       }
     }
 
-    // Escalation notification: 'escalation' and 'worker_and_escalation' stages.
     if (audience === 'escalation' || audience === 'worker_and_escalation') {
       const recipients = await resolveEscalationRecipients({ userId: enrollment.userId });
       const workerName = worker.name ?? worker.email;
@@ -293,10 +279,6 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
     return { sent: false, reason: 'error' };
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* Track B — recurring nudge dispatch                                         */
-/* -------------------------------------------------------------------------- */
 
 export interface NudgeInput {
   kind: ReminderNudgeKind;

@@ -41,7 +41,6 @@ async function routeEmail(message: ReminderEmailMessage): Promise<void> {
   const workerName = message.workerName ?? message.toName ?? message.to;
   const daysOverdue = message.daysOverdue ?? 0;
 
-  // Track B recurring nudges.
   if (message.kind) {
     switch (message.kind) {
       case 'WORKER_RETAKE':
@@ -67,7 +66,6 @@ async function routeEmail(message: ReminderEmailMessage): Promise<void> {
     }
   }
 
-  // Track A ladder stages.
   if (message.stage) {
     switch (message.stage) {
       case 'FRIENDLY_REMINDER':

@@ -1,17 +1,9 @@
-// ──────────────────────────────────────────────
-// Centralized Vertex AI Client
-// Handles retries with exponential backoff,
-// token estimation, and context truncation.
-// ──────────────────────────────────────────────
-
 import { GoogleAuth } from 'google-auth-library';
 import { logger } from '@/lib/logger';
 
 const DEFAULT_MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1000;
 const VERTEX_AI_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per request
-
-// ── Token utilities ──────────────────────────
 
 /** Rough token estimate: ~4 characters per token for English text. */
 export function estimateTokens(text: string): number {
@@ -26,7 +18,6 @@ export function truncateToContext(text: string, maxTokens: number): string {
   const maxChars = maxTokens * 4;
   if (text.length <= maxChars) return text;
 
-  // Try to cut at the last sentence ending before the limit
   const truncated = text.substring(0, maxChars);
   const lastSentenceEnd = Math.max(
     truncated.lastIndexOf('. '),
@@ -39,13 +30,9 @@ export function truncateToContext(text: string, maxTokens: number): string {
   return text.substring(0, cutPoint) + '\n...[truncated]';
 }
 
-// ── Auth ──────────────────────────────────────
-
 const auth = new GoogleAuth({
   scopes: 'https://www.googleapis.com/auth/cloud-platform',
 });
-
-// ── Shared retry helper ──────────────────────
 
 async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
   let lastError: Error | null = null;
@@ -79,8 +66,6 @@ async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
 
   throw lastError || new Error(`${label} failed after all retries.`);
 }
-
-// ── Core API caller ──────────────────────────
 
 export interface VertexAIConfig {
   temperature?: number;

@@ -439,7 +439,6 @@ describe('ai-client utilities', () => {
         }),
       );
 
-      // Verify maxOutputTokens is included in the body
       const fetchCall = (global.fetch as any).mock.calls[0];
       const fetchBody = JSON.parse(fetchCall[1].body);
       expect(fetchBody.generationConfig.maxOutputTokens).toBe(1000);

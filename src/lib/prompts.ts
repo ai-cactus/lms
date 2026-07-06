@@ -11,8 +11,6 @@
  *   const promptB = buildPromptB({ courseJson, questionCount, difficulty });
  */
 
-// ─── Metadata builder ────────────────────────────
-
 interface DocumentMeta {
   docId: string;
   label: string;
@@ -42,8 +40,6 @@ function buildMetadataSection(documents: DocumentMeta[]): string {
     .join('\n');
   return `METADATA:\nSource Documents:\n${entries}`;
 }
-
-// ─── Prompt A — Structured Course JSON ───────────
 
 export function buildPromptA(input: PromptAInput): string {
   const metadataSection = buildMetadataSection(input.documents);
@@ -177,8 +173,6 @@ SOURCE CONTENT:
 ${contextForGeneration}
 `;
 }
-
-// ─── Prompt B — Quiz + Explanations ──────────────
 
 export function buildPromptB(input: PromptBInput): string {
   return `

@@ -56,7 +56,6 @@ async function downloadBuffer(storagePath) {
 }
 
 async function run() {
-  // 1. Get active manual
   const manual = await prisma.standardManual.findFirst({
     where: { isActive: true },
     orderBy: { createdAt: 'desc' },
@@ -65,12 +64,10 @@ async function run() {
   console.log(`\nTesting against: ${manual.filename} (${manual.id})`);
   console.log(`storagePath: ${manual.storagePath}`);
 
-  // 2. Download PDF
   console.log('\n─── Downloading PDF...');
   const buf = await downloadBuffer(manual.storagePath);
   console.log(`✓ Downloaded ${buf.length} bytes`);
 
-  // 3. Test pdf-parse
   console.log('\n─── Parsing PDF with pdf-parse...');
   let pdfData;
   try {
@@ -84,7 +81,6 @@ async function run() {
     return;
   }
 
-  // 4. Test generateEmbedding with one small chunk
   console.log('\n─── Testing embedding API...');
   const GOOGLE_VERTEX_PROJECT = process.env.GOOGLE_PROJECT_ID || process.env.GCP_PROJECT_ID;
   const VERTEX_EMBEDDING_MODEL = process.env.VERTEX_EMBEDDING_MODEL || 'text-embedding-004';

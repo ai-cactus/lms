@@ -9,15 +9,11 @@ import { TOTP, Secret } from 'otpauth';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-// ── Configuration ─────────────────────────────────────────────────────────────
-
 const TOTP_ISSUER = 'Theraptly LMS';
 const TOTP_PERIOD = 30; // seconds
 const TOTP_DIGITS = 6;
 const RECOVERY_CODE_COUNT = 10;
 const RECOVERY_CODE_LENGTH = 10; // characters per code
-
-// ── Encryption helpers ────────────────────────────────────────────────────────
 
 function getEncryptionKey(): Buffer {
   const secret = process.env.NEXTAUTH_SECRET;
@@ -60,8 +56,6 @@ export function decryptSecret(encoded: string): string {
   return decipher.update(ciphertext) + decipher.final('utf8');
 }
 
-// ── OTP Payload with Expiry ───────────────────────────────────────────────────
-
 interface OtpPayload {
   code: string;
   createdAt: number;
@@ -90,8 +84,6 @@ export function decryptOtpPayload(encoded: string): { code: string; expired: boo
     return null;
   }
 }
-
-// ── TOTP ──────────────────────────────────────────────────────────────────────
 
 /**
  * Generate a new TOTP secret and otpauth:// URI for QR code generation.
@@ -138,8 +130,6 @@ export function verifyTotpCode(base32Secret: string, code: string): boolean {
     return false;
   }
 }
-
-// ── Recovery Codes ────────────────────────────────────────────────────────────
 
 /**
  * Generate a set of human-readable recovery codes.

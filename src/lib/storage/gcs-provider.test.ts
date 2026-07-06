@@ -12,7 +12,6 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
 // Must be constructed before vi.mock() factory bodies run so factories can
 // close over them. See project mocking conventions (vi.hoisted pattern).
 
@@ -26,8 +25,6 @@ const mockMinioUpload = vi.hoisted(() =>
     backend: 'minio',
   }),
 );
-
-// ─── Module mocks (hoisted before any imports of the module under test) ───────
 
 vi.mock('@google-cloud/storage', () => ({
   Storage: MockStorage,
@@ -56,10 +53,7 @@ vi.mock('@/lib/storage/minio-provider', () => ({
   }),
 }));
 
-// ─── Module under test (static import — always AFTER vi.mock calls) ───────────
 import { GCSProvider } from '@/lib/storage/gcs-provider';
-
-// ─── Test helpers ─────────────────────────────────────────────────────────────
 
 function toBase64(obj: unknown): string {
   return Buffer.from(JSON.stringify(obj)).toString('base64');
@@ -93,8 +87,6 @@ const VALID_KEY = {
   private_key: '-----BEGIN RSA PRIVATE KEY-----\nMOCK\n-----END RSA PRIVATE KEY-----',
 };
 
-// ─── Constructor unit tests ───────────────────────────────────────────────────
-
 describe('GCSProvider constructor', () => {
   useEnvIsolation();
 
@@ -103,7 +95,6 @@ describe('GCSProvider constructor', () => {
   });
 
   it('throws when GCP_BUCKET_NAME is not set', () => {
-    // No env vars set — bucket name is absent.
     expect(() => new GCSProvider()).toThrow(/GCP_BUCKET_NAME is not configured/);
     expect(MockStorage).not.toHaveBeenCalled();
   });
@@ -178,11 +169,6 @@ describe('GCSProvider constructor', () => {
     expect(MockStorage).not.toHaveBeenCalled();
   });
 });
-
-// ─── GCSProvider.list ─────────────────────────────────────────────────────────
-//
-// Tests for the list() method added in the orphaned-object cleanup phase.
-// These set up MockStorage to return an instance with a bucket() method.
 
 describe('GCSProvider.list', () => {
   useEnvIsolation();
@@ -259,8 +245,6 @@ describe('GCSProvider.list', () => {
   });
 });
 
-// ─── Integration: GCS→MinIO fallback via storage/index.ts ─────────────────────
-//
 // index.ts memoises GCS init behind a module-level _gcsInitialised flag.
 // vi.resetModules() is used to flush that singleton before each test here so
 // the fallback path can be exercised deterministically.

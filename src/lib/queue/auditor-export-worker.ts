@@ -286,7 +286,6 @@ export function getExportWorker() {
           })),
         });
       } else {
-        // org scope
         const [enrollments, totalCourses, totalStaff] = await Promise.all([
           prisma.enrollment.findMany({
             where: { userId: { in: orgUserIds }, ...dateWhere },

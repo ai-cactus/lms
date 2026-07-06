@@ -3,13 +3,11 @@ import { prisma } from '@/db/index';
 async function main() {
   const email = 'vauntedgiant@zohomail.com';
 
-  // delete invites
   await prisma.invite.deleteMany({
     where: { email },
   });
   console.log(`Deleted invites for ${email}`);
 
-  // check for user
   const user = await prisma.user.findUnique({
     where: { email },
   });
@@ -49,7 +47,6 @@ async function main() {
     console.log(`User ${email} not found`);
   }
 
-  // delete verification tokens if there are any
   await prisma.verificationToken.deleteMany({
     where: { identifier: email },
   });

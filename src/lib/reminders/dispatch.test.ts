@@ -10,8 +10,6 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const {
   prismaMock,
   mockCreateNotification,
@@ -53,8 +51,6 @@ const {
   };
 });
 
-// ─── Module mocks ─────────────────────────────────────────────────────────────
-
 vi.mock('@/lib/prisma', () => ({ default: prismaMock, prisma: prismaMock }));
 
 vi.mock('@/generated/prisma/client', () => ({
@@ -79,11 +75,7 @@ vi.mock('@/lib/logger', () => ({
   maskEmail: (e: string) => e,
 }));
 
-// ─── Module under test ────────────────────────────────────────────────────────
-
 import { dispatchLadderStage, dispatchNudge } from './dispatch';
-
-// ─── Shared fixtures ──────────────────────────────────────────────────────────
 
 const WORKER = { id: 'user-1', email: 'worker@test.com', name: 'Test Worker' };
 const ENROLLMENT = { id: 'enroll-1', userId: 'user-1', courseId: 'course-1' };
@@ -105,8 +97,6 @@ const baseLadderInput = () => ({
   dryRun: false,
 });
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.reminderLog.create.mockResolvedValue({ id: 'log-1' });
@@ -115,8 +105,6 @@ beforeEach(() => {
   prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
   prismaMock.reminderNudge.upsert.mockResolvedValue({});
 });
-
-// ─── dispatchLadderStage ──────────────────────────────────────────────────────
 
 describe('dispatchLadderStage', () => {
   describe('dry-run', () => {
@@ -289,8 +277,6 @@ describe('dispatchLadderStage', () => {
     });
   });
 });
-
-// ─── dispatchNudge ────────────────────────────────────────────────────────────
 
 describe('dispatchNudge', () => {
   const NOW = new Date('2024-06-15T12:00:00Z');

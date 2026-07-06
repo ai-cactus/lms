@@ -3,14 +3,10 @@
  * Matches the JSON output schemas defined in prompts.ts
  */
 
-// ─── Shared Types ────────────────────────────────
-
 export interface SourceAnchor {
   docId: string;
   hint: string;
 }
-
-// ─── Prompt A: Course JSON Types ─────────────────
 
 export interface ReviewerNote {
   type:
@@ -103,8 +99,6 @@ export interface CourseV3 {
   modules: CourseModule[];
   assessmentFocus: AssessmentFocus[];
 }
-
-// ─── Prompt B: Quiz JSON Types ───────────────────
 
 export type QuestionArchetype =
   | 'best-next-action'

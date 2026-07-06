@@ -10,8 +10,6 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     enrollment: { findMany: vi.fn() },
@@ -19,18 +17,12 @@ const { prismaMock } = vi.hoisted(() => {
   return { prismaMock };
 });
 
-// ─── Module mocks ─────────────────────────────────────────────────────────────
-
 vi.mock('@/lib/prisma', () => ({ default: prismaMock, prisma: prismaMock }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// ─── Module under test ────────────────────────────────────────────────────────
-
 import { getOverdueComplianceForOrg } from './compliance';
-
-// ─── Fixed clock ──────────────────────────────────────────────────────────────
 
 // noon UTC June 15 = 08:00 EDT in America/New_York (local date "2024-06-15")
 const NOW = new Date('2024-06-15T12:00:00Z');
@@ -44,8 +36,6 @@ afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
 });
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeEnrollment(
   id: string,
@@ -78,8 +68,6 @@ function makeEnrollment(
     },
   };
 }
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('getOverdueComplianceForOrg', () => {
   it('returns an empty summary when prisma returns no overdue enrollments', async () => {

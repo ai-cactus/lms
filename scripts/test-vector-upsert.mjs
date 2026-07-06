@@ -26,7 +26,6 @@ try {
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// Generate a fake 768-dim embedding
 const fakeEmbedding = Array.from({ length: 768 }, (_, i) => Math.sin(i * 0.1).toFixed(6));
 const embeddingString = `[${fakeEmbedding.join(',')}]`;
 
@@ -34,7 +33,6 @@ console.log(`\nEmbedding string length: ${embeddingString.length} chars`);
 console.log(`First 60 chars: ${embeddingString.slice(0, 60)}...`);
 
 async function run() {
-  // 1. Find the active manual
   const manual = await prisma.standardManual.findFirst({
     where: { isActive: true },
     orderBy: { createdAt: 'desc' },
@@ -42,7 +40,6 @@ async function run() {
   if (!manual) { console.error('\n✗ No active manual in DB'); return; }
   console.log(`\nUsing manual: ${manual.filename} (${manual.id})`);
 
-  // 2. Create a test chunk
   console.log('\n─── Step 1: Create ManualChunk record...');
   let chunk;
   try {
@@ -61,7 +58,6 @@ async function run() {
     return;
   }
 
-  // 3. Try the $executeRaw vector update (Approach A — tagged template)
   console.log('\n─── Step 2A: $executeRaw tagged template...');
   try {
     const result = await prisma.$executeRaw`
@@ -77,7 +73,6 @@ async function run() {
     console.error('  code   :', err.code);
     console.error('  meta   :', JSON.stringify(err.meta));
 
-    // Try Approach B — $executeRawUnsafe
     console.log('\n─── Step 2B: $executeRawUnsafe...');
     try {
       const result2 = await prisma.$executeRawUnsafe(
@@ -93,7 +88,6 @@ async function run() {
     }
   }
 
-  // 4. Verify the embedding was stored
   console.log('\n─── Step 3: Verify embedding stored...');
   try {
     const rows = await prisma.$queryRaw`
@@ -103,7 +97,6 @@ async function run() {
     `;
     console.log('Query result:', JSON.stringify(rows));
   } catch (err) {
-    // Simpler check
     try {
       const rows2 = await prisma.$queryRawUnsafe(
         `SELECT id, (embedding IS NOT NULL) as has_embedding FROM "ManualChunk" WHERE id = $1`,
@@ -115,7 +108,6 @@ async function run() {
     }
   }
 
-  // 5. Clean up test chunk
   console.log('\n─── Step 4: Cleaning up test chunk...');
   try {
     await prisma.manualChunk.delete({ where: { id: chunk.id } });

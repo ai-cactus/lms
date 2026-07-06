@@ -6,8 +6,6 @@
 
 import { z } from 'zod';
 
-// ─── Prompt A: ArticleMeta Schema ────────────────
-
 const ArticleMetaMetaSchema = z
   .object({
     promptVersion: z.string(),
@@ -69,8 +67,6 @@ export const ArticleMetaV46Schema = z
     norms: z.array(NormV46Schema).default([]),
   })
   .passthrough();
-
-// ─── Prompt B: Slides Schema ─────────────────────
 
 const SlidesMetaSchema = z
   .object({
@@ -141,8 +137,6 @@ export const SlidesV46Schema = z
   })
   .passthrough();
 
-// ─── Prompt C: Quiz Schema ───────────────────────
-
 const QuizMetaV46Schema = z
   .object({
     promptVersion: z.string(),
@@ -193,8 +187,6 @@ export const QuizV46Schema = z
   })
   .passthrough();
 
-// ─── Prompt D: Judge Schema ──────────────────────
-
 const JudgeMetaSchema = z
   .object({
     promptVersion: z.string(),
@@ -231,8 +223,6 @@ export const JudgeV46Schema = z
   })
   .passthrough();
 
-// ─── Prompt E: Regen Schema ─────────────────────
-
 const RegenMetaSchema = z
   .object({
     promptVersion: z.string(),
@@ -247,8 +237,6 @@ export const RegenV46Schema = z
     questions: z.array(QuizQuestionV46Schema).min(1),
   })
   .passthrough();
-
-// ─── Inferred types from schemas ─────────────────
 
 export type ArticleMetaV46Parsed = z.infer<typeof ArticleMetaV46Schema>;
 export type SlidesV46Parsed = z.infer<typeof SlidesV46Schema>;

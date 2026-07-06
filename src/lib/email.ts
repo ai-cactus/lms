@@ -100,7 +100,6 @@ export async function sendInviteEmail(
 export const sendPasswordResetEmail = async (email: string, token: string) => {
   const resetLink = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
 
-  // Fallback if env var is missing or localhost
   const appName = 'Theraptly LMS';
 
   const html = `
@@ -609,10 +608,6 @@ export async function sendDemoRequestEmail(data: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Reminder & Escalation Emails
-// ---------------------------------------------------------------------------
-
 /** Resolve the server-side base URL using the same precedence as the other emails. */
 function reminderBaseUrl(): string {
   return (
@@ -1026,10 +1021,6 @@ export async function sendRetakeReminderEmail(
     return { success: false, error };
   }
 }
-
-// ---------------------------------------------------------------------------
-// PDF Report Emails
-// ---------------------------------------------------------------------------
 
 /**
  * Sends a staff member's activity report PDF to the admin as an email attachment.

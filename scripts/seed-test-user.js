@@ -21,7 +21,6 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  // Create org
   const org = await prisma.organization.upsert({
     where: { slug: 'test-org' },
     update: { hasAuditorAccess: true },
@@ -48,7 +47,6 @@ async function main() {
   });
   console.log('Admin:', admin.email, '| role:', admin.role);
 
-  // Create profile for admin
   await prisma.profile.upsert({
     where: { id: admin.id },
     update: { firstName: 'Jane', lastName: 'Doe', fullName: 'Jane Doe', email: admin.email },
@@ -61,7 +59,6 @@ async function main() {
     },
   });
 
-  // Create 3 worker users
   const workerHash = await bcrypt.hash('Worker123!', 10);
   for (let i = 1; i <= 3; i++) {
     const w = await prisma.user.upsert({

@@ -40,11 +40,9 @@ export async function retrieveRelevantChunks(
     return [];
   }
 
-  // Clamp topK to a sane range
   const k = Math.min(Math.max(topK, 1), 20);
 
   try {
-    // 1. Ensure there is an active manual to search against
     const activeManual = await prisma.standardManual.findFirst({
       where: { isActive: true, processedAt: { not: null } }, // only search indexed manuals
       orderBy: { createdAt: 'desc' },
@@ -57,7 +55,6 @@ export async function retrieveRelevantChunks(
       return [];
     }
 
-    // 2. Embed the query
     const queryEmbedding = await generateEmbedding(query.slice(0, 2000)); // cap to avoid huge tokens
     const embeddingString = `[${queryEmbedding.join(',')}]`;
 

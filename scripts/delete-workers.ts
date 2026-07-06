@@ -1,7 +1,6 @@
 import { prisma } from '@/db/index';
 
 async function main() {
-  // First, find all organizations and their workers
   const orgs = await prisma.organization.findMany({
     include: {
       users: {

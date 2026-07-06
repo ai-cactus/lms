@@ -57,7 +57,6 @@ export async function resolveEscalationRecipients(enrollment: {
     }
   }
 
-  // Fall back to all org admins.
   const admins = await prisma.user.findMany({
     where: { organizationId: worker.organizationId, role: { in: [...ADMIN_ROLES] } },
     select: { id: true, email: true, profile: { select: { fullName: true } } },

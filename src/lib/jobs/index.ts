@@ -21,7 +21,6 @@ export async function createJob(
     },
   });
 
-  // Mock async processing
   processJob(job.id, payload).catch((err) =>
     logger.error({ msg: 'Job Processing Error', err: err }),
   );
@@ -30,7 +29,6 @@ export async function createJob(
 }
 
 async function processJob(jobId: string, payload: Record<string, unknown>) {
-  // Simulate delay
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
   await prisma.job.update({
@@ -40,7 +38,6 @@ async function processJob(jobId: string, payload: Record<string, unknown>) {
 
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  // MOCK: specific logic for GENERATE_DRAFT
   let result: Record<string, unknown> = {
     message: 'Successfully processed',
     timestamp: Date.now(),
@@ -48,7 +45,6 @@ async function processJob(jobId: string, payload: Record<string, unknown>) {
 
   try {
     if (payload.documentVersionId && payload.userId) {
-      // Create a Mock Course
       const course = await prisma.course.create({
         data: {
           title: 'Generated Course from Document',

@@ -40,8 +40,6 @@ type StageConfig = {
   channels: string[];
 };
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const {
   prismaMock,
   mockDispatchLadderStage,
@@ -68,8 +66,6 @@ const {
   };
 });
 
-// ─── Module mocks ─────────────────────────────────────────────────────────────
-
 vi.mock('@/lib/prisma', () => ({ default: prismaMock, prisma: prismaMock }));
 
 vi.mock('@/lib/reminders/dispatch', () => ({
@@ -91,11 +87,7 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
-// ─── Module under test ────────────────────────────────────────────────────────
-
 import { runReminderSweep, resolveOnCompletion } from './sweep';
-
-// ─── Shared dates ─────────────────────────────────────────────────────────────
 
 /**
  * noon UTC June 15 = 08:00 EDT — local date is "2024-06-15" in America/New_York.
@@ -113,8 +105,6 @@ const DUE_AT_TARGET_YESTERDAY = new Date('2024-06-28T12:00:00Z');
 
 // dueAt that makes FRIENDLY_REMINDER target 3 days ago (daysSinceTarget = 3).
 const DUE_AT_TARGET_3_DAYS_AGO = new Date('2024-06-26T12:00:00Z');
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Assignment slice as selected by the Track A query (null when the enrollment has no CourseAssignment). */
 type AssignmentSlice = { reminderStages: StageConfig[] } | null;
@@ -169,8 +159,6 @@ const BASE_OPTS = {
   dryRun: false,
 };
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks();
   // Safe defaults: empty result sets (both tracks empty)
@@ -182,8 +170,6 @@ beforeEach(() => {
   mockDispatchNudge.mockResolvedValue({ sent: true, reason: 'sent' });
   mockResolveEscalationRecipients.mockResolvedValue({ userIds: [], emails: [] });
 });
-
-// ─── Track A — deadline ladder ────────────────────────────────────────────────
 
 describe('runReminderSweep — Track A (deadline ladder)', () => {
   it('dispatches only FRIENDLY_REMINDER when dueAt is exactly 14 days out (catchUpDays=0)', async () => {
@@ -407,8 +393,6 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
   });
 });
 
-// ─── Track B — quiz nudges ────────────────────────────────────────────────────
-
 describe('runReminderSweep — Track B (quiz nudges)', () => {
   function makeAttempt(enrollmentId: string, score: number, attemptCount: number) {
     return { enrollmentId, score, attemptCount };
@@ -529,8 +513,6 @@ describe('runReminderSweep — Track B (quiz nudges)', () => {
     );
   });
 });
-
-// ─── resolveOnCompletion ──────────────────────────────────────────────────────
 
 describe('resolveOnCompletion', () => {
   it('calls notification.updateMany with the correct type filter and metadata path', async () => {

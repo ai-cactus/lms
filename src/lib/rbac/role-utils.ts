@@ -13,7 +13,6 @@
 import { roles, type RoleKey } from './permissions';
 import type { Role } from '@/types/next-auth';
 
-// ── Role sets ───────────────────────────────────────────────────────────────
 // Typed as `readonly Role[]` (not narrow tuples) so `.includes(someRole)` accepts
 // any `Role` at the call sites without triggering the literal-tuple narrowing.
 /** Every administrative (non-worker) role. */
@@ -28,10 +27,8 @@ export const ADMIN_ROLES: readonly Role[] = [
 /** The learner role(s). */
 export const WORKER_ROLES: readonly Role[] = ['worker'];
 
-/** Every valid role. */
 export const ALL_ROLES: readonly Role[] = [...ADMIN_ROLES, ...WORKER_ROLES];
 
-// ── DB enum ⇄ permissions RoleKey ───────────────────────────────────────────
 const DB_ROLE_TO_ROLE_KEY: Record<Role, RoleKey> = {
   owner: 'owner',
   supervisor: 'supervisor',
@@ -51,7 +48,6 @@ export function getRoleDisplayName(role: Role): string {
   return roles[dbRoleToRoleKey(role)].displayName;
 }
 
-// ── Grant matrix ────────────────────────────────────────────────────────────
 // Which roles a given inviter role is allowed to grant. An empty array is a hard
 // fence: that role can never invite, even if it somehow held `invite.create`.
 // Owner is NON-grantable — it is established only at org creation, so it never
@@ -66,7 +62,6 @@ export const GRANTABLE_ROLES: Record<Role, readonly Role[]> = {
   worker: [],
 };
 
-// ── Convenience predicates ──────────────────────────────────────────────────
 // Accept `unknown`/loosely-typed role values so callers holding a `string`,
 // `UserRole` or `Role` can use them uniformly without casts at every call site.
 /** True when the value is any administrative (non-worker) role. */

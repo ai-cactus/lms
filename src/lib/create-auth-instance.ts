@@ -157,7 +157,6 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           });
 
           if (!dbUser) {
-            // New user Signup Flow
             // D3: a brand-new admin-instance user with no invite becomes `owner`
             // (they are founding an organisation). A worker-instance user with no
             // invite becomes `worker`.
@@ -211,7 +210,6 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               select: { id: true, organizationId: true, role: true },
             });
 
-            // Mark invite as accepted if we used one
             if (pendingInvite) {
               await prisma.invite.update({
                 where: { id: pendingInvite.id },
@@ -219,9 +217,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               });
             }
           } else {
-            // Existing user login
             if (pendingInvite && !dbUser.organizationId) {
-              // User exists but has no org yet, and has a new invite
               logger.info({
                 msg: 'OAuth: existing user accepting invite',
                 email: maskEmail(user.email!),

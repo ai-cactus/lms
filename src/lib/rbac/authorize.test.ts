@@ -13,8 +13,6 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ── Hoisted mock references (must be created before vi.mock calls) ────────────
-
 const { mockAuth, mockLoggerWarn, mockLoggerError, mockMaskEmail, mockApiError } = vi.hoisted(
   () => {
     const mockAuth = vi.fn();
@@ -41,8 +39,6 @@ vi.mock('@/lib/api-response', () => ({
 
 import { authorize } from './authorize';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function makeSession(role: string, overrides: Record<string, unknown> = {}) {
   return {
     user: {
@@ -58,8 +54,6 @@ function makeSession(role: string, overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
 });
-
-// ── 401 path — no session ─────────────────────────────────────────────────────
 
 describe('authorize() — unauthenticated (401)', () => {
   it('returns ok:false with a 401 response when session is null', async () => {
@@ -81,8 +75,6 @@ describe('authorize() — unauthenticated (401)', () => {
     expect(mockApiError).toHaveBeenCalledWith('Unauthorized', 401);
   });
 });
-
-// ── 403 path — insufficient permission ───────────────────────────────────────
 
 describe('authorize() — authenticated but permission denied (403)', () => {
   it('returns ok:false with a 403 response when worker requests billing.read', async () => {
@@ -140,8 +132,6 @@ describe('authorize() — authenticated but permission denied (403)', () => {
     expect(mockApiError).toHaveBeenCalledWith('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS');
   });
 });
-
-// ── ok path — authenticated and permitted ─────────────────────────────────────
 
 describe('authorize() — authenticated and permitted (ok)', () => {
   it('returns ok:true with ctx when owner requests billing.read', async () => {

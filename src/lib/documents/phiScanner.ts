@@ -44,9 +44,6 @@ export async function scanText(text: string): Promise<ScanResult> {
   // Quick heuristic: If text is very short (< 50 chars), skip AI to save cost/time
   if (text.length < 50) return { hasPHI: false, findings: [] };
 
-  // Truncate for analysis if needed (though we want to scan mostly everything,
-  // maybe scan first 20k chars as a representative sample or split chunks?
-  // For MVP, taking first 15k characters is a reasonable trade-off).
   const contentToScan = text.slice(0, 15000);
 
   const prompt = `

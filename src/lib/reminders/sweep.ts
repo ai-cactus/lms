@@ -84,10 +84,6 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
   return summary;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Track A — the deadline ladder                                              */
-/* -------------------------------------------------------------------------- */
-
 async function runTrackA(
   opts: ReminderSweepOptions,
   summary: ReminderSweepSummary,
@@ -212,10 +208,6 @@ async function runTrackA(
     }
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* Track B — failing / locked quiz nudges                                     */
-/* -------------------------------------------------------------------------- */
 
 async function runTrackB(
   opts: ReminderSweepOptions,
@@ -348,10 +340,6 @@ async function runTrackB(
     }
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* Completion resolution                                                      */
-/* -------------------------------------------------------------------------- */
 
 /**
  * Stamp `resolvedAt`/`isRead` on the open reminder/escalation notifications for

@@ -17,8 +17,6 @@ import {
   isWorkerRole,
 } from './role-utils';
 
-// ── dbRoleToRoleKey ───────────────────────────────────────────────────────────
-
 describe('dbRoleToRoleKey', () => {
   it('maps supervisor → supervisor (identity — was super_admin in delta v2)', () => {
     expect(dbRoleToRoleKey('supervisor')).toBe('supervisor');
@@ -45,8 +43,6 @@ describe('dbRoleToRoleKey', () => {
   });
 });
 
-// ── getRoleDisplayName ────────────────────────────────────────────────────────
-
 describe('getRoleDisplayName', () => {
   it('returns a non-empty string for supervisor', () => {
     expect(getRoleDisplayName('supervisor')).toContain('Supervisor');
@@ -65,8 +61,6 @@ describe('getRoleDisplayName', () => {
   });
 });
 
-// ── ADMIN_ROLES ───────────────────────────────────────────────────────────────
-
 describe('ADMIN_ROLES', () => {
   it('contains exactly the five non-worker roles', () => {
     expect([...ADMIN_ROLES].sort()).toEqual(
@@ -79,15 +73,11 @@ describe('ADMIN_ROLES', () => {
   });
 });
 
-// ── WORKER_ROLES ──────────────────────────────────────────────────────────────
-
 describe('WORKER_ROLES', () => {
   it('contains only worker', () => {
     expect(WORKER_ROLES).toEqual(['worker']);
   });
 });
-
-// ── ALL_ROLES ─────────────────────────────────────────────────────────────────
 
 describe('ALL_ROLES', () => {
   it('contains all six roles', () => {
@@ -99,8 +89,6 @@ describe('ALL_ROLES', () => {
     expect(new Set(ALL_ROLES)).toEqual(expected);
   });
 });
-
-// ── GRANTABLE_ROLES ───────────────────────────────────────────────────────────
 
 describe('GRANTABLE_ROLES — owner is never grantable', () => {
   it('owner does not appear in any grantable list (established only at org creation)', () => {
@@ -147,8 +135,6 @@ describe('GRANTABLE_ROLES — no-grant roles have empty arrays', () => {
     expect(GRANTABLE_ROLES['worker']).toHaveLength(0);
   });
 });
-
-// ── Convenience predicates ────────────────────────────────────────────────────
 
 describe('isAdminRole', () => {
   it('returns true for owner', () => expect(isAdminRole('owner')).toBe(true));

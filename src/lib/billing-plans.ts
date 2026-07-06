@@ -78,7 +78,6 @@ export const BILLING_PLANS: BillingPlan[] = [
   },
 ];
 
-// Discounts per billing cycle
 export const CYCLE_DISCOUNTS: Record<BillingCycle, number> = {
   monthly: 0,
   quarterly: 0.1, // -10%

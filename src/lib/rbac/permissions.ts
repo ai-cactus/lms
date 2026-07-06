@@ -26,12 +26,8 @@
  *       hr/clinical_director/finance/worker — own records / functional area
  *   Where a role is limited in scope it is called out in its `description`
  *   and in the companion `RBAC-Roles-And-Permissions.docx` review document.
- *
- * NOTE FOR REVIEW: This is the proposed default matrix derived from the PRD.
- * Treat it as a starting point — edit freely.
  */
 
-// ── Primary resources under controlled access ───────────────────────────────
 export const RESOURCES = [
   'user', // Team roster / staff accounts (incl. role promotion)
   'organization', // Facility (tenant) profile & settings
@@ -54,95 +50,79 @@ export type Resource = (typeof RESOURCES)[number];
 export type Action = 'create' | 'read' | 'edit' | 'delete';
 export type Permission = `${Resource}.${Action}`;
 
-// ── Permission registry (4 entries per primary resource) ────────────────────
 // Flat list of every canonical `"<resource>.<action>"` permission string, used
 // as the single source of truth for the granted-permission arrays below.
 export const permissions: Permission[] = [
-  // user
   'user.create',
   'user.read',
   'user.edit',
   'user.delete',
 
-  // organization
   'organization.create',
   'organization.read',
   'organization.edit',
   'organization.delete',
 
-  // facility
   'facility.create',
   'facility.read',
   'facility.edit',
   'facility.delete',
 
-  // billing
   'billing.create',
   'billing.read',
   'billing.edit',
   'billing.delete',
 
-  // course
   'course.create',
   'course.read',
   'course.edit',
   'course.delete',
 
-  // enrollment
   'enrollment.create',
   'enrollment.read',
   'enrollment.edit',
   'enrollment.delete',
 
-  // assessment
   'assessment.create',
   'assessment.read',
   'assessment.edit',
   'assessment.delete',
 
-  // certificate
   'certificate.create',
   'certificate.read',
   'certificate.edit',
   'certificate.delete',
 
-  // document
   'document.create',
   'document.read',
   'document.edit',
   'document.delete',
 
-  // category
   'category.create',
   'category.read',
   'category.edit',
   'category.delete',
 
-  // invite
   'invite.create',
   'invite.read',
   'invite.edit',
   'invite.delete',
 
-  // assignment
   'assignment.create',
   'assignment.read',
   'assignment.edit',
   'assignment.delete',
 
-  // notification
   'notification.create',
   'notification.read',
   'notification.edit',
   'notification.delete',
 
-  // auditPack
   'auditPack.create',
   'auditPack.read',
   'auditPack.edit',
   'auditPack.delete',
 
-  // standardManual
   'standardManual.create',
   'standardManual.read',
   'standardManual.edit',
