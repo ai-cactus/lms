@@ -31,8 +31,6 @@ const envSchema = z.object({
   REDIS_URL: requiredString('REDIS_URL'),
   STRIPE_SECRET_KEY: requiredString('STRIPE_SECRET_KEY'),
   STRIPE_WEBHOOK_SECRET: requiredString('STRIPE_WEBHOOK_SECRET'),
-  GOOGLE_PROJECT_ID: requiredString('GOOGLE_PROJECT_ID'),
-  GCP_BUCKET_NAME: requiredString('GCP_BUCKET_NAME'),
 });
 
 /**
