@@ -31,12 +31,6 @@ const envSchema = z.object({
   REDIS_URL: requiredString('REDIS_URL'),
   STRIPE_SECRET_KEY: requiredString('STRIPE_SECRET_KEY'),
   STRIPE_WEBHOOK_SECRET: requiredString('STRIPE_WEBHOOK_SECRET'),
-  // NOTE: GOOGLE_PROJECT_ID and GCP_BUCKET_NAME are intentionally NOT required.
-  // The code treats both as optional with fallbacks — GOOGLE_PROJECT_ID defaults
-  // to 'theraptly-lms' in ai-client.ts and is derived from the key by the GCS
-  // provider, and GCP_BUCKET_NAME is optional because storage/index.ts falls back
-  // to MinIO when it is unset. Requiring them would break environments that
-  // legitimately run on the MinIO/default path (e.g. staging).
 });
 
 /**
