@@ -169,7 +169,6 @@ export default function PaymentMethodTab() {
         </div>
       )}
 
-      {/* Primary Method */}
       {primaryMethod && (
         <>
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.6px] text-text-tertiary">
@@ -186,7 +185,6 @@ export default function PaymentMethodTab() {
         </>
       )}
 
-      {/* Other Methods */}
       {otherMethods.length > 0 && (
         <>
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.6px] text-text-tertiary">

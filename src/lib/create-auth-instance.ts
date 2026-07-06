@@ -151,7 +151,6 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             select: { id: true, organizationId: true, role: true },
           });
 
-          // Check for pending invites
           const pendingInvite = await prisma.invite.findFirst({
             where: { email: user.email!, status: 'pending' },
             orderBy: { createdAt: 'desc' },

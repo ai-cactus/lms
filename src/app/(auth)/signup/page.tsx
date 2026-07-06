@@ -78,7 +78,7 @@ export default function SignupPage() {
     } else {
       const pwCheck = validatePassword(formData.password);
       if (!pwCheck.valid) {
-        newErrors.password = pwCheck.errors[0]; // Show first error
+        newErrors.password = pwCheck.errors[0];
       }
     }
 
@@ -113,7 +113,6 @@ export default function SignupPage() {
       }),
     );
 
-    // Redirect to role selection
     setIsFormLoading(true);
     router.push('/signup/role-selection');
   };

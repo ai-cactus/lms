@@ -20,7 +20,6 @@ export default function PasswordStrengthIndicator({ password }: PasswordStrength
 
   return (
     <div className="mt-2">
-      {/* Strength bar */}
       <div className="flex gap-1 mb-1.5">
         {checks.map((_, i) => (
           <div
@@ -34,14 +33,12 @@ export default function PasswordStrengthIndicator({ password }: PasswordStrength
         ))}
       </div>
 
-      {/* Strength label */}
       {password.length > 0 && (
         <div className="text-xs font-medium mb-2" style={{ color }}>
           {label}
         </div>
       )}
 
-      {/* Individual checks */}
       <div className="flex flex-col gap-1">
         {checks.map((check) => (
           <div

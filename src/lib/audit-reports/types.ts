@@ -1,4 +1,3 @@
-// src/lib/audit-reports/types.ts
 // JSON-serializable result shapes stored on Job.result and rendered to PDF.
 // All dates are ISO strings so the shape survives JSON round-trips.
 

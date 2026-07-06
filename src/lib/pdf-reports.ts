@@ -177,7 +177,6 @@ export async function generateUserActivityPdf(data: UserActivityReportData): Pro
     currentY += HEADER_HEIGHT;
 
     data.enrollments.forEach((enrollment, idx) => {
-      // Check if we need a new page
       if (currentY + ROW_HEIGHT > usableHeight) {
         addPage();
       }

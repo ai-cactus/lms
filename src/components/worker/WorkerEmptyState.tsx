@@ -43,7 +43,6 @@ export default function WorkerEmptyState() {
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-5">
       <div className="relative mx-auto flex max-h-[calc(100vh-40px)] w-full max-w-[1000px] overflow-y-auto rounded-[20px] border border-[#e2e8f0] bg-white p-4 shadow-md max-[900px]:flex-col">
-        {/* Close Button */}
         <div className="absolute right-4 top-4 z-10">
           <button
             className="flex size-8 items-center justify-center rounded-full border border-[#e2e8f0] bg-white text-[#4a5568] shadow-sm transition-all hover:scale-105 hover:bg-[#f7fafc] hover:text-[#2d3748]"
@@ -54,7 +53,6 @@ export default function WorkerEmptyState() {
           </button>
         </div>
 
-        {/* Left Panel */}
         <div className="relative flex flex-1 flex-col items-center justify-center overflow-hidden rounded-[20px] bg-[#d3f5ee] p-10 text-center max-[900px]:mb-6 max-[900px]:mt-10 max-[900px]:rounded-2xl max-[900px]:p-[30px] max-md:mb-4 max-md:p-6">
           <div className="absolute -left-[50px] -top-[50px] z-0 size-[300px] rounded-full bg-[#38b2ac] opacity-10" />
           <div className="relative z-[1] mb-[30px] h-auto w-[280px] max-md:w-[200px]">
@@ -90,7 +88,6 @@ export default function WorkerEmptyState() {
           </Button>
         </div>
 
-        {/* Right Panel */}
         <div className="relative flex flex-1 flex-col justify-center px-[50px] py-[60px] max-[900px]:p-4 max-md:p-4">
           <h3 className="mb-10 text-[30px] font-bold tracking-[-0.6px] text-black max-md:text-[22px]">
             How to get started

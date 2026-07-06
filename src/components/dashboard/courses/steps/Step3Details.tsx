@@ -32,7 +32,6 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
       </p>
 
       <div className="w-full flex-1 overflow-y-auto pb-10">
-        {/* Course Title */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
           <label className="text-sm font-medium text-text-muted">Course Title</label>
           <Input
@@ -43,7 +42,6 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
           />
         </div>
 
-        {/* Short Description */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-start gap-5">
           <label className="pt-3 text-sm font-medium text-text-muted">Short Description</label>
           <textarea
@@ -74,7 +72,6 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
           </div>
         </div>
 
-        {/* No of Notes / Slides */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
           <label className="text-sm font-medium text-text-muted">No of Notes / Slides</label>
           <Select value={data.notesCount} onValueChange={(val) => onChange('notesCount', val)}>
@@ -94,7 +91,6 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
 
         <h3 className="mb-6 text-xl font-bold text-foreground">Learning Objectives</h3>
 
-        {/* Learning Objectives */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-start gap-5">
           <label className="pt-3 text-sm font-medium text-text-muted">
             Objectives

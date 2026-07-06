@@ -101,7 +101,6 @@ export default function OnboardingStep1() {
   const onSubmit = async (data: Step1FormData) => {
     logger.info({ msg: '[onboarding] Step 1 saved locally', fieldCount: Object.keys(data).length });
     try {
-      // Check availability
       const { checkOrganizationNameAvailable } = await import('@/app/actions/organization');
       const result = await checkOrganizationNameAvailable(data.legalName);
 
@@ -114,7 +113,6 @@ export default function OnboardingStep1() {
         return;
       }
 
-      // Save to localStorage
       if (typeof window !== 'undefined') {
         const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
         const updated = { ...existing, step1: data };

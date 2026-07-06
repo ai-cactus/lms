@@ -178,13 +178,12 @@ export async function joinOrganization(code: string) {
       logger.warn({ msg: '[org-code] joinOrganization: no facility for organization', orgId });
     }
 
-    // Update user to link to organization + facility
     await prisma.user.update({
       where: { id: userId },
       data: {
         organizationId: orgId,
         facilityId: facility?.id ?? null,
-        role: 'worker', // Ensure role is worker
+        role: 'worker',
       },
     });
 

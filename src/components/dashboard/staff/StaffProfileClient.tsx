@@ -130,7 +130,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
   const [certificates, setCertificates] = useState<WorkerCertificate[]>([]);
   const [loadingCerts, setLoadingCerts] = useState(false);
 
-  // Manager assignment
   const [managers, setManagers] = useState<AssignableManager[]>([]);
   const [loadingManagers, setLoadingManagers] = useState(false);
   const [managerId, setManagerId] = useState<string>(user.managerId ?? NO_MANAGER_VALUE);
@@ -206,14 +205,12 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
     }
   };
 
-  // Filter enrollments
   const filteredEnrollments = enrollments.filter((e) =>
     e.courseName.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
     <div className="mx-auto w-full max-w-[1400px]">
-      {/* Breadcrumb */}
       <Link
         href="/dashboard/staff"
         className="mb-6 inline-flex items-center gap-2 text-sm text-[#718096] hover:text-[#4a5568]"
@@ -226,7 +223,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         <span className="font-medium text-primary">Staff Profile</span>
       </Link>
 
-      {/* Header */}
       <div className="mb-8 flex items-start justify-between gap-4 max-md:flex-col">
         <div className="flex gap-6">
           <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1a202c] text-white">
@@ -311,7 +307,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#bee3f8] bg-[#ebf8ff]">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2b6cb0]">
@@ -354,7 +349,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         </div>
       </div>
 
-      {/* Courses & Certificates */}
       <div className="mt-6 rounded-xl border border-[#e2e8f0] bg-white p-5">
         <div className="flex gap-6 border-b border-[#E2E8F0] mb-6">
           <button
@@ -553,7 +547,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         )}
       </div>
 
-      {/* Modals */}
       <EditStaffModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}

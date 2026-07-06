@@ -95,7 +95,6 @@ export default function ComplianceTableClient({ rows, hardThresholdDays }: Props
 
   return (
     <div className="rounded-xl border border-border bg-background p-4 sm:p-6">
-      {/* Filters */}
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-text-secondary">Course</label>

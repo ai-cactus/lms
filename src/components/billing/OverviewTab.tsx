@@ -189,7 +189,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-      {/* Current Plan */}
       <div className={cardClass}>
         <div className="mb-4 flex items-center justify-between">
           <p className={cardTitleClass}>Current Plan</p>
@@ -308,7 +307,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
         )}
       </div>
 
-      {/* Staff Usage */}
       <div className={cardClass}>
         <div className="mb-4 flex items-center justify-between">
           <p className={cardTitleClass}>Staff Usage</p>
@@ -339,7 +337,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
         )}
       </div>
 
-      {/* Payment Method */}
       <div className={cardClass}>
         <div className="mb-4 flex items-center justify-between">
           <p className={cn(cardTitleClass, 'text-text-tertiary')}>Payment Method</p>
@@ -396,7 +393,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
         )}
       </div>
 
-      {/* Recent Invoices */}
       <div className={cardClass}>
         <div className="mb-4 flex items-center justify-between">
           <p className={cn(cardTitleClass, 'text-text-tertiary')}>Recent Invoices</p>

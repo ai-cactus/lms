@@ -62,7 +62,6 @@ export default async function AuditorPackPage() {
 
   return (
     <div>
-      {/* Page Header */}
       <div className="mb-7">
         <h1 className="mb-1 text-[28px] font-bold text-foreground">Audit Reports</h1>
         <p className="text-sm text-text-tertiary">
@@ -72,7 +71,6 @@ export default async function AuditorPackPage() {
 
       {hasAccess ? (
         <>
-          {/* Welcome Banner */}
           {showBanner && (
             <div className="relative mb-8 flex min-h-[180px] flex-col justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#3a2fd8] px-6 py-8 text-white sm:px-12 sm:py-10">
               {/* Decorative background shapes */}
@@ -92,7 +90,6 @@ export default async function AuditorPackPage() {
             </div>
           )}
 
-          {/* Tab Content */}
           <AuditorPackClient initialStats={initialStats} initialCourses={initialCourses} />
         </>
       ) : (

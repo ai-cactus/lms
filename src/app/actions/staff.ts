@@ -46,7 +46,6 @@ export async function getStaffDetails(userId: string) {
 
     if (!user) return null;
 
-    // Calculate Stats
     const totalCourses = user.enrollments.length || 0;
     const completedCourses =
       user.enrollments.filter((e) => {
@@ -411,7 +410,6 @@ export async function removeStaff(userId: string) {
       data: { organizationId: null },
     });
 
-    // Revalidate cache
     revalidatePath('/dashboard/staff');
 
     // Send notification emails (non-blocking for better UX)

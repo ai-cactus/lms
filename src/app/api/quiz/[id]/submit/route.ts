@@ -74,7 +74,6 @@ No markdown, no extra text.`;
 
     const parsed = JSON.parse(cleanText.trim());
 
-    // Map back to question IDs
     const explanationMap: Record<string, string> = {};
     questions.forEach((q, i) => {
       explanationMap[q.id] = parsed[String(i + 1)] || '';
@@ -104,14 +103,12 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const { enrollmentId, answers, timeTaken } = parsedBody.data;
 
-    // Validate timeTaken
     if (timeTaken !== undefined && timeTaken !== null) {
       if (typeof timeTaken !== 'number' || isNaN(timeTaken) || timeTaken < 0) {
         return NextResponse.json({ error: 'Invalid timeTaken value' }, { status: 400 });
       }
     }
 
-    // Verify enrollment belongs to user
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
       include: { course: true },
@@ -131,7 +128,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       );
     }
 
-    // Get quiz with questions
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
       include: { questions: true, lesson: { select: { courseId: true } } },
@@ -152,7 +148,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       );
     }
 
-    // Calculate score
     let correctCount = 0;
     for (const answer of answers) {
       const question = quiz.questions.find((q) => q.id === answer.questionId);
@@ -165,18 +160,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const score = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
     const passed = score >= quiz.passingScore;
 
-    // Generate AI explanations
     const explanations = await generateExplanations(quiz.questions).catch(
       () => ({}) as Record<string, string>,
     );
 
-    // Enrich answers with explanations for DB storage
     const enrichedAnswers = answers.map((a: { questionId: string; selectedAnswer: string }) => ({
       ...a,
       explanation: explanations[a.questionId] || '',
     }));
 
-    // Check if attempt already exists
     const existingAttempt = await prisma.quizAttempt.findUnique({
       where: {
         enrollmentId_quizId: { enrollmentId, quizId },
@@ -215,7 +207,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       });
     }
 
-    // Update enrollment status and score
     // CORE LOGIC: Passing the quiz does NOT complete the course. Attestation required.
     const isLocked = !passed && quiz.allowedAttempts && currentAttemptCount >= quiz.allowedAttempts;
 
@@ -229,7 +220,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       },
     });
 
-    // If locked, notify org admins
     if (isLocked) {
       const enrollmentWithDetails = await prisma.enrollment.findUnique({
         where: { id: enrollmentId },
@@ -282,7 +272,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
             });
           }
 
-          // Send emails to admins
           const appUrl =
             process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
           const { sendQuizLockedEmail } = await import('@/lib/email');

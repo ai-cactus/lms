@@ -36,14 +36,12 @@ export default async function DashboardPage() {
 
   const hasBilling = hasActiveBilling(user?.organization?.subscription);
 
-  // Calculate real metrics from courses data
   const totalCourses = stats?.totalCourses || 0;
   const totalStaffAssigned = stats?.totalStaffAssigned || 0;
   const averageGrade = stats?.averageGrade || 0;
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 px-5 py-6 sm:px-8 xl:gap-8 xl:px-10">
-      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4 max-sm:flex-col">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold text-[#1a202c] xl:text-[28px]">Dashboard</h1>
@@ -52,9 +50,7 @@ export default async function DashboardPage() {
         <DashboardCreateCourseButton hasBilling={hasBilling} />
       </div>
 
-      {/* Metrics Options */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-        {/* Total Courses - Green */}
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#ECFDF5]">
           <div>
             <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#10B981]">
@@ -65,7 +61,6 @@ export default async function DashboardPage() {
           <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{totalCourses}</p>
         </div>
 
-        {/* Total Staff - Blue */}
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#EEF2FF]">
           <div>
             <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#4730F7]">
@@ -76,7 +71,6 @@ export default async function DashboardPage() {
           <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{totalStaffAssigned}</p>
         </div>
 
-        {/* Average Grade - Red */}
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#FEF2F2]">
           <div>
             <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#EF4444]">
@@ -88,16 +82,13 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Charts */}
       <DashboardCharts stats={stats} />
 
-      {/* My Courses Table */}
       <MyCoursesTable courses={courses} maxItems={5} />
 
       {/* Available Video Courses (global catalog to offer from) */}
       <AvailableCoursesTable courses={availableVideoCourses} />
 
-      {/* Empty State Modal */}
       <DashboardEmptyState totalCourses={totalCourses} />
     </div>
   );

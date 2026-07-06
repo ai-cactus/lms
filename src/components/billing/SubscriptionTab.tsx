@@ -252,7 +252,6 @@ export default function SubscriptionTab({
       setEnterpriseModal((s) => ({
         ...s,
         [key]: value,
-        // Clear field error on change
         fieldErrors: { ...s.fieldErrors, [key]: undefined },
       }));
     },
@@ -265,7 +264,6 @@ export default function SubscriptionTab({
     async (e: React.FormEvent) => {
       e.preventDefault();
 
-      // Client-side validation
       const errors = validateForm(enterpriseModal);
       if (Object.keys(errors).length > 0) {
         setEnterpriseModal((s) => ({ ...s, fieldErrors: errors }));
@@ -364,7 +362,6 @@ export default function SubscriptionTab({
         </div>
       )}
 
-      {/* Billing cycle toggle */}
       <div
         className="mb-8 inline-flex max-w-full gap-0 overflow-x-auto rounded-lg bg-muted p-1"
         role="group"
@@ -384,7 +381,6 @@ export default function SubscriptionTab({
         ))}
       </div>
 
-      {/* Plan cards */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(270px,1fr))]">
         {BILLING_PLANS.map((plan) => {
           const allowed = canSelectPlan(plan, orgStaffCount);
@@ -591,7 +587,6 @@ export default function SubscriptionTab({
               noValidate
               className="flex flex-col"
             >
-              {/* Header */}
               <DialogHeader className="mb-6">
                 <DialogTitle>Contact Sales</DialogTitle>
                 <p className="text-sm text-text-secondary">
@@ -605,7 +600,6 @@ export default function SubscriptionTab({
                 </Alert>
               )}
 
-              {/* Row: First Name + Last Name */}
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <div className="mb-4">
                   <label htmlFor="ent-first-name" className={labelClass}>
@@ -657,7 +651,6 @@ export default function SubscriptionTab({
                 </div>
               </div>
 
-              {/* Work Email */}
               <div className="mb-4">
                 <label htmlFor="ent-email" className={labelClass}>
                   Work Email <span className={requiredMarkClass}>*</span>
@@ -683,7 +676,6 @@ export default function SubscriptionTab({
                 )}
               </div>
 
-              {/* Row: Job Title + Organization Name */}
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <div className="mb-4">
                   <label htmlFor="ent-job-title" className={labelClass}>
@@ -735,7 +727,6 @@ export default function SubscriptionTab({
                 </div>
               </div>
 
-              {/* Facility Type */}
               <div className="mb-4">
                 <label htmlFor="ent-facility-type" className={labelClass}>
                   Facility Type <span className={requiredMarkClass}>*</span>
@@ -794,7 +785,6 @@ export default function SubscriptionTab({
                 </div>
               )}
 
-              {/* Row: Number of Facilities + Number of Staff */}
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <div className="mb-4">
                   <label htmlFor="ent-num-facilities" className={labelClass}>
@@ -850,7 +840,6 @@ export default function SubscriptionTab({
                 </div>
               </div>
 
-              {/* Current Accreditation */}
               <div className="mb-4">
                 <label htmlFor="ent-accreditation" className={labelClass}>
                   Current Accreditation <span className={requiredMarkClass}>*</span>
@@ -880,7 +869,6 @@ export default function SubscriptionTab({
                 )}
               </div>
 
-              {/* Current Training Method */}
               <div className="mb-4">
                 <label htmlFor="ent-training-method" className={labelClass}>
                   Current Training Method <span className={requiredMarkClass}>*</span>
@@ -910,7 +898,6 @@ export default function SubscriptionTab({
                 )}
               </div>
 
-              {/* Primary Pain Point */}
               <div className="mb-4">
                 <label htmlFor="ent-pain-point" className={labelClass}>
                   Primary Pain Point <span className={requiredMarkClass}>*</span>
@@ -938,7 +925,6 @@ export default function SubscriptionTab({
                 )}
               </div>
 
-              {/* Terms and Conditions Disclaimer */}
               <p className="mb-6 mt-3 text-xs leading-relaxed text-text-secondary">
                 By clicking &quot;Request a demo&quot;, you agree to Theraptly&apos;s{' '}
                 <a
@@ -961,7 +947,6 @@ export default function SubscriptionTab({
                 .
               </p>
 
-              {/* Actions */}
               <div className="flex flex-col gap-2.5">
                 <Button
                   type="submit"

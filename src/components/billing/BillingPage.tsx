@@ -12,7 +12,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'payment-method', label: 'Payment Method' },
 ];
 
-// Lazy-loaded tab components
 import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
@@ -58,7 +57,6 @@ export default function BillingPage({
         </p>
       </div>
 
-      {/* Tab Navigation */}
       <div className="mb-7 flex gap-0 overflow-x-auto border-b border-border" role="tablist">
         {TABS.map((tab) => (
           <button
@@ -78,7 +76,6 @@ export default function BillingPage({
         ))}
       </div>
 
-      {/* Tab Panels */}
       {activeTab === 'overview' && <OverviewTab onChangeTab={handleTabChange} />}
       {activeTab === 'billing-history' && <BillingHistoryTab />}
       {activeTab === 'subscription' && (

@@ -69,7 +69,6 @@ describe('ai-client utilities', () => {
     });
 
     it('should approximate well for a long string', () => {
-      // Create a string of 4000 characters
       const longString = 'a'.repeat(4000);
       expect(estimateTokens(longString)).toBe(1000);
 

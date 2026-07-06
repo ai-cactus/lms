@@ -30,7 +30,6 @@ function VerifyEmailContent() {
   const [resendError, setResendError] = useState('');
   const [resendSuccess, setResendSuccess] = useState(false);
 
-  // Handle successful verification - redirect to correct login based on role
   useEffect(() => {
     if (success === 'true' && email) {
       localStorage.removeItem('pendingVerificationRole');
@@ -38,7 +37,6 @@ function VerifyEmailContent() {
     }
   }, [success, email, router]);
 
-  // Cooldown timer
   useEffect(() => {
     if (resendCooldown > 0) {
       const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);

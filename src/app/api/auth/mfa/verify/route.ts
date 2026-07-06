@@ -33,7 +33,6 @@ export async function POST(req: Request) {
 
     const { userId, role } = challengeData;
 
-    // Verify the user exists and has MFA enabled
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, mfaEnabled: true },

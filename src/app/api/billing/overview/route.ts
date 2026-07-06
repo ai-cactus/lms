@@ -31,7 +31,6 @@ export async function GET() {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
-    // Count active staff members
     const activeStaffCount = await prisma.user.count({
       where: {
         organizationId,
@@ -39,7 +38,6 @@ export async function GET() {
       },
     });
 
-    // Fetch payment method from Stripe if customer exists
     let defaultPaymentMethod = null;
     if (organization.stripeCustomerId) {
       const customer = await stripe.customers.retrieve(organization.stripeCustomerId, {
@@ -97,7 +95,6 @@ export async function GET() {
       }
     }
 
-    // Recent invoices (last 2)
     const recentInvoices = await prisma.invoice.findMany({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },

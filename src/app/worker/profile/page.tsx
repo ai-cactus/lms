@@ -13,7 +13,6 @@ export default async function WorkerProfilePage() {
     redirect('/login');
   }
 
-  // Fetch user with profile and organization
   logger.info({ msg: '[WorkerProfilePage] Rendering for user:', data: session.user.id });
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

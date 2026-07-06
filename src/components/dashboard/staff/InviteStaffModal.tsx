@@ -70,7 +70,6 @@ export default function InviteStaffModal({
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // CSV import state
   const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [csvParsing, setCsvParsing] = useState(false);
   const [parseResult, setParseResult] = useState<StaffCsvParseResult | null>(null);
@@ -269,7 +268,6 @@ export default function InviteStaffModal({
             <TabsTrigger value="csv">Import CSV</TabsTrigger>
           </TabsList>
 
-          {/* Manual entry */}
           <TabsContent value="manual">
             <form onSubmit={handleManualSubmit} className="flex flex-col gap-4">
               <div>
@@ -359,7 +357,6 @@ export default function InviteStaffModal({
             </form>
           </TabsContent>
 
-          {/* CSV / bulk import */}
           <TabsContent value="csv">
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between gap-2">

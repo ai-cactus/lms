@@ -24,7 +24,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
     }
 
-    // Verify access
     const isWorker = workerSession?.user?.id === certificate.userId;
     const isAdmin =
       adminSession?.user?.id &&
@@ -34,7 +33,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Stream the file directly
     if (!certificate.pdfStoragePath) {
       return NextResponse.json({ error: 'Certificate file not generated' }, { status: 404 });
     }

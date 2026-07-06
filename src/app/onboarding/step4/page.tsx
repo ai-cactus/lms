@@ -29,13 +29,11 @@ export default function OnboardingStep4() {
     e.preventDefault();
     setError('');
 
-    // Combine manual emails and CSV emails
     const allEmails = [...emails, ...csvEmails];
 
     setIsLoading(true);
 
     try {
-      // 1. Gather all data
       let allData: Record<string, unknown> = {};
       if (typeof window !== 'undefined') {
         allData = JSON.parse(localStorage.getItem('onboarding_data') || '{}') as Record<
@@ -44,7 +42,6 @@ export default function OnboardingStep4() {
         >;
       }
 
-      // Add Step 4 data
       allData.step4 = { workerEmails: allEmails };
 
       logger.info({
@@ -53,7 +50,6 @@ export default function OnboardingStep4() {
         inviteCount: allEmails.length,
       });
 
-      // 2. Call Server Action
       const { completeOnboarding } = await import('@/app/actions/onboarding-complete');
       const result = await completeOnboarding(allData as unknown as OnboardingData);
 
@@ -63,7 +59,6 @@ export default function OnboardingStep4() {
         return;
       }
 
-      // 3. Clear Storage
       if (typeof window !== 'undefined') {
         localStorage.removeItem('onboarding_data');
         // Remove old keys if any
@@ -90,11 +85,9 @@ export default function OnboardingStep4() {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
 
-      // Get first sheet
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
 
-      // Convert to JSON
       const jsonData = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1 });
 
       // Find email column (look for header or just use first column with emails)
@@ -110,7 +103,6 @@ export default function OnboardingStep4() {
         }
       }
 
-      // Remove duplicates
       const uniqueEmails = [...new Set(extractedEmails)];
 
       if (uniqueEmails.length === 0) {

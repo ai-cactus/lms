@@ -16,12 +16,10 @@ export default async function ProfilePage() {
     redirect('/login');
   }
 
-  // Fetch profile
   const profile = await prisma.profile.findUnique({
     where: { id: session.user.id },
   });
 
-  // Fetch user with organization + facility
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { organization: true, facility: true },
@@ -45,7 +43,6 @@ export default async function ProfilePage() {
     }
   }
 
-  // Construct initial profile data
   const initialData = {
     id: session.user.id!,
     first_name: profile?.firstName || '',

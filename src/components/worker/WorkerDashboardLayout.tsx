@@ -20,7 +20,6 @@ export default function WorkerDashboardLayout({ children, fullName }: WorkerDash
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Close sidebar on route change
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync sidebar with navigation
     setSidebarOpen(false);
@@ -40,7 +39,6 @@ export default function WorkerDashboardLayout({ children, fullName }: WorkerDash
 
   return (
     <div className="relative min-h-screen w-full bg-[#f8f9fa]">
-      {/* Mobile Backdrop */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-[90] bg-black/40 lg:hidden"
@@ -48,7 +46,6 @@ export default function WorkerDashboardLayout({ children, fullName }: WorkerDash
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={[
           'fixed left-0 top-0 z-[100] flex h-screen w-[280px] flex-col border-r border-[#e2e8f0] bg-white p-6',
@@ -62,7 +59,6 @@ export default function WorkerDashboardLayout({ children, fullName }: WorkerDash
         </div>
 
         <nav className="flex flex-col gap-8">
-          {/* MAIN MENU Section */}
           <div className="flex flex-col gap-2">
             <h4 className="mb-3 pl-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#a0aec0]">
               MAIN MENU
@@ -95,9 +91,7 @@ export default function WorkerDashboardLayout({ children, fullName }: WorkerDash
         </nav>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex min-h-screen w-full flex-col lg:ml-[280px] lg:w-[calc(100%-280px)]">
-        {/* Top Header */}
         <WorkerHeader fullName={fullName} onMenuClick={() => setSidebarOpen(true)} />
 
         <div className="min-w-0 flex-1 p-4 lg:p-10">{children}</div>

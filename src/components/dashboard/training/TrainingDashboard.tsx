@@ -48,7 +48,6 @@ interface TrainingDashboardProps {
 function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainingCoverage'] }) {
   const [activeSegment, setActiveSegment] = useState<string | null>(null);
 
-  // Safe parse helper
   const parseVal = (v: number | string | undefined | null) => {
     if (typeof v === 'number') return v;
     if (typeof v === 'string') return parseFloat(v.replace('%', '')) || 0;
@@ -90,7 +89,6 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
 
   let startAngle = 0;
 
-  // Check if we have any data to show
   const totalValue = segments.reduce((acc, curr) => acc + curr.value, 0);
   const hasData = totalValue > 0;
 
@@ -190,7 +188,6 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
         className="cursor-pointer block"
         onMouseLeave={() => setActiveSegment(null)}
       >
-        {/* Donut Logic */}
         {hasData &&
           paths.map((segment) => (
             <path
@@ -212,7 +209,6 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
             />
           ))}
 
-        {/* Central Text */}
         <text
           x="50%"
           y="45%"
@@ -237,7 +233,6 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
         </text>
       </svg>
 
-      {/* Smart positioned tooltip */}
       {activeData && (
         <div
           style={{
@@ -264,14 +259,12 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
   );
 }
 
-// Main Dashboard Component
 export default function TrainingDashboard({
   onCreateCourse,
   stats,
   courses,
 }: TrainingDashboardProps) {
   const router = useRouter();
-  // Use real data from props
   const coverage = stats.trainingCoverage;
   const [mounted, setMounted] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -281,23 +274,16 @@ export default function TrainingDashboard({
     setMounted(true);
   }, []);
 
-  // Process data for the chart
   const chartData = React.useMemo(() => {
     return [...(stats.coursePerformance || [])];
   }, [stats.coursePerformance]);
 
-  // Calculate max value for Y-axis scaling
   const maxVal = Math.max(...chartData.map((d) => Math.max(d.passCount, d.failCount)), 5); // Minimum 5 for scale
 
-  // Generate ticks (0, 20%, 40%... or just counts?)
-  // User's snippet used percentages. But here we have counts.
-  // I will use counts: 0 to maxVal.
-  // Let's make 5 ticks.
   const ticks = Array.from({ length: 6 }, (_, i) => Math.round((maxVal / 5) * i)).reverse();
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 xl:gap-8">
-      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4 max-sm:flex-col">
         <div>
           <h1 className="text-2xl font-bold text-[#1a202c]">Training Dashboard</h1>
@@ -309,9 +295,7 @@ export default function TrainingDashboard({
         </Button>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-        {/* Total Courses - Blue */}
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#EEF2FF]">
           <div>
             <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#4730F7]">
@@ -322,7 +306,6 @@ export default function TrainingDashboard({
           <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{stats.totalCourses}</p>
         </div>
 
-        {/* Total Staff Assigned - Green */}
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#ECFDF5]">
           <div>
             <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#10B981]">
@@ -335,7 +318,6 @@ export default function TrainingDashboard({
           </p>
         </div>
 
-        {/* Average Grade - Red */}
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#FEF2F2]">
           <div>
             <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#EF4444]">
@@ -347,15 +329,12 @@ export default function TrainingDashboard({
         </div>
       </div>
 
-      {/* Charts Section */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-        {/* Performance Chart */}
         <div className="flex min-h-[400px] flex-col rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-[#1a202c]">Performance of Learners</h3>
           </div>
 
-          {/* Legend */}
           <div className="flex gap-6 mb-6 pb-4 border-b border-[#EDF2F7] mt-4">
             <div className="flex items-center gap-2">
               <div
@@ -382,7 +361,6 @@ export default function TrainingDashboard({
           </div>
 
           <div style={{ height: 320, position: 'relative', marginTop: 10 }}>
-            {/* Y-Axis */}
             <div
               style={{
                 position: 'absolute',
@@ -411,7 +389,6 @@ export default function TrainingDashboard({
               ))}
             </div>
 
-            {/* Grid Lines */}
             <div
               style={{
                 position: 'absolute',
@@ -437,7 +414,6 @@ export default function TrainingDashboard({
               ))}
             </div>
 
-            {/* Bars Container */}
             <div
               style={{
                 position: 'absolute',
@@ -452,7 +428,6 @@ export default function TrainingDashboard({
               }}
             >
               {chartData.map((item, idx) => {
-                // Calculate heights relative to maxVal
                 const passHeight = maxVal > 0 ? (item.passCount / maxVal) * 100 : 0;
                 const failHeight = maxVal > 0 ? (item.failCount / maxVal) * 100 : 0;
 
@@ -473,7 +448,6 @@ export default function TrainingDashboard({
                     onMouseEnter={() => setHoveredIndex(idx)}
                     onMouseLeave={() => setHoveredIndex(null)}
                   >
-                    {/* Pass Bar */}
                     <div
                       style={{
                         flex: '1',
@@ -489,7 +463,6 @@ export default function TrainingDashboard({
                         position: 'relative',
                       }}
                     >
-                      {/* Tooltip on Hover */}
                       <div
                         style={{
                           position: 'absolute',
@@ -514,7 +487,6 @@ export default function TrainingDashboard({
                       </div>
                     </div>
 
-                    {/* Fail Bar */}
                     <div
                       style={{
                         flex: '1',
@@ -530,7 +502,6 @@ export default function TrainingDashboard({
                         position: 'relative',
                       }}
                     >
-                      {/* Tooltip on Hover */}
                       <div
                         style={{
                           position: 'absolute',
@@ -559,7 +530,6 @@ export default function TrainingDashboard({
               })}
             </div>
 
-            {/* X-Axis Labels */}
             <div
               style={{
                 position: 'absolute',
@@ -580,7 +550,6 @@ export default function TrainingDashboard({
                     color: hoveredIndex === idx ? '#2D3748' : '#A0AEC0',
                     fontWeight: hoveredIndex === idx ? '600' : '500',
                     textAlign: 'center',
-                    // Rotate and position carefully
                     transform: 'rotate(-45deg)',
                     transformOrigin: 'top center',
                     paddingTop: '8px',
@@ -598,7 +567,6 @@ export default function TrainingDashboard({
           </div>
         </div>
 
-        {/* Donut Coverage Chart */}
         <div className="flex min-h-[400px] flex-col rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-[#1a202c] mb-6">Training Coverage</h3>
 
@@ -606,17 +574,14 @@ export default function TrainingDashboard({
             <DonutChartWithTooltip coverage={coverage} />
 
             <div className="grid grid-cols-[auto_1fr_auto] gap-y-3 gap-x-4 items-center w-full">
-              {/* Item 1 */}
               <div className="size-3 rounded-full" style={{ background: '#14B8A6' }}></div>
               <div className="text-sm text-[#4A5568]">% of staff who have completed</div>
               <span className="font-semibold text-[#1a202c]">{coverage.completed}%</span>
 
-              {/* Item 2 */}
               <div className="size-3 rounded-full" style={{ background: '#F59E0B' }}></div>
               <div className="text-sm text-[#4A5568]">% of staff currently enrolled</div>
               <span className="font-semibold text-[#1a202c]">{coverage.inProgress}%</span>
 
-              {/* Item 3 */}
               <div className="size-3 rounded-full" style={{ background: '#EF4444' }}></div>
               <div className="text-sm text-[#4A5568]">% of staff yet to begin any course</div>
               <span className="font-semibold text-[#1a202c]">{coverage.notStarted}%</span>
@@ -625,7 +590,6 @@ export default function TrainingDashboard({
         </div>
       </div>
 
-      {/* My Courses Widget */}
       <div className="rounded-xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <h3 className="text-lg font-bold text-[#1a202c]">My Courses</h3>

@@ -42,8 +42,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const fullName = profile?.fullName || session.user.name || session.user.email || 'User';
   // User role should be in session or fetched from User model if needed.
   // For now we rely on session.
-  // User role should be in session or fetched from User model if needed.
-  // For now we rely on session.
   const role = user?.role || session.user.role;
   const organizationId = user?.organizationId; // Fetch from DB for freshest data
 

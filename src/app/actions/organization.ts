@@ -39,7 +39,6 @@ export async function updateOrganization(data: OrganizationUpdateData) {
       return { success: false, error: 'Not authenticated' };
     }
 
-    // Get user's organization + facility
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { organizationId: true, facilityId: true, role: true },
@@ -250,18 +249,16 @@ export async function createOrganization(data: OrganizationCreationData) {
       };
     }
 
-    // Basic validation
     if (!data.legalName || !data.primaryContactEmail) {
       logger.warn({ msg: '[org] createOrganization: missing required fields', userId });
       return { success: false, error: 'Missing required fields' };
     }
 
-    // Check for existing organization with the same name
     const existingOrg = await prisma.organization.findFirst({
       where: {
         name: {
           equals: data.legalName,
-          mode: 'insensitive', // Case insensitive check
+          mode: 'insensitive',
         },
       },
     });

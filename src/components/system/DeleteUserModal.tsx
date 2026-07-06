@@ -119,7 +119,6 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </Alert>
           )}
 
-          {/* User Info */}
           <div className="rounded-[10px] bg-background-secondary px-4 py-3">
             <div className="font-semibold text-foreground">{user.name}</div>
             <div className="text-sm text-text-secondary">{user.email}</div>
@@ -136,7 +135,6 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </div>
           </div>
 
-          {/* Affected enrollments warning */}
           {affectedEnrollments > 0 && (
             <Alert variant="warning" className="w-full">
               <strong>{affectedEnrollments}</strong> enrollment(s) from other users in courses
@@ -144,7 +142,6 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </Alert>
           )}
 
-          {/* Impact Table */}
           <div>
             <h4 className="mb-2 text-sm font-semibold text-foreground">Records to be deleted:</h4>
             <div className="rounded-[10px] border border-border">
@@ -173,7 +170,6 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </div>
           </div>
 
-          {/* Confirm by typing email */}
           <Field label="To confirm deletion, type the email address below:" helperText={user.email}>
             <Input
               type="text"

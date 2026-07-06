@@ -56,11 +56,9 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
   const totalLearners = enrollments.length;
 
-  // Calculate Stats
   const completedCount = enrollments.filter((e) => e.status === 'completed').length;
   const completionRate = totalLearners > 0 ? Math.round((completedCount / totalLearners) * 100) : 0;
 
-  // Average Score
   const scoredEnrollments = enrollments.filter((e) => e.score !== null);
   const averageScore =
     scoredEnrollments.length > 0
@@ -70,7 +68,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         )
       : 0;
 
-  // Filter enrollments based on search query
   const filteredEnrollments = enrollments.filter((e) => {
     const q = searchQuery.toLowerCase();
     const nameMatch = e.user?.profile?.fullName?.toLowerCase().includes(q);
@@ -80,9 +77,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col">
-      {/* Breadcrumbs & Header */}
       <div className="mb-8">
-        {/* Breadcrumb */}
         <div className="mb-4 inline-flex items-center gap-2 text-sm text-[#718096]">
           <Link
             href="/dashboard/courses"
@@ -96,7 +91,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
           <span className="font-medium text-primary">Course Details</span>
         </div>
 
-        {/* Header */}
         <div className="flex items-start justify-between gap-10 max-md:flex-col">
           <div className="flex-1">
             <div className="mb-2 flex items-center gap-2">
@@ -149,9 +143,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {/* Total Learners */}
         <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#bee3f8] bg-[#ebf8ff]">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2b6cb0]">
             <Users className="size-5" />
@@ -162,7 +154,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
           </div>
         </div>
 
-        {/* Completion Rate */}
         <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#c6f6d5] bg-[#f0fff4]">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2f855a]">
             <Activity className="size-5" />
@@ -173,7 +164,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
           </div>
         </div>
 
-        {/* Average Score */}
         <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fed7d7] bg-[#fff5f5]">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#c53030]">
             <Award className="size-5" />
@@ -184,7 +174,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
           </div>
         </div>
 
-        {/* Duration */}
         <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fefcbf] bg-[#fffff0]">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#d69e2e]">
             <Clock className="size-5" />
@@ -196,9 +185,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         </div>
       </div>
 
-      {/* Staff / Certificates Section */}
       <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
-        {/* Tabs */}
         <div className="mb-6 flex gap-6 border-b border-[#E2E8F0]">
           <button
             className={cn(
@@ -226,7 +213,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
         {activeTab === 'staff' ? (
           <>
-            {/* Search + Export bar */}
             <div className="mb-4 flex items-center gap-3">
               <Input
                 className="h-11 w-full sm:w-[280px]"
@@ -241,7 +227,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
               </Button>
             </div>
 
-            {/* Enrolled Staff Table */}
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-0">
@@ -314,7 +299,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end items-center gap-2">
-                        {/* Quick View Result link */}
                         {enrollment.score !== null ? (
                           <Link
                             href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
@@ -328,7 +312,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                           </span>
                         )}
 
-                        {/* Kebab menu */}
                         <RowActionsMenu
                           actions={[
                             {
@@ -367,7 +350,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
             </Table>
           </>
         ) : (
-          /* Certificates Tab */
           <div className="space-y-4">
             {enrollments.filter((e) => e.certificate).length === 0 ? (
               <div className="text-center text-slate-500 p-6">
@@ -431,7 +413,6 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         )}
       </div>
 
-      {/* Modals */}
       {selectedCertId && (
         <CertificateModal
           isOpen={true}

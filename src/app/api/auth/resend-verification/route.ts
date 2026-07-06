@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Email is required' }, { status: 400 });
     }
 
-    // Check if user already exists (already verified)
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -58,7 +57,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Delete old token and create new one with fresh expiry
     await prisma.verificationToken.delete({
       where: {
         identifier_token: {
@@ -85,7 +83,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Send verification email
     const result = await sendEmailVerification(email, newToken);
 
     if (!result.success) {

@@ -337,7 +337,6 @@ export default function ProfileForm({
                 </Field>
               </div>
 
-              {/* Business Address */}
               <div className="mb-6">
                 <Field label="Business Address">
                   <Input
@@ -348,7 +347,6 @@ export default function ProfileForm({
                 </Field>
               </div>
 
-              {/* City, State & Zip Code */}
               <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
                 <Field label="City">
                   <Input value={facilityData?.city || ''} disabled placeholder="Your city" />
@@ -410,7 +408,6 @@ export default function ProfileForm({
         {activeTab === '2fa' && <TwoFactorAuthTab userEmail={initialData.email} />}
       </div>
 
-      {/* Confirmation Modal */}
       <Dialog
         open={showConfirm}
         onOpenChange={(open) => {

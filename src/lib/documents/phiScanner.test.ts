@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { scanText } from './phiScanner';
 import { callVertexAI } from '@/lib/ai-client';
 
-// Mock the AI client
 vi.mock('@/lib/ai-client', () => ({
   callVertexAI: vi.fn(),
 }));

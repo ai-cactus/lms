@@ -114,7 +114,6 @@ export default function VideoCoursesClient({ courses }: Props) {
     message: string;
   } | null>(null);
 
-  // Status transition
   const [, startStatusTransition] = useTransition();
 
   // ── Handlers ────────────────────────────────────────────────────────────────
@@ -239,7 +238,6 @@ export default function VideoCoursesClient({ courses }: Props) {
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Page heading */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Video Courses</h1>
         <p className="mt-1 text-sm text-text-secondary">

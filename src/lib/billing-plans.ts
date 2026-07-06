@@ -85,7 +85,6 @@ export const CYCLE_DISCOUNTS: Record<BillingCycle, number> = {
   yearly: 0.25, // -25%
 };
 
-// Calculate the effective monthly price for a given plan and cycle
 export function getEffectiveMonthlyPrice(plan: BillingPlan, cycle: BillingCycle): number {
   const discount = CYCLE_DISCOUNTS[cycle];
   return Math.round(plan.monthlyPrice * (1 - discount));

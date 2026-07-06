@@ -37,7 +37,6 @@ export async function getStaffUsers() {
     throw new Error('Unauthorized');
   }
 
-  // Get current user's org ID
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { organizationId: true },
@@ -117,7 +116,6 @@ export async function searchStaffUsers(query: string) {
     return [];
   }
 
-  // Get current user's org ID
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { organizationId: true },
@@ -189,7 +187,6 @@ export async function updateRole(role: 'admin' | 'worker') {
       return { success: false, error: 'Role can no longer be changed for this account.' };
     }
 
-    // Update User role
     await prisma.user.update({
       where: {
         email: session.user.email,
@@ -210,7 +207,7 @@ export async function updateProfile(data: {
   last_name: string;
   company_name?: string;
   jobTitle?: string;
-  avatarUrl?: string; // New field
+  avatarUrl?: string;
 }) {
   const session = await resolveSession();
 
@@ -282,7 +279,6 @@ export async function uploadAvatar(formData: FormData) {
     return { error: 'No file provided' };
   }
 
-  // Validate file type
   if (!file.type.startsWith('image/')) {
     return { error: 'Invalid file type. Please upload an image.' };
   }

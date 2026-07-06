@@ -20,7 +20,6 @@ import { createMfaChallenge } from '@/lib/mfa-challenge';
 // username enumeration attacks.
 const DUMMY_BCRYPT_HASH = '$2b$10$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
-// Define return type
 export type AuthState = {
   error?: string;
   success?: boolean;
@@ -148,7 +147,7 @@ export async function signup(
     password,
     firstName,
     lastName,
-    role: 'worker', // Default role
+    role: 'worker',
   });
 }
 
@@ -176,7 +175,6 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
     return { success: false, error: 'Too many signup attempts. Please try again later.' };
   }
 
-  // Basic validation
   if (!email || !password || !firstName || !lastName || !role) {
     return { success: false, error: 'All fields are required' };
   }
@@ -191,7 +189,6 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
   }
 
   try {
-    // Check if user already exists
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       return { success: false, error: 'Account with this email already exists.' };
@@ -199,7 +196,6 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Clean up any existing verification tokens for this email
     await prisma.verificationToken.deleteMany({
       where: { identifier: email, type: 'email_verification' },
     });
@@ -261,7 +257,6 @@ export async function sendPasswordResetLink(email: string) {
     return { success: true }; // Security: Don't reveal user existence
   }
 
-  // Generate secure UUID token
   const token = crypto.randomUUID();
   const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
@@ -321,7 +316,6 @@ export async function resetPasswordWithToken(
     data: { password: hashedPassword },
   });
 
-  // delete used token
   await prisma.verificationToken.delete({
     where: {
       identifier_token: {

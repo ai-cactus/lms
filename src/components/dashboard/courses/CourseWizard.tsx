@@ -54,30 +54,24 @@ export default function CourseWizard() {
   const totalSteps = 7;
   const [formData, setFormData] = useState<CourseWizardData>(INITIAL_FORM_DATA);
 
-  // Documents State
   const [documents, setDocuments] = useState<CourseDocument[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Generation/Publishing State
   const [generatedContent, setGeneratedContent] = useState<GeneratedCourse | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
 
-  // PHI Scanning State
   const [isScanningPhi, setIsScanningPhi] = useState(false);
   const [showPhiError, setShowPhiError] = useState(false);
   const [phiReason, setPhiReason] = useState<string | undefined>(undefined);
   const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
 
-  // Exit confirmation state
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  // Publish confirmation state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  // Draft resume state
   const [showResumeBanner, setShowResumeBanner] = useState(false);
   const [draftToRestore, setDraftToRestore] = useState<{
     step: number;
@@ -116,7 +110,6 @@ export default function CourseWizard() {
 
   useEffect(() => {
     try {
-      // Cleanup legacy draft
       localStorage.removeItem('lms_pending_generation');
 
       const raw = sessionStorage.getItem(DRAFT_KEY);
@@ -134,7 +127,6 @@ export default function CourseWizard() {
     }
   }, []);
 
-  // Autosave Draft
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (showResumeBanner) return;
@@ -265,7 +257,6 @@ export default function CourseWizard() {
       }
       setCurrentStep(currentStep + 1);
     } else {
-      // Validate before submit
       if (!formData.title?.trim()) {
         setPublishError('Please enter a course title');
         return;
@@ -671,7 +662,6 @@ export default function CourseWizard() {
           <div className="flex flex-col items-center text-center py-6 mt-4 bg-[#FAFCFE] rounded-xl border border-dashed border-[#E2E8F0] w-full max-w-[800px]">
             {/* Icon Layer from PhiErrorModal */}
             <div className="relative w-[120px] h-[120px] mb-6">
-              {/* Document Icon */}
               <svg
                 width="100"
                 height="100"
@@ -718,7 +708,6 @@ export default function CourseWizard() {
                 />
               </svg>
 
-              {/* Magnifying Glass with Badge */}
               <div className="absolute bottom-0 left-[-10px] [filter:drop-shadow(0px_10px_15px_rgba(0,0,0,0.1))]">
                 <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
                   <circle cx="25" cy="25" r="20" fill="white" stroke="#4C6EF5" strokeWidth="4" />

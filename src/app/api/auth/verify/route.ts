@@ -47,7 +47,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'invalid_or_expired' }, { status: 400 });
     }
 
-    // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { email: verificationToken.identifier },
     });
@@ -84,7 +83,6 @@ export async function POST(request: NextRequest) {
         : UserRole.worker;
 
     await prisma.$transaction(async (tx) => {
-      // Create the user
       const user = await tx.user.create({
         data: {
           email: verificationToken.identifier,
@@ -94,7 +92,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Create the profile
       await tx.profile.create({
         data: {
           id: user.id,
@@ -105,7 +102,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Delete the verification token
       await tx.verificationToken.delete({
         where: {
           identifier_token: {

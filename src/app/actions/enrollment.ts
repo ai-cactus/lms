@@ -64,7 +64,6 @@ export async function getAvailableUsers() {
     return [];
   }
 
-  // Get all users within the caller's organization
   const users = await prisma.user.findMany({
     where: { organizationId: caller.organizationId },
     include: {
@@ -237,7 +236,6 @@ export async function enrollUsers(
     // (facility admin); everything else is a worker.
     const userRole: UserRole = entry.role === 'admin' ? 'supervisor' : 'worker';
 
-    // Find existing user by email.
     let user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
       include: { profile: true },
@@ -336,7 +334,6 @@ export async function enrollUsers(
 
     if (!user) continue;
 
-    // Check if the user is already enrolled in this course.
     const existing = await prisma.enrollment.findFirst({
       where: { userId: user.id, courseId },
     });
@@ -363,7 +360,6 @@ export async function enrollUsers(
       ),
     });
 
-    // Create the enrollment record.
     const enrollment = await prisma.enrollment.create({
       data: {
         userId: user.id,
@@ -697,7 +693,6 @@ export async function removeWorkerAssignment(enrollmentId: string) {
     throw new Error('Unauthorized');
   }
 
-  // Find the enrollment
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
@@ -716,7 +711,6 @@ export async function removeWorkerAssignment(enrollmentId: string) {
   }
 
   // Prevent removing if completed (optional, depending on business logic, but usually we allow removal or maybe block it)
-  // Let's just delete the enrollment
   await prisma.enrollment.delete({
     where: { id: enrollmentId },
   });

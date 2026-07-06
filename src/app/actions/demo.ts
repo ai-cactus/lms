@@ -44,7 +44,6 @@ export async function submitDemoRequest(prevState: unknown, formData: FormData) 
       };
     }
 
-    // Call email sender
     const emailRes = await sendDemoRequestEmail(parsed.data);
 
     if (!emailRes.success) {

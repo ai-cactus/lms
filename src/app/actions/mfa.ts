@@ -56,7 +56,6 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
     return { success: false, error: 'Not authenticated' };
   }
 
-  // Check if MFA is already enabled
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { mfaEnabled: true, email: true },
@@ -285,7 +284,6 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
     return { success: false, error: 'Invalid verification code' };
   }
 
-  // Generate new recovery codes
   const recoveryCodes = generateRecoveryCodes();
 
   await prisma.$transaction(async (tx) => {

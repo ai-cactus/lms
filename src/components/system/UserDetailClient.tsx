@@ -95,7 +95,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
 
   return (
     <>
-      {/* Back Link */}
       <div className="mb-6">
         <Link
           href="/system"
@@ -106,7 +105,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
         </Link>
       </div>
 
-      {/* Profile Header */}
       <div className="mb-6 flex flex-col items-start gap-4 rounded-xl border border-border bg-background p-6 sm:flex-row sm:items-center">
         <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xl font-semibold text-primary">
           {initials}
@@ -137,9 +135,7 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
         </div>
       </div>
 
-      {/* Detail Cards Grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* Organization Card */}
         <div className="rounded-xl border border-border bg-background p-6">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-base font-semibold text-foreground">Organization</h3>
@@ -164,7 +160,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
           )}
         </div>
 
-        {/* Profile Card */}
         <div className="rounded-xl border border-border bg-background p-6">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-base font-semibold text-foreground">Profile</h3>
@@ -199,7 +194,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
           )}
         </div>
 
-        {/* Activity Summary Card */}
         <div className="rounded-xl border border-border bg-background p-6">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-base font-semibold text-foreground">Activity Summary</h3>
@@ -226,7 +220,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
           </div>
         </div>
 
-        {/* Courses Created */}
         <div className="rounded-xl border border-border bg-background p-6 md:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-base font-semibold text-foreground">Courses Created</h3>
@@ -272,7 +265,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
           )}
         </div>
 
-        {/* Enrollments */}
         <div className="rounded-xl border border-border bg-background p-6 md:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-base font-semibold text-foreground">Enrollments</h3>
@@ -336,7 +328,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
           )}
         </div>
 
-        {/* Documents */}
         <div className="rounded-xl border border-border bg-background p-6 md:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-base font-semibold text-foreground">Documents</h3>
@@ -371,7 +362,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
         </div>
       </div>
 
-      {/* Delete Section */}
       <div className="mt-6 rounded-xl border border-error/30 bg-error/10 p-6">
         <div className="flex items-center gap-2 font-semibold text-error">
           <AlertTriangle className="size-5" aria-hidden="true" />
@@ -393,7 +383,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
         </Button>
       </div>
 
-      {/* Delete Modal */}
       {deletePreview && (
         <DeleteUserModal
           preview={deletePreview}

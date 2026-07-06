@@ -10,7 +10,6 @@ import { logger } from '@/lib/logger';
 // Token budget for quick metadata analysis (~50k chars)
 const MAX_ANALYSIS_TOKENS = 12500;
 
-// Schema for document analysis
 const CourseMetadataSchema = z.object({
   title: z.string(),
   description: z.string(),

@@ -95,7 +95,6 @@ export default function OfferedCoursesClient({ courses }: OfferedCoursesClientPr
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col">
-      {/* Header */}
       <div className="mb-8">
         <div className="mb-2 text-sm text-text-secondary">Trainings / Courses</div>
         <h1 className="text-2xl font-bold text-foreground">Video Courses</h1>
@@ -111,7 +110,6 @@ export default function OfferedCoursesClient({ courses }: OfferedCoursesClientPr
           </Alert>
         )}
 
-        {/* Search */}
         <div className="mb-6 w-full sm:w-[380px]">
           <Input
             className="h-11"
@@ -209,7 +207,6 @@ export default function OfferedCoursesClient({ courses }: OfferedCoursesClientPr
         </Table>
       </div>
 
-      {/* Rebrand / edit-details modal */}
       <EditOfferingDialog
         course={editTarget}
         onClose={() => setEditTarget(null)}

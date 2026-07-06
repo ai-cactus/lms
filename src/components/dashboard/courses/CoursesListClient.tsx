@@ -84,7 +84,6 @@ function PendingGenerationBanner() {
 
     setBanner('generating');
 
-    // Poll until done
     const interval = setInterval(async () => {
       try {
         const res = await checkCourseGenerationJobV46(parsed.jobId);
@@ -279,20 +278,17 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
     setCourseList((prev) => prev.map((c) => (c.id === courseId ? { ...c, title: newTitle } : c)));
   }, []);
 
-  // Filter Logic
   const filteredCourses = useMemo(() => {
     return courseList.filter((course) =>
       course.title.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [courseList, searchQuery]);
 
-  // Pagination Logic
   const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentCourses = filteredCourses.slice(startIndex, startIndex + itemsPerPage);
   const totalEntries = filteredCourses.length;
 
-  // Handle Page Change
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
@@ -301,7 +297,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col">
-      {/* Rename modal */}
       {courseToRename && (
         <CourseRenameModal
           courseId={courseToRename.id}
@@ -314,7 +309,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         />
       )}
 
-      {/* Header */}
       <div className="mb-8 flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
         <div>
           <div className="mb-2 text-sm text-[#718096]">Trainings / Courses</div>
@@ -335,7 +329,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         </Button>
       </div>
 
-      {/* Billing gate */}
       {showBillingGate && (
         <BillingGateModal
           title="A plan is required to create courses"
@@ -344,7 +337,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         />
       )}
 
-      {/* Delete error banner */}
       {deleteError && (
         <p role="alert" className="text-red-600 text-sm mb-3 px-3 py-2 bg-red-50 rounded-md">
           ⚠️ {deleteError}
@@ -354,7 +346,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
       <PendingGenerationBanner />
 
       <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
-        {/* Search */}
         <div className="mb-6 w-full sm:w-[380px]">
           <Input
             className="h-11"
@@ -368,7 +359,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
           />
         </div>
 
-        {/* Table */}
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
@@ -465,7 +455,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
           </TableBody>
         </Table>
 
-        {/* Pagination */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
           <div className="text-sm text-[#718096]">
             Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}

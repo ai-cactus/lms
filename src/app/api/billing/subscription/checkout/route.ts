@@ -72,7 +72,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve or create Stripe customer
     let customerId = organization.stripeCustomerId ?? undefined;
     if (!customerId) {
       const customer = await stripe.customers.create({

@@ -70,7 +70,6 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
     await signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/login` });
   };
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -177,7 +176,6 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
         </div>
       </header>
 
-      {/* Logout Confirmation Dialog */}
       <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           <DialogHeader className="items-center text-center">

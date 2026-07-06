@@ -44,7 +44,6 @@ export default function SystemUsersClient({
   const [orgFilter, setOrgFilter] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Delete modal state
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -92,7 +91,6 @@ export default function SystemUsersClient({
     }
   }
 
-  // Count stats
   const adminCount = users.filter((u) => isAdminRole(u.role)).length;
   const workerCount = users.filter((u) => u.role === 'worker').length;
 
@@ -129,7 +127,6 @@ export default function SystemUsersClient({
         </p>
       </div>
 
-      {/* Stats */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div className="rounded-[10px] border border-border bg-background p-4">
           <div className="text-2xl font-bold text-foreground">{total}</div>
@@ -149,7 +146,6 @@ export default function SystemUsersClient({
         </div>
       </div>
 
-      {/* Filters */}
       <form
         onSubmit={handleSearchSubmit}
         className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center"
@@ -190,7 +186,6 @@ export default function SystemUsersClient({
         </select>
       </form>
 
-      {/* Table */}
       <div className="rounded-xl border border-border bg-background">
         {loading && (
           <div className="flex items-center justify-center gap-3 py-12 text-sm text-text-secondary">
@@ -287,7 +282,6 @@ export default function SystemUsersClient({
           </Table>
         )}
 
-        {/* Pagination */}
         {!loading && totalPages > 1 && (
           <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-3 sm:flex-row">
             <div className="text-sm text-text-secondary">
@@ -329,7 +323,6 @@ export default function SystemUsersClient({
         )}
       </div>
 
-      {/* Delete Modal */}
       {deletePreview && (
         <DeleteUserModal
           preview={deletePreview}

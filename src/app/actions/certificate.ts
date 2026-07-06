@@ -21,7 +21,6 @@ export async function issueCertificate(enrollmentId: string) {
     throw new Error('Unauthorized');
   }
 
-  // Verify enrollment and completion
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
@@ -67,7 +66,6 @@ export async function issueCertificate(enrollmentId: string) {
     throw new Error('Set your full name in your profile before earning a certificate.');
   }
 
-  // Generate PDF
   const issueDate = new Date();
   const pdfBuffer = await generateCertificatePDF({
     studentName: fullName,
@@ -81,11 +79,9 @@ export async function issueCertificate(enrollmentId: string) {
     certificateId: formatCertificateId(enrollmentId),
   });
 
-  // Upload to storage
   const fileName = `certificates/${enrollment.id}-${Date.now()}.pdf`;
   const uploadResult = await uploadFile(fileName, pdfBuffer, 'application/pdf');
 
-  // Save to DB
   const certificate = await prisma.certificate.create({
     data: {
       enrollmentId: enrollment.id,
@@ -161,7 +157,6 @@ export async function getCertificateDetails(certificateId: string) {
     throw new Error('Certificate not found');
   }
 
-  // Ensure user is authorized
   const isWorker = certificate.userId === session.user.id;
   const isAdmin =
     isAdminRole(session.user.role) &&

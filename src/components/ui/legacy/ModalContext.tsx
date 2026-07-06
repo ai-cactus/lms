@@ -26,7 +26,6 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
   const [activeModal, setActiveModal] = useState<ModalId | null>(null);
   const [registeredModals, setRegisteredModals] = useState<ModalPriority[]>([]);
 
-  // Track requests to open
   const [openRequests, setOpenRequests] = useState<Set<ModalId>>(new Set());
 
   const registerModal = useCallback((id: ModalId, priority: number) => {
@@ -88,7 +87,6 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, []);
 
-  // Effect to determine which modal should be active
   useEffect(() => {
     if (activeModal) return; // If something is open, don't interrupt (unless we add force/interrupt logic)
 

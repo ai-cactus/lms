@@ -32,7 +32,6 @@ export default function NotificationPanel({
 }: NotificationPanelProps) {
   return (
     <div className="absolute right-0 top-[calc(100%+12px)] z-50 flex max-h-[min(560px,calc(100vh-6rem))] w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-[#edf2f7] bg-white shadow-xl">
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-[#edf2f7] bg-[#fafcff] px-5 py-3.5">
         <div className="flex items-center gap-2">
           <h3 className="m-0 text-base font-semibold text-[#1a202c]">Notifications</h3>
@@ -52,7 +51,6 @@ export default function NotificationPanel({
         )}
       </div>
 
-      {/* Body */}
       <div className="min-h-[140px] flex-1 overflow-y-auto overscroll-contain">
         {isLoading ? (
           <div className="flex min-h-[140px] flex-col items-center justify-center px-5 py-8 text-center">
@@ -83,7 +81,6 @@ export default function NotificationPanel({
         )}
       </div>
 
-      {/* Footer */}
       {notifications.length > 0 && (
         <Link
           href={viewAllHref}

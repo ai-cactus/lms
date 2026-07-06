@@ -34,7 +34,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const { enrollmentId, answers } = parsedBody.data;
 
-    // Check active attempt
     const attempt = await prisma.quizAttempt.findUnique({
       where: {
         enrollmentId_quizId: { enrollmentId, quizId },
@@ -60,11 +59,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Attempt is already completed' }, { status: 409 });
     }
 
-    // Update answers
     await prisma.quizAttempt.update({
       where: { id: attempt.id },
       data: {
-        answers: answers, // Replace answers JSON
+        answers: answers,
       },
     });
 

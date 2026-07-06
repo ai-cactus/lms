@@ -50,7 +50,6 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
     loadStatus();
   }, []);
 
-  // Cooldown timer for resend
   useEffect(() => {
     if (disableCooldown <= 0) return;
     const t = setInterval(() => {
@@ -332,7 +331,6 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
       {isEnabled ? (
         <div>
           <div className="mb-4 flex items-center gap-4">
-            {/* Toggle Switch UI */}
             <div
               onClick={handleDisableInit}
               className={`relative h-6 w-11 cursor-pointer rounded-xl bg-primary transition-colors duration-200 ${

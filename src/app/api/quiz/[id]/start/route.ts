@@ -28,7 +28,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const { enrollmentId } = parsedBody.data;
 
-    // Verify enrollment
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
     });
@@ -92,7 +91,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           where: { id: existingAttempt.id },
           data: {
             timeTaken: null, // Mark active
-            answers: [], // Clear answers
+            answers: [],
             score: 0,
             completedAt: new Date(), // Acts as StartedAt for active attempts
             attemptCount: { increment: 1 },

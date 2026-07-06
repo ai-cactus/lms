@@ -295,10 +295,8 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     e.preventDefault();
     if (!isAdmin) return;
 
-    // Get first value from additionalBusinessTypes array or empty string
     const additionalBizType = (formData.additionalBusinessTypes || [])[0] || '';
 
-    // Validate required fields
     const newErrors: Record<string, string> = {};
     if (!formData.name?.trim()) newErrors.name = 'Legal Business Name is required';
     if (!formData.dba?.trim()) newErrors.dba = 'DBA is required';

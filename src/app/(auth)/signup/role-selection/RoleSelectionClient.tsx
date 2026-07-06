@@ -25,7 +25,6 @@ export default function RoleSelectionClient() {
   const [pendingSignup, setPendingSignup] = useState<PendingSignup | null>(null);
 
   useEffect(() => {
-    // Get pending signup data from sessionStorage
     const stored = sessionStorage.getItem('pendingSignup');
     if (stored) {
       try {
@@ -34,7 +33,6 @@ export default function RoleSelectionClient() {
         router.push('/signup');
       }
     } else {
-      // No pending signup, redirect back
       router.push('/signup');
     }
   }, [router]);
@@ -54,12 +52,10 @@ export default function RoleSelectionClient() {
       });
 
       if (result.success) {
-        // Clear pending signup data
         sessionStorage.removeItem('pendingSignup');
         // Store email and role for verification routing
         localStorage.setItem('pendingVerificationEmail', pendingSignup.email);
         localStorage.setItem('pendingVerificationRole', selectedRole);
-        // Redirect to verify email page
         router.push('/verify-email');
       } else {
         setError(result.error || 'Failed to create account');

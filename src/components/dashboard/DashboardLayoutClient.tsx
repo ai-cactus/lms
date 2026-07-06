@@ -34,7 +34,6 @@ export default function DashboardLayoutClient({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isProfilePage = pathname === '/dashboard/profile';
 
-  // Close sidebar on route change
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync sidebar state with navigation
     setSidebarOpen(false);
@@ -52,13 +51,11 @@ export default function DashboardLayoutClient({
     };
   }, [sidebarOpen]);
 
-  // If on profile page, render simplified layout
   if (isProfilePage) {
     return (
       <div className="relative min-h-screen w-full flex flex-col bg-white">
         <header className="flex h-20 w-full items-center justify-between border-b border-[#e2e8f0] px-10">
           <div className="flex items-center">
-            {/* Blue Logo for Profile Page */}
             <Logo size="md" variant="blue" />
           </div>
 
@@ -88,7 +85,6 @@ export default function DashboardLayoutClient({
 
   return (
     <div className="relative min-h-screen w-full bg-[#f8f9fa]">
-      {/* Mobile Backdrop */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-[90] bg-black/40 lg:hidden"
@@ -96,7 +92,6 @@ export default function DashboardLayoutClient({
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={[
           'fixed top-0 left-0 z-[100] flex h-screen w-[280px] flex-col border-r border-[#e2e8f0] bg-white p-6',
@@ -111,7 +106,6 @@ export default function DashboardLayoutClient({
         </div>
 
         <nav className="flex flex-col gap-8">
-          {/* MAIN MENU Section */}
           <div className="flex flex-col gap-2">
             <h4 className={navSectionLabelCls}>MAIN MENU</h4>
 
@@ -188,9 +182,7 @@ export default function DashboardLayoutClient({
         </nav>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex min-h-screen w-full flex-col lg:ml-[280px] lg:w-[calc(100%-280px)]">
-        {/* Top Header */}
         <Header fullName={fullName} onMenuClick={() => setSidebarOpen(true)} />
 
         <div className="min-w-0 flex-1 p-4 lg:p-10">{children}</div>

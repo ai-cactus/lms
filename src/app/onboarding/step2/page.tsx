@@ -36,7 +36,6 @@ export default function OnboardingStep2() {
   const onSubmit = (data: Step2FormData) => {
     logger.info({ msg: '[onboarding] Step 2 saved locally', fieldCount: Object.keys(data).length });
     try {
-      // Save to localStorage
       if (typeof window !== 'undefined') {
         const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
         const updated = { ...existing, step2: data };

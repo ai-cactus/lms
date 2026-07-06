@@ -309,7 +309,6 @@ export default function LearnPage() {
     if (!course?.quiz || !enrollment) return;
 
     try {
-      // Start attempt on backend
       await fetch(`/api/quiz/${course.quiz.id}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -370,7 +369,6 @@ export default function LearnPage() {
           quizResultsData?: QuizResultsData;
         };
 
-        // Map lesson data to include moduleIndex
         if (data.course.lessons) {
           data.course.lessons = data.course.lessons.map((l: Lesson, i: number) => ({
             ...l,

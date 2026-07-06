@@ -56,7 +56,6 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
   const [pauseModal, setPauseModal] = useState({ open: false, loading: false, error: '' });
   const [cancelModal, setCancelModal] = useState({ open: false, loading: false, error: '' });
 
-  // Close the "Pause Instead" menu when clicking outside it.
   useEffect(() => {
     if (!pauseMenuOpen) return;
     const onClick = (e: MouseEvent) => {
@@ -118,7 +117,6 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
 
   return (
     <div className="min-h-full bg-background-secondary px-4 py-6 md:px-10 md:py-8">
-      {/* Breadcrumb */}
       <div className="mb-6 flex items-center gap-2 text-sm text-text-secondary">
         <button
           onClick={() => router.back()}
@@ -135,7 +133,6 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
         </span>
       </div>
 
-      {/* Header row */}
       <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <h1 className="text-2xl font-bold text-foreground md:text-[28px]">
           Cancel {planName} Service
@@ -181,7 +178,6 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
         </div>
       </div>
 
-      {/* Acknowledgement box */}
       <label className="mb-8 flex cursor-pointer items-start gap-3 rounded-xl border border-error/30 bg-error/5 p-5">
         <Checkbox
           checked={acknowledged}
@@ -198,7 +194,6 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
 
       <div className="mb-6 h-px bg-border" />
 
-      {/* Reasons survey */}
       <h2 className="mb-1.5 text-lg font-bold text-foreground">
         We&apos;d love to know why you chose to cancel your subscription
       </h2>

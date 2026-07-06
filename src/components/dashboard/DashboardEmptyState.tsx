@@ -48,7 +48,6 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="relative mx-auto w-full max-w-[900px] overflow-y-auto rounded-2xl bg-white p-4 shadow-[0px_20px_25px_-5px_rgba(0,0,0,0.1),0px_10px_10px_-5px_rgba(0,0,0,0.04)] max-h-[calc(100vh-48px)]">
-        {/* Close button */}
         <Button
           variant="ghost"
           size="icon-sm"
@@ -58,9 +57,7 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
           <X className="size-5" />
         </Button>
 
-        {/* Two-column content */}
         <div className="flex min-h-[500px] flex-col md:flex-row">
-          {/* Left Side - Illustration */}
           <div className="flex flex-1 flex-col items-center justify-center rounded-[20px] bg-[#d1fae5] p-8 text-center md:mt-0 md:p-10">
             {/* Decorative illustration — preserved as-is (art, not an icon) */}
             <div className="mb-8">
@@ -99,7 +96,6 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
                   strokeWidth="2"
                   strokeLinecap="round"
                 />
-                {/* Simple People Representation */}
                 <circle cx="60" cy="140" r="15" fill="#34D399" />
                 <circle cx="140" cy="140" r="15" fill="#34D399" />
                 <rect x="50" y="155" width="20" height="25" rx="5" fill="#34D399" />
@@ -126,7 +122,6 @@ export default function DashboardEmptyState({ totalCourses }: DashboardEmptyStat
             </Link>
           </div>
 
-          {/* Right Side - Steps Checklist */}
           <div className="flex flex-[1.2] flex-col justify-center bg-white px-4 py-4 md:px-12 md:py-[60px]">
             <h3 className="mb-8 text-left text-[28px] font-bold text-[#111827]">
               How to get started

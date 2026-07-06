@@ -92,7 +92,6 @@ export default function Step6QuizReview({
     }
   };
 
-  // Count archetypes for summary
   const archetypeCounts: Record<string, number> = {};
   questions.forEach((q) => {
     if (q.archetype) {
@@ -110,7 +109,6 @@ export default function Step6QuizReview({
       </p>
 
       <div className="flex h-0 w-full min-h-0 flex-[1_1_auto] flex-col overflow-y-auto pr-2 pb-10">
-        {/* Header Row */}
         <div className="mb-6 flex shrink-0 items-center justify-between">
           <div className="flex flex-col">
             <div className="mb-1 text-lg font-bold text-foreground">Editable quiz questions</div>
@@ -120,7 +118,6 @@ export default function Step6QuizReview({
           </div>
         </div>
 
-        {/* Flat Question List */}
         <div className="flex flex-col gap-5">
           {questions.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-background-secondary p-10 text-center italic text-text-tertiary">
@@ -250,7 +247,6 @@ export default function Step6QuizReview({
                     ))}
                   </div>
 
-                  {/* Embedded Explanation (Always Visible) */}
                   {q.explanation && (
                     <div className="mt-3 px-4 py-3 bg-[#F7FAFC] rounded-lg border border-[#E2E8F0] text-[13px] leading-relaxed">
                       <div className="font-semibold text-[#38A169] mb-1.5 flex items-start gap-1.5">
@@ -279,7 +275,6 @@ export default function Step6QuizReview({
           )}
         </div>
 
-        {/* Add Question Section */}
         {!isAdding ? (
           <Button variant="outline" onClick={() => setIsAdding(true)} className="w-full">
             + Add New Question

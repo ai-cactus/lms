@@ -28,7 +28,6 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
 
-      // Close modal after delay
       const timer = setTimeout(() => {
         onClose();
       }, 1500);
@@ -50,7 +49,6 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    // Validate Type
     const allowedTypes = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

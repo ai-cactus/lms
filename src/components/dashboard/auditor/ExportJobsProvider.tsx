@@ -61,7 +61,6 @@ export function ExportJobsProvider({ children }: { children: React.ReactNode }) 
     jobsRef.current = jobs;
   }, [jobs]);
 
-  // Load persisted jobs on mount.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -71,7 +70,6 @@ export function ExportJobsProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
-  // Persist on change.
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs.slice(-20)));

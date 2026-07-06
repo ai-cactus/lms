@@ -47,7 +47,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Parse and validate body
     let body: EnterpriseInquiryBody;
     try {
       body = (await request.json()) as EnterpriseInquiryBody;
@@ -107,7 +106,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Primary pain point is required.' }, { status: 400 });
     }
 
-    // Fetch organization for additional context
     const organization = await prisma.organization.findUnique({
       where: { id: user.organizationId ?? '' },
       select: { name: true, primaryEmail: true },

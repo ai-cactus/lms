@@ -197,7 +197,6 @@ export default function MfaSettings() {
             authentication.
           </p>
 
-          {/* Verification code input */}
           <div className="mb-3 flex items-start gap-2">
             <Input
               type="text"
@@ -270,14 +269,12 @@ export default function MfaSettings() {
             Two-factor authentication is enabled
           </div>
 
-          {/* Disable / regenerate section */}
           <div className="mt-4 border-t border-border pt-4">
             <p className="mb-3 text-sm text-text-secondary">
               To disable two-factor authentication or regenerate recovery codes, first request a
               verification code sent to your email:
             </p>
 
-            {/* Send code button with cooldown */}
             <div className="mb-3">
               {disableCooldown > 0 ? (
                 <span className="text-[13px] text-text-tertiary">Resend in {disableCooldown}s</span>

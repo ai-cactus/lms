@@ -54,7 +54,6 @@ export default async function CompliancePage() {
         </p>
       </div>
 
-      {/* Summary chips */}
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-border bg-background p-5">
           <p className="text-sm text-text-secondary">Overdue training</p>

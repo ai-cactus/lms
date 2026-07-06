@@ -33,7 +33,6 @@ export async function POST(request: NextRequest) {
       select: { stripeCustomerId: true, name: true, primaryEmail: true },
     });
 
-    // If the org doesn't have a Stripe customer yet, create one first
     let customerId = organization?.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -48,7 +47,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Read return URL from the request body (defaults to billing page)
     let returnUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/dashboard/billing?tab=payment-method`;
     try {
       const body = (await request.json()) as { returnUrl?: string };

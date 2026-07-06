@@ -110,7 +110,6 @@ export default function StaffListClient({
     msg: string;
   } | null>(null);
 
-  // Filter Logic
   const filteredUsers = useMemo(() => {
     return initialUsers.filter(
       (user) =>
@@ -119,13 +118,11 @@ export default function StaffListClient({
     );
   }, [initialUsers, searchQuery]);
 
-  // Pagination Logic
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage);
   const totalEntries = filteredUsers.length;
 
-  // Handle Page Change
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
@@ -208,7 +205,6 @@ export default function StaffListClient({
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col">
-      {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-4 max-sm:flex-col">
         <div className="flex flex-col">
           <h1 className="text-2xl font-bold text-[#1a202c]">Staff Details</h1>
@@ -257,9 +253,7 @@ export default function StaffListClient({
         </Button>
       </div>
 
-      {/* Content Card */}
       <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
-        {/* Search */}
         <div className="mb-6 w-full sm:w-[380px]">
           <Input
             className="h-11"
@@ -273,7 +267,6 @@ export default function StaffListClient({
           />
         </div>
 
-        {/* Table */}
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
@@ -290,7 +283,6 @@ export default function StaffListClient({
                   onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
                   className={user.isPending ? 'cursor-default opacity-85' : 'cursor-pointer'}
                 >
-                  {/* Name / avatar cell */}
                   <TableCell className="pl-6">
                     <div className="flex items-center gap-3">
                       <div className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e2e8f0] text-[#4a5568]">
@@ -333,7 +325,6 @@ export default function StaffListClient({
                   {/* Date cell — hidden on small screens */}
                   <TableCell className="hidden sm:table-cell text-right text-slate-500 pr-6 whitespace-nowrap">
                     {getRelativeTime(user.dateInvited)}
-                    {/* Inline feedback for this row */}
                     {exportFeedback?.id === user.id && (
                       <div
                         className={`mt-1 text-[11px] font-medium ${
@@ -427,7 +418,6 @@ export default function StaffListClient({
           </TableBody>
         </Table>
 
-        {/* Pagination */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
           <div className="text-sm text-[#718096]">
             Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
@@ -488,14 +478,12 @@ export default function StaffListClient({
         </div>
       </div>
 
-      {/* Feature Gate Modal */}
       <OrganizationActivationModal
         hasOrganization={hasOrganization}
         mode="feature_gate"
         isOpen={showFeatureGate}
         onClose={() => setShowFeatureGate(false)}
       />
-      {/* Invite Staff Modal */}
       <InviteStaffModal
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
@@ -505,7 +493,6 @@ export default function StaffListClient({
         inviterRole={inviterRole}
         existingEmails={initialUsers.map((u) => u.email)}
       />
-      {/* Revoke Invite Modal */}
       {revokeTarget && (
         <RevokeInviteModal
           isOpen={!!revokeTarget}
@@ -515,7 +502,6 @@ export default function StaffListClient({
         />
       )}
 
-      {/* Remove Staff Modal */}
       {removeTarget && (
         <RemoveStaffModal
           isOpen={!!removeTarget}
@@ -526,7 +512,6 @@ export default function StaffListClient({
         />
       )}
 
-      {/* Worker Limit Modal */}
       <WorkerLimitModal
         isOpen={showWorkerLimitModal}
         onClose={() => setShowWorkerLimitModal(false)}

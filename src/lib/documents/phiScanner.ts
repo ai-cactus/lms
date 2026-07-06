@@ -74,7 +74,6 @@ export async function scanText(text: string): Promise<ScanResult> {
   try {
     const aiResponse = await callVertexAI(prompt, { temperature: 0.1 });
 
-    // JSON extraction
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return failClosed('no JSON found in AI response');
@@ -87,7 +86,6 @@ export async function scanText(text: string): Promise<ScanResult> {
       return failClosed('AI returned malformed JSON');
     }
 
-    // Validate structure
     if (typeof data.hasPHI === 'boolean' && Array.isArray(data.findings)) {
       return {
         hasPHI: data.hasPHI,

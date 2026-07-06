@@ -86,7 +86,6 @@ export async function POST(req: Request) {
         },
       });
 
-      // 6. Mark invite as accepted
       await tx.invite.update({
         where: { id: invite.id },
         data: { status: 'accepted' },

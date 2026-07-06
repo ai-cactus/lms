@@ -57,7 +57,6 @@ export async function completeOnboarding(data: OnboardingData) {
   }
   const userId = session.user.id;
 
-  // Destructure data
   const { step1, step2, step3, step4 } = data;
 
   if (!step1) {
@@ -150,11 +149,9 @@ export async function completeOnboarding(data: OnboardingData) {
       // 3. Prepare Invites to be sent
       const invitesToSend: { email: string; role: UserRole; token: string; orgName: string }[] = [];
 
-      // Helper to queue invite
       const queueInvite = async (email: string, role: UserRole) => {
-        // Check if user exists
         const existingUser = await tx.user.findUnique({ where: { email } });
-        if (existingUser) return; // Skip if user exists
+        if (existingUser) return;
 
         const token = crypto.randomUUID();
         const expiresAt = new Date();

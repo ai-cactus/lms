@@ -17,7 +17,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     const courseId = params.id;
 
-    // Get course with lessons and quiz
     const course = await prisma.course.findUnique({
       where: { id: courseId },
       include: {
@@ -102,7 +101,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       }
     }
 
-    // Check if resolved user is admin
     const isAdmin = isAdminRole(activeRole);
 
     if (!enrollment && !isAdmin) {
@@ -166,7 +164,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         })
       : null;
 
-    // Build detailed quiz results if the user has completed the quiz
     let quizResultsData = null;
     const quizAttempts =
       (effectiveEnrollment.quizAttempts as

@@ -43,7 +43,6 @@ export default function AdminCourseReview({
 
   return (
     <div className="min-h-screen bg-[#f9fafb]">
-      {/* Top bar */}
       <header className="flex h-16 items-center justify-between border-b border-border bg-white px-6">
         <Link
           href={`/dashboard/training/courses/${courseId}`}
@@ -63,7 +62,6 @@ export default function AdminCourseReview({
       <div className="mx-auto w-full max-w-[900px] px-6 py-8">
         <h1 className="mb-6 text-2xl font-bold text-[#1a202c]">{title}</h1>
 
-        {/* Course video */}
         {videoLesson ? (
           <div className="mb-10">
             <VideoPlayer lessonId={videoLesson.id} enrollmentId={enrollmentId} />

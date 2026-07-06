@@ -172,7 +172,6 @@ export default function AssignPublishClient({
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-white">
-      {/* Top bar */}
       <header className="flex h-[72px] items-center border-b border-border">
         <div className="flex h-full items-center border-r border-border px-6">
           <Logo size="sm" />
@@ -206,7 +205,6 @@ export default function AssignPublishClient({
           </Alert>
         )}
 
-        {/* Assign To */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
           <label className="pt-3 text-sm text-text-secondary sm:w-[160px] sm:shrink-0">
             Assign To
@@ -258,7 +256,6 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
-        {/* Training Schedule */}
         <SettingRow
           title="Training Schedule"
           description="Workers will receive access on this date"
@@ -268,7 +265,6 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
-        {/* Due Date */}
         <SettingRow
           title="Due Date"
           description="Deadline for completing the course. Leave empty to compute it automatically."
@@ -278,7 +274,6 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
-        {/* Renewal Settings */}
         <SettingRow
           title="Renewal Settings"
           description="Choose a date for staffs to renew this course"
@@ -299,7 +294,6 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
-        {/* Deadline reminders */}
         <SettingRow
           title="Deadline Reminders"
           description="Send workers automated reminders as the deadline approaches and escalate when overdue."
@@ -314,7 +308,6 @@ export default function AssignPublishClient({
           </label>
         </SettingRow>
 
-        {/* Advanced reminder schedule */}
         <div className="mt-4">
           <button
             type="button"
@@ -374,7 +367,6 @@ export default function AssignPublishClient({
           )}
         </div>
 
-        {/* Footer actions */}
         <div className="mt-12 flex items-center justify-between">
           <Button type="button" variant="outline" size="lg" onClick={() => router.back()}>
             Back
@@ -391,7 +383,6 @@ export default function AssignPublishClient({
         </div>
       </div>
 
-      {/* Success modal */}
       <Dialog open={showSuccess} onOpenChange={() => {}}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           {/* Visually-hidden accessible title (Radix requires a DialogTitle). */}
