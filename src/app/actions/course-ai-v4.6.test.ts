@@ -20,33 +20,55 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Hoisted mocks
 // ---------------------------------------------------------------------------
 
-const { prismaMock, mockAuth, mockCallVertexAI, mockAfter, mockExtractTextFromFile } = vi.hoisted(
-  () => {
-    const prismaMock = {
-      job: {
-        findUnique: vi.fn(),
-        create: vi.fn(),
-        update: vi.fn(),
-        updateMany: vi.fn(),
-      },
-      courseCategory: { findUnique: vi.fn() },
-      document: { findUnique: vi.fn() },
-    };
-    const mockAuth = vi.fn();
-    const mockCallVertexAI = vi.fn();
-    const mockAfter = vi.fn((cb: () => Promise<void> | void) => {
-      // Mirror next/server's after(): fire-and-forget, not awaited by the caller.
-      void cb();
-    });
-    const mockExtractTextFromFile = vi.fn();
-    return { prismaMock, mockAuth, mockCallVertexAI, mockAfter, mockExtractTextFromFile };
-  },
-);
+const {
+  prismaMock,
+  mockAuth,
+  mockCallVertexAI,
+  mockAfter,
+  mockExtractTextFromFile,
+  mockScanText,
+  mockCheckRateLimit,
+} = vi.hoisted(() => {
+  const prismaMock = {
+    job: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    courseCategory: { findUnique: vi.fn() },
+    document: { findUnique: vi.fn() },
+  };
+  const mockAuth = vi.fn();
+  const mockCallVertexAI = vi.fn();
+  const mockAfter = vi.fn((cb: () => Promise<void> | void) => {
+    // Mirror next/server's after(): fire-and-forget, not awaited by the caller.
+    void cb();
+  });
+  const mockExtractTextFromFile = vi.fn();
+  const mockScanText = vi.fn();
+  const mockCheckRateLimit = vi.fn();
+  return {
+    prismaMock,
+    mockAuth,
+    mockCallVertexAI,
+    mockAfter,
+    mockExtractTextFromFile,
+    mockScanText,
+    mockCheckRateLimit,
+  };
+});
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/file-parser', () => ({ extractTextFromFile: mockExtractTextFromFile }));
 vi.mock('@/lib/rag', () => ({ retrieveRelevantChunks: vi.fn().mockResolvedValue([]) }));
+// F-002 / F-018: the foreground PHI gate + rate-limit run before job scheduling.
+// Mock them neutrally so the AI mock stays dedicated to the BACKGROUND pipeline
+// under test (these unit tests target processBackgroundV46's timeout/settle,
+// not the foreground gate).
+vi.mock('@/lib/documents/phiScanner', () => ({ scanText: mockScanText }));
+vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
 vi.mock('@/lib/ai-client', () => ({
   callVertexAI: mockCallVertexAI,
   truncateToContext: (text: string) => text,
@@ -214,6 +236,9 @@ describe('processBackgroundV46 — wall-clock timeout + settle guard', () => {
     process.env.V46_GENERATION_TIMEOUT_MS = '5000'; // short timeout for the test
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
     mockExtractTextFromFile.mockResolvedValue('x'.repeat(200));
+    // Foreground gate is neutral: PHI scan passes clean, rate limit allows.
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 9, resetInSeconds: 600 });
     prismaMock.job.create.mockResolvedValue({ id: 'job-timeout-1' });
     prismaMock.job.update.mockResolvedValue({});
   });

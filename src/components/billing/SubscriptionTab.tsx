@@ -13,6 +13,7 @@ import { Star, Check, Play } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
+import { HCaptcha } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { MAX_PAUSE_MONTHS, getPauseState } from '@/lib/billing';
 
@@ -203,6 +204,7 @@ export default function SubscriptionTab({
 
   const [resuming, setResuming] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [enterpriseCaptchaToken, setEnterpriseCaptchaToken] = useState<string>();
 
   // ── Checkout ───────────────────────────────────────────────────────────────
 
@@ -295,6 +297,7 @@ export default function SubscriptionTab({
             currentAccreditation: enterpriseModal.currentAccreditation,
             currentTrainingMethod: enterpriseModal.currentTrainingMethod,
             primaryPainPoint: enterpriseModal.primaryPainPoint.trim(),
+            captchaToken: enterpriseCaptchaToken,
           }),
         });
         const data = await res.json();
@@ -317,7 +320,7 @@ export default function SubscriptionTab({
         }));
       }
     },
-    [enterpriseModal, router],
+    [enterpriseModal, enterpriseCaptchaToken, router],
   );
 
   // ── Resume subscription (Continue Plan) ────────────────────────────────────
@@ -960,6 +963,11 @@ export default function SubscriptionTab({
                 </a>
                 .
               </p>
+
+              <HCaptcha
+                onVerify={setEnterpriseCaptchaToken}
+                onExpire={() => setEnterpriseCaptchaToken(undefined)}
+              />
 
               {/* Actions */}
               <div className="flex flex-col gap-2.5">

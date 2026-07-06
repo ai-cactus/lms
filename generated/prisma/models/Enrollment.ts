@@ -14,7 +14,15 @@ import type * as Prisma from "../internal/prismaNamespace"
 
 /**
  * Model Enrollment
- * 
+ * F-053: at most one *active* enrollment may exist per (user_id, course_id).
+ * "Active" = the in-flight statuses enrolled | assigned | in_progress |
+ * lessons_complete. Terminal/historical statuses (completed, attested, locked,
+ * failed, retry_requested) are excluded so retakes — which create a new
+ * enrollment while the prior one stays completed/failed — remain valid.
+ * This is enforced by a PARTIAL unique index
+ * (`enrollments_user_id_course_id_active_key ... WHERE status IN (...)`) added in
+ * migration `20260706120001_enrollment_category_uniques`. Prisma cannot express a
+ * partial/filtered unique, so it exists only at the DB level (no `@@unique` here).
  */
 export type EnrollmentModel = runtime.Types.Result.DefaultSelection<Prisma.$EnrollmentPayload>
 

@@ -1,5 +1,7 @@
 # System Architecture Documentation
 
+> **⚠ Partially out of date (as of 2026-07-05).** This document predates the July 2026 audit and describes the CSS-Modules era and the single-process design. For the current-state analysis and the frontend/backend split plan, see [`analysis/`](./analysis/) (system analysis, findings register, executive summary) and [`rebuild/`](./rebuild/) (target architecture and per-stack rebuild specs). Notably: the CSS-Modules → Tailwind/shadcn migration is now complete, and the target architecture splits this monolith into separate `web`, `api`, and `worker` services.
+
 **Project Name:** LMS2 (Theraplty Learning Management System)
 **Version:** 0.1.0
 **Date:** February 17, 2026

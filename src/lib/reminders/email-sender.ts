@@ -5,7 +5,7 @@ import {
   sendEscalationEmail,
   sendRetakeReminderEmail,
 } from '@/lib/email';
-import type { ReminderEmailMessage, ReminderEmailSender } from './dispatch';
+import type { EmailDeliveryResult, ReminderEmailMessage, ReminderEmailSender } from './dispatch';
 
 /**
  * Real, template-backed reminder email sender.
@@ -17,11 +17,18 @@ import type { ReminderEmailMessage, ReminderEmailSender } from './dispatch';
  *
  * Never throws: the underlying email helpers already swallow transport errors
  * and return a structured result, and this wrapper additionally guards against
- * any unexpected failure so a single bad send can't abort the sweep.
+ * any unexpected failure so a single bad send can't abort the sweep. The real
+ * transport outcome is threaded back to dispatch (F-021) so a failed send is
+ * recorded on its EmailMessage row and retried, rather than silently dropped.
  */
 
 /** Where escalation recipients land — the admin compliance surface (Phase 8). */
 const COMPLIANCE_LINK = '/dashboard/compliance';
+
+/** Map an `@/lib/email` sender result onto the dispatch delivery contract. */
+function toDelivery(result: { success: boolean; error?: unknown }): EmailDeliveryResult {
+  return { ok: result.success, error: result.error };
+}
 
 /** Human-readable escalation-stage label for the manager/admin email copy. */
 function escalationStageLabel(message: ReminderEmailMessage): string {
@@ -36,7 +43,7 @@ function escalationStageLabel(message: ReminderEmailMessage): string {
   }
 }
 
-async function routeEmail(message: ReminderEmailMessage): Promise<void> {
+async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryResult> {
   const recipientName = message.toName?.trim() || 'there';
   const workerName = message.workerName ?? message.toName ?? message.to;
   const daysOverdue = message.daysOverdue ?? 0;
@@ -45,68 +52,16 @@ async function routeEmail(message: ReminderEmailMessage): Promise<void> {
   if (message.kind) {
     switch (message.kind) {
       case 'WORKER_RETAKE':
-        await sendRetakeReminderEmail(
-          message.to,
-          recipientName,
-          message.courseTitle,
-          message.attemptsRemaining ?? 0,
-        );
-        return;
-      case 'ADMIN_REASSIGN':
-        await sendEscalationEmail(
-          message.to,
-          recipientName,
-          workerName,
-          message.courseTitle,
-          message.dueAt,
-          daysOverdue,
-          escalationStageLabel(message),
-          COMPLIANCE_LINK,
-        );
-        return;
-    }
-  }
-
-  // Track A ladder stages.
-  if (message.stage) {
-    switch (message.stage) {
-      case 'FRIENDLY_REMINDER':
-        await sendDeadlineReminderEmail(
-          message.to,
-          recipientName,
-          message.courseTitle,
-          message.dueAt,
-          'friendly',
-        );
-        return;
-      case 'URGENT_REMINDER':
-        await sendDeadlineReminderEmail(
-          message.to,
-          recipientName,
-          message.courseTitle,
-          message.dueAt,
-          'urgent',
-        );
-        return;
-      case 'DAY_OF_DEADLINE':
-        await sendDeadlineReminderEmail(
-          message.to,
-          recipientName,
-          message.courseTitle,
-          message.dueAt,
-          'day_of',
-        );
-        return;
-      case 'GRACE_SOFT_ESCALATION':
-        if (message.recipientRole === 'worker') {
-          await sendDeadlineOverdueWorkerEmail(
+        return toDelivery(
+          await sendRetakeReminderEmail(
             message.to,
             recipientName,
             message.courseTitle,
-            message.dueAt,
-            daysOverdue,
-          );
-        } else {
+            message.attemptsRemaining ?? 0,
+          ),
+        );
+      case 'ADMIN_REASSIGN':
+        return toDelivery(
           await sendEscalationEmail(
             message.to,
             recipientName,
@@ -116,24 +71,85 @@ async function routeEmail(message: ReminderEmailMessage): Promise<void> {
             daysOverdue,
             escalationStageLabel(message),
             COMPLIANCE_LINK,
+          ),
+        );
+    }
+  }
+
+  // Track A ladder stages.
+  if (message.stage) {
+    switch (message.stage) {
+      case 'FRIENDLY_REMINDER':
+        return toDelivery(
+          await sendDeadlineReminderEmail(
+            message.to,
+            recipientName,
+            message.courseTitle,
+            message.dueAt,
+            'friendly',
+          ),
+        );
+      case 'URGENT_REMINDER':
+        return toDelivery(
+          await sendDeadlineReminderEmail(
+            message.to,
+            recipientName,
+            message.courseTitle,
+            message.dueAt,
+            'urgent',
+          ),
+        );
+      case 'DAY_OF_DEADLINE':
+        return toDelivery(
+          await sendDeadlineReminderEmail(
+            message.to,
+            recipientName,
+            message.courseTitle,
+            message.dueAt,
+            'day_of',
+          ),
+        );
+      case 'GRACE_SOFT_ESCALATION':
+        if (message.recipientRole === 'worker') {
+          return toDelivery(
+            await sendDeadlineOverdueWorkerEmail(
+              message.to,
+              recipientName,
+              message.courseTitle,
+              message.dueAt,
+              daysOverdue,
+            ),
           );
         }
-        return;
-      case 'HARD_ESCALATION':
-        await sendEscalationEmail(
-          message.to,
-          recipientName,
-          workerName,
-          message.courseTitle,
-          message.dueAt,
-          daysOverdue,
-          escalationStageLabel(message),
-          COMPLIANCE_LINK,
+        return toDelivery(
+          await sendEscalationEmail(
+            message.to,
+            recipientName,
+            workerName,
+            message.courseTitle,
+            message.dueAt,
+            daysOverdue,
+            escalationStageLabel(message),
+            COMPLIANCE_LINK,
+          ),
         );
-        return;
+      case 'HARD_ESCALATION':
+        return toDelivery(
+          await sendEscalationEmail(
+            message.to,
+            recipientName,
+            workerName,
+            message.courseTitle,
+            message.dueAt,
+            daysOverdue,
+            escalationStageLabel(message),
+            COMPLIANCE_LINK,
+          ),
+        );
       case 'INITIAL_LAUNCH':
         // The launch email is sent by the assign flow (Phase 7), never the sweep.
-        return;
+        // Nothing to deliver here — treat as a successful no-op.
+        return { ok: true };
     }
   }
 
@@ -143,11 +159,12 @@ async function routeEmail(message: ReminderEmailMessage): Promise<void> {
     kind: message.kind,
     recipientRole: message.recipientRole,
   });
+  return { ok: false, error: 'No email template matched message' };
 }
 
 export const reminderEmailSender: ReminderEmailSender = async (message) => {
   try {
-    await routeEmail(message);
+    return await routeEmail(message);
   } catch (err) {
     logger.error({
       msg: '[reminders] Email sender failed',
@@ -156,5 +173,6 @@ export const reminderEmailSender: ReminderEmailSender = async (message) => {
       recipientRole: message.recipientRole,
       err,
     });
+    return { ok: false, error: err };
   }
 };

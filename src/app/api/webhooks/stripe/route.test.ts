@@ -28,6 +28,7 @@ const { prismaMock, stripeMock } = vi.hoisted(() => {
     organization: { findUnique: vi.fn(), update: vi.fn() },
     subscription: { findUnique: vi.fn(), upsert: vi.fn(), updateMany: vi.fn() },
     invoice: { upsert: vi.fn() },
+    processedWebhookEvent: { findUnique: vi.fn(), create: vi.fn() },
   };
   const stripeMock = {
     webhooks: { constructEvent: vi.fn() },
@@ -36,7 +37,7 @@ const { prismaMock, stripeMock } = vi.hoisted(() => {
 });
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('@/lib/stripe', () => ({ default: stripeMock }));
+vi.mock('@/lib/stripe', () => ({ getStripeClient: () => stripeMock, default: stripeMock }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -84,6 +85,10 @@ beforeEach(() => {
   prismaMock.organization.findUnique.mockResolvedValue({ id: 'org-1' });
   prismaMock.organization.update.mockResolvedValue({});
   prismaMock.subscription.upsert.mockResolvedValue({});
+  // Idempotency ledger: default to "not yet seen" so events process, and a
+  // successful record.
+  prismaMock.processedWebhookEvent.findUnique.mockResolvedValue(null);
+  prismaMock.processedWebhookEvent.create.mockResolvedValue({});
 });
 
 describe('POST /api/webhooks/stripe — THER-010 canonical row protection', () => {
@@ -170,5 +175,83 @@ describe('POST /api/webhooks/stripe — THER-010 canonical row protection', () =
     await POST(makeReq('{}'));
 
     expect(prismaMock.subscription.upsert).toHaveBeenCalledOnce();
+  });
+});
+
+describe('POST /api/webhooks/stripe — F-014 idempotency', () => {
+  it('short-circuits with 200 and does NOT re-process an event already in the ledger', async () => {
+    prismaMock.processedWebhookEvent.findUnique.mockResolvedValue({ id: 'row-1' });
+
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_dup',
+      type: 'customer.subscription.updated',
+      data: { object: stripeSubscription() },
+    });
+
+    const res = await POST(makeReq('{}'));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ received: true, duplicate: true });
+    expect(prismaMock.subscription.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.processedWebhookEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('records the event id in the ledger after successful processing', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_ok',
+      type: 'customer.subscription.updated',
+      data: { object: stripeSubscription() },
+    });
+
+    const res = await POST(makeReq('{}'));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.processedWebhookEvent.create).toHaveBeenCalledWith({
+      data: { stripeEventId: 'evt_ok', eventType: 'customer.subscription.updated' },
+    });
+  });
+
+  it('treats a concurrent duplicate (P2002 on record) as already-processed → 200', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+    // Ledger findUnique says "not seen", but the create races another delivery.
+    prismaMock.processedWebhookEvent.create.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
+
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_race',
+      type: 'customer.subscription.updated',
+      data: { object: stripeSubscription() },
+    });
+
+    const res = await POST(makeReq('{}'));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ received: true, duplicate: true });
+  });
+});
+
+describe('POST /api/webhooks/stripe — F-014 retryable errors', () => {
+  it('returns 5xx (so Stripe retries) when processing throws a transient/DB error', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+    // A DB failure inside the handler — recoverable, must NOT be swallowed.
+    prismaMock.subscription.upsert.mockRejectedValue(new Error('DB connection lost'));
+
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_fail',
+      type: 'customer.subscription.updated',
+      data: { object: stripeSubscription() },
+    });
+
+    const res = await POST(makeReq('{}'));
+
+    expect(res.status).toBe(500);
+    // The event must NOT be recorded as processed when the handler failed, so a
+    // redelivery can succeed.
+    expect(prismaMock.processedWebhookEvent.create).not.toHaveBeenCalled();
   });
 });

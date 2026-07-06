@@ -35,4 +35,4 @@ The assign page contains:
 
 **Accessibility issue (low, open):** Calendar DialogContent missing DialogTitle — Radix console errors on assignment form.
 
-**Local DB access:** `postgresql://postgres:0951@localhost:5433/lms` (pg client in node_modules/pg). Use `require('pg')` inline Node.js scripts.
+**Local DB access:** `postgresql://postgres:••••@localhost:5433/lms` (pg client in node_modules/pg). Use `require('pg')` inline Node.js scripts.

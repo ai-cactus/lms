@@ -1,0 +1,19 @@
+echo "Running pre-push checks..."
+
+# Heavy verification moved here from pre-commit so commits stay fast.
+# Mirrors the CI pipeline (.github/workflows/ci.yml) to catch failures
+# before they reach the remote.
+
+echo "→ Generating Prisma client..."
+npx prisma generate || exit 1
+
+echo "→ Type checking (TypeScript)..."
+npx tsc --noEmit || exit 1
+
+echo "→ Running tests..."
+npm run test || exit 1
+
+echo "→ Build check..."
+npm run build || exit 1
+
+echo "All pre-push checks passed!"

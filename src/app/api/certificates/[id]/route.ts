@@ -4,6 +4,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { downloadFile } from '@/lib/storage';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
@@ -40,6 +41,18 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     }
 
     const fileBuffer = await downloadFile(certificate.pdfStoragePath);
+
+    // F-001: record certificate (PHI-adjacent) download on the authorized path.
+    await audit({
+      action: 'certificate.download',
+      actorId: isWorker ? workerSession?.user?.id : adminSession?.user?.id,
+      actorRole: isWorker ? 'worker' : 'admin',
+      organizationId: certificate.user.organizationId ?? undefined,
+      targetType: 'certificate',
+      targetId: params.id,
+      ...getClientContext(request.headers),
+    });
+
     return new NextResponse(new Uint8Array(fileBuffer), {
       headers: {
         'Content-Type': 'application/pdf',

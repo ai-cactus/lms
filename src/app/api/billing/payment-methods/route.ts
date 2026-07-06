@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import stripe from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
 import { logger } from '@/lib/logger';
 
 // GET /api/billing/payment-methods — list all payment methods attached to the org's Stripe customer
@@ -14,6 +14,8 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const stripe = getStripeClient();
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },

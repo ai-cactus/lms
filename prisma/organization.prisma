@@ -103,3 +103,16 @@ model Invoice {
   @@index([organizationId])
   @@map("invoices")
 }
+
+/// Idempotency ledger for Stripe webhook delivery. Each Stripe event is
+/// recorded here on first successful processing; a duplicate delivery of the
+/// same `stripeEventId` is rejected by the unique constraint so handlers run
+/// at most once. Intentionally decoupled from Subscription/Invoice (no FK).
+model ProcessedWebhookEvent {
+  id            String   @id @default(uuid())
+  stripeEventId String   @unique @map("stripe_event_id")
+  eventType     String   @map("event_type")
+  processedAt   DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_webhook_events")
+}

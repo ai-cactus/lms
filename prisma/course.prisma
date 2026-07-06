@@ -54,6 +54,8 @@ model Course {
   approvedAt                  DateTime?           @map("approved_at")
   type                        CourseType          @default(text)
   isGlobal                    Boolean             @default(false) @map("is_global")
+  reviewRequired              Boolean             @default(false) @map("review_required")
+  qualityWarnings             String[]            @default([]) @map("quality_warnings")
   courseCategory              CourseCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   approvedBy                  User?               @relation("CourseApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
   creator                     User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
@@ -108,6 +110,7 @@ model Lesson {
   moduleId             String?       @map("module_id")
   module               CourseModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
 
+  @@index([courseId])
   @@index([moduleId])
   @@map("lessons")
 }
@@ -138,6 +141,8 @@ model CourseVersion {
   course            Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
 
+  @@index([courseId])
+  @@index([documentVersionId])
   @@map("course_versions")
 }
 

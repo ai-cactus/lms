@@ -31,6 +31,7 @@ model Question {
   explanation   String?
   quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
+  @@index([quizId])
   @@map("questions")
 }
 
@@ -46,6 +47,6 @@ model QuizAttempt {
   enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
   quiz         Quiz       @relation(fields: [quizId], references: [id])
 
-  @@unique([enrollmentId, quizId])
+  @@index([enrollmentId, quizId, completedAt])
   @@map("quiz_attempts")
 }

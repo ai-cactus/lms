@@ -1,0 +1,22 @@
+# gitleaks configuration for the LMS secret-scan CI gate (F-030).
+#
+# Uses the upstream default ruleset (useDefault = true) so real credentials —
+# including anything committed under .claude/agent-memory/** — are still caught,
+# plus a small allowlist for values that are intentionally committed and are
+# NOT secrets: the CI build-time dummy env values defined in
+# .github/workflows/ci.yml. Keep this list tight; do not add real secrets here.
+
+title = "LMS gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe committed values (CI build/e2e dummy env — see ci.yml)"
+regexes = [
+  '''ci-build-secret-not-used-in-production''',
+  '''sk_test_ci_dummy_key_not_real_000000000000''',
+  '''whsec_ci_dummy_not_real''',
+  '''pk_test_ci_dummy_not_real''',
+  '''ci_dummy_password''',
+]

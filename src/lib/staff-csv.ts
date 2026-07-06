@@ -25,6 +25,15 @@ export const STAFF_CSV_EMAIL_HEADER = 'email';
  */
 export const MAX_STAFF_CSV_ROWS = 1000;
 
+/**
+ * Hard cap on the byte size of an uploaded spreadsheet before parsing. The file
+ * is attacker-supplied, so we reject oversized inputs up front (defense in depth
+ * against decompression/parse-amplification) rather than handing them to the
+ * spreadsheet parser. 5 MB comfortably covers a {@link MAX_STAFF_CSV_ROWS}-row
+ * email list.
+ */
+export const MAX_STAFF_UPLOAD_BYTES = 5 * 1024 * 1024;
+
 /** Per-row error reasons surfaced in the import preview. */
 export type StaffCsvRowError =
   | 'Invalid email format'
@@ -156,10 +165,26 @@ export function extractStaffEmailsFromRows(
  * Reads an uploaded `.csv` / `.xlsx` file into a matrix of raw cell values.
  * Side-effectful (File I/O); the pure validation happens in
  * {@link extractStaffEmailsFromRows}.
+ *
+ * The file is untrusted (attacker-supplied): its size is validated before
+ * parsing and the parse is wrapped so a malformed/corrupt spreadsheet surfaces a
+ * clear error instead of leaking parser internals. Throws {@link Error} with a
+ * user-safe message on either failure.
  */
 export async function readStaffSpreadsheetRows(file: File): Promise<unknown[][]> {
+  if (file.size > MAX_STAFF_UPLOAD_BYTES) {
+    throw new Error('File is too large. Please upload a spreadsheet under 5 MB.');
+  }
+
   const data = await file.arrayBuffer();
-  const workbook = XLSX.read(data, { type: 'array' });
+
+  let workbook: XLSX.WorkBook;
+  try {
+    workbook = XLSX.read(data, { type: 'array' });
+  } catch {
+    throw new Error('Could not read the file. Please upload a valid CSV or XLSX spreadsheet.');
+  }
+
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) return [];
   const sheet = workbook.Sheets[sheetName];

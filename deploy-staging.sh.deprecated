@@ -1,4 +1,11 @@
 #!/bin/bash
+# ⛔ DEPRECATED — DO NOT USE.
+#
+# This script targets a stale PM2 path (/home/homepc/lms2) that the current
+# CD pipeline never uses. Staging is now deployed exclusively by GitHub
+# Actions + Docker Compose:
+#   .github/workflows/deploy-staging.yml  (build → GHCR → docker compose on VM)
+# See docs/deployment.md ("Single deploy path"). Kept for reference only.
 # deploy-staging.sh
 set -e
 set -x # Extreme verbosity

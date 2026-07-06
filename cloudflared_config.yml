@@ -9,9 +9,15 @@
 tunnel: d2f87791-8003-45d9-a8f3-1de7c220601a
 credentials-file: /home/deploy/.cloudflared/d2f87791-8003-45d9-a8f3-1de7c220601a.json
 
+# Route through the host nginx (port 80) instead of straight to the app ports,
+# so nginx's routing, body-size limits, real-IP handling and security headers
+# actually apply. cloudflared forwards the original Host header, so nginx picks
+# the matching server block by server_name (see lms2_nginx.conf):
+#   training.theraptly.com     → nginx prod block    → 127.0.0.1:3000
+#   staging-lms.theraptly.com  → nginx staging block → 127.0.0.1:3001
 ingress:
   - hostname: training.theraptly.com
-    service: http://localhost:3000
+    service: http://localhost:80
   - hostname: staging-lms.theraptly.com
-    service: http://localhost:3001
+    service: http://localhost:80
   - service: http_status:404

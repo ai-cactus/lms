@@ -59,6 +59,7 @@ export type CourseMinAggregateOutputType = {
   approvedAt: Date | null
   type: $Enums.CourseType | null
   isGlobal: boolean | null
+  reviewRequired: boolean | null
 }
 
 export type CourseMaxAggregateOutputType = {
@@ -84,6 +85,7 @@ export type CourseMaxAggregateOutputType = {
   approvedAt: Date | null
   type: $Enums.CourseType | null
   isGlobal: boolean | null
+  reviewRequired: boolean | null
 }
 
 export type CourseCountAggregateOutputType = {
@@ -115,6 +117,8 @@ export type CourseCountAggregateOutputType = {
   approvedAt: number
   type: number
   isGlobal: number
+  reviewRequired: number
+  qualityWarnings: number
   _all: number
 }
 
@@ -152,6 +156,7 @@ export type CourseMinAggregateInputType = {
   approvedAt?: true
   type?: true
   isGlobal?: true
+  reviewRequired?: true
 }
 
 export type CourseMaxAggregateInputType = {
@@ -177,6 +182,7 @@ export type CourseMaxAggregateInputType = {
   approvedAt?: true
   type?: true
   isGlobal?: true
+  reviewRequired?: true
 }
 
 export type CourseCountAggregateInputType = {
@@ -208,6 +214,8 @@ export type CourseCountAggregateInputType = {
   approvedAt?: true
   type?: true
   isGlobal?: true
+  reviewRequired?: true
+  qualityWarnings?: true
   _all?: true
 }
 
@@ -326,6 +334,8 @@ export type CourseGroupByOutputType = {
   approvedAt: Date | null
   type: $Enums.CourseType
   isGlobal: boolean
+  reviewRequired: boolean
+  qualityWarnings: string[]
   _count: CourseCountAggregateOutputType | null
   _avg: CourseAvgAggregateOutputType | null
   _sum: CourseSumAggregateOutputType | null
@@ -380,6 +390,8 @@ export type CourseWhereInput = {
   approvedAt?: Prisma.DateTimeNullableFilter<"Course"> | Date | string | null
   type?: Prisma.EnumCourseTypeFilter<"Course"> | $Enums.CourseType
   isGlobal?: Prisma.BoolFilter<"Course"> | boolean
+  reviewRequired?: Prisma.BoolFilter<"Course"> | boolean
+  qualityWarnings?: Prisma.StringNullableListFilter<"Course">
   courseCategory?: Prisma.XOR<Prisma.CourseCategoryNullableScalarRelationFilter, Prisma.CourseCategoryWhereInput> | null
   approvedBy?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null
   creator?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
@@ -423,6 +435,8 @@ export type CourseOrderByWithRelationInput = {
   approvedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   type?: Prisma.SortOrder
   isGlobal?: Prisma.SortOrder
+  reviewRequired?: Prisma.SortOrder
+  qualityWarnings?: Prisma.SortOrder
   courseCategory?: Prisma.CourseCategoryOrderByWithRelationInput
   approvedBy?: Prisma.UserOrderByWithRelationInput
   creator?: Prisma.UserOrderByWithRelationInput
@@ -469,6 +483,8 @@ export type CourseWhereUniqueInput = Prisma.AtLeast<{
   approvedAt?: Prisma.DateTimeNullableFilter<"Course"> | Date | string | null
   type?: Prisma.EnumCourseTypeFilter<"Course"> | $Enums.CourseType
   isGlobal?: Prisma.BoolFilter<"Course"> | boolean
+  reviewRequired?: Prisma.BoolFilter<"Course"> | boolean
+  qualityWarnings?: Prisma.StringNullableListFilter<"Course">
   courseCategory?: Prisma.XOR<Prisma.CourseCategoryNullableScalarRelationFilter, Prisma.CourseCategoryWhereInput> | null
   approvedBy?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null
   creator?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
@@ -512,6 +528,8 @@ export type CourseOrderByWithAggregationInput = {
   approvedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   type?: Prisma.SortOrder
   isGlobal?: Prisma.SortOrder
+  reviewRequired?: Prisma.SortOrder
+  qualityWarnings?: Prisma.SortOrder
   _count?: Prisma.CourseCountOrderByAggregateInput
   _avg?: Prisma.CourseAvgOrderByAggregateInput
   _max?: Prisma.CourseMaxOrderByAggregateInput
@@ -551,6 +569,8 @@ export type CourseScalarWhereWithAggregatesInput = {
   approvedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Course"> | Date | string | null
   type?: Prisma.EnumCourseTypeWithAggregatesFilter<"Course"> | $Enums.CourseType
   isGlobal?: Prisma.BoolWithAggregatesFilter<"Course"> | boolean
+  reviewRequired?: Prisma.BoolWithAggregatesFilter<"Course"> | boolean
+  qualityWarnings?: Prisma.StringNullableListFilter<"Course">
 }
 
 export type CourseCreateInput = {
@@ -579,6 +599,8 @@ export type CourseCreateInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -622,6 +644,8 @@ export type CourseUncheckedCreateInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -659,6 +683,8 @@ export type CourseUpdateInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -702,6 +728,8 @@ export type CourseUncheckedUpdateInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -742,6 +770,8 @@ export type CourseCreateManyInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
 }
 
 export type CourseUpdateManyMutationInput = {
@@ -770,6 +800,8 @@ export type CourseUpdateManyMutationInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
 }
 
 export type CourseUncheckedUpdateManyInput = {
@@ -801,6 +833,8 @@ export type CourseUncheckedUpdateManyInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
 }
 
 export type CourseListRelationFilter = {
@@ -850,6 +884,8 @@ export type CourseCountOrderByAggregateInput = {
   approvedAt?: Prisma.SortOrder
   type?: Prisma.SortOrder
   isGlobal?: Prisma.SortOrder
+  reviewRequired?: Prisma.SortOrder
+  qualityWarnings?: Prisma.SortOrder
 }
 
 export type CourseAvgOrderByAggregateInput = {
@@ -880,6 +916,7 @@ export type CourseMaxOrderByAggregateInput = {
   approvedAt?: Prisma.SortOrder
   type?: Prisma.SortOrder
   isGlobal?: Prisma.SortOrder
+  reviewRequired?: Prisma.SortOrder
 }
 
 export type CourseMinOrderByAggregateInput = {
@@ -905,6 +942,7 @@ export type CourseMinOrderByAggregateInput = {
   approvedAt?: Prisma.SortOrder
   type?: Prisma.SortOrder
   isGlobal?: Prisma.SortOrder
+  reviewRequired?: Prisma.SortOrder
 }
 
 export type CourseSumOrderByAggregateInput = {
@@ -1052,6 +1090,10 @@ export type CourseCreateobjectivesInput = {
   set: string[]
 }
 
+export type CourseCreatequalityWarningsInput = {
+  set: string[]
+}
+
 export type EnumCourseStatusFieldUpdateOperationsInput = {
   set?: $Enums.CourseStatus
 }
@@ -1071,6 +1113,11 @@ export type NullableEnumMediaStatusFieldUpdateOperationsInput = {
 
 export type EnumCourseTypeFieldUpdateOperationsInput = {
   set?: $Enums.CourseType
+}
+
+export type CourseUpdatequalityWarningsInput = {
+  set?: string[]
+  push?: string | string[]
 }
 
 export type CourseCreateNestedOneWithoutModulesInput = {
@@ -1227,6 +1274,8 @@ export type CourseCreateWithoutCreatorInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   versions?: Prisma.CourseVersionCreateNestedManyWithoutCourseInput
@@ -1268,6 +1317,8 @@ export type CourseUncheckedCreateWithoutCreatorInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -1315,6 +1366,8 @@ export type CourseCreateWithoutApprovedByInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
   versions?: Prisma.CourseVersionCreateNestedManyWithoutCourseInput
@@ -1356,6 +1409,8 @@ export type CourseUncheckedCreateWithoutApprovedByInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -1425,6 +1480,8 @@ export type CourseScalarWhereInput = {
   approvedAt?: Prisma.DateTimeNullableFilter<"Course"> | Date | string | null
   type?: Prisma.EnumCourseTypeFilter<"Course"> | $Enums.CourseType
   isGlobal?: Prisma.BoolFilter<"Course"> | boolean
+  reviewRequired?: Prisma.BoolFilter<"Course"> | boolean
+  qualityWarnings?: Prisma.StringNullableListFilter<"Course">
 }
 
 export type CourseUpsertWithWhereUniqueWithoutApprovedByInput = {
@@ -1469,6 +1526,8 @@ export type CourseCreateWithoutCourseCategoryInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
   versions?: Prisma.CourseVersionCreateNestedManyWithoutCourseInput
@@ -1510,6 +1569,8 @@ export type CourseUncheckedCreateWithoutCourseCategoryInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -1573,6 +1634,8 @@ export type CourseCreateWithoutModulesInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -1615,6 +1678,8 @@ export type CourseUncheckedCreateWithoutModulesInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -1667,6 +1732,8 @@ export type CourseUpdateWithoutModulesInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -1709,6 +1776,8 @@ export type CourseUncheckedUpdateWithoutModulesInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -1745,6 +1814,8 @@ export type CourseCreateWithoutLessonsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -1787,6 +1858,8 @@ export type CourseUncheckedCreateWithoutLessonsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   artifacts?: Prisma.CourseArtifactUncheckedCreateNestedManyWithoutCourseInput
@@ -1839,6 +1912,8 @@ export type CourseUpdateWithoutLessonsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -1881,6 +1956,8 @@ export type CourseUncheckedUpdateWithoutLessonsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   artifacts?: Prisma.CourseArtifactUncheckedUpdateManyWithoutCourseNestedInput
@@ -1917,6 +1994,8 @@ export type CourseCreateWithoutArtifactsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -1959,6 +2038,8 @@ export type CourseUncheckedCreateWithoutArtifactsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -2011,6 +2092,8 @@ export type CourseUpdateWithoutArtifactsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -2053,6 +2136,8 @@ export type CourseUncheckedUpdateWithoutArtifactsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -2089,6 +2174,8 @@ export type CourseCreateWithoutVersionsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -2131,6 +2218,8 @@ export type CourseUncheckedCreateWithoutVersionsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
   artifacts?: Prisma.CourseArtifactUncheckedCreateNestedManyWithoutCourseInput
@@ -2183,6 +2272,8 @@ export type CourseUpdateWithoutVersionsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -2225,6 +2316,8 @@ export type CourseUncheckedUpdateWithoutVersionsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
   artifacts?: Prisma.CourseArtifactUncheckedUpdateManyWithoutCourseNestedInput
@@ -2261,6 +2354,8 @@ export type CourseCreateWithoutAssignmentsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -2303,6 +2398,8 @@ export type CourseUncheckedCreateWithoutAssignmentsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -2355,6 +2452,8 @@ export type CourseUpdateWithoutAssignmentsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -2397,6 +2496,8 @@ export type CourseUncheckedUpdateWithoutAssignmentsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -2433,6 +2534,8 @@ export type CourseCreateWithoutEnrollmentsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -2475,6 +2578,8 @@ export type CourseUncheckedCreateWithoutEnrollmentsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
   artifacts?: Prisma.CourseArtifactUncheckedCreateNestedManyWithoutCourseInput
@@ -2527,6 +2632,8 @@ export type CourseUpdateWithoutEnrollmentsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -2569,6 +2676,8 @@ export type CourseUncheckedUpdateWithoutEnrollmentsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
   artifacts?: Prisma.CourseArtifactUncheckedUpdateManyWithoutCourseNestedInput
@@ -2605,6 +2714,8 @@ export type CourseCreateWithoutCertificatesInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -2647,6 +2758,8 @@ export type CourseUncheckedCreateWithoutCertificatesInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -2699,6 +2812,8 @@ export type CourseUpdateWithoutCertificatesInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -2741,6 +2856,8 @@ export type CourseUncheckedUpdateWithoutCertificatesInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -2777,6 +2894,8 @@ export type CourseCreateWithoutOfferingsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -2819,6 +2938,8 @@ export type CourseUncheckedCreateWithoutOfferingsInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -2871,6 +2992,8 @@ export type CourseUpdateWithoutOfferingsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -2913,6 +3036,8 @@ export type CourseUncheckedUpdateWithoutOfferingsInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -2949,6 +3074,8 @@ export type CourseCreateWithoutQuizInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryCreateNestedOneWithoutCoursesInput
   approvedBy?: Prisma.UserCreateNestedOneWithoutApprovedCoursesInput
   creator: Prisma.UserCreateNestedOneWithoutCoursesInput
@@ -2991,6 +3118,8 @@ export type CourseUncheckedCreateWithoutQuizInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedCreateNestedManyWithoutCourseInput
   enrollments?: Prisma.EnrollmentUncheckedCreateNestedManyWithoutCourseInput
   lessons?: Prisma.LessonUncheckedCreateNestedManyWithoutCourseInput
@@ -3043,6 +3172,8 @@ export type CourseUpdateWithoutQuizInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
@@ -3085,6 +3216,8 @@ export type CourseUncheckedUpdateWithoutQuizInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -3123,6 +3256,8 @@ export type CourseCreateManyCreatorInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
 }
 
 export type CourseCreateManyApprovedByInput = {
@@ -3153,6 +3288,8 @@ export type CourseCreateManyApprovedByInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
 }
 
 export type CourseUpdateWithoutCreatorInput = {
@@ -3181,6 +3318,8 @@ export type CourseUpdateWithoutCreatorInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   versions?: Prisma.CourseVersionUpdateManyWithoutCourseNestedInput
@@ -3222,6 +3361,8 @@ export type CourseUncheckedUpdateWithoutCreatorInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -3261,6 +3402,8 @@ export type CourseUncheckedUpdateManyWithoutCreatorInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
 }
 
 export type CourseUpdateWithoutApprovedByInput = {
@@ -3289,6 +3432,8 @@ export type CourseUpdateWithoutApprovedByInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   courseCategory?: Prisma.CourseCategoryUpdateOneWithoutCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
   versions?: Prisma.CourseVersionUpdateManyWithoutCourseNestedInput
@@ -3330,6 +3475,8 @@ export type CourseUncheckedUpdateWithoutApprovedByInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -3369,6 +3516,8 @@ export type CourseUncheckedUpdateManyWithoutApprovedByInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
 }
 
 export type CourseCreateManyCourseCategoryInput = {
@@ -3399,6 +3548,8 @@ export type CourseCreateManyCourseCategoryInput = {
   approvedAt?: Date | string | null
   type?: $Enums.CourseType
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: Prisma.CourseCreatequalityWarningsInput | string[]
 }
 
 export type CourseUpdateWithoutCourseCategoryInput = {
@@ -3427,6 +3578,8 @@ export type CourseUpdateWithoutCourseCategoryInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   approvedBy?: Prisma.UserUpdateOneWithoutApprovedCoursesNestedInput
   creator?: Prisma.UserUpdateOneRequiredWithoutCoursesNestedInput
   versions?: Prisma.CourseVersionUpdateManyWithoutCourseNestedInput
@@ -3468,6 +3621,8 @@ export type CourseUncheckedUpdateWithoutCourseCategoryInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
   versions?: Prisma.CourseVersionUncheckedUpdateManyWithoutCourseNestedInput
   enrollments?: Prisma.EnrollmentUncheckedUpdateManyWithoutCourseNestedInput
   lessons?: Prisma.LessonUncheckedUpdateManyWithoutCourseNestedInput
@@ -3507,6 +3662,8 @@ export type CourseUncheckedUpdateManyWithoutCourseCategoryInput = {
   approvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   type?: Prisma.EnumCourseTypeFieldUpdateOperationsInput | $Enums.CourseType
   isGlobal?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  reviewRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  qualityWarnings?: Prisma.CourseUpdatequalityWarningsInput | string[]
 }
 
 
@@ -3632,6 +3789,8 @@ export type CourseSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   approvedAt?: boolean
   type?: boolean
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: boolean
   courseCategory?: boolean | Prisma.Course$courseCategoryArgs<ExtArgs>
   approvedBy?: boolean | Prisma.Course$approvedByArgs<ExtArgs>
   creator?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -3676,6 +3835,8 @@ export type CourseSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   approvedAt?: boolean
   type?: boolean
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: boolean
   courseCategory?: boolean | Prisma.Course$courseCategoryArgs<ExtArgs>
   approvedBy?: boolean | Prisma.Course$approvedByArgs<ExtArgs>
   creator?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -3710,6 +3871,8 @@ export type CourseSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   approvedAt?: boolean
   type?: boolean
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: boolean
   courseCategory?: boolean | Prisma.Course$courseCategoryArgs<ExtArgs>
   approvedBy?: boolean | Prisma.Course$approvedByArgs<ExtArgs>
   creator?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -3744,9 +3907,11 @@ export type CourseSelectScalar = {
   approvedAt?: boolean
   type?: boolean
   isGlobal?: boolean
+  reviewRequired?: boolean
+  qualityWarnings?: boolean
 }
 
-export type CourseOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "title" | "description" | "thumbnail" | "status" | "category" | "categoryId" | "duration" | "createdBy" | "objectives" | "overview" | "skillLevel" | "previewVideoStorageUri" | "previewVideoDurationSeconds" | "previewMediaStatus" | "createdAt" | "updatedAt" | "promptVersion" | "rawCourseJson" | "rawQuizJson" | "rawArticleMarkdown" | "rawArticleMeta" | "rawJudgeJson" | "rawSlidesJson" | "approvedByUserId" | "approvedAt" | "type" | "isGlobal", ExtArgs["result"]["course"]>
+export type CourseOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "title" | "description" | "thumbnail" | "status" | "category" | "categoryId" | "duration" | "createdBy" | "objectives" | "overview" | "skillLevel" | "previewVideoStorageUri" | "previewVideoDurationSeconds" | "previewMediaStatus" | "createdAt" | "updatedAt" | "promptVersion" | "rawCourseJson" | "rawQuizJson" | "rawArticleMarkdown" | "rawArticleMeta" | "rawJudgeJson" | "rawSlidesJson" | "approvedByUserId" | "approvedAt" | "type" | "isGlobal" | "reviewRequired" | "qualityWarnings", ExtArgs["result"]["course"]>
 export type CourseInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   courseCategory?: boolean | Prisma.Course$courseCategoryArgs<ExtArgs>
   approvedBy?: boolean | Prisma.Course$approvedByArgs<ExtArgs>
@@ -3818,6 +3983,8 @@ export type $CoursePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     approvedAt: Date | null
     type: $Enums.CourseType
     isGlobal: boolean
+    reviewRequired: boolean
+    qualityWarnings: string[]
   }, ExtArgs["result"]["course"]>
   composites: {}
 }
@@ -4281,6 +4448,8 @@ export interface CourseFieldRefs {
   readonly approvedAt: Prisma.FieldRef<"Course", 'DateTime'>
   readonly type: Prisma.FieldRef<"Course", 'CourseType'>
   readonly isGlobal: Prisma.FieldRef<"Course", 'Boolean'>
+  readonly reviewRequired: Prisma.FieldRef<"Course", 'Boolean'>
+  readonly qualityWarnings: Prisma.FieldRef<"Course", 'String[]'>
 }
     
 
