@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 // @ts-ignore - NextAuth does not reliably export decode type in this scope
 import { decode, JWT } from 'next-auth/jwt';
 import { logger, maskEmail } from '@/lib/logger';
-import { runWithCorrelationId } from '@/lib/request-context';
 
 // All route rules live in one config object — easy to audit and extend
 const ROUTE_CONFIG = {
@@ -34,22 +33,21 @@ function getContext(pathname: string): 'worker' | 'admin' | null {
 
 export async function proxy(req: NextRequest) {
   // F-067: Assign a correlation ID per matched request. Honour an inbound
-  // x-correlation-id (distributed tracing) or mint a fresh one. Running the
-  // handler inside runWithCorrelationId ties every log emitted during proxy
-  // handling to this ID (the logger reads it from AsyncLocalStorage).
+  // x-correlation-id (distributed tracing) or mint a fresh one, and propagate
+  // it on the request (to downstream handlers) and the response (to clients and
+  // log pipelines).
   //
-  // NOTE: this only covers requests that hit the middleware matcher below.
-  // API routes outside the matcher won't get a proxy-assigned ID until a
-  // broader request wrap lands (F-013, deferred).
+  // NOTE: the middleware runs on the Edge runtime, which cannot load
+  // `node:async_hooks`, so we do NOT bind an AsyncLocalStorage scope here — we
+  // only propagate the ID via headers. Node-runtime code that wants all its
+  // logs stamped with this ID can read the x-correlation-id header and wrap its
+  // work in runWithCorrelationId() (e.g. background jobs). Broadening this to
+  // every API route is F-013 (deferred).
   const correlationId = req.headers.get('x-correlation-id') ?? crypto.randomUUID();
 
-  return runWithCorrelationId(correlationId, async () => {
-    const res = await handleProxy(req, correlationId);
-    // Surface the correlation ID on the response so clients and log pipelines
-    // can tie a browser request to its server-side logs.
-    res.headers.set('x-correlation-id', correlationId);
-    return res;
-  });
+  const res = await handleProxy(req, correlationId);
+  res.headers.set('x-correlation-id', correlationId);
+  return res;
 }
 
 async function handleProxy(req: NextRequest, correlationId: string): Promise<NextResponse> {

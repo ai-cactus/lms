@@ -9,6 +9,12 @@ export async function register() {
     const { logger } = await import('@/lib/logger');
     const { default: prisma } = await import('@/lib/prisma');
 
+    // F-067: Register the AsyncLocalStorage-backed correlation-ID provider on
+    // the Node server. Importing this module here (Node runtime only) wires
+    // getCorrelationId() into the logger without dragging `node:async_hooks`
+    // into the client/edge bundles that also import the logger.
+    await import('@/lib/request-context');
+
     // F-042: Fail fast on missing required env vars at process start.
     // No-ops under test/CI/build (see validateEnv's carve-out).
     const { validateEnv } = await import('@/lib/env');

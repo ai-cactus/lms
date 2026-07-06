@@ -9,9 +9,23 @@
  *   { errName, errMessage, errStack } so JSON.stringify doesn't lose them.
  */
 
-import { getCorrelationId } from '@/lib/request-context';
-
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
+
+/**
+ * Correlation-ID provider, registered at runtime by the Node-only request
+ * context module (src/lib/request-context.ts) via setCorrelationIdProvider().
+ *
+ * The logger must stay usable in the browser and the Edge middleware runtime,
+ * neither of which can load `node:async_hooks`. Statically importing the
+ * request-context module here would pull that Node builtin into client/edge
+ * bundles and break the build, so we keep the logger dependency-free and let
+ * the server register a provider only where AsyncLocalStorage is available.
+ */
+let correlationIdProvider: (() => string | undefined) | null = null;
+
+export function setCorrelationIdProvider(provider: () => string | undefined): void {
+  correlationIdProvider = provider;
+}
 
 interface LogPayload {
   msg: string;
@@ -61,9 +75,9 @@ function emit(level: LogLevel, payload: LogPayload): void {
 
   const { err, ...rest } = payload;
 
-  // Correlation ID is request-scoped (set by proxy.ts via runWithCorrelationId).
-  // When absent — e.g. background jobs or logs outside a request — omit the field.
-  const correlationId = getCorrelationId();
+  // Correlation ID is request/job-scoped, resolved through the provider the
+  // Node server registers (undefined in the browser/edge or outside a scope).
+  const correlationId = correlationIdProvider?.();
 
   const entry: Record<string, unknown> = {
     level,

@@ -9,8 +9,15 @@
  *
  * The store is request-scoped: outside an active runWithCorrelationId() call,
  * getCorrelationId() returns undefined and the logger simply omits the field.
+ *
+ * This module depends on `node:async_hooks` and therefore MUST only be imported
+ * from the Node.js server runtime (never a client component or the Edge
+ * middleware). It registers itself as the logger's correlation-ID provider on
+ * load, so importing it once on the server (see src/instrumentation.ts) is
+ * enough for logs emitted within a runWithCorrelationId() scope to carry the ID.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { setCorrelationIdProvider } from '@/lib/logger';
 
 interface RequestContext {
   correlationId: string;
@@ -33,3 +40,6 @@ export function runWithCorrelationId<T>(correlationId: string, fn: () => T): T {
 export function getCorrelationId(): string | undefined {
   return storage.getStore()?.correlationId;
 }
+
+// Wire this Node-only context into the runtime-agnostic logger.
+setCorrelationIdProvider(getCorrelationId);
