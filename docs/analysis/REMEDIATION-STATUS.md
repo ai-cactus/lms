@@ -1,10 +1,12 @@
 # Remediation Status — Audit Findings
 
-**Branch:** `feat/audit-fx` · **Updated:** 2026-07-05 · Complete disposition of every finding in [`FINDINGS-REGISTER.md`](./FINDINGS-REGISTER.md).
+**Branch:** `feat/audit-fx` · **Updated:** 2026-07-06 · Complete disposition of every finding in [`FINDINGS-REGISTER.md`](./FINDINGS-REGISTER.md).
 
-This sweep fixed everything that improves the **current codebase** without doing the rewrite. Findings that genuinely *are* the rewrite, or belong to the in-flight RBAC effort, or need a data/ops/policy decision, are deferred **with the reason recorded** so nothing is unaccounted for.
+This sweep fixed everything that improves the **current codebase** without doing the rewrite. The only findings still open are: the **RBAC-owned** items (F-034, F-056, F-013), the **rewrite-scoped** items the team chose to leave for the split (F-007, F-015, F-016, F-046, F-047, F-063 is done / F-026 is done), the two large **refactors kept incremental** by choice (F-065, F-068), and the pure-**ops** items (F-004, F-025). Everything else is fixed.
 
-Commits: `86cd740` (batch 1) · `3f27824` (wave 1) · `ab776e9` (wave 2) · `a9e183f` (cleanup) · plus the F-005 worker-boot fix.
+Commits: `86cd740` (batch 1) · `3f27824` (wave 1) · `ab776e9` (wave 2) · `a9e183f` (cleanup) · `610cb82` (worker boot + disposition) · `247c001` (build fix) · `d8a3b2b` (wave 3: audit log, retention, pooling, pagination, auth hardening).
+
+> **Wave 3 update (2026-07-06):** F-001, F-024, F-026, F-028, F-036, F-052, F-053, F-054, F-055, F-058, F-061, F-063 are now **✅ Fixed** (see the wave-3 commit). The rows below retain their original detail; the summary tally at the bottom reflects the new totals.
 
 Legend: **✅ Fixed** · **📋 Ops checklist** (in [`../deployment.md`](../deployment.md)) · **🏗 Rewrite** (belongs to the frontend/backend split) · **🔐 RBAC** (owned by the in-flight RBAC effort) · **⏸ Deferred** (needs a data/policy/availability decision — reason given).
 
@@ -12,7 +14,7 @@ Legend: **✅ Fixed** · **📋 Ops checklist** (in [`../deployment.md`](../depl
 
 | ID | Status | Notes |
 |----|--------|-------|
-| F-001 | ⏸ Deferred | **Top remaining compliance item.** An append-only `AuditLog` + write-at-the-boundary is a substantial cross-cutting feature; recommended as the next dedicated effort (design is in [`../rebuild/07-SECURITY-COMPLIANCE-SPEC.md`](../rebuild/07-SECURITY-COMPLIANCE-SPEC.md) §4). Not safe to bolt on at the tail of this sweep. |
+| F-001 | ✅ Fixed (wave 3) | Append-only `AuditLog` model + shared `audit()` helper, wired into auth events (login/logout/MFA/reset/signup/invite) and PHI-access / sensitive mutations (document access/upload/delete, certificate issue/download, staff PII & quiz-result views, org settings, billing changes, auditor export download). Best-effort — never blocks the business flow. |
 | F-002 | ✅ Fixed | PHI scan now gates the course-wizard upload path before any generation call. |
 | F-003 | ✅ Fixed | PhiReport stores entity types+offsets, never raw values; full-document scan; local regex pre-pass blocks SSN/email/phone with zero Vertex transmission. |
 | F-004 | 📋 Ops checklist | Automated encrypted backups + tested restore — infra, no repo expression. |
@@ -97,18 +99,20 @@ Legend: **✅ Fixed** · **📋 Ops checklist** (in [`../deployment.md`](../depl
 | F-068 | 🏗 Rewrite | God-file decomposition is pure refactor risk with no compliance benefit — do during the rebuild. |
 | F-069 | ✅ Fixed | Stale `phi-redactor.md` corrected; `system-architecture.md` flagged. |
 
-## Tally
+## Tally (after wave 3)
 
-- **✅ Fixed: ~46** (across the 4 commits + F-005), each with tests and/or documented ops steps.
-- **🏗 Rewrite: 9** (F-007, F-015, F-016, F-026, F-028, F-046, F-047, F-063, F-068) — the frontend/backend split.
-- **🔐 RBAC: 3** (F-034, F-056; F-013 partial) — the in-flight RBAC effort.
-- **📋 Ops checklist: 2** (F-004, F-025) — [`../deployment.md`](../deployment.md) §4.
-- **⏸ Deferred with reason: ~7** (F-001 audit log, F-024/F-036 availability decisions, F-052/F-053 data audit, F-054 policy, F-058 rehash, F-055/F-061/F-065 partial/incremental).
+- **✅ Fixed: ~58** — everything actionable in the current codebase, each with tests and/or documented ops steps. (Wave 3 added F-001, F-024, F-026, F-028, F-036, F-052, F-053, F-054, F-055, F-058, F-061, F-063.)
+- **🏗 Rewrite (left for the split, by choice): 6** — F-007, F-015, F-016, F-046, F-047, F-068. (F-026, F-028, F-063 were pulled forward and fixed.)
+- **🔐 RBAC (in-flight effort): 3** — F-034, F-056, F-013.
+- **📋 Ops checklist: 2** — F-004, F-025 ([`../deployment.md`](../deployment.md) §4).
+- **⏸ Deferred by choice: 2** — F-065 (design tokens) and F-068 (god-files) kept incremental per CLAUDE.md.
+
+Notes: F-055 is fixed for the security-relevant advisories (0 high; `npm audit fix` took 16→12, remaining are moderate/low transitive needing breaking bumps). The F-052/F-053 migration **de-duplicates rows at deploy** (keeps most-recent) — review before `prisma migrate deploy`.
 
 ## Recommended next efforts (in priority order)
 
-1. **F-001 — audit log** (biggest remaining compliance gap; design ready in the rebuild spec).
-2. **Apply the infra ops steps** in `deployment.md` §2 (key rotation, nginx/tunnel apply, MinIO digest) — several fixes are inert until applied to the VM.
-3. **F-052/F-053 data-dedup audit**, then add the two unique constraints.
-4. **F-004/F-025 ops** (backups + encryption at rest) — the remaining compliance-blockers.
-5. **F-024/F-036 availability decisions**; then flip the CI audit/e2e gates from report-only to blocking once green.
+1. **Apply the infra ops steps** in `deployment.md` §2 (Gemini key rotation, nginx/tunnel apply, MinIO digest, dev-password rotation) — several fixes are inert until applied to the VM, and the wave-3 migrations must run via `prisma migrate deploy` (the F-052/F-053 one de-duplicates rows — review first).
+2. **F-004 / F-025 ops** (automated backups + encryption at rest) — the remaining compliance-blockers.
+3. **Flip the CI audit/e2e gates** from report-only to blocking once the remaining moderate deps are bumped and the e2e suite is CI-hardened.
+4. **RBAC effort** — F-034, F-056, F-013 (role model, system-admin accounts, default-deny wrapper).
+5. **The rewrite** — F-007 (tenant RLS), F-015 (worker service), F-016 (request-path offloading), F-046 (caching), F-047 (media CDN), F-068 (god-file decomposition).
