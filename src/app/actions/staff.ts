@@ -6,11 +6,13 @@ import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
 import type { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
+import { headers } from 'next/headers';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 
 export async function getStaffDetails(userId: string) {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
 
@@ -44,6 +46,27 @@ export async function getStaffDetails(userId: string) {
     });
 
     if (!user) return null;
+
+    // Tenant isolation: an admin may only view users that belong to their own org.
+    if (user.organizationId !== session.user.organizationId) {
+      logger.warn({
+        msg: '[staff] Cross-tenant staff detail access blocked',
+        userId: session.user.id,
+        targetUserId: userId,
+      });
+      return null;
+    }
+
+    // F-001: record PII (staff profile) access on the authorized, org-scoped path.
+    await audit({
+      action: 'staff.profile.access',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId,
+      targetType: 'user',
+      targetId: userId,
+      ...getClientContext(await headers()),
+    });
 
     // Calculate Stats
     const totalCourses = user.enrollments.length || 0;
@@ -245,6 +268,18 @@ export async function setStaffManager(
 
     logger.info({ msg: '[staff] Manager set', staffId, managerId, userId: session.user.id });
 
+    // F-001: record the sensitive mutation on the authorized, successful path.
+    await audit({
+      action: 'staff.manager.set',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId,
+      targetType: 'user',
+      targetId: staffId,
+      metadata: { managerId },
+      ...getClientContext(await headers()),
+    });
+
     revalidatePath(`/dashboard/staff/${staffId}`);
     revalidatePath('/dashboard/staff');
     return { success: true };
@@ -256,7 +291,7 @@ export async function setStaffManager(
 
 export async function getEnrollmentQuizResult(enrollmentId: string) {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user?.id || session.user.role !== 'admin' || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
 
@@ -288,6 +323,29 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
     if (!enrollment || enrollment.quizAttempts.length === 0) {
       return null;
     }
+
+    // Tenant isolation: an admin may only view quiz results for enrollments that
+    // belong to a user in their own organization — never expose correct answers
+    // or worker identity across tenants.
+    if (enrollment.user.organizationId !== session.user.organizationId) {
+      logger.warn({
+        msg: '[staff] Cross-tenant quiz result access blocked',
+        userId: session.user.id,
+        enrollmentId,
+      });
+      return null;
+    }
+
+    // F-001: record quiz-result (PII) access on the authorized, org-scoped path.
+    await audit({
+      action: 'staff.quiz_result.access',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId,
+      targetType: 'enrollment',
+      targetId: enrollmentId,
+      ...getClientContext(await headers()),
+    });
 
     const latestAttempt = enrollment.quizAttempts[0];
     const quiz = latestAttempt.quiz;
@@ -398,6 +456,17 @@ export async function removeStaff(userId: string) {
     await prisma.user.update({
       where: { id: userId },
       data: { organizationId: null },
+    });
+
+    // F-001: record the sensitive mutation on the authorized, successful path.
+    await audit({
+      action: 'staff.remove',
+      actorId: session.user.id,
+      actorRole: admin.role,
+      organizationId: admin.organizationId ?? undefined,
+      targetType: 'user',
+      targetId: userId,
+      ...getClientContext(await headers()),
     });
 
     // Revalidate cache

@@ -8,6 +8,8 @@ import { uploadFile } from '@/lib/storage';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
 import { formatCertificateId } from '@/lib/certificate-id';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
+import { headers } from 'next/headers';
 
 async function resolveSession() {
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
@@ -89,11 +91,23 @@ export async function issueCertificate(enrollmentId: string) {
       enrollmentId: enrollment.id,
       userId: enrollment.userId,
       courseId: enrollment.courseId,
-      score: enrollment.score || 100,
+      score: enrollment.score ?? 100,
       pdfStoragePath: uploadResult.storageUri,
       pdfGeneratedAt: new Date(),
       issuedAt: issueDate,
     },
+  });
+
+  // F-001: record certificate issuance on the authorized, successful path.
+  await audit({
+    action: 'certificate.issue',
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    organizationId: enrollment.user.organizationId ?? undefined,
+    targetType: 'certificate',
+    targetId: certificate.id,
+    metadata: { enrollmentId, courseId: enrollment.courseId },
+    ...getClientContext(await headers()),
   });
 
   revalidatePath('/dashboard/training');

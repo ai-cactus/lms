@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Building2, User } from 'lucide-react';
-import { Logo } from '@/components/ui';
+import { Logo, HCaptcha } from '@/components/ui';
 import { Button } from '@/components/ui/button';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { signupWithRole } from '@/app/actions/auth';
@@ -23,6 +23,7 @@ export default function RoleSelectionClient() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [pendingSignup, setPendingSignup] = useState<PendingSignup | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string>();
 
   useEffect(() => {
     // Get pending signup data from sessionStorage
@@ -51,6 +52,7 @@ export default function RoleSelectionClient() {
         firstName: pendingSignup.firstName,
         lastName: pendingSignup.lastName,
         role: selectedRole,
+        captchaToken,
       });
 
       if (result.success) {
@@ -130,6 +132,8 @@ export default function RoleSelectionClient() {
       </div>
 
       {error && <p className="text-sm text-error">{error}</p>}
+
+      <HCaptcha onVerify={setCaptchaToken} onExpire={() => setCaptchaToken(undefined)} />
 
       <Button
         size="lg"

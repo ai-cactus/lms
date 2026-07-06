@@ -37,7 +37,10 @@ const { mockAuth, prismaMock, stripeMock } = vi.hoisted(() => {
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('@/lib/stripe', () => ({ default: stripeMock }));
+vi.mock('@/lib/stripe', () => ({ getStripeClient: () => stripeMock, default: stripeMock }));
+// F-001 audit is a best-effort side-channel — stub it so the route tests don't
+// depend on the audit sink or on the request mock carrying real headers.
+vi.mock('@/lib/audit', () => ({ audit: vi.fn(), getClientContext: () => ({}) }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -91,7 +94,9 @@ const ORG = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+  // Session now carries the `role` claim so the F-012 guardApiSession check
+  // (auth + MFA + admin role, read from session claims) passes.
+  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'admin' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
   prismaMock.organization.findUnique.mockResolvedValue(ORG);
 });

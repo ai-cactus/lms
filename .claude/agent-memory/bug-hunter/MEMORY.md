@@ -5,3 +5,6 @@
 - [Resumable upload test patterns](resumable-upload-tests.md) — 3 new test files for GCS upload feature; JSDoc */  gotcha; reject-before-runAllTimers pattern; e2e skipped (system admin cookie + GCS stub impractical)
 - [Reminders engine test patterns](reminders-test-patterns.md) — DST midnight gotcha, P2002 mock class pattern, enrollment.findMany call ordering in sweep, fake timers for compliance
 - [QA wave 1 regression patterns](qa-wave1-regression-patterns.md) — billing double-charge/webhook guards, course-ai-v4.6 settle-race testing, PHI fail-closed, pdf-parse import crash, async server component testing
+- [audit-fx regression patterns](audit-fx-regression-patterns.md) — F-009/F-010 org isolation, F-039 score fallback, F-048/F-038 leak fixes; revert-and-confirm verification technique
+- [Quiz attempt route tests (F-031)](quiz-attempt-route-tests.md) — start/save/submit append-history tx-mock pattern, boundary-score generation, flagged allowedAttempts null inconsistency
+- [getDashboardData test patterns](get-dashboard-data-test-patterns.md) — dual groupBy branch-by-args mocking, "failed" status quirk in coverage, totalStaff vs totalOrgStaff, F-028 perf guard

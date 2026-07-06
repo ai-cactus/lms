@@ -5,7 +5,6 @@ import { redirect } from 'next/navigation';
 import DashboardLayoutClient from '@/components/dashboard/DashboardLayoutClient';
 import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
 import { AdminSessionProvider } from '@/components/providers/AdminSessionProvider';
-import { Toaster } from 'sonner';
 import { ExportJobsProvider } from '@/components/dashboard/auditor/ExportJobsProvider';
 import BillingPausedBanner from '@/components/billing/BillingPausedBanner';
 import ComplianceAlertBanner from '@/components/dashboard/ComplianceAlertBanner';
@@ -78,7 +77,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {role === 'admin' && <ComplianceAlertBanner hardEscalationCount={hardEscalationCount} />}
           {children}
         </DashboardLayoutClient>
-        <Toaster richColors position="top-right" />
       </ExportJobsProvider>
     </AdminSessionProvider>
   );

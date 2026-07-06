@@ -1,4 +1,5 @@
-import nodemailer from 'nodemailer';
+import nodemailer, { type SendMailOptions } from 'nodemailer';
+import prisma from './prisma';
 import { logger, maskEmail } from './logger';
 
 /**
@@ -58,6 +59,73 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+/* -------------------------------------------------------------------------- */
+/* Delivery tracking (F-021)                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Reduce a Nodemailer `to` field to a single loggable/persistable address string. */
+function normalizeRecipient(to: SendMailOptions['to']): string {
+  if (!to) return 'unknown';
+  if (typeof to === 'string') return to;
+  if (Array.isArray(to)) {
+    return to.map((entry) => (typeof entry === 'string' ? entry : entry.address)).join(', ');
+  }
+  return to.address;
+}
+
+/** Trim an unknown error down to a persistable message string. */
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Unknown email transport error';
+}
+
+/**
+ * Persist an {@link @/generated/prisma EmailMessage} delivery record. Best-effort
+ * observability: tracking must never break the actual send, so all failures are
+ * swallowed with an error log. Reminder-ladder sends are tracked separately by
+ * `dispatch.ts` (keyed to their ReminderLog) and therefore bypass this helper.
+ */
+async function recordEmailMessage(data: {
+  toEmail: string;
+  kind: string;
+  status: 'sent' | 'failed';
+  sentAt?: Date;
+  attempts?: number;
+  lastError?: string;
+}): Promise<void> {
+  try {
+    await prisma.emailMessage.create({ data });
+  } catch (err) {
+    logger.error({ msg: '[email] Failed to record email delivery', kind: data.kind, err });
+  }
+}
+
+/**
+ * Transport-layer wrapper around `transporter.sendMail`. Records an EmailMessage
+ * row for every send — `sent` on success, `failed` (attempts = 1, lastError) on
+ * failure — then returns/rethrows exactly as the raw transport would, so callers
+ * keep their existing structured-result handling. `kind` classifies the send for
+ * later auditing; callers pass a specific kind, defaulting to a generic one.
+ */
+async function sendMailTracked(options: SendMailOptions, kind = 'generic') {
+  const toEmail = normalizeRecipient(options.to);
+  try {
+    const info = await transporter.sendMail(options);
+    await recordEmailMessage({ toEmail, kind, status: 'sent', sentAt: new Date() });
+    return info;
+  } catch (error) {
+    await recordEmailMessage({
+      toEmail,
+      kind,
+      status: 'failed',
+      attempts: 1,
+      lastError: describeError(error),
+    });
+    throw error;
+  }
+}
+
 export async function sendInviteEmail(
   to: string,
   inviteLink: string,
@@ -77,20 +145,22 @@ export async function sendInviteEmail(
     `;
 
   try {
-    logger.info({ msg: `[Email Debug] Sending invite to: ${to}` });
-    logger.info({ msg: `[Email Debug] Invite Link: ${inviteLink}` });
-    logger.info({ msg: `[Email Debug] Org: ${orgName}` });
-
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to,
-      subject: `Join ${orgName} on ${appName}`,
-      html,
-    });
-    logger.info({ msg: 'Message sent: %s', data: info.messageId });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        subject: `Join ${orgName} on ${appName}`,
+        html,
+      },
+      'invite',
+    );
+    // Do NOT log the raw recipient or the tokenized invite link — the link
+    // embeds a bearer token (F-067). Mask the address and log only non-sensitive
+    // context.
+    logger.info({ msg: '[email] Invite email sent', messageId: info.messageId, to: maskEmail(to) });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    logger.error({ msg: 'Error sending email:', err: error });
+    logger.error({ msg: '[email] Error sending invite email', err: error, to: maskEmail(to) });
     return { success: false, error };
   }
 }
@@ -113,12 +183,15 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"Theraptly Security" <${user}>`,
-      to: email,
-      subject: `Reset your password - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"Theraptly Security" <${user}>`,
+        to: email,
+        subject: `Reset your password - ${appName}`,
+        html,
+      },
+      'password_reset',
+    );
     logger.info({ msg: 'Password reset sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -144,12 +217,15 @@ export const sendMfaOtpEmail = async (email: string, code: string) => {
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"Theraptly Security" <${user}>`,
-      to: email,
-      subject: `Your ${appName} verification code`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"Theraptly Security" <${user}>`,
+        to: email,
+        subject: `Your ${appName} verification code`,
+        html,
+      },
+      'mfa_otp',
+    );
     logger.info({ msg: 'MFA OTP email sent', messageId: info.messageId });
     return { success: true };
   } catch (error) {
@@ -187,12 +263,15 @@ export const sendEmailVerification = async (email: string, token: string) => {
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"Theraptly" <${user}>`,
-      to: email,
-      subject: `Verify your email - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"Theraptly" <${user}>`,
+        to: email,
+        subject: `Verify your email - ${appName}`,
+        html,
+      },
+      'email_verification',
+    );
     logger.info({ msg: 'Email verification sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -240,12 +319,15 @@ export const sendCourseInviteEmail = async (
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: email,
-      subject: `You've been assigned: ${courseName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: email,
+        subject: `You've been assigned: ${courseName} - ${appName}`,
+        html,
+      },
+      'course_invite',
+    );
     logger.info({ msg: 'Course invite email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -292,12 +374,15 @@ export const sendCourseEnrollmentEmail = async (
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: email,
-      subject: `New Course Assignment: ${courseName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: email,
+        subject: `New Course Assignment: ${courseName} - ${appName}`,
+        html,
+      },
+      'course_enrollment',
+    );
     logger.info({ msg: 'Course enrollment email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -341,12 +426,15 @@ export async function sendQuizLockedEmail(
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: adminEmail,
-      subject: `Action Required: ${workerName} locked out of quiz - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: adminEmail,
+        subject: `Action Required: ${workerName} locked out of quiz - ${appName}`,
+        html,
+      },
+      'quiz_locked',
+    );
     logger.info({ msg: 'Quiz locked email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -471,13 +559,16 @@ export async function sendEnterpriseInquiryEmail({
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to,
-      replyTo: replyToEmail,
-      subject: `Enterprise Plan Inquiry — ${organizationName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        replyTo: replyToEmail,
+        subject: `Enterprise Plan Inquiry — ${organizationName}`,
+        html,
+      },
+      'enterprise_inquiry',
+    );
     logger.info({ msg: '[Email] Enterprise inquiry sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -504,12 +595,15 @@ export async function sendStaffRemovedEmail(email: string, orgName: string) {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: email,
-      subject: `Account disconnected from ${orgName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: email,
+        subject: `Account disconnected from ${orgName} - ${appName}`,
+        html,
+      },
+      'staff_removed',
+    );
     return { success: true, messageId: info.messageId };
   } catch (error) {
     logger.error({ msg: 'Error sending staff removed email:', err: error });
@@ -536,12 +630,15 @@ export async function sendStaffRemovalConfirmationEmail(
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: adminEmail,
-      subject: `Staff Removal Confirmed: ${staffName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: adminEmail,
+        subject: `Staff Removal Confirmed: ${staffName} - ${appName}`,
+        html,
+      },
+      'staff_removal_confirmation',
+    );
     return { success: true, messageId: info.messageId };
   } catch (error) {
     logger.error({ msg: 'Error sending staff removal confirmation email:', err: error });
@@ -592,13 +689,16 @@ export async function sendDemoRequestEmail(data: {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to,
-      replyTo: data.email,
-      subject: `New Demo Request: ${data.organizationName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        replyTo: data.email,
+        subject: `New Demo Request: ${data.organizationName} - ${appName}`,
+        html,
+      },
+      'demo_request',
+    );
     logger.info({ msg: 'Demo request email sent', messageId: info.messageId });
     return { success: true, messageId: info.messageId };
   } catch (error) {
@@ -671,12 +771,15 @@ export async function sendCourseLaunchEmail(
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to,
-      subject: `📋 New Required Training Assigned: ${courseName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        subject: `📋 New Required Training Assigned: ${courseName}`,
+        html,
+      },
+      'course_launch',
+    );
     logger.info({
       msg: '[email] Course launch email sent',
       messageId: info.messageId,
@@ -1067,19 +1170,22 @@ export async function sendUserActivityReportEmail(
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: adminEmail,
-      subject: `Activity Report: ${staffName} — ${orgName}`,
-      html,
-      attachments: [
-        {
-          filename: fileName,
-          content: pdfBuffer,
-          contentType: 'application/pdf',
-        },
-      ],
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: adminEmail,
+        subject: `Activity Report: ${staffName} — ${orgName}`,
+        html,
+        attachments: [
+          {
+            filename: fileName,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ],
+      },
+      'activity_report',
+    );
     logger.info({ msg: '[email] User activity report sent', messageId: info.messageId, staffName });
     return { success: true };
   } catch (error) {
@@ -1126,19 +1232,22 @@ export async function sendAuditorPackPdfEmail(
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: adminEmail,
-      subject: `Auditor Pack Export — ${orgName}`,
-      html,
-      attachments: [
-        {
-          filename: fileName,
-          content: pdfBuffer,
-          contentType: 'application/pdf',
-        },
-      ],
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: adminEmail,
+        subject: `Auditor Pack Export — ${orgName}`,
+        html,
+        attachments: [
+          {
+            filename: fileName,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ],
+      },
+      'auditor_pack',
+    );
     logger.info({ msg: '[email] Auditor pack PDF sent', messageId: info.messageId, orgName });
     return { success: true };
   } catch (error) {

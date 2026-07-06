@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Info, X, User, Lock } from 'lucide-react';
-import { Logo } from '@/components/ui';
+import { Logo, HCaptcha } from '@/components/ui';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,7 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showBanner, setShowBanner] = useState(true);
+  const [captchaToken, setCaptchaToken] = useState<string>();
 
   // Capitalize role for display
   const displayRole = invite.role.charAt(0).toUpperCase() + invite.role.slice(1);
@@ -77,6 +78,7 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
           firstName,
           lastName,
           password,
+          captchaToken,
         }),
       });
 
@@ -206,6 +208,8 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
                 </a>
               </span>
             </label>
+
+            <HCaptcha onVerify={setCaptchaToken} onExpire={() => setCaptchaToken(undefined)} />
 
             <Button
               type="submit"

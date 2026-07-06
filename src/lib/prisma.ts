@@ -1,7 +1,6 @@
+// Re-export of the single Prisma client defined in `@/db`. Everything that
+// imports `@/lib/prisma` shares that one HMR-safe, pool-tuned instance —
+// there is no second client or connection pool.
 import { prisma } from '@/db/index';
-
-const globalForPrisma = global as unknown as { prisma: typeof prisma };
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 export default prisma;

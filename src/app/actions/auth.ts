@@ -1,7 +1,7 @@
 'use server';
 
-import { signIn } from '@/auth';
-import { signIn as signInWorker } from '@/auth.worker';
+import { signIn, auth as adminAuth } from '@/auth';
+import { signIn as signInWorker, auth as workerAuth } from '@/auth.worker';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { validatePassword } from '@/lib/password-policy';
@@ -14,11 +14,15 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 import { logger, maskEmail } from '@/lib/logger';
 import { createMfaChallenge } from '@/lib/mfa-challenge';
+import { verifyCaptcha } from '@/lib/captcha';
+import { audit, getClientContext } from '@/lib/audit';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 // Pre-computed dummy hash for constant-time response when a user email doesn't exist.
-// bcrypt runs its full ~100ms computation and returns false, preventing timing-based
-// username enumeration attacks.
-const DUMMY_BCRYPT_HASH = '$2b$10$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+// bcrypt runs its full computation and returns false, preventing timing-based
+// username enumeration attacks. The cost factor MUST match BCRYPT_COST so the
+// dummy compare takes the same time as a real login (F-058).
+const DUMMY_BCRYPT_HASH = '$2b$12$WcSFYgX/PiZHV/21.0M2fuVfQ23xb6TQloNTnuIk9twRudyN/T8cW';
 
 // Define return type
 export type AuthState = {
@@ -38,9 +42,15 @@ export async function authenticate(
     headersList.get('x-real-ip') ??
     'unknown';
 
-  const { allowed } = await checkRateLimit(`login:${ip}`, 10, 900);
+  // F-024: auth-critical — fail closed if Redis is down.
+  const { allowed } = await checkRateLimit(`login:${ip}`, 10, 900, { failClosed: true });
   if (!allowed) {
     logger.warn({ msg: 'Auth rate limit exceeded', ip });
+    await audit({
+      action: 'auth.login.failure',
+      ...getClientContext(headersList),
+      metadata: { reason: 'rate_limited', layer: 'action' },
+    });
     return { error: 'Too many login attempts. Please try again in 15 minutes.' };
   }
 
@@ -158,10 +168,12 @@ interface SignupWithRoleData {
   firstName: string;
   lastName: string;
   role: 'admin' | 'worker';
+  /** Optional hCaptcha token; verified only when the feature is enabled (inert otherwise). */
+  captchaToken?: string;
 }
 
 export async function signupWithRole(data: SignupWithRoleData): Promise<SignupResult> {
-  const { email, password, firstName, lastName, role } = data;
+  const { email, password, firstName, lastName, role, captchaToken } = data;
 
   // Rate limiting — 5 attempts per IP per 10 minutes. Runs before any DB access
   // (existence check, token creation) and before any email send.
@@ -170,10 +182,18 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
     headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
     headersList.get('x-real-ip') ??
     'unknown';
-  const { allowed } = await checkRateLimit(`signup:${ip}`, 5, 600);
+  // F-024: auth-critical — fail closed if Redis is down.
+  const { allowed } = await checkRateLimit(`signup:${ip}`, 5, 600, { failClosed: true });
   if (!allowed) {
     logger.warn({ msg: '[auth] Signup rate limit exceeded', ip });
     return { success: false, error: 'Too many signup attempts. Please try again later.' };
+  }
+
+  // Bot verification — no-op unless hCaptcha is enabled (see src/lib/captcha.ts).
+  const captchaValid = await verifyCaptcha(captchaToken, ip);
+  if (!captchaValid) {
+    logger.warn({ msg: '[auth] Signup captcha verification failed', ip });
+    return { success: false, error: 'Captcha verification failed. Please try again.' };
   }
 
   // Basic validation
@@ -197,7 +217,7 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
       return { success: false, error: 'Account with this email already exists.' };
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     // Clean up any existing verification tokens for this email
     await prisma.verificationToken.deleteMany({
@@ -240,6 +260,13 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
       };
     }
 
+    // F-001: signup initiated (no User row exists yet — only a verification token).
+    await audit({
+      action: 'auth.signup',
+      ...getClientContext(headersList),
+      metadata: { role, email: maskEmail(email), pendingVerification: true },
+    });
+
     return { success: true };
   } catch (error: unknown) {
     logger.error({ msg: 'Signup error', err: String(error) });
@@ -248,6 +275,22 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
 }
 
 export async function sendPasswordResetLink(email: string) {
+  // F-037: throttle reset requests per-IP — 5 attempts per 10 minutes. Runs
+  // before any DB access or email send. On limit we return the same no-op
+  // success shape used for a non-existent email, so an attacker can't tell
+  // whether they were throttled, and existence is never leaked.
+  const headersList = await headers();
+  const ip =
+    headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    headersList.get('x-real-ip') ??
+    'unknown';
+  // F-024: auth-critical — fail closed if Redis is down.
+  const { allowed } = await checkRateLimit(`password-reset:${ip}`, 5, 600, { failClosed: true });
+  if (!allowed) {
+    logger.warn({ msg: '[auth] Password reset request rate limit exceeded', ip });
+    return { success: true }; // Security: don't reveal throttling or user existence
+  }
+
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     logger.info({
@@ -283,6 +326,15 @@ export async function sendPasswordResetLink(email: string) {
   }
 
   logger.info({ msg: '[auth] Password reset email sent', email: maskEmail(email) });
+  // F-001: password reset requested (email dispatched to a real account).
+  await audit({
+    action: 'auth.password.reset_request',
+    actorId: user.id,
+    actorRole: user.role,
+    organizationId: user.organizationId ?? undefined,
+    ...getClientContext(headersList),
+    metadata: { email: maskEmail(email) },
+  });
   return { success: true };
 }
 
@@ -310,11 +362,14 @@ export async function resetPasswordWithToken(
     return { error: 'Invalid or expired reset link.' };
   }
 
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_COST);
 
-  await prisma.user.update({
+  // F-059: bump sessionVersion so completing the reset invalidates every other
+  // existing session (the jwt callback compares the token's version on decode).
+  const updatedUser = await prisma.user.update({
     where: { email: verificationToken.identifier },
-    data: { password: hashedPassword },
+    data: { password: hashedPassword, sessionVersion: { increment: 1 } },
+    select: { id: true, role: true, organizationId: true },
   });
 
   // delete used token
@@ -331,14 +386,31 @@ export async function resetPasswordWithToken(
     msg: '[auth] Password reset completed',
     email: maskEmail(verificationToken.identifier),
   });
+  // F-001: password reset completed via emailed token.
+  await audit({
+    action: 'auth.password.reset',
+    actorId: updatedUser.id,
+    actorRole: updatedUser.role,
+    organizationId: updatedUser.organizationId ?? undefined,
+    ...getClientContext(await headers()),
+    metadata: { email: maskEmail(verificationToken.identifier), method: 'token' },
+  });
   return { success: true };
 }
 
 export async function forceResetPassword(
-  email: string,
   currentPassword: string,
   newPassword: string,
 ): Promise<AuthState> {
+  // Derive the account from the authenticated session, not from the URL/caller
+  // (F-057): the forced-reset flow is only reachable while signed in, so the
+  // email no longer needs to travel in the redirect query string.
+  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
+  const email = admin?.user?.email ?? worker?.user?.email;
+  if (!email) {
+    return { error: 'Not authenticated.' };
+  }
+
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.password) {
     return { error: 'Invalid credentials.' };
@@ -354,13 +426,28 @@ export async function forceResetPassword(
     return { error: `Password does not meet requirements: ${pwCheck.errors.join(', ')}` };
   }
 
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_COST);
 
+  // F-059: bump sessionVersion so the forced reset also logs out every other
+  // existing session (the jwt callback compares the token's version on decode).
   await prisma.user.update({
     where: { email },
-    data: { password: hashedPassword, passwordResetRequired: false },
+    data: {
+      password: hashedPassword,
+      passwordResetRequired: false,
+      sessionVersion: { increment: 1 },
+    },
   });
 
   logger.info({ msg: '[auth] Forced password reset completed', email: maskEmail(email) });
+  // F-001: forced password reset completed (user re-authenticated with current pw).
+  await audit({
+    action: 'auth.password.reset',
+    actorId: user.id,
+    actorRole: user.role,
+    organizationId: user.organizationId ?? undefined,
+    ...getClientContext(await headers()),
+    metadata: { email: maskEmail(email), method: 'forced' },
+  });
   return { success: true };
 }

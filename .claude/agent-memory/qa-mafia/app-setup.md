@@ -16,7 +16,7 @@ docker compose -f docker-compose.dev.yml up -d db redis
 
 **DATABASE_URL** is commented out in `.env` — create `.env.local` with:
 ```
-DATABASE_URL="postgresql://postgres:0951@localhost:5433/lms?schema=public"
+DATABASE_URL="postgresql://postgres:••••@localhost:5433/lms?schema=public"
 REDIS_URL=redis://localhost:6380
 NEXT_PUBLIC_APP_URL=http://localhost:3005
 APP_URL=http://localhost:3005

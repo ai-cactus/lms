@@ -37,7 +37,7 @@ describe('phiScanner', () => {
     );
   });
 
-  it('should return PHI findings if AI detects them', async () => {
+  it('should return PHI findings (value-free, with resolved offsets) if AI detects them', async () => {
     const text = 'Patient John Doe (DOB 01/01/1980) visited today.'.padEnd(50, ' ');
     mockedCallVertexAI.mockResolvedValue(
       JSON.stringify({
@@ -53,12 +53,34 @@ describe('phiScanner', () => {
 
     expect(result.hasPHI).toBe(true);
     expect(result.findings).toHaveLength(2);
-    expect(result.findings[0]).toMatchObject({ type: 'NAME', value: 'John Doe', confidence: 0.95 });
+
+    // F-003: persisted findings carry type + offsets + confidence, NEVER the raw value.
+    expect(result.findings[0]).not.toHaveProperty('value');
+    expect(result.findings[0]).toMatchObject({
+      type: 'NAME',
+      confidence: 0.95,
+      offsetStart: text.indexOf('John Doe'),
+      offsetEnd: text.indexOf('John Doe') + 'John Doe'.length,
+    });
     expect(result.findings[1]).toMatchObject({
       type: 'DATE',
-      value: '01/01/1980',
       confidence: 0.99,
+      offsetStart: text.indexOf('01/01/1980'),
+      offsetEnd: text.indexOf('01/01/1980') + '01/01/1980'.length,
     });
+  });
+
+  it('fails CLOSED locally (zero AI transmission) when a high-confidence structural identifier (SSN) is present', async () => {
+    const text = 'Client record: SSN 123-45-6789 on file for review purposes.'.padEnd(60, ' ');
+
+    const result = await scanText(text);
+
+    expect(result.hasPHI).toBe(true);
+    expect(result.scanFailed).toBeUndefined();
+    expect(result.findings[0]).toMatchObject({ type: 'SSN' });
+    expect(result.findings[0]).not.toHaveProperty('value');
+    // Deterministic local detection must NOT call the AI at all.
+    expect(mockedCallVertexAI).not.toHaveBeenCalled();
   });
 
   it('should return no PHI if AI returns no findings', async () => {
@@ -138,18 +160,20 @@ describe('phiScanner', () => {
     expect(result.scanFailed).toBeUndefined();
   });
 
-  it('should truncate text to 15000 characters before calling AI', async () => {
+  it('scans the FULL document in sequential chunks rather than truncating to 15k', async () => {
     const longText = 'A'.repeat(20000);
-    const expectedTruncatedText = 'A'.repeat(15000);
 
     await scanText(longText);
 
-    expect(mockedCallVertexAI).toHaveBeenCalledTimes(1);
+    // F-003: 20k chars → two 15k-max chunks → two AI calls (full-document coverage),
+    // instead of the old single truncated 15k sample.
+    expect(mockedCallVertexAI).toHaveBeenCalledTimes(2);
+    // The first chunk carries the first 15k characters...
     expect(mockedCallVertexAI).toHaveBeenCalledWith(
-      expect.stringContaining(expectedTruncatedText),
+      expect.stringContaining('A'.repeat(15000)),
       expect.any(Object),
     );
-    // Ensure the prompt does not contain the full text
+    // ...but the full 20k text is never sent in a single call.
     expect(mockedCallVertexAI).not.toHaveBeenCalledWith(
       expect.stringContaining(longText),
       expect.any(Object),

@@ -9,3 +9,28 @@ model AuditorPack {
 
   @@map("auditor_packs")
 }
+
+/// Append-only audit trail for security- and compliance-relevant actions.
+/// Rows are written via the shared `audit()` helper in src/lib/audit.ts and are
+/// NEVER updated or deleted by the application — treat as immutable by convention.
+/// Actor/organization columns are intentionally nullable (unauthenticated or
+/// system-originated events) and are plain String references (no FK) so audit
+/// history survives deletion of the referenced user/org.
+model AuditLog {
+  id             String   @id @default(uuid())
+  actorId        String?  @map("actor_id")
+  actorRole      String?  @map("actor_role")
+  action         String
+  targetType     String?  @map("target_type")
+  targetId       String?  @map("target_id")
+  organizationId String?  @map("organization_id")
+  ip             String?
+  userAgent      String?  @map("user_agent")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}

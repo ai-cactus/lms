@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Check } from 'lucide-react';
 
-import { Field } from '@/components/ui';
+import { Field, HCaptcha } from '@/components/ui';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -34,6 +34,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 export default function RequestDemoPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string>();
   const [submitResult, setSubmitResult] = useState<{
     success: boolean;
     message?: string;
@@ -71,6 +72,9 @@ export default function RequestDemoPage() {
           formData.append(key, String(value));
         }
       });
+      if (captchaToken) {
+        formData.append('captchaToken', captchaToken);
+      }
 
       const res = await submitDemoRequest(null, formData);
       if (res.success) {
@@ -250,6 +254,11 @@ export default function RequestDemoPage() {
                       </span>
                     )}
                   </div>
+
+                  <HCaptcha
+                    onVerify={setCaptchaToken}
+                    onExpire={() => setCaptchaToken(undefined)}
+                  />
 
                   <Button
                     type="submit"

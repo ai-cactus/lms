@@ -8,6 +8,7 @@
 import { TOTP, Secret } from 'otpauth';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -166,7 +167,7 @@ export function generateRecoveryCodes(): string[] {
  * Hash a recovery code with bcrypt for storage.
  */
 export async function hashRecoveryCode(code: string): Promise<string> {
-  return bcrypt.hash(code, 10);
+  return bcrypt.hash(code, BCRYPT_COST);
 }
 
 /**

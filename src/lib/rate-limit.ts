@@ -32,6 +32,27 @@ export interface RateLimitResult {
   resetInSeconds: number;
 }
 
+export interface RateLimitOptions {
+  /**
+   * F-024 — behavior when Redis is unavailable.
+   *
+   * Default (`false`): fail-OPEN — fall back to the in-memory sliding window so
+   * a Redis outage doesn't take down non-critical flows (e.g. AI generation).
+   *
+   * `true`: fail-CLOSED — deny the request (treat as over-limit) instead of
+   * trusting the per-instance in-memory fallback. Use at AUTH-critical call
+   * sites (login, signup, password reset, MFA, invite accept, org-code verify)
+   * where a Redis outage must NOT become an unlimited brute-force window across
+   * a horizontally-scaled fleet.
+   */
+  failClosed?: boolean;
+}
+
+/** Deny result returned when a fail-closed limiter loses its Redis backend. */
+function deniedResult(windowSec: number): RateLimitResult {
+  return { allowed: false, remaining: 0, resetInSeconds: windowSec };
+}
+
 /**
  * Sliding window rate limiter using a Redis sorted set.
  * Thread-safe via atomic pipeline — safe for concurrent Next.js serverless invocations.
@@ -44,6 +65,7 @@ export async function checkRateLimit(
   key: string,
   limit = 10,
   windowSec = 900,
+  options: RateLimitOptions = {},
 ): Promise<RateLimitResult> {
   const now = Date.now();
   const windowStart = now - windowSec * 1000;
@@ -68,6 +90,18 @@ export async function checkRateLimit(
       resetInSeconds: windowSec,
     };
   } catch (error) {
+    // F-024: at auth-critical call sites, deny rather than trusting the
+    // per-instance in-memory fallback (which would let each pod grant a fresh
+    // allowance during a Redis outage).
+    if (options.failClosed) {
+      logger.warn({
+        msg: 'Redis rate limiter unavailable, failing closed (deny)',
+        error: String(error),
+        key,
+      });
+      return deniedResult(windowSec);
+    }
+
     logger.error({
       msg: 'Redis rate limiter failed, falling back to in-memory',
       error: String(error),
@@ -99,6 +133,7 @@ export async function checkRateLimitOnly(
   key: string,
   limit = 10,
   windowSec = 900,
+  options: RateLimitOptions = {},
 ): Promise<RateLimitResult> {
   const now = Date.now();
   const windowStart = now - windowSec * 1000;
@@ -118,6 +153,16 @@ export async function checkRateLimitOnly(
       resetInSeconds: windowSec,
     };
   } catch (error) {
+    // F-024: fail closed at auth-critical call sites (see checkRateLimit).
+    if (options.failClosed) {
+      logger.warn({
+        msg: 'Redis rate limiter unavailable, failing closed (deny)',
+        error: String(error),
+        key,
+      });
+      return deniedResult(windowSec);
+    }
+
     logger.error({
       msg: 'Redis rate limiter failed, falling back to in-memory',
       error: String(error),
