@@ -48,6 +48,7 @@ const {
   mockDispatchNudge,
   mockRetryReminderEmail,
   mockResolveEscalationRecipients,
+  mockRunRetentionPurge,
   mockLoggerError,
 } = vi.hoisted(() => {
   const prismaMock = {
@@ -61,6 +62,7 @@ const {
   const mockDispatchNudge = vi.fn();
   const mockRetryReminderEmail = vi.fn();
   const mockResolveEscalationRecipients = vi.fn();
+  const mockRunRetentionPurge = vi.fn();
   const mockLoggerError = vi.fn();
   return {
     prismaMock,
@@ -68,6 +70,7 @@ const {
     mockDispatchNudge,
     mockRetryReminderEmail,
     mockResolveEscalationRecipients,
+    mockRunRetentionPurge,
     mockLoggerError,
   };
 });
@@ -85,6 +88,10 @@ vi.mock('@/lib/reminders/dispatch', () => ({
 
 vi.mock('@/lib/reminders/recipients', () => ({
   resolveEscalationRecipients: mockResolveEscalationRecipients,
+}));
+
+vi.mock('@/lib/retention', () => ({
+  runRetentionPurge: mockRunRetentionPurge,
 }));
 
 vi.mock('@/lib/logger', () => ({
@@ -188,6 +195,13 @@ beforeEach(() => {
   mockDispatchNudge.mockResolvedValue({ sent: true, reason: 'sent' });
   mockRetryReminderEmail.mockResolvedValue(true);
   mockResolveEscalationRecipients.mockResolvedValue({ userIds: [], emails: [] });
+  mockRunRetentionPurge.mockResolvedValue({
+    verificationTokens: 0,
+    invites: 0,
+    jobs: 0,
+    emailMessages: 0,
+  });
+  delete process.env.RETENTION_PURGE_ENABLED;
 });
 
 // ─── Track A — deadline ladder ────────────────────────────────────────────────
@@ -578,6 +592,45 @@ describe('runReminderSweep — email retry pre-pass', () => {
 
     expect(prismaMock.emailMessage.findMany).not.toHaveBeenCalled();
     expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Retention purge pre-pass (F-054) ─────────────────────────────────────────
+
+describe('runReminderSweep — retention purge pre-pass', () => {
+  it('runs the purge and records its counts on the summary', async () => {
+    mockRunRetentionPurge.mockResolvedValue({
+      verificationTokens: 5,
+      invites: 2,
+      jobs: 9,
+      emailMessages: 4,
+    });
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(mockRunRetentionPurge).toHaveBeenCalledWith(NOW);
+    expect(summary.retentionPurged).toEqual({
+      verificationTokens: 5,
+      invites: 2,
+      jobs: 9,
+      emailMessages: 4,
+    });
+  });
+
+  it('is a no-op under dry-run (purge not called, summary null)', async () => {
+    const summary = await runReminderSweep({ ...BASE_OPTS, dryRun: true });
+
+    expect(mockRunRetentionPurge).not.toHaveBeenCalled();
+    expect(summary.retentionPurged).toBeNull();
+  });
+
+  it('is skipped when RETENTION_PURGE_ENABLED=false', async () => {
+    process.env.RETENTION_PURGE_ENABLED = 'false';
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(mockRunRetentionPurge).not.toHaveBeenCalled();
+    expect(summary.retentionPurged).toBeNull();
   });
 });
 

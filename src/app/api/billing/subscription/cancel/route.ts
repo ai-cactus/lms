@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
 
 // POST /api/billing/subscription/cancel — cancels subscription at end of current period
 export async function POST(request: NextRequest) {
@@ -67,6 +68,18 @@ export async function POST(request: NextRequest) {
     await prisma.subscription.update({
       where: { organizationId: user.organizationId },
       data: { cancelAtPeriodEnd: true },
+    });
+
+    // F-001: record the sensitive billing mutation on the authorized path.
+    await audit({
+      action: 'billing.subscription.cancel',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'subscription',
+      targetId: subscription.id,
+      metadata: { cancelAtPeriodEnd: true },
+      ...getClientContext(request.headers),
     });
 
     return NextResponse.json({

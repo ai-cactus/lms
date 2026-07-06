@@ -26,6 +26,10 @@ const { mockAuth, prismaMock, mockSendInviteEmail } = vi.hoisted(() => ({
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
+// F-001 audit is a best-effort side-channel — stub it so business-logic tests
+// don't depend on the audit sink or the request-scoped headers() it reads.
+vi.mock('@/lib/audit', () => ({ audit: vi.fn(), getClientContext: () => ({}) }));
+vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

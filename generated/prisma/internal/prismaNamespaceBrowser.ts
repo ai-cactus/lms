@@ -52,6 +52,7 @@ export const AnyNull = runtime.AnyNull
 
 export const ModelName = {
   AuditorPack: 'AuditorPack',
+  AuditLog: 'AuditLog',
   User: 'User',
   Profile: 'Profile',
   Invite: 'Invite',
@@ -116,6 +117,23 @@ export const AuditorPackScalarFieldEnum = {
 } as const
 
 export type AuditorPackScalarFieldEnum = (typeof AuditorPackScalarFieldEnum)[keyof typeof AuditorPackScalarFieldEnum]
+
+
+export const AuditLogScalarFieldEnum = {
+  id: 'id',
+  actorId: 'actorId',
+  actorRole: 'actorRole',
+  action: 'action',
+  targetType: 'targetType',
+  targetId: 'targetId',
+  organizationId: 'organizationId',
+  ip: 'ip',
+  userAgent: 'userAgent',
+  metadata: 'metadata',
+  createdAt: 'createdAt'
+} as const
+
+export type AuditLogScalarFieldEnum = (typeof AuditLogScalarFieldEnum)[keyof typeof AuditLogScalarFieldEnum]
 
 
 export const UserScalarFieldEnum = {

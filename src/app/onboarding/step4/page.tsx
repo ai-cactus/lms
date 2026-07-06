@@ -7,7 +7,6 @@ import { FileUpload, TagInput } from '@/components/ui';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Stepper from '@/components/onboarding/Stepper';
-import * as XLSX from 'xlsx';
 import type { OnboardingData } from '@/app/actions/onboarding-complete';
 import { logger } from '@/lib/logger';
 
@@ -87,6 +86,9 @@ export default function OnboardingStep4() {
     setError('');
 
     try {
+      // xlsx is ~1MB — load it only when a file is actually parsed so it stays
+      // out of the initial onboarding bundle.
+      const XLSX = await import('xlsx');
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
 

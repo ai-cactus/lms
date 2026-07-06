@@ -3,6 +3,7 @@ import { getStripeClient } from '@/lib/stripe';
 import prisma from '@/lib/prisma';
 import Stripe from 'stripe';
 import { logger } from '@/lib/logger';
+import { audit } from '@/lib/audit';
 import { MAX_PAUSE_MONTHS, pauseEndDate } from '@/lib/billing';
 import type {
   SubscriptionPlan,
@@ -103,6 +104,18 @@ export async function POST(request: NextRequest) {
     // failed handler can be safely redelivered and retried by Stripe.
     await prisma.processedWebhookEvent.create({
       data: { stripeEventId: event.id, eventType: event.type },
+    });
+
+    // F-001: record the system-driven billing change. Actor is Stripe/system
+    // (no session, no ip/ua). Org is resolved best-effort from event metadata.
+    const eventObject = event.data.object as { metadata?: Record<string, string> | null };
+    await audit({
+      action: `billing.webhook.${event.type}`,
+      actorRole: 'system',
+      organizationId: eventObject.metadata?.organizationId,
+      targetType: 'stripe_event',
+      targetId: event.id,
+      metadata: { eventType: event.type },
     });
   } catch (error) {
     // A concurrent delivery may have recorded this same event between our

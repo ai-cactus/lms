@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { runRetentionPurge, type RetentionPurgeSummary } from '@/lib/retention';
 import { SWEEP_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, startOfDayInTz, addDays, diffInDaysInTz } from './time';
 import {
@@ -51,6 +52,17 @@ export interface ReminderSweepSummary {
   errors: number;
   /** Failed reminder emails successfully re-sent by the retry pre-pass (F-020). */
   retriesSent: number;
+  /** Rows deleted by the data-retention purge pre-pass (F-054); null when skipped. */
+  retentionPurged: RetentionPurgeSummary | null;
+}
+
+/**
+ * Whether the data-retention purge pre-pass runs. Enabled by default; set
+ * `RETENTION_PURGE_ENABLED=false` to disable. Any other value is treated as
+ * enabled.
+ */
+function isRetentionPurgeEnabled(): boolean {
+  return process.env.RETENTION_PURGE_ENABLED !== 'false';
 }
 
 // Statuses that take an enrollment out of the active reminder population.
@@ -73,6 +85,7 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
     skipped: 0,
     errors: 0,
     retriesSent: 0,
+    retentionPurged: null,
   };
 
   const tallyLadder = (result: DispatchResult): void => {
@@ -90,6 +103,7 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
   logger.info({ msg: '[reminders] Starting sweep', catchUpDays, nudgeIntervalDays, dryRun });
 
   await runRetryPrePass(opts, summary);
+  await runRetentionPrePass(opts, summary);
   await runTrackA(opts, summary, tallyLadder);
   await runTrackB(opts, summary, tallyNudge);
 
@@ -190,6 +204,26 @@ async function runRetryPrePass(
       logger.error({ msg: '[reminders] Email retry failed', emailMessageId: message.id, err });
     }
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Retention pre-pass — dispose of expired/stale rows (F-054)                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Run the data-retention purge before the reminder tracks. Deletes expired
+ * verification tokens and stale terminal invites/jobs/emails on HIPAA-sensible,
+ * env-configurable windows (see {@link runRetentionPurge}). A no-op under
+ * `dryRun` (it mutates persistent state) and when disabled via
+ * `RETENTION_PURGE_ENABLED=false`. Best-effort: `runRetentionPurge` never
+ * throws, so it can't break the sweep.
+ */
+async function runRetentionPrePass(
+  opts: ReminderSweepOptions,
+  summary: ReminderSweepSummary,
+): Promise<void> {
+  if (opts.dryRun || !isRetentionPurgeEnabled()) return;
+  summary.retentionPurged = await runRetentionPurge(opts.now);
 }
 
 /* -------------------------------------------------------------------------- */

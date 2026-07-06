@@ -2,6 +2,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getDocumentSignedUrl } from '@/app/actions/storage';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
 
 export async function GET(
   request: Request,
@@ -46,6 +47,18 @@ export async function GET(
     const rawName = version.document.filename || 'document';
     const asciiName = rawName.replace(/[^\w.\- ]/g, '_');
     const encodedName = encodeURIComponent(rawName);
+
+    // F-001: record PHI-bearing document access on the authorized, successful path.
+    await audit({
+      action: 'phi.document.access',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId ?? undefined,
+      targetType: 'document',
+      targetId: version.document.id,
+      metadata: { versionId },
+      ...getClientContext(request.headers),
+    });
 
     return new Response(response.body, {
       headers: {

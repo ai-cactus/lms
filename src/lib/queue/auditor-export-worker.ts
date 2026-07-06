@@ -5,6 +5,7 @@ import { AUDITOR_EXPORT_QUEUE_NAME } from './auditor-export-queue';
 import { logger } from '@/lib/logger';
 import { Prisma } from '@/generated/prisma/browser';
 import { startedAtWhere, toReportPeriod } from '@/lib/audit-reports/date-range';
+import type { OrgReportInput } from '@/lib/audit-reports/types';
 
 export function getExportWorker() {
   const globalAny = globalThis as unknown as { __auditorWorker?: Worker };
@@ -287,15 +288,7 @@ export function getExportWorker() {
         });
       } else {
         // org scope
-        const [enrollments, totalCourses, totalStaff] = await Promise.all([
-          prisma.enrollment.findMany({
-            where: { userId: { in: orgUserIds }, ...dateWhere },
-            include: {
-              user: { include: { profile: { select: { fullName: true } } } },
-              course: { select: { title: true, category: true } },
-            },
-            orderBy: [{ user: { email: 'asc' } }, { startedAt: 'desc' }],
-          }),
+        const [totalCourses, totalStaff] = await Promise.all([
           prisma.course.count({ where: { createdBy: { in: orgUserIds }, status: 'published' } }),
           prisma.user.count({ where: { organizationId, role: 'worker' } }),
         ]);
@@ -303,26 +296,53 @@ export function getExportWorker() {
         await updateDbJob(60, 'Aggregating organization activity...');
         await new Promise((r) => setTimeout(r, 600));
 
-        const completed = enrollments.filter((e) =>
-          ['completed', 'attested'].includes(e.status),
-        ).length;
+        // F-028: a large org can have far more enrollments than fit comfortably in
+        // memory. Read them in bounded batches, mapping each batch into the
+        // lightweight report shape and releasing the heavy Prisma rows (with their
+        // user/course includes) before the next batch, so peak memory stays flat.
+        // `id` is appended to the sort as a stable tiebreaker — required to make
+        // skip/take batching deterministic when rows tie on (user email, startedAt).
+        const ENROLLMENT_BATCH_SIZE = 1000;
+        const orgEnrollments: OrgReportInput['enrollments'] = [];
+        let completed = 0;
+        for (let skip = 0; ; skip += ENROLLMENT_BATCH_SIZE) {
+          const batch = await prisma.enrollment.findMany({
+            where: { userId: { in: orgUserIds }, ...dateWhere },
+            include: {
+              user: { include: { profile: { select: { fullName: true } } } },
+              course: { select: { title: true, category: true } },
+            },
+            orderBy: [{ user: { email: 'asc' } }, { startedAt: 'desc' }, { id: 'asc' }],
+            skip,
+            take: ENROLLMENT_BATCH_SIZE,
+          });
+          if (batch.length === 0) break;
+
+          for (const en of batch) {
+            if (['completed', 'attested'].includes(en.status)) completed++;
+            orgEnrollments.push({
+              staffName: en.user.profile?.fullName || en.user.email,
+              courseTitle: en.course.title,
+              category: en.course.category,
+              status: en.status,
+              score: en.score,
+              dateAssigned: en.startedAt,
+              dateCompleted: en.completedAt,
+            });
+          }
+
+          if (batch.length < ENROLLMENT_BATCH_SIZE) break;
+        }
+
         const completionRate =
-          enrollments.length > 0 ? Math.round((completed / enrollments.length) * 100) : 0;
+          orgEnrollments.length > 0 ? Math.round((completed / orgEnrollments.length) * 100) : 0;
 
         result = buildOrgReport({
           orgName,
           generatedAt: new Date(),
           period,
           summary: { totalCourses, totalStaff, completionRate },
-          enrollments: enrollments.map((en) => ({
-            staffName: en.user.profile?.fullName || en.user.email,
-            courseTitle: en.course.title,
-            category: en.course.category,
-            status: en.status,
-            score: en.score,
-            dateAssigned: en.startedAt,
-            dateCompleted: en.completedAt,
-          })),
+          enrollments: orgEnrollments,
         });
       }
 

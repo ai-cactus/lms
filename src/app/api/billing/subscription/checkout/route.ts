@@ -5,6 +5,7 @@ import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
 import { BILLING_PLANS, BillingCycle } from '@/lib/billing-plans';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
 import type { SubscriptionPlan, SubscriptionBillingCycle } from '@/generated/prisma/enums';
 
 // POST /api/billing/subscription/checkout — creates a Checkout session for a new
@@ -177,6 +178,18 @@ export async function POST(request: NextRequest) {
         billingCycle,
       });
 
+      // F-001: record the sensitive billing mutation on the authorized path.
+      await audit({
+        action: 'billing.subscription.checkout',
+        actorId: session.user.id,
+        actorRole: user.role,
+        organizationId: user.organizationId,
+        targetType: 'subscription',
+        targetId: existingSubscription.id,
+        metadata: { planKey, billingCycle, mode: 'swap' },
+        ...getClientContext(request.headers),
+      });
+
       return NextResponse.json({ updated: true, message: 'Your plan has been updated.' });
     }
 
@@ -205,6 +218,17 @@ export async function POST(request: NextRequest) {
       organizationId: user.organizationId,
       planKey,
       billingCycle,
+    });
+
+    // F-001: record the sensitive billing action (new subscription checkout).
+    await audit({
+      action: 'billing.subscription.checkout',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'subscription',
+      metadata: { planKey, billingCycle, mode: 'checkout' },
+      ...getClientContext(request.headers),
     });
 
     return NextResponse.json({ url: checkoutSession.url });

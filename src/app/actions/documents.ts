@@ -10,6 +10,8 @@ import { extractTextFromFile } from '@/lib/file-parser';
 import { deleteFile } from '@/lib/storage';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
+import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
 
@@ -106,7 +108,7 @@ export async function uploadDocument(
 
   // 5. Persist metadata in DB (transactional)
   try {
-    await prisma.$transaction(async (tx) => {
+    const uploadedDocumentId = await prisma.$transaction(async (tx) => {
       // Check if document already exists for this user with the same filename
       const existingDoc = await tx.document.findFirst({
         where: { userId, filename: file.name },
@@ -156,6 +158,8 @@ export async function uploadDocument(
           scannerVersion: 'v2',
         },
       });
+
+      return docId!;
     });
 
     logger.info({
@@ -165,6 +169,19 @@ export async function uploadDocument(
       size: file.size,
       hasPHI: phiResult.hasPHI,
     });
+
+    // F-001: record the sensitive mutation on the authorized, successful path.
+    await audit({
+      action: 'document.upload',
+      actorId: userId,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId,
+      targetType: 'document',
+      targetId: uploadedDocumentId,
+      metadata: { size: file.size, mimeType: file.type },
+      ...getClientContext(await headers()),
+    });
+
     revalidatePath('/dashboard/documents');
     return { success: true, phiDetected: phiResult.hasPHI };
   } catch (err: unknown) {
@@ -254,6 +271,19 @@ export async function deleteDocument(
     userId: session.user.id,
     versionCount: doc.versions.length,
   });
+
+  // F-001: record the sensitive mutation on the authorized, successful path.
+  await audit({
+    action: 'document.delete',
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    organizationId: session.user.organizationId ?? undefined,
+    targetType: 'document',
+    targetId: documentId,
+    metadata: { versionCount: doc.versions.length },
+    ...getClientContext(await headers()),
+  });
+
   revalidatePath('/dashboard/documents');
   return { success: true };
 }

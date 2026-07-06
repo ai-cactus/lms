@@ -23,6 +23,16 @@ export * from './enums';
  */
 export type AuditorPack = Prisma.AuditorPackModel
 /**
+ * Model AuditLog
+ * Append-only audit trail for security- and compliance-relevant actions.
+ * Rows are written via the shared `audit()` helper in src/lib/audit.ts and are
+ * NEVER updated or deleted by the application — treat as immutable by convention.
+ * Actor/organization columns are intentionally nullable (unauthenticated or
+ * system-originated events) and are plain String references (no FK) so audit
+ * history survives deletion of the referenced user/org.
+ */
+export type AuditLog = Prisma.AuditLogModel
+/**
  * Model User
  * 
  */
@@ -57,6 +67,18 @@ export type MfaRecoveryCode = Prisma.MfaRecoveryCodeModel
  * System-wide course categories.
  * isSystem = true  → seeded by Prisma/migration, visible to all orgs.
  * isSystem = false → created by an org admin, scoped to their organization.
+ * 
+ * F-052: `slug` is unique *per organization* rather than globally, so different
+ * orgs may reuse the same slug. Enforced by the `@@unique([organizationId, slug])`
+ * composite below (`course_categories_organization_id_slug_key`).
+ * 
+ * NOTE: In Postgres a composite unique treats NULLs as DISTINCT, so the composite
+ * alone does NOT stop two *system* categories (organization_id IS NULL) from
+ * sharing a slug. To preserve the previous global-uniqueness guarantee for system
+ * slugs, the migration `20260706120001_enrollment_category_uniques` also adds a
+ * raw partial unique index `course_categories_system_slug_key` on (slug)
+ * WHERE organization_id IS NULL. That partial index is NOT expressible in Prisma
+ * and lives only at the DB level.
  */
 export type CourseCategory = Prisma.CourseCategoryModel
 /**
@@ -144,7 +166,15 @@ export type MappingEvidence = Prisma.MappingEvidenceModel
 export type EmailMessage = Prisma.EmailMessageModel
 /**
  * Model Enrollment
- * 
+ * F-053: at most one *active* enrollment may exist per (user_id, course_id).
+ * "Active" = the in-flight statuses enrolled | assigned | in_progress |
+ * lessons_complete. Terminal/historical statuses (completed, attested, locked,
+ * failed, retry_requested) are excluded so retakes — which create a new
+ * enrollment while the prior one stays completed/failed — remain valid.
+ * This is enforced by a PARTIAL unique index
+ * (`enrollments_user_id_course_id_active_key ... WHERE status IN (...)`) added in
+ * migration `20260706120001_enrollment_category_uniques`. Prisma cannot express a
+ * partial/filtered unique, so it exists only at the DB level (no `@@unique` here).
  */
 export type Enrollment = Prisma.EnrollmentModel
 /**

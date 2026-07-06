@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -233,7 +234,7 @@ export async function enrollUsers(
     if (!user) {
       try {
         const tempPassword = crypto.randomBytes(8).toString('hex');
-        const hashedPassword = await bcrypt.hash(tempPassword, 10);
+        const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_COST);
 
         const newUser = await prisma.user.create({
           data: {

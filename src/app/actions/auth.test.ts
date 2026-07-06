@@ -159,7 +159,10 @@ describe('signupWithRole — rate limiting', () => {
 
     await signupWithRole(VALID_DATA);
 
-    expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:10.0.0.1', 5, 600);
+    // F-024: auth-critical sites pass { failClosed: true }.
+    expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:10.0.0.1', 5, 600, {
+      failClosed: true,
+    });
   });
 
   it('falls back to "unknown" IP when no forwarding headers present', async () => {
@@ -169,7 +172,9 @@ describe('signupWithRole — rate limiting', () => {
 
     await signupWithRole(VALID_DATA);
 
-    expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:unknown', 5, 600);
+    expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:unknown', 5, 600, {
+      failClosed: true,
+    });
   });
 
   it('proceeds through normal flow when checkRateLimit allows', async () => {

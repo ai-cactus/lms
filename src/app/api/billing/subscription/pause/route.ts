@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
 import { MAX_PAUSE_MONTHS, pauseEndDate } from '@/lib/billing';
 
 // POST /api/billing/subscription/pause — pauses subscription for 1–3 months
@@ -91,6 +92,18 @@ export async function POST(request: NextRequest) {
       organizationId: user.organizationId,
       months,
       pauseEndsAt,
+    });
+
+    // F-001: record the sensitive billing mutation on the authorized path.
+    await audit({
+      action: 'billing.subscription.pause',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'subscription',
+      targetId: subscription.id,
+      metadata: { months },
+      ...getClientContext(request.headers),
     });
 
     return NextResponse.json({

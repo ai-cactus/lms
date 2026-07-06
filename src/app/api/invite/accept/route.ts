@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { validatePassword, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '@/lib/password-policy';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 import { verifyCaptcha } from '@/lib/captcha';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { assertSeatAvailable, SeatLimitError } from '@/lib/seat-limits';
+import { audit, getClientContext } from '@/lib/audit';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -42,7 +44,8 @@ export async function POST(req: Request) {
 
     // F-037: rate-limit accept attempts per IP to blunt token brute-forcing and
     // abuse. 10 attempts / 15 minutes, consistent with other auth endpoints.
-    const rateLimit = await checkRateLimit(`invite-accept:${ip}`, 10, 900);
+    // F-024: auth-critical — fail closed if Redis is down.
+    const rateLimit = await checkRateLimit(`invite-accept:${ip}`, 10, 900, { failClosed: true });
     if (!rateLimit.allowed) {
       logger.warn({ msg: '[invite] Accept-invite rate limit exceeded', ip });
       return NextResponse.json(
@@ -88,7 +91,7 @@ export async function POST(req: Request) {
     }
 
     // 4. Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     // 5. Create User and Profile within a transaction
     // Using transaction ensures atomicity
@@ -124,6 +127,18 @@ export async function POST(req: Request) {
       });
 
       return user;
+    });
+
+    // F-001: invite accepted — a new credentialed account joined the org.
+    await audit({
+      action: 'auth.invite.accept',
+      actorId: newUser.id,
+      actorRole: invite.role,
+      organizationId: invite.organizationId ?? undefined,
+      targetType: 'invite',
+      targetId: invite.id,
+      ...getClientContext(req.headers),
+      metadata: { email: maskEmail(invite.email) },
     });
 
     return NextResponse.json({ success: true, userId: newUser.id });

@@ -6,6 +6,8 @@ import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
 import type { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
+import { headers } from 'next/headers';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 
 export async function getStaffDetails(userId: string) {
@@ -54,6 +56,17 @@ export async function getStaffDetails(userId: string) {
       });
       return null;
     }
+
+    // F-001: record PII (staff profile) access on the authorized, org-scoped path.
+    await audit({
+      action: 'staff.profile.access',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId,
+      targetType: 'user',
+      targetId: userId,
+      ...getClientContext(await headers()),
+    });
 
     // Calculate Stats
     const totalCourses = user.enrollments.length || 0;
@@ -255,6 +268,18 @@ export async function setStaffManager(
 
     logger.info({ msg: '[staff] Manager set', staffId, managerId, userId: session.user.id });
 
+    // F-001: record the sensitive mutation on the authorized, successful path.
+    await audit({
+      action: 'staff.manager.set',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId,
+      targetType: 'user',
+      targetId: staffId,
+      metadata: { managerId },
+      ...getClientContext(await headers()),
+    });
+
     revalidatePath(`/dashboard/staff/${staffId}`);
     revalidatePath('/dashboard/staff');
     return { success: true };
@@ -310,6 +335,17 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
       });
       return null;
     }
+
+    // F-001: record quiz-result (PII) access on the authorized, org-scoped path.
+    await audit({
+      action: 'staff.quiz_result.access',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId,
+      targetType: 'enrollment',
+      targetId: enrollmentId,
+      ...getClientContext(await headers()),
+    });
 
     const latestAttempt = enrollment.quizAttempts[0];
     const quiz = latestAttempt.quiz;
@@ -420,6 +456,17 @@ export async function removeStaff(userId: string) {
     await prisma.user.update({
       where: { id: userId },
       data: { organizationId: null },
+    });
+
+    // F-001: record the sensitive mutation on the authorized, successful path.
+    await audit({
+      action: 'staff.remove',
+      actorId: session.user.id,
+      actorRole: admin.role,
+      organizationId: admin.organizationId ?? undefined,
+      targetType: 'user',
+      targetId: userId,
+      ...getClientContext(await headers()),
     });
 
     // Revalidate cache

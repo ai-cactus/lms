@@ -15,11 +15,14 @@ import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 import { logger, maskEmail } from '@/lib/logger';
 import { createMfaChallenge } from '@/lib/mfa-challenge';
 import { verifyCaptcha } from '@/lib/captcha';
+import { audit, getClientContext } from '@/lib/audit';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 // Pre-computed dummy hash for constant-time response when a user email doesn't exist.
-// bcrypt runs its full ~100ms computation and returns false, preventing timing-based
-// username enumeration attacks.
-const DUMMY_BCRYPT_HASH = '$2b$10$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+// bcrypt runs its full computation and returns false, preventing timing-based
+// username enumeration attacks. The cost factor MUST match BCRYPT_COST so the
+// dummy compare takes the same time as a real login (F-058).
+const DUMMY_BCRYPT_HASH = '$2b$12$WcSFYgX/PiZHV/21.0M2fuVfQ23xb6TQloNTnuIk9twRudyN/T8cW';
 
 // Define return type
 export type AuthState = {
@@ -39,9 +42,15 @@ export async function authenticate(
     headersList.get('x-real-ip') ??
     'unknown';
 
-  const { allowed } = await checkRateLimit(`login:${ip}`, 10, 900);
+  // F-024: auth-critical — fail closed if Redis is down.
+  const { allowed } = await checkRateLimit(`login:${ip}`, 10, 900, { failClosed: true });
   if (!allowed) {
     logger.warn({ msg: 'Auth rate limit exceeded', ip });
+    await audit({
+      action: 'auth.login.failure',
+      ...getClientContext(headersList),
+      metadata: { reason: 'rate_limited', layer: 'action' },
+    });
     return { error: 'Too many login attempts. Please try again in 15 minutes.' };
   }
 
@@ -173,7 +182,8 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
     headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
     headersList.get('x-real-ip') ??
     'unknown';
-  const { allowed } = await checkRateLimit(`signup:${ip}`, 5, 600);
+  // F-024: auth-critical — fail closed if Redis is down.
+  const { allowed } = await checkRateLimit(`signup:${ip}`, 5, 600, { failClosed: true });
   if (!allowed) {
     logger.warn({ msg: '[auth] Signup rate limit exceeded', ip });
     return { success: false, error: 'Too many signup attempts. Please try again later.' };
@@ -207,7 +217,7 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
       return { success: false, error: 'Account with this email already exists.' };
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     // Clean up any existing verification tokens for this email
     await prisma.verificationToken.deleteMany({
@@ -250,6 +260,13 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
       };
     }
 
+    // F-001: signup initiated (no User row exists yet — only a verification token).
+    await audit({
+      action: 'auth.signup',
+      ...getClientContext(headersList),
+      metadata: { role, email: maskEmail(email), pendingVerification: true },
+    });
+
     return { success: true };
   } catch (error: unknown) {
     logger.error({ msg: 'Signup error', err: String(error) });
@@ -267,7 +284,8 @@ export async function sendPasswordResetLink(email: string) {
     headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
     headersList.get('x-real-ip') ??
     'unknown';
-  const { allowed } = await checkRateLimit(`password-reset:${ip}`, 5, 600);
+  // F-024: auth-critical — fail closed if Redis is down.
+  const { allowed } = await checkRateLimit(`password-reset:${ip}`, 5, 600, { failClosed: true });
   if (!allowed) {
     logger.warn({ msg: '[auth] Password reset request rate limit exceeded', ip });
     return { success: true }; // Security: don't reveal throttling or user existence
@@ -308,6 +326,15 @@ export async function sendPasswordResetLink(email: string) {
   }
 
   logger.info({ msg: '[auth] Password reset email sent', email: maskEmail(email) });
+  // F-001: password reset requested (email dispatched to a real account).
+  await audit({
+    action: 'auth.password.reset_request',
+    actorId: user.id,
+    actorRole: user.role,
+    organizationId: user.organizationId ?? undefined,
+    ...getClientContext(headersList),
+    metadata: { email: maskEmail(email) },
+  });
   return { success: true };
 }
 
@@ -335,13 +362,14 @@ export async function resetPasswordWithToken(
     return { error: 'Invalid or expired reset link.' };
   }
 
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_COST);
 
   // F-059: bump sessionVersion so completing the reset invalidates every other
   // existing session (the jwt callback compares the token's version on decode).
-  await prisma.user.update({
+  const updatedUser = await prisma.user.update({
     where: { email: verificationToken.identifier },
     data: { password: hashedPassword, sessionVersion: { increment: 1 } },
+    select: { id: true, role: true, organizationId: true },
   });
 
   // delete used token
@@ -357,6 +385,15 @@ export async function resetPasswordWithToken(
   logger.info({
     msg: '[auth] Password reset completed',
     email: maskEmail(verificationToken.identifier),
+  });
+  // F-001: password reset completed via emailed token.
+  await audit({
+    action: 'auth.password.reset',
+    actorId: updatedUser.id,
+    actorRole: updatedUser.role,
+    organizationId: updatedUser.organizationId ?? undefined,
+    ...getClientContext(await headers()),
+    metadata: { email: maskEmail(verificationToken.identifier), method: 'token' },
   });
   return { success: true };
 }
@@ -389,7 +426,7 @@ export async function forceResetPassword(
     return { error: `Password does not meet requirements: ${pwCheck.errors.join(', ')}` };
   }
 
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_COST);
 
   // F-059: bump sessionVersion so the forced reset also logs out every other
   // existing session (the jwt callback compares the token's version on decode).
@@ -403,5 +440,14 @@ export async function forceResetPassword(
   });
 
   logger.info({ msg: '[auth] Forced password reset completed', email: maskEmail(email) });
+  // F-001: forced password reset completed (user re-authenticated with current pw).
+  await audit({
+    action: 'auth.password.reset',
+    actorId: user.id,
+    actorRole: user.role,
+    organizationId: user.organizationId ?? undefined,
+    ...getClientContext(await headers()),
+    metadata: { email: maskEmail(email), method: 'forced' },
+  });
   return { success: true };
 }

@@ -8,6 +8,12 @@ export const metadata = {
   description: 'Documents and attachments that have been uploaded are displayed here.',
 };
 
+// F-028: cap the per-user document read so this page can never load an unbounded
+// number of rows (each row also fans out into versions → phiReport/courseVersions).
+// The client list searches and paginates within this most-recent window; the cap
+// is generous enough not to truncate realistic usage while bounding worst-case cost.
+const DOCUMENTS_LIMIT = 200;
+
 export default async function DocumentsPage() {
   const session = await auth();
 
@@ -25,6 +31,7 @@ export default async function DocumentsPage() {
       },
     },
     orderBy: { updatedAt: 'desc' },
+    take: DOCUMENTS_LIMIT,
   });
 
   return (

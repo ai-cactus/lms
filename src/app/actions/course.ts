@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -369,24 +370,54 @@ export async function getDashboardData() {
     throw new Error('Unauthorized');
   }
 
-  // ⚡ Bolt: Single query replaces parallel getCourses() and getDashboardStats() calls,
-  // fixing an N+1/redundant query pattern and cutting database hits for dashboard in half.
-  const [coursesRaw, currentUser] = await Promise.all([
-    prisma.course.findMany({
-      where: { createdBy: session.user.id },
-      include: {
-        enrollments: true,
-        lessons: {
-          include: { quiz: true },
+  // F-028: avoid the unbounded `enrollments: true` materialization that pulled
+  // every enrollment row (all columns) for every course on each dashboard load.
+  // Counts and per-user coverage are now computed with grouped aggregation
+  // queries, and only the score-bearing enrollments are read — as a narrow
+  // { courseId, score, completedAt } projection — for the average / monthly /
+  // pass-fail stats that genuinely need row-level scores.
+  const createdBy = session.user.id;
+  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments, currentUser] =
+    await Promise.all([
+      prisma.course.findMany({
+        where: { createdBy },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          thumbnail: true,
+          status: true,
+          type: true,
+          duration: true,
+          createdAt: true,
+          updatedAt: true,
+          lessons: { select: { quiz: { select: { passingScore: true } } } },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { organizationId: true },
-    }),
-  ]);
+        orderBy: { createdAt: 'desc' },
+      }),
+      // Per-course enrollment totals + completed/attested tallies.
+      prisma.enrollment.groupBy({
+        by: ['courseId', 'status'],
+        where: { course: { createdBy } },
+        _count: { _all: true },
+      }),
+      // Per-user status tallies for training coverage + distinct staff assigned.
+      prisma.enrollment.groupBy({
+        by: ['userId', 'status'],
+        where: { course: { createdBy } },
+        _count: { _all: true },
+      }),
+      // Only scored enrollments, narrow projection — used for average grade,
+      // monthly performance and per-course pass/fail distribution.
+      prisma.enrollment.findMany({
+        where: { course: { createdBy }, score: { not: null } },
+        select: { courseId: true, score: true, completedAt: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { organizationId: true },
+      }),
+    ]);
 
   if (!currentUser?.organizationId) {
     // User authenticated but has no organization. We no longer force redirect here.
@@ -405,39 +436,48 @@ export async function getDashboardData() {
     });
   }
 
-  const courses: CourseWithStats[] = coursesRaw.map((course) => ({
-    id: course.id,
-    title: course.title,
-    description: course.description,
-    thumbnail: course.thumbnail,
-    status: course.status,
-    type: course.type,
-    duration: course.duration,
-    createdAt: course.createdAt,
-    updatedAt: course.updatedAt,
-    lessonsCount: course.lessons.length,
-    enrollmentsCount: course.enrollments.length,
-    completionRate:
-      course.enrollments.length > 0
-        ? Math.round(
-            (course.enrollments.filter((e) => e.status === 'completed' || e.status === 'attested')
-              .length /
-              course.enrollments.length) *
-              100,
-          )
-        : 0,
-  }));
+  // Per-course enrollment totals and completed/attested tallies (from groupBy).
+  const perCourseCounts = new Map<string, { total: number; completed: number }>();
+  for (const row of courseStatusCounts) {
+    const entry = perCourseCounts.get(row.courseId) ?? { total: 0, completed: 0 };
+    entry.total += row._count._all;
+    if (row.status === 'completed' || row.status === 'attested') {
+      entry.completed += row._count._all;
+    }
+    perCourseCounts.set(row.courseId, entry);
+  }
 
-  const enrollments = coursesRaw.flatMap((course) => course.enrollments);
+  const courses: CourseWithStats[] = coursesRaw.map((course) => {
+    const counts = perCourseCounts.get(course.id) ?? { total: 0, completed: 0 };
+    return {
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      thumbnail: course.thumbnail,
+      status: course.status,
+      type: course.type,
+      duration: course.duration,
+      createdAt: course.createdAt,
+      updatedAt: course.updatedAt,
+      lessonsCount: course.lessons.length,
+      enrollmentsCount: counts.total,
+      completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
+    };
+  });
+
+  // Group scored enrollments by course for the per-course performance stats.
+  const scoresByCourse = new Map<string, number[]>();
+  for (const e of scoredEnrollments) {
+    const arr = scoresByCourse.get(e.courseId) ?? [];
+    arr.push(e.score ?? 0);
+    scoresByCourse.set(e.courseId, arr);
+  }
 
   const totalCourses = coursesRaw.length;
-  const totalStaffAssigned = new Set(enrollments.map((e) => e.userId)).size;
-  const enrollmentsWithScore = enrollments.filter((e) => e.score !== null);
   const averageScore =
-    enrollmentsWithScore.length > 0
+    scoredEnrollments.length > 0
       ? Math.round(
-          enrollmentsWithScore.reduce((sum, e) => sum + (e.score || 0), 0) /
-            enrollmentsWithScore.length,
+          scoredEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) / scoredEnrollments.length,
         )
       : 0;
 
@@ -451,7 +491,7 @@ export async function getDashboardData() {
       year: d.getFullYear(),
     };
   }).map(({ month, monthIdx, year }) => {
-    const inMonth = enrollmentsWithScore.filter((e) => {
+    const inMonth = scoredEnrollments.filter((e) => {
       if (!e.completedAt) return false;
       const c = new Date(e.completedAt);
       return c.getMonth() === monthIdx && c.getFullYear() === year;
@@ -471,17 +511,15 @@ export async function getDashboardData() {
     const quiz = course.lessons.find((l) => l.quiz)?.quiz;
     const passingScore = quiz?.passingScore || 70;
 
-    // Filter valid enrollments with scores
-    const validEnrollments = course.enrollments.filter((e) => e.score !== null);
+    // Scores of enrollments that have been graded for this course.
+    const validScores = scoresByCourse.get(course.id) ?? [];
 
-    const passCount = validEnrollments.filter((e) => (e.score || 0) >= passingScore).length;
-    const failCount = validEnrollments.filter((e) => (e.score || 0) < passingScore).length;
+    const passCount = validScores.filter((score) => score >= passingScore).length;
+    const failCount = validScores.filter((score) => score < passingScore).length;
 
     const avgScore =
-      validEnrollments.length > 0
-        ? Math.round(
-            validEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) / validEnrollments.length,
-          )
+      validScores.length > 0
+        ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
         : 0;
 
     return {
@@ -502,22 +540,25 @@ export async function getDashboardData() {
     string,
     { hasCompleted: boolean; hasInProgress: boolean; hasNotStarted: boolean }
   >();
-  for (const e of enrollments) {
-    const entry = enrollmentsByUser.get(e.userId) ?? {
+  for (const row of userStatusCounts) {
+    const entry = enrollmentsByUser.get(row.userId) ?? {
       hasCompleted: false,
       hasInProgress: false,
       hasNotStarted: false,
     };
-    if (e.status === 'completed' || e.status === 'attested') {
+    if (row.status === 'completed' || row.status === 'attested') {
       entry.hasCompleted = true;
-    } else if (e.status === 'in_progress') {
+    } else if (row.status === 'in_progress') {
       entry.hasInProgress = true;
     } else {
       // 'enrolled' / 'assigned' — course has been assigned but not yet started
       entry.hasNotStarted = true;
     }
-    enrollmentsByUser.set(e.userId, entry);
+    enrollmentsByUser.set(row.userId, entry);
   }
+
+  // Distinct staff with at least one enrollment across this admin's courses.
+  const totalStaffAssigned = enrollmentsByUser.size;
 
   let staffCompleted = 0;
   let staffInProgress = 0;
@@ -973,7 +1014,7 @@ export async function createFullCourse(data: {
 
     const newUserPromises = newEmails.map(async (email) => {
       const tempPassword = crypto.randomBytes(8).toString('hex');
-      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_COST);
 
       // Create user + profile
       const newUser = await prisma.user.create({
