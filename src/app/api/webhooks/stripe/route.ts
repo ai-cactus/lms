@@ -145,6 +145,58 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ received: true });
 }
 
+type SubscriptionDiscountFields = {
+  discountPromoCode: string | null;
+  discountCouponName: string | null;
+  discountPercentOff: number | null;
+  discountAmountOff: number | null;
+  discountCurrency: string | null;
+  discountDuration: string | null;
+  discountEndsAt: Date | null;
+};
+
+const NO_DISCOUNT: SubscriptionDiscountFields = {
+  discountPromoCode: null,
+  discountCouponName: null,
+  discountPercentOff: null,
+  discountAmountOff: null,
+  discountCurrency: null,
+  discountDuration: null,
+  discountEndsAt: null,
+};
+
+// Webhook payloads carry `discounts` as ID strings only (Stripe never expands
+// event objects), so when a discount is present retrieve the subscription once
+// with coupon + promotion code expanded. All-null when no discount, so the
+// upsert clears stale values automatically.
+async function extractDiscountFields(
+  sub: Stripe.Subscription,
+): Promise<SubscriptionDiscountFields> {
+  if (!sub.discounts || sub.discounts.length === 0) return NO_DISCOUNT;
+
+  const expanded = await getStripeClient().subscriptions.retrieve(sub.id, {
+    expand: ['discounts.promotion_code', 'discounts.source.coupon'],
+  });
+
+  // Only the first (subscription-level) discount is displayed; Checkout promo
+  // entry applies at most one.
+  const discount = expanded.discounts.find((d): d is Stripe.Discount => typeof d !== 'string');
+  if (!discount) return NO_DISCOUNT;
+
+  const coupon = typeof discount.source.coupon === 'string' ? null : discount.source.coupon;
+  const promo = typeof discount.promotion_code === 'string' ? null : discount.promotion_code;
+
+  return {
+    discountPromoCode: promo?.code ?? null,
+    discountCouponName: coupon?.name ?? null,
+    discountPercentOff: coupon?.percent_off ?? null,
+    discountAmountOff: coupon?.amount_off ?? null,
+    discountCurrency: coupon?.currency ?? null,
+    discountDuration: coupon?.duration ?? null,
+    discountEndsAt: discount.end ? new Date(discount.end * 1000) : null,
+  };
+}
+
 async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   // Resolve the organization from the Stripe customer ID
   const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
@@ -200,6 +252,11 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
     return;
   }
 
+  // Reconcile the active Stripe discount (promo code applied at Checkout, or a
+  // coupon applied directly in the dashboard). Recomputed on every upsert so a
+  // removed/expired discount clears the persisted columns automatically.
+  const discountFields = await extractDiscountFields(sub);
+
   const pausedAt = isPaused ? (existing?.pausedAt ?? new Date()) : null;
   // F-040: a pause originating from the Stripe portal has no pauseEndsAt of our
   // own. Leaving it null makes getPauseState() report 'paused' forever — the
@@ -228,6 +285,7 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         cancelAtPeriodEnd: sub.cancel_at_period_end,
         pausedAt,
         pauseEndsAt,
+        ...discountFields,
       },
       update: {
         stripeSubscriptionId: sub.id,
@@ -240,6 +298,7 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         cancelAtPeriodEnd: sub.cancel_at_period_end,
         pausedAt,
         pauseEndsAt,
+        ...discountFields,
       },
     }),
     prisma.organization.update({
@@ -252,6 +311,15 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
     msg: `[Stripe Webhook] Organization ${organization.id} — subscription ${sub.id} status: ${sub.status}`,
     hasAuditorAccess,
   });
+
+  if (discountFields.discountPercentOff !== null || discountFields.discountAmountOff !== null) {
+    logger.info({
+      msg: `[Stripe Webhook] Persisted discount for subscription ${sub.id}`,
+      promoCode: discountFields.discountPromoCode,
+      percentOff: discountFields.discountPercentOff,
+      endsAt: discountFields.discountEndsAt,
+    });
+  }
 }
 
 async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string) {

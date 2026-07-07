@@ -140,6 +140,11 @@ describe('POST /api/billing/subscription/checkout — THER-001 double-charge gua
     const body = await res.json();
 
     expect(stripeMock.checkout.sessions.create).toHaveBeenCalledOnce();
+    // Promo-code support: org admins must be able to redeem a dashboard-created
+    // promotion code on Stripe's hosted Checkout page.
+    expect(stripeMock.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({ allow_promotion_codes: true }),
+    );
     expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
     expect(stripeMock.subscriptions.retrieve).not.toHaveBeenCalled();
     expect(body).toEqual({ url: 'https://checkout.stripe.com/session_1' });

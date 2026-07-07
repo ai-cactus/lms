@@ -32,6 +32,7 @@ const { prismaMock, stripeMock } = vi.hoisted(() => {
   };
   const stripeMock = {
     webhooks: { constructEvent: vi.fn() },
+    subscriptions: { retrieve: vi.fn() },
   };
   return { prismaMock, stripeMock };
 });
@@ -76,6 +77,9 @@ function stripeSubscription(overrides: Record<string, unknown> = {}) {
       ],
     },
     billing_cycle_anchor: 1700000000,
+    // No active discount by default; individual discount-persistence tests
+    // override this with populated Stripe discount ID strings.
+    discounts: [],
     ...overrides,
   };
 }
@@ -252,6 +256,148 @@ describe('POST /api/webhooks/stripe — F-014 retryable errors', () => {
     expect(res.status).toBe(500);
     // The event must NOT be recorded as processed when the handler failed, so a
     // redelivery can succeed.
+    expect(prismaMock.processedWebhookEvent.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/webhooks/stripe — discount persistence', () => {
+  it('expands the subscription and persists promo code + percent-off + end date when a discount is present', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const incoming = stripeSubscription({ id: 'sub_promo', discounts: ['di_1'] });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_promo',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+    stripeMock.subscriptions.retrieve.mockResolvedValue({
+      discounts: [
+        {
+          source: {
+            coupon: {
+              name: 'Launch Promo',
+              percent_off: 100,
+              amount_off: null,
+              currency: null,
+              duration: 'repeating',
+            },
+          },
+          promotion_code: { code: 'LAUNCH100' },
+          end: 1735689600,
+        },
+      ],
+    });
+
+    const res = await POST(makeReq('{}'));
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.subscriptions.retrieve).toHaveBeenCalledWith('sub_promo', {
+      expand: ['discounts.promotion_code', 'discounts.source.coupon'],
+    });
+
+    const expectedDiscountFields = {
+      discountPromoCode: 'LAUNCH100',
+      discountCouponName: 'Launch Promo',
+      discountPercentOff: 100,
+      discountAmountOff: null,
+      discountCurrency: null,
+      discountDuration: 'repeating',
+      discountEndsAt: new Date(1735689600 * 1000),
+    };
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining(expectedDiscountFields),
+        update: expect.objectContaining(expectedDiscountFields),
+      }),
+    );
+  });
+
+  it('falls back to the coupon name when a bare coupon is applied from the dashboard (no promotion code)', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const incoming = stripeSubscription({ id: 'sub_dashboard_coupon', discounts: ['di_2'] });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_dashboard_coupon',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+    stripeMock.subscriptions.retrieve.mockResolvedValue({
+      discounts: [
+        {
+          source: {
+            coupon: {
+              name: 'Dashboard Coupon',
+              percent_off: 50,
+              amount_off: null,
+              currency: null,
+              duration: 'forever',
+            },
+          },
+          promotion_code: null,
+          end: null,
+        },
+      ],
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          discountPromoCode: null,
+          discountCouponName: 'Dashboard Coupon',
+          discountEndsAt: null,
+        }),
+      }),
+    );
+  });
+
+  it('does not retrieve the subscription and clears all discount fields when discounts is empty', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const incoming = stripeSubscription({ id: 'sub_no_promo', discounts: [] });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_no_promo',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(stripeMock.subscriptions.retrieve).not.toHaveBeenCalled();
+
+    const noDiscount = {
+      discountPromoCode: null,
+      discountCouponName: null,
+      discountPercentOff: null,
+      discountAmountOff: null,
+      discountCurrency: null,
+      discountDuration: null,
+      discountEndsAt: null,
+    };
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining(noDiscount),
+        update: expect.objectContaining(noDiscount),
+      }),
+    );
+  });
+
+  it('returns 500 and leaves the event unrecorded (redelivery-safe) when the expand retrieve rejects', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const incoming = stripeSubscription({ id: 'sub_retrieve_fails', discounts: ['di_3'] });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_retrieve_fails',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+    stripeMock.subscriptions.retrieve.mockRejectedValue(new Error('Stripe API error'));
+
+    const res = await POST(makeReq('{}'));
+
+    expect(res.status).toBe(500);
+    expect(prismaMock.subscription.upsert).not.toHaveBeenCalled();
     expect(prismaMock.processedWebhookEvent.create).not.toHaveBeenCalled();
   });
 });
