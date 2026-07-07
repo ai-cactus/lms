@@ -344,6 +344,10 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                               label: 'Assign Retake',
                               icon: <RotateCcw className="size-4" />,
                               separatorBefore: true,
+                              // Retakes only exist for locked enrollments (quiz
+                              // attempts exhausted) — assignRetake rejects any
+                              // other status, so don't offer it.
+                              disabled: enrollment.status !== 'locked',
                               onSelect: () =>
                                 setRetakeEnrollment({
                                   id: enrollment.id,

@@ -1,71 +1,48 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Quiz Flows', () => {
+const SEEDED_COURSE_TITLE = 'E2E Compliance Training';
 
-  test('ENG-020: Clicking 4th option highlights the correct option instead of the 1st', async ({ page }) => {
-    // Visit /login
+test.describe('Quiz Flows', () => {
+  test('ENG-020: Clicking the 4th option highlights that option, not the 1st', async ({ page }) => {
     await page.goto('/login');
-    
-    // Login as worker (since the seed script provides 'sarah.johnson@company.com')
+
+    // Seeded worker with an in-progress enrollment in the compliance course.
     await page.fill('input[type="email"]', 'sarah.johnson@company.com');
     await page.fill('input[type="password"]', 'TestPassword123!');
     await page.click('button[type="submit"]');
 
-    // Wait for dashboard load
-    await page.waitForURL('**/dashboard');
+    // Workers land on /worker, not /dashboard.
+    await page.waitForURL('**/worker');
 
-    // Click on a course card to open it
-    await page.click('div[class*="courseCard"] >> nth=0');
+    // Open the seeded course from the worker dashboard list (target by title so
+    // the test doesn't depend on row order), then enter the course player.
+    await page.getByText(SEEDED_COURSE_TITLE).first().click();
+    await page.waitForURL('**/worker/courses/**');
+    await page.getByRole('button', { name: /continue course|start course|resume course/i }).click();
+    await page.waitForURL('**/learn/**');
 
-    // We assume the first course opens a detailed view or starts automatically. 
-    // In our seed, 'worker1' should have an enrolled course.
-    // If there's a "Start Course" button or "Resume Course", click it.
-    const startBtn = page.locator('button:has-text("Start Course"), button:has-text("Resume Course")').first();
-    // Wait for the page or modal
-    await startBtn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => null);
-    if(await startBtn.isVisible()){
-        await startBtn.click();
-    }
+    // From the lesson, proceed to the quiz. The "Proceed to Quiz" CTA
+    // (src/app/learn/[id]/page.tsx's onProceedToQuiz handler) unlocks the quiz
+    // and jumps straight to the intro screen — it does NOT show the "Ready for
+    // the Quiz?" gate modal (that modal only appears via the "Next" lesson
+    // navigation button when the quiz isn't yet unlocked, a different path).
+    await page.getByRole('button', { name: 'Proceed to Quiz' }).click();
 
-    // Now inside the course player, wait for an "Assessment" or "Quiz" button to appear OR just navigate there
-    const quizTab = page.locator('text=Assessment').first();
-    await quizTab.waitFor({ state: 'visible', timeout: 5000 }).catch(() => null);
-    if(await quizTab.isVisible()){
-       await quizTab.click();
-    }
-    
-    // If there's a "Start quiz" button inside the assessment
-    const startQuizBtn = page.locator('button:has-text("Start Quiz")').first();
-    await startQuizBtn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => null);
-    if(await startQuizBtn.isVisible()){
-        await startQuizBtn.click();
-    }
+    // Start the quiz from the intro screen.
+    await expect(page.getByRole('button', { name: 'Start Quiz' })).toBeVisible();
+    await page.getByRole('button', { name: 'Start Quiz' }).click();
 
-    // Now we should see the quiz options mapping over [A, B, C, D]
-    // The option components have text strings. Let's find all the option labels.
-    // Assuming the labels are A, B, C, D or texts.
-    const optionLabels = page.locator('div[class*="optionIcon"] span');
-    await optionLabels.nth(3).waitFor({ state: 'visible' });
+    // Options expose data-quiz-option (0-based index) and data-selected hooks.
+    const options = page.locator('[data-quiz-option]');
+    await expect(options).toHaveCount(4);
 
-    // Click the 4th option (Index 3)
-    await page.locator('div[class*="optionContainer"], div[class*="quizOption"]').nth(3).click();
+    const firstOption = page.locator('[data-quiz-option="0"]');
+    const fourthOption = page.locator('[data-quiz-option="3"]');
 
-    // Verify option D is highlighted. 
-    // Usually it sets a selected style or class. We can check either classname or border colors.
-    // We'll rely on the class name `isSelected` or similar, or just verify the 1st option did NOT get selected.
-    
-    // We check that the 1st option is not selected
-    const option1 = page.locator('div[class*="optionContainer"], div[class*="quizOption"]').nth(0);
-    const option4 = page.locator('div[class*="optionContainer"], div[class*="quizOption"]').nth(3);
-
-    // Let's check attributes, typically nextjs applications put a custom data-attribute or class for selected states,
-    // e.g., class*="selected" or class*="active"
-    const class4 = await option4.getAttribute('class') || '';
-    const class1 = await option1.getAttribute('class') || '';
-    
-    // As per the bug (ENG-020), clicking D would highlight A. Let's strictly expect A is NOT highlighted.
-    // Since we don't know the exact class name "selected" securely, we can assert class differences.
-    expect(class4).not.toEqual(class1);
+    // Click the 4th option and assert IT is selected while the 1st is not
+    // (ENG-020 regression: selecting D used to highlight A).
+    await fourthOption.click();
+    await expect(fourthOption).toHaveAttribute('data-selected', 'true');
+    await expect(firstOption).toHaveAttribute('data-selected', 'false');
   });
-
 });
