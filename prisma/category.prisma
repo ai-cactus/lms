@@ -56,18 +56,18 @@ model StandardManual {
 /// The `embedding` column is a 768-dimensional pgvector column managed via raw SQL.
 /// All vector reads/writes use prisma.$queryRaw / prisma.$executeRaw.
 model ManualChunk {
-  id         String                @id @default(uuid())
-  manualId   String                @map("manual_id")
-  chunkIndex Int                   @map("chunk_index")
-  pageNumber Int?                  @map("page_number")
+  id         String                      @id @default(uuid())
+  manualId   String                      @map("manual_id")
+  chunkIndex Int                         @map("chunk_index")
+  pageNumber Int?                        @map("page_number")
   content    String
   /// 768-dimensional pgvector column. Managed exclusively via raw SQL
   /// (prisma.$queryRaw / prisma.$executeRaw); Prisma cannot read/write it.
   /// Declared here only so `prisma migrate dev` does not plan to DROP the
   /// column that migration 20260504100000 added out-of-band.
   embedding  Unsupported("vector(768)")?
-  createdAt  DateTime              @default(now()) @map("created_at")
-  manual     StandardManual        @relation(fields: [manualId], references: [id], onDelete: Cascade)
+  createdAt  DateTime                    @default(now()) @map("created_at")
+  manual     StandardManual              @relation(fields: [manualId], references: [id], onDelete: Cascade)
   categories ManualChunkCategory[]
 
   @@index([manualId])

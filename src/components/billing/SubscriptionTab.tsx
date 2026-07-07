@@ -189,7 +189,7 @@ export default function SubscriptionTab({
   const router = useRouter();
   const pauseState = getPauseState({ status: null, pausedAt, pauseEndsAt });
   const isPaused = pauseState !== 'none';
-  const [cycle, setCycle] = useState<BillingCycle>('monthly');
+  const [cycle, setCycle] = useState<BillingCycle>('yearly');
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
