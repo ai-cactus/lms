@@ -8,3 +8,5 @@
 - [audit-fx regression patterns](audit-fx-regression-patterns.md) — F-009/F-010 org isolation, F-039 score fallback, F-048/F-038 leak fixes; revert-and-confirm verification technique
 - [Quiz attempt route tests (F-031)](quiz-attempt-route-tests.md) — start/save/submit append-history tx-mock pattern, boundary-score generation, flagged allowedAttempts null inconsistency
 - [getDashboardData test patterns](get-dashboard-data-test-patterns.md) — dual groupBy branch-by-args mocking, "failed" status quirk in coverage, totalStaff vs totalOrgStaff, F-028 perf guard
+- [WSL2 Playwright browser install](wsl2-playwright-browser-install.md) — ubuntu26.04 unsupported by Playwright; use PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64
+- [E2E local AUTH_URL env trap (RESOLVED)](e2e-local-auth-url-env-trap.md) — local runs need AUTH_URL exported too, not just NEXTAUTH_URL, or logins redirect to a dead origin
