@@ -7,7 +7,6 @@ import { FileUpload, TagInput } from '@/components/ui';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Stepper from '@/components/onboarding/Stepper';
-import * as XLSX from 'xlsx';
 import type { OnboardingData } from '@/app/actions/onboarding-complete';
 import { logger } from '@/lib/logger';
 
@@ -47,7 +46,11 @@ export default function OnboardingStep4() {
       // Add Step 4 data
       allData.step4 = { workerEmails: allEmails };
 
-      logger.info({ msg: 'Submitting Full Onboarding Data:', data: allData });
+      logger.info({
+        msg: '[onboarding] Submitting full onboarding data',
+        stepCount: Object.keys(allData).length,
+        inviteCount: allEmails.length,
+      });
 
       // 2. Call Server Action
       const { completeOnboarding } = await import('@/app/actions/onboarding-complete');
@@ -83,6 +86,9 @@ export default function OnboardingStep4() {
     setError('');
 
     try {
+      // xlsx is ~1MB — load it only when a file is actually parsed so it stays
+      // out of the initial onboarding bundle.
+      const XLSX = await import('xlsx');
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
 
@@ -134,7 +140,7 @@ export default function OnboardingStep4() {
 
   return (
     <div className="w-full max-w-[1000px]">
-      <Stepper currentStep={5} />
+      <Stepper currentStep={4} />
 
       <h1 className="mb-2 text-center text-[22px] font-bold text-foreground md:text-[28px]">
         Invite your Workers/Staffs

@@ -41,26 +41,11 @@ function getEnvBadge(): { label: string; className: string } {
   return { label: 'Production', className: 'bg-[#fee2e2] text-[#991b1b]' };
 }
 
-// Boot the manual-indexer BullMQ worker as a singleton on the Node.js process.
-// Must be imported here (Server Component) so it starts as soon as an
-// authenticated system-admin page loads. This is a no-op after the first call.
-import('@/lib/queue/manual-indexer-worker').then(({ getManualIndexerWorker }) => {
-  getManualIndexerWorker();
-});
-
-// Boot the video-transcode BullMQ worker (normalizes uploaded course videos to
-// a web-safe, faststart MP4). Same singleton lifecycle as the indexer above.
-import('@/lib/queue/video-transcode-worker').then(({ getVideoTranscodeWorker }) => {
-  getVideoTranscodeWorker();
-});
-
-// Boot the orphaned-video-object sweeper worker (reconciles the system/videos/
-// prefix against the DB on a cron and reclaims orphans). Same singleton
-// lifecycle; it installs its own repeatable schedule and is a no-op when
-// VIDEO_SWEEP_ENABLED=false.
-import('@/lib/queue/video-sweep-worker').then(({ getVideoSweepWorker }) => {
-  getVideoSweepWorker();
-});
+// NOTE: Background BullMQ workers + cron sweeps (manual-indexer, video-transcode,
+// video-sweep, reminder-sweep) are booted at server startup from
+// src/instrumentation.ts (F-005), NOT here — coupling their liveness to this
+// admin page meant they silently stopped after any restart until someone opened
+// /system. Do not re-add worker-boot side effects to this layout.
 
 export default async function SystemLayout({ children }: { children: React.ReactNode }) {
   // If env var not set, return 404 — invisible in production

@@ -17,6 +17,18 @@ import type * as Prisma from "../internal/prismaNamespace"
  * System-wide course categories.
  * isSystem = true  → seeded by Prisma/migration, visible to all orgs.
  * isSystem = false → created by an org admin, scoped to their organization.
+ * 
+ * F-052: `slug` is unique *per organization* rather than globally, so different
+ * orgs may reuse the same slug. Enforced by the `@@unique([organizationId, slug])`
+ * composite below (`course_categories_organization_id_slug_key`).
+ * 
+ * NOTE: In Postgres a composite unique treats NULLs as DISTINCT, so the composite
+ * alone does NOT stop two *system* categories (organization_id IS NULL) from
+ * sharing a slug. To preserve the previous global-uniqueness guarantee for system
+ * slugs, the migration `20260706120001_enrollment_category_uniques` also adds a
+ * raw partial unique index `course_categories_system_slug_key` on (slug)
+ * WHERE organization_id IS NULL. That partial index is NOT expressible in Prisma
+ * and lives only at the DB level.
  */
 export type CourseCategoryModel = runtime.Types.Result.DefaultSelection<Prisma.$CourseCategoryPayload>
 
@@ -220,11 +232,12 @@ export type CourseCategoryOrderByWithRelationInput = {
 
 export type CourseCategoryWhereUniqueInput = Prisma.AtLeast<{
   id?: string
-  slug?: string
+  organizationId_slug?: Prisma.CourseCategoryOrganizationIdSlugCompoundUniqueInput
   AND?: Prisma.CourseCategoryWhereInput | Prisma.CourseCategoryWhereInput[]
   OR?: Prisma.CourseCategoryWhereInput[]
   NOT?: Prisma.CourseCategoryWhereInput | Prisma.CourseCategoryWhereInput[]
   name?: Prisma.StringFilter<"CourseCategory"> | string
+  slug?: Prisma.StringFilter<"CourseCategory"> | string
   description?: Prisma.StringNullableFilter<"CourseCategory"> | string | null
   isSystem?: Prisma.BoolFilter<"CourseCategory"> | boolean
   organizationId?: Prisma.StringNullableFilter<"CourseCategory"> | string | null
@@ -232,7 +245,7 @@ export type CourseCategoryWhereUniqueInput = Prisma.AtLeast<{
   organization?: Prisma.XOR<Prisma.OrganizationNullableScalarRelationFilter, Prisma.OrganizationWhereInput> | null
   courses?: Prisma.CourseListRelationFilter
   manualMappings?: Prisma.ManualChunkCategoryListRelationFilter
-}, "id" | "slug">
+}, "id" | "organizationId_slug">
 
 export type CourseCategoryOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -335,6 +348,11 @@ export type CourseCategoryUncheckedUpdateManyInput = {
   isSystem?: Prisma.BoolFieldUpdateOperationsInput | boolean
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+}
+
+export type CourseCategoryOrganizationIdSlugCompoundUniqueInput = {
+  organizationId: string
+  slug: string
 }
 
 export type CourseCategoryCountOrderByAggregateInput = {

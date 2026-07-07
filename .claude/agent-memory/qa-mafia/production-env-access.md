@@ -1,0 +1,39 @@
+---
+name: production-env-access
+description: Production LMS URL, multi-step email signup flow, and verification-gated login behavior
+metadata:
+  type: reference
+---
+
+**Production URL:** https://training.theraptly.com/ — distinct from [[staging-env-access]]'s staging-lms.theraptly.com. Landing page has "Sign in" (top-right) and "Start for free →" (hero + repeated CTAs) linking to `/login` and `/signup` respectively.
+
+**Email signup is a 3-step flow, not a single form:**
+1. `/signup` — First Name, Last Name, Email, Password, Confirm Password, Terms checkbox (Radix checkbox, same pattern as [[signup-test-patterns]]). Live password-strength widget ("Very Strong" etc.) with a 5-item checklist (12+ chars, upper, lower, number, special char). Submit button stays `disabled` until all fields valid + terms checked — this step appears to be **client-side only** (no network POST fires here).
+2. `/signup/role-selection` — choose "Health Service Provider (Admin)" (pre-selected/pressed by default) vs "Worker", then click Continue. **This is where the account is actually created** — network log shows `POST /signup/role-selection => 200`.
+3. `/verify-email` — "Check your email" screen: states link expires in 24 hours, has "Resend Email" button and "Use a different email" link back to `/signup`. Verification is **link-based** (copy says "click the link"), not an OTP/code, per the on-screen copy — confirm this before assuming an OTP input exists.
+
+**No org/company field appears anywhere in this 3-step signup — confirmed (2026-07-01) it's collected post-verification instead.** After email verification + first login, `/dashboard` shows a mandatory-looking modal ("Welcome to the Compliance and Training Management portal") with a single "Activate your account" CTA. **This modal is NOT reliable/reproducible** — it appeared on the very first post-verification dashboard visit but did NOT reappear on a subsequent fresh login/reload before onboarding was completed (console showed a different `[ModalContext] Activating modal: dashboardEmptyState` instead). Don't rely on it as a gate — navigate directly to `/onboarding/step1` to reach the wizard regardless of whether the modal shows.
+
+**Onboarding wizard — full walkthrough completed 2026-07-01 (Phase 1b), all details in `qa-reports/phase-1b-onboarding-activation.md`:**
+1. `/onboarding/step1` **Org details** — Legal Business Name*, DBA*, EIN (optional), Number of Staff* (dropdown: 1-10/11-49/50-499/500+), Primary Contact Name/Email*, Country (pre-filled "United States"), Phone*, Street Address*, Zip*, City*, State* (dropdown). "Next" fires `POST /onboarding/step1` (this is the ONLY step with its own server POST — see below).
+2. `/onboarding/step2` **Credentialing** — State Healthcare License Number (optional), HIPAA Compliance Confirmation* (Yes/No dropdown), optional file upload. "Next" advances with NO server POST — console confirms `"Step 2 Data Saved Locally"` (client-state only).
+3. `/onboarding/step3` **Services** — Primary Business Type* (Solo/Group Practice/Clinic/Hospital), Additional Business Type* (None/Non-Profit/Private/Public), Program Services checkboxes (Aging, Behavioral Health, Child & Youth, Employment & Community, Medical Rehab, Opioid Treatment, Vision Rehab). "Next" advances, also client-state only (no POST observed).
+4. `/onboarding/step4` **IMPORTANT — the stepper sidebar lists TWO separate steps here ("4. Invite Team Members" and "5. Invite Workers") but there is only ONE actual screen/field** (heading "Invite your Workers/Staffs"): a single tag-style email input (type + Enter/comma to add chips), plus a CSV-import alternative. Both a "team member" invite and a "worker" invite land in the exact same field with **no role/type selector** — the final payload logs them together as one undifferentiated `workerEmails` array. Filed as ISSUE 1 in the phase-1b report — confirm with product whether this is intentional before assuming invited "team members" get different permissions than "workers".
+5. Clicking **"Complete Onboarding"** on step4 fires the real submission: `POST /onboarding/step4 => 200`, bundling ALL of steps 1–4 together in one payload (confirmed via console log `"Submitting Full Onboarding Data:"`) — i.e. steps 2–3's client-only state finally gets persisted here, together with the org data and invites, in a single atomic submit. Redirects to `/onboarding/complete` ("You're all Set!") → "Go to Dashboard" → `/dashboard` with the activation modal gone for good.
+6. Invited emails appear on `/dashboard/staff` (Staff Management) with a **"Pending"** badge / **"Pending Invite"** subtext / "just now" timestamp — this is the reliable way to confirm an invite was created, rather than relying on the dashboard's "Total Staff Assigned" stat (which stays at 0 for pending/unassigned invitees — likely counts course-assigned staff, not merely invited ones).
+
+**CAUTION — PII logged to browser console in production:** the onboarding wizard logs full unmasked form data via `console.info` at multiple points (`"Step 1 Data Saved Locally"`, `"Step 2 Data Saved Locally"`, `"Submitting Full Onboarding Data"`), including primary contact email, EIN, phone, street address, and both invitee emails in plaintext. Filed as ISSUE 2 in phase-1b report — this is a recurring pattern (cf. the staging plaintext-password-in-console finding in [[staging-env-access]]), worth checking for on any new page/flow tested.
+
+**Recurring cosmetic warning:** every `<Select>`/combobox interaction in the onboarding wizard fires a React "Select is changing from uncontrolled to controlled" console warning — harmless (values submit correctly) but appears throughout steps 1–3.
+
+**CAUTION when completing this wizard on production:** step 4/5 (invites) sends real invite emails and creates a "Pending" staff-management entry — only do this with explicitly authorized, watched test addresses (e.g. `+staff1@`/`+worker1@` plus-addressed variants of a controlled inbox), and only when the user has explicitly authorized inviting real-looking addresses on production.
+
+**Email verification is a two-step confirm, not an auto-verify-on-link-click:** visiting the emailed link (`/api/auth/verify?token=...`) 307-redirects to `/verify?token=...`, an interstitial "Welcome to Theraptly" page requiring an explicit "Verify Email Address" button click. That fires `POST /api/auth/verify` (200) and redirects to `/login?verified=true` with a green "Email verified successfully!" alert.
+
+**Unverified-account login behavior:** Logging in with the exact correct email+password of a newly-signed-up, not-yet-verified account is blocked, but the error shown is the generic **"Invalid credentials."** — identical to a wrong-password case. This is a UX/copy issue (misleading for legitimately-correct-but-unverified users), filed as ISSUE 1 in `qa-reports/phase-1-onboarding-email.md`. Login IS correctly gated on verification (functional behavior is right), just the messaging doesn't disambiguate.
+
+**No raw-password console leak reproduced on production login** (2026-07-01) — contrast with the staging finding in [[staging-env-access]] (`[Login Client] Submit clicked!` logging plaintext password). Only a generic `[login] Error returned from action ... errRaw:"Invalid credentials."` log appears here, no password. Re-verify if retesting staging vs prod — may be a version/environment difference, not a fix.
+
+**Gmail plus-addressing (`+suffix@gmail.com`) is accepted without validation issue** on the production signup email field — safe pattern for generating fresh test emails against one watched inbox.
+
+**Cloudflare challenge-platform network call** (`POST /cdn-cgi/challenge-platform/...`) fires silently during signup with a 200 — no visible CAPTCHA/user-facing challenge blocking the flow as of 2026-07-01.

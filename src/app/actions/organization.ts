@@ -4,6 +4,9 @@ import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
+import { headers } from 'next/headers';
+import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 
 interface OrganizationUpdateData {
   name?: string;
@@ -18,6 +21,7 @@ interface OrganizationUpdateData {
   state?: string;
   zipCode?: string;
   city?: string;
+  timezone?: string;
   licenseNumber?: string;
   isHipaaCompliant?: boolean;
   // Services fields (Step 3 data)
@@ -72,6 +76,7 @@ export async function updateOrganization(data: OrganizationUpdateData) {
         country: data.country,
         state: data.state,
         zipCode: data.zipCode,
+        timezone: data.timezone,
         licenseNumber: data.licenseNumber,
         isHipaaCompliant: data.isHipaaCompliant,
         primaryBusinessType: data.primaryBusinessType,
@@ -87,6 +92,19 @@ export async function updateOrganization(data: OrganizationUpdateData) {
       orgId: user.organizationId,
       userId: session.user.id,
     });
+
+    // F-001: record the sensitive settings mutation on the authorized path.
+    // Metadata is intentionally PII-free (no names/emails/addresses/EIN values).
+    await audit({
+      action: 'org.settings.update',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'organization',
+      targetId: user.organizationId,
+      ...getClientContext(await headers()),
+    });
+
     return { success: true };
   } catch (error) {
     logger.error({ msg: 'Error updating organization:', err: error });
@@ -179,6 +197,7 @@ export async function createOrganization(data: OrganizationCreationData) {
         address: data.streetAddress,
         zipCode: data.zipCode,
         state: data.state,
+        timezone: deriveTimezoneFromState(data.state),
         slug: `${data.legalName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${crypto.randomBytes(4).toString('hex')}`,
         isHipaaCompliant: false,
       },

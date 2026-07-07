@@ -47,6 +47,7 @@ model Organization {
   requireMfa               Boolean             @default(false) @map("require_mfa")
   complianceDocumentUrl    String?             @map("compliance_document_url")
   complianceDocumentName   String?             @map("compliance_document_name")
+  timezone                 String?             @map("timezone")
   users                    User[]
   createdAt                DateTime            @default(now()) @map("created_at")
   updatedAt                DateTime            @updatedAt @map("updated_at")
@@ -101,4 +102,17 @@ model Invoice {
 
   @@index([organizationId])
   @@map("invoices")
+}
+
+/// Idempotency ledger for Stripe webhook delivery. Each Stripe event is
+/// recorded here on first successful processing; a duplicate delivery of the
+/// same `stripeEventId` is rejected by the unique constraint so handlers run
+/// at most once. Intentionally decoupled from Subscription/Invoice (no FK).
+model ProcessedWebhookEvent {
+  id            String   @id @default(uuid())
+  stripeEventId String   @unique @map("stripe_event_id")
+  eventType     String   @map("event_type")
+  processedAt   DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_webhook_events")
 }

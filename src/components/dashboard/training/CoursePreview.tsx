@@ -190,7 +190,11 @@ export default function CoursePreview({
       <div className="relative -m-10 mb-10 bg-[#1a202c] px-6 py-10 text-white md:px-[60px]">
         <div className="relative mx-auto max-w-[1200px]">
           <Link
-            href={`/dashboard/training/courses/${course.id}`}
+            href={
+              mode === 'worker'
+                ? `/worker/courses/${course.id}`
+                : `/dashboard/training/courses/${course.id}`
+            }
             className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-[#a0aec0] no-underline hover:text-white"
           >
             <ArrowLeft className="size-4" aria-hidden="true" />

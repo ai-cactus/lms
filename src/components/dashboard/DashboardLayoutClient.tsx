@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   CreditCard,
   ChevronDown,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface DashboardLayoutClientProps {
@@ -157,6 +158,14 @@ export default function DashboardLayoutClient({
               >
                 <ClipboardCheck className="size-5" />
                 <span>Audit Reports</span>
+              </Link>
+
+              <Link
+                href="/dashboard/compliance"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/compliance') ? navItemActive : ''}`}
+              >
+                <ShieldAlert className="size-5" />
+                <span>Compliance</span>
               </Link>
             </div>
           )}

@@ -2,8 +2,13 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { validatePassword, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '@/lib/password-policy';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 import prisma from '@/lib/prisma';
+import { verifyCaptcha } from '@/lib/captcha';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { assertSeatAvailable, SeatLimitError } from '@/lib/seat-limits';
+import { audit, getClientContext } from '@/lib/audit';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -13,6 +18,8 @@ const acceptInviteSchema = z.object({
     .string()
     .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters long`)
     .max(PASSWORD_MAX_LENGTH, 'Password is too long'),
+  // Optional hCaptcha token; verified only when the feature is enabled (inert otherwise).
+  captchaToken: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -27,7 +34,34 @@ export async function POST(req: Request) {
       );
     }
 
-    const { token, firstName, lastName, password } = result.data;
+    const { token, firstName, lastName, password, captchaToken } = result.data;
+
+    // Bot verification — no-op unless hCaptcha is enabled (see src/lib/captcha.ts).
+    const ip =
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      req.headers.get('x-real-ip') ??
+      'unknown';
+
+    // F-037: rate-limit accept attempts per IP to blunt token brute-forcing and
+    // abuse. 10 attempts / 15 minutes, consistent with other auth endpoints.
+    // F-024: auth-critical — fail closed if Redis is down.
+    const rateLimit = await checkRateLimit(`invite-accept:${ip}`, 10, 900, { failClosed: true });
+    if (!rateLimit.allowed) {
+      logger.warn({ msg: '[invite] Accept-invite rate limit exceeded', ip });
+      return NextResponse.json(
+        { error: 'Too many attempts. Please try again later.' },
+        { status: 429 },
+      );
+    }
+
+    const captchaValid = await verifyCaptcha(captchaToken, ip);
+    if (!captchaValid) {
+      logger.warn({ msg: '[invite] Accept-invite captcha verification failed', ip });
+      return NextResponse.json(
+        { error: 'Captcha verification failed. Please try again.' },
+        { status: 400 },
+      );
+    }
 
     // Server-side password policy enforcement (beyond basic zod length checks)
     const pwCheck = validatePassword(password);
@@ -57,11 +91,18 @@ export async function POST(req: Request) {
     }
 
     // 4. Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     // 5. Create User and Profile within a transaction
     // Using transaction ensures atomicity
     const newUser = await prisma.$transaction(async (tx) => {
+      // F-022: re-check seat availability INSIDE the transaction so a seat that
+      // filled between invite issuance and acceptance (concurrent accepts, or
+      // seats consumed since the invite was sent) is caught race-safely. Counts
+      // workers against the org's plan staffMax via the shared BILLING_PLANS
+      // source; a no-op for unlimited plans / no active subscription.
+      await assertSeatAvailable(invite.organizationId, { seatsNeeded: 1, client: tx });
+
       const user = await tx.user.create({
         data: {
           email: invite.email,
@@ -88,8 +129,26 @@ export async function POST(req: Request) {
       return user;
     });
 
+    // F-001: invite accepted — a new credentialed account joined the org.
+    await audit({
+      action: 'auth.invite.accept',
+      actorId: newUser.id,
+      actorRole: invite.role,
+      organizationId: invite.organizationId ?? undefined,
+      targetType: 'invite',
+      targetId: invite.id,
+      ...getClientContext(req.headers),
+      metadata: { email: maskEmail(invite.email) },
+    });
+
     return NextResponse.json({ success: true, userId: newUser.id });
   } catch (error: unknown) {
+    // Seat limit hit between issuance and acceptance — surface a clear 409 with
+    // the user-safe message rather than a generic 500.
+    if (error instanceof SeatLimitError) {
+      logger.warn({ msg: '[invite] Accept blocked — plan seat limit reached' });
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     const err = error as Error;
     logger.error({ msg: 'Error accepting invite:', err: err });
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

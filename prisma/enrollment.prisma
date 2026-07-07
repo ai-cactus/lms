@@ -12,6 +12,29 @@ enum EnrollmentStatus {
   retry_requested
 }
 
+enum ReminderStage {
+  INITIAL_LAUNCH
+  FRIENDLY_REMINDER
+  URGENT_REMINDER
+  DAY_OF_DEADLINE
+  GRACE_SOFT_ESCALATION
+  HARD_ESCALATION
+}
+
+enum ReminderNudgeKind {
+  WORKER_RETAKE
+  ADMIN_REASSIGN
+}
+
+/// F-053: at most one *active* enrollment may exist per (user_id, course_id).
+/// "Active" = the in-flight statuses enrolled | assigned | in_progress |
+/// lessons_complete. Terminal/historical statuses (completed, attested, locked,
+/// failed, retry_requested) are excluded so retakes — which create a new
+/// enrollment while the prior one stays completed/failed — remain valid.
+/// This is enforced by a PARTIAL unique index
+/// (`enrollments_user_id_course_id_active_key ... WHERE status IN (...)`) added in
+/// migration `20260706120001_enrollment_category_uniques`. Prisma cannot express a
+/// partial/filtered unique, so it exists only at the DB level (no `@@unique` here).
 model Enrollment {
   id                   String            @id @default(uuid())
   userId               String            @map("user_id")
@@ -31,16 +54,20 @@ model Enrollment {
   retakeReason         String?           @map("retake_reason")
   assignmentId         String?           @map("assignment_id")
   accessAt             DateTime?         @map("access_at")
+  dueAt                DateTime?         @map("due_at")
   assignment           CourseAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
   course               Course            @relation(fields: [courseId], references: [id])
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   quizAttempts         QuizAttempt[]
   certificate          Certificate?
+  reminderLogs         ReminderLog[]
+  reminderNudges       ReminderNudge[]
 
   @@index([userId, courseId])
   @@index([courseId])
   @@index([completedAt])
   @@index([assignmentId])
+  @@index([status, dueAt])
   @@map("enrollments")
 }
 
@@ -60,4 +87,31 @@ model Certificate {
   @@index([userId])
   @@index([courseId])
   @@map("certificates")
+}
+
+model ReminderLog {
+  id           String        @id @default(uuid())
+  enrollmentId String        @map("enrollment_id")
+  stage        ReminderStage
+  channels     String[]      @default([])
+  targetDate   DateTime      @map("target_date")
+  sentAt       DateTime      @default(now()) @map("sent_at")
+  enrollment   Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, stage])
+  @@index([enrollmentId])
+  @@map("reminder_logs")
+}
+
+model ReminderNudge {
+  id           String            @id @default(uuid())
+  enrollmentId String            @map("enrollment_id")
+  kind         ReminderNudgeKind
+  lastSentAt   DateTime          @default(now()) @map("last_sent_at")
+  count        Int               @default(1)
+  enrollment   Enrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, kind])
+  @@index([enrollmentId])
+  @@map("reminder_nudges")
 }

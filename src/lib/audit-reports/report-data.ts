@@ -1,5 +1,9 @@
 // src/lib/audit-reports/report-data.ts
 import type {
+  AllCoursesReportInput,
+  AllCoursesReportResult,
+  AllStaffReportInput,
+  AllStaffReportResult,
   AuditScope,
   CourseReportInput,
   CourseReportResult,
@@ -11,11 +15,15 @@ import type {
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
+const rate = (completed: number, total: number): number =>
+  total > 0 ? Math.round((completed / total) * 100) : 0;
+
 export function buildCourseReport(input: CourseReportInput): CourseReportResult {
   return {
     scope: 'course',
     generatedAt: input.generatedAt.toISOString(),
     orgName: input.orgName,
+    period: input.period,
     course: input.course,
     quizRules: input.quizRules,
     documents: input.documents,
@@ -34,6 +42,7 @@ export function buildStaffReport(input: StaffReportInput): StaffReportResult {
     scope: 'staff',
     generatedAt: input.generatedAt.toISOString(),
     orgName: input.orgName,
+    period: input.period,
     staff: input.staff,
     transcript: input.enrollments.map((e) => ({
       courseTitle: e.courseTitle,
@@ -53,6 +62,7 @@ export function buildOrgReport(input: OrgReportInput): OrgReportResult {
     scope: 'org',
     generatedAt: input.generatedAt.toISOString(),
     orgName: input.orgName,
+    period: input.period,
     summary: input.summary,
     activity: input.enrollments.map((e) => ({
       staffName: e.staffName,
@@ -62,6 +72,46 @@ export function buildOrgReport(input: OrgReportInput): OrgReportResult {
       score: e.score,
       dateAssigned: e.dateAssigned.toISOString(),
       dateCompleted: iso(e.dateCompleted),
+    })),
+  };
+}
+
+/** Course-centric bulk report: one aggregated row per course. */
+export function buildAllCoursesReport(input: AllCoursesReportInput): AllCoursesReportResult {
+  return {
+    scope: 'all-courses',
+    generatedAt: input.generatedAt.toISOString(),
+    orgName: input.orgName,
+    period: input.period,
+    summary: input.summary,
+    courses: input.courses.map((c) => ({
+      courseTitle: c.courseTitle,
+      category: c.category,
+      type: c.type,
+      status: c.status,
+      assignedStaff: c.assignedStaff,
+      completed: c.completed,
+      completionRate: rate(c.completed, c.assignedStaff),
+    })),
+  };
+}
+
+/** Staff-centric bulk report: one aggregated row per staff member. */
+export function buildAllStaffReport(input: AllStaffReportInput): AllStaffReportResult {
+  return {
+    scope: 'all-staff',
+    generatedAt: input.generatedAt.toISOString(),
+    orgName: input.orgName,
+    period: input.period,
+    summary: input.summary,
+    staff: input.staff.map((s) => ({
+      staffName: s.staffName,
+      roleLabel: s.roleLabel,
+      email: s.email,
+      coursesAssigned: s.coursesAssigned,
+      coursesCompleted: s.coursesCompleted,
+      completionRate: rate(s.coursesCompleted, s.coursesAssigned),
+      lastActivity: iso(s.lastActivity),
     })),
   };
 }

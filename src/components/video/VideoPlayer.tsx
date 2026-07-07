@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { getVideoPlaybackUrl, saveVideoProgress } from '@/app/actions/video-progress';
+import {
+  SEEK_FORWARD_TOLERANCE_SECONDS,
+  clampSeekTarget,
+  watchedPctFromSeconds,
+} from '@/lib/video/gating';
 import { logger } from '@/lib/logger';
 
 interface VideoPlayerProps {
@@ -24,8 +29,15 @@ export function VideoPlayer({
   const [src, setSrc] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Furthest watched percentage (monotonically increasing)
-  const maxWatchedPctRef = useRef(0);
+  // Furthest position (seconds) genuinely reached through playback — the
+  // watch-through high-water mark. It only advances via small `timeupdate`
+  // increments (real playback), never via a forward seek, which defeats
+  // scrub-to-unlock. Seeded from the resumed position so returning learners
+  // don't have to re-watch already-watched content.
+  const maxWatchedSecondsRef = useRef(initialPositionSeconds);
+
+  // Last percentage reported to the parent, to avoid redundant callbacks.
+  const lastReportedPctRef = useRef(0);
 
   // Debounce / unmount guards
   const mountedRef = useRef(true);
@@ -104,6 +116,17 @@ export function VideoPlayer({
     }
   }
 
+  // ── Watch-gate helpers ───────────────────────────────────────────────────
+  /** Reports the current watched percentage upward, deduping unchanged values. */
+  function reportWatchedPct(durationSeconds: number) {
+    const pct = watchedPctFromSeconds(maxWatchedSecondsRef.current, durationSeconds);
+    if (pct !== lastReportedPctRef.current) {
+      lastReportedPctRef.current = pct;
+      onWatchedPct?.(pct);
+    }
+    return pct;
+  }
+
   // ── Video event handlers ─────────────────────────────────────────────────
   function handleLoadedMetadata(e: React.SyntheticEvent<HTMLVideoElement>) {
     const video = e.currentTarget;
@@ -112,32 +135,46 @@ export function VideoPlayer({
     }
   }
 
+  // Block scrub-to-unlock: snap forward seeks that jump past the watch-through
+  // high-water mark back to it. Rewinds (and small nudges within tolerance) are
+  // left untouched.
+  function handleSeeking(e: React.SyntheticEvent<HTMLVideoElement>) {
+    const video = e.currentTarget;
+    const clamped = clampSeekTarget(video.currentTime, maxWatchedSecondsRef.current);
+    if (clamped !== null) {
+      video.currentTime = clamped;
+    }
+  }
+
   function handleTimeUpdate(e: React.SyntheticEvent<HTMLVideoElement>) {
     const video = e.currentTarget;
     if (!video.duration) return;
 
-    const currentPct = (video.currentTime / video.duration) * 100;
-    const newMax = Math.max(maxWatchedPctRef.current, currentPct);
-
-    if (newMax !== maxWatchedPctRef.current) {
-      maxWatchedPctRef.current = newMax;
-      onWatchedPct?.(newMax);
+    // Advance the high-water mark ONLY on small forward steps — i.e. genuine
+    // playback. A larger jump means a seek slipped through (the seek handler
+    // clamps it), so it must never move the watched mark forward.
+    const delta = video.currentTime - maxWatchedSecondsRef.current;
+    if (delta > 0 && delta <= SEEK_FORWARD_TOLERANCE_SECONDS) {
+      maxWatchedSecondsRef.current = video.currentTime;
     }
 
-    persistProgress(video.currentTime, maxWatchedPctRef.current);
+    const pct = reportWatchedPct(video.duration);
+    // Persist the high-water mark (not the live position) so a reload seeds the
+    // gate from what was actually watched, never from a rewound position.
+    persistProgress(maxWatchedSecondsRef.current, pct);
   }
 
   function handlePause(e: React.SyntheticEvent<HTMLVideoElement>) {
     const video = e.currentTarget;
-    persistProgress(video.currentTime, maxWatchedPctRef.current, true);
+    if (!video.duration) return;
+    persistProgress(maxWatchedSecondsRef.current, reportWatchedPct(video.duration), true);
   }
 
   function handleEnded(e: React.SyntheticEvent<HTMLVideoElement>) {
     const video = e.currentTarget;
-    // Clamp to 100 on ended
-    maxWatchedPctRef.current = 100;
-    onWatchedPct?.(100);
-    persistProgress(video.currentTime, 100, true);
+    // Reaching the natural end means the whole video was watched.
+    maxWatchedSecondsRef.current = video.duration || maxWatchedSecondsRef.current;
+    persistProgress(maxWatchedSecondsRef.current, reportWatchedPct(video.duration), true);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -170,6 +207,7 @@ export function VideoPlayer({
       preload="metadata"
       className="w-full rounded-lg bg-black shadow-md"
       onLoadedMetadata={handleLoadedMetadata}
+      onSeeking={handleSeeking}
       onTimeUpdate={handleTimeUpdate}
       onPause={handlePause}
       onEnded={handleEnded}

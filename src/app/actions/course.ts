@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -8,6 +9,7 @@ import { notifyOrganizationAdmins } from './notifications';
 import { CourseWithStats, CourseWithRelations } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
 import { logger } from '@/lib/logger';
+import { resolveOnCompletion } from '@/lib/reminders/sweep';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -282,7 +284,7 @@ export async function updateCourse(
 }
 
 // Publish a course
-export async function publishCourse(courseId: string) {
+export async function publishCourse(courseId: string, opts?: { acknowledgeWarnings?: boolean }) {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -298,12 +300,41 @@ export async function publishCourse(courseId: string) {
     throw new Error('Course not found');
   }
 
+  // Publish-review gate (F-051): a course flagged for review cannot be published
+  // until the caller explicitly acknowledges the quality warnings.
+  if (existing.reviewRequired && !opts?.acknowledgeWarnings) {
+    logger.warn({
+      msg: '[course] publishCourse blocked: review required',
+      courseId,
+      userId: session.user.id,
+      warnings: existing.qualityWarnings.length,
+    });
+    return {
+      success: false as const,
+      error: 'This course has quality warnings and requires review before publishing.',
+      warnings: existing.qualityWarnings,
+    };
+  }
+
   const course = await prisma.course.update({
     where: { id: courseId },
-    data: { status: 'published' },
+    data: {
+      status: 'published',
+      // Clear the gate once warnings have been acknowledged and published.
+      ...(existing.reviewRequired ? { reviewRequired: false } : {}),
+    },
   });
 
-  logger.info({ msg: '[course] Course published', courseId, userId: session.user.id });
+  if (existing.reviewRequired) {
+    logger.info({
+      msg: '[course] Published with warnings acknowledged',
+      courseId,
+      userId: session.user.id,
+      warnings: existing.qualityWarnings,
+    });
+  } else {
+    logger.info({ msg: '[course] Course published', courseId, userId: session.user.id });
+  }
   revalidatePath('/dashboard/training');
   return course;
 }
@@ -339,24 +370,54 @@ export async function getDashboardData() {
     throw new Error('Unauthorized');
   }
 
-  // ⚡ Bolt: Single query replaces parallel getCourses() and getDashboardStats() calls,
-  // fixing an N+1/redundant query pattern and cutting database hits for dashboard in half.
-  const [coursesRaw, currentUser] = await Promise.all([
-    prisma.course.findMany({
-      where: { createdBy: session.user.id },
-      include: {
-        enrollments: true,
-        lessons: {
-          include: { quiz: true },
+  // F-028: avoid the unbounded `enrollments: true` materialization that pulled
+  // every enrollment row (all columns) for every course on each dashboard load.
+  // Counts and per-user coverage are now computed with grouped aggregation
+  // queries, and only the score-bearing enrollments are read — as a narrow
+  // { courseId, score, completedAt } projection — for the average / monthly /
+  // pass-fail stats that genuinely need row-level scores.
+  const createdBy = session.user.id;
+  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments, currentUser] =
+    await Promise.all([
+      prisma.course.findMany({
+        where: { createdBy },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          thumbnail: true,
+          status: true,
+          type: true,
+          duration: true,
+          createdAt: true,
+          updatedAt: true,
+          lessons: { select: { quiz: { select: { passingScore: true } } } },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { organizationId: true },
-    }),
-  ]);
+        orderBy: { createdAt: 'desc' },
+      }),
+      // Per-course enrollment totals + completed/attested tallies.
+      prisma.enrollment.groupBy({
+        by: ['courseId', 'status'],
+        where: { course: { createdBy } },
+        _count: { _all: true },
+      }),
+      // Per-user status tallies for training coverage + distinct staff assigned.
+      prisma.enrollment.groupBy({
+        by: ['userId', 'status'],
+        where: { course: { createdBy } },
+        _count: { _all: true },
+      }),
+      // Only scored enrollments, narrow projection — used for average grade,
+      // monthly performance and per-course pass/fail distribution.
+      prisma.enrollment.findMany({
+        where: { course: { createdBy }, score: { not: null } },
+        select: { courseId: true, score: true, completedAt: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { organizationId: true },
+      }),
+    ]);
 
   if (!currentUser?.organizationId) {
     // User authenticated but has no organization. We no longer force redirect here.
@@ -375,39 +436,48 @@ export async function getDashboardData() {
     });
   }
 
-  const courses: CourseWithStats[] = coursesRaw.map((course) => ({
-    id: course.id,
-    title: course.title,
-    description: course.description,
-    thumbnail: course.thumbnail,
-    status: course.status,
-    type: course.type,
-    duration: course.duration,
-    createdAt: course.createdAt,
-    updatedAt: course.updatedAt,
-    lessonsCount: course.lessons.length,
-    enrollmentsCount: course.enrollments.length,
-    completionRate:
-      course.enrollments.length > 0
-        ? Math.round(
-            (course.enrollments.filter((e) => e.status === 'completed' || e.status === 'attested')
-              .length /
-              course.enrollments.length) *
-              100,
-          )
-        : 0,
-  }));
+  // Per-course enrollment totals and completed/attested tallies (from groupBy).
+  const perCourseCounts = new Map<string, { total: number; completed: number }>();
+  for (const row of courseStatusCounts) {
+    const entry = perCourseCounts.get(row.courseId) ?? { total: 0, completed: 0 };
+    entry.total += row._count._all;
+    if (row.status === 'completed' || row.status === 'attested') {
+      entry.completed += row._count._all;
+    }
+    perCourseCounts.set(row.courseId, entry);
+  }
 
-  const enrollments = coursesRaw.flatMap((course) => course.enrollments);
+  const courses: CourseWithStats[] = coursesRaw.map((course) => {
+    const counts = perCourseCounts.get(course.id) ?? { total: 0, completed: 0 };
+    return {
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      thumbnail: course.thumbnail,
+      status: course.status,
+      type: course.type,
+      duration: course.duration,
+      createdAt: course.createdAt,
+      updatedAt: course.updatedAt,
+      lessonsCount: course.lessons.length,
+      enrollmentsCount: counts.total,
+      completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
+    };
+  });
+
+  // Group scored enrollments by course for the per-course performance stats.
+  const scoresByCourse = new Map<string, number[]>();
+  for (const e of scoredEnrollments) {
+    const arr = scoresByCourse.get(e.courseId) ?? [];
+    arr.push(e.score ?? 0);
+    scoresByCourse.set(e.courseId, arr);
+  }
 
   const totalCourses = coursesRaw.length;
-  const totalStaffAssigned = new Set(enrollments.map((e) => e.userId)).size;
-  const enrollmentsWithScore = enrollments.filter((e) => e.score !== null);
   const averageScore =
-    enrollmentsWithScore.length > 0
+    scoredEnrollments.length > 0
       ? Math.round(
-          enrollmentsWithScore.reduce((sum, e) => sum + (e.score || 0), 0) /
-            enrollmentsWithScore.length,
+          scoredEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) / scoredEnrollments.length,
         )
       : 0;
 
@@ -421,7 +491,7 @@ export async function getDashboardData() {
       year: d.getFullYear(),
     };
   }).map(({ month, monthIdx, year }) => {
-    const inMonth = enrollmentsWithScore.filter((e) => {
+    const inMonth = scoredEnrollments.filter((e) => {
       if (!e.completedAt) return false;
       const c = new Date(e.completedAt);
       return c.getMonth() === monthIdx && c.getFullYear() === year;
@@ -441,17 +511,15 @@ export async function getDashboardData() {
     const quiz = course.lessons.find((l) => l.quiz)?.quiz;
     const passingScore = quiz?.passingScore || 70;
 
-    // Filter valid enrollments with scores
-    const validEnrollments = course.enrollments.filter((e) => e.score !== null);
+    // Scores of enrollments that have been graded for this course.
+    const validScores = scoresByCourse.get(course.id) ?? [];
 
-    const passCount = validEnrollments.filter((e) => (e.score || 0) >= passingScore).length;
-    const failCount = validEnrollments.filter((e) => (e.score || 0) < passingScore).length;
+    const passCount = validScores.filter((score) => score >= passingScore).length;
+    const failCount = validScores.filter((score) => score < passingScore).length;
 
     const avgScore =
-      validEnrollments.length > 0
-        ? Math.round(
-            validEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) / validEnrollments.length,
-          )
+      validScores.length > 0
+        ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
         : 0;
 
     return {
@@ -472,22 +540,25 @@ export async function getDashboardData() {
     string,
     { hasCompleted: boolean; hasInProgress: boolean; hasNotStarted: boolean }
   >();
-  for (const e of enrollments) {
-    const entry = enrollmentsByUser.get(e.userId) ?? {
+  for (const row of userStatusCounts) {
+    const entry = enrollmentsByUser.get(row.userId) ?? {
       hasCompleted: false,
       hasInProgress: false,
       hasNotStarted: false,
     };
-    if (e.status === 'completed' || e.status === 'attested') {
+    if (row.status === 'completed' || row.status === 'attested') {
       entry.hasCompleted = true;
-    } else if (e.status === 'in_progress') {
+    } else if (row.status === 'in_progress') {
       entry.hasInProgress = true;
     } else {
       // 'enrolled' / 'assigned' — course has been assigned but not yet started
       entry.hasNotStarted = true;
     }
-    enrollmentsByUser.set(e.userId, entry);
+    enrollmentsByUser.set(row.userId, entry);
   }
+
+  // Distinct staff with at least one enrollment across this admin's courses.
+  const totalStaffAssigned = enrollmentsByUser.size;
 
   let staffCompleted = 0;
   let staffInProgress = 0;
@@ -635,6 +706,102 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
 }
 
 // Create full course with content and assignments
+// Outcome of the server-side course quality assessment used by the publish-review
+// gate (F-051). `reviewRequired` gates publishing; `qualityWarnings` are the
+// human-readable reasons surfaced in the wizard.
+interface CourseQualityAssessment {
+  reviewRequired: boolean;
+  qualityWarnings: string[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Derive the publish-review gate from the raw AI artifacts persisted with a
+ * course. This runs SERVER-SIDE and never trusts a client-supplied flag: the
+ * assessment is computed purely from the generated artifacts so a degraded
+ * generation cannot be silently published.
+ *
+ * The slides / judge / article-meta checks are specific to the v4.6 pipeline
+ * (identified by the presence of `rawArticleMeta`); v3.1 and manually authored
+ * courses that never produce those artifacts are left untouched.
+ *
+ * Kept as an internal (non-exported) helper: `course.ts` is a `'use server'`
+ * module, so only async server actions may be exported. Its behaviour is
+ * covered through `createFullCourse` in the unit tests.
+ */
+function assessCourseQuality(input: {
+  quizQuestionCount: number;
+  rawQuizJson?: unknown;
+  rawSlidesJson?: unknown;
+  rawJudgeJson?: unknown;
+  rawArticleMeta?: unknown;
+}): CourseQualityAssessment {
+  const qualityWarnings: string[] = [];
+
+  // 1. Quiz — missing entirely, or fewer questions than requested. Only applies
+  //    when a quiz artifact exists (an AI generation attempted a quiz).
+  if (isRecord(input.rawQuizJson)) {
+    const quizMeta = isRecord(input.rawQuizJson.meta) ? input.rawQuizJson.meta : undefined;
+    const requestedQuestionCount =
+      typeof quizMeta?.requestedQuestionCount === 'number' ? quizMeta.requestedQuestionCount : 0;
+
+    if (input.quizQuestionCount === 0) {
+      qualityWarnings.push('No quiz questions were generated for this course.');
+    } else if (requestedQuestionCount > 0 && input.quizQuestionCount < requestedQuestionCount) {
+      qualityWarnings.push(
+        `The quiz has only ${input.quizQuestionCount} of the ${requestedQuestionCount} requested questions.`,
+      );
+    }
+  }
+
+  const isV46 = isRecord(input.rawArticleMeta);
+
+  // 2. Slides — a v4.6 course is expected to have generated slides.
+  if (isV46) {
+    const slides =
+      isRecord(input.rawSlidesJson) && Array.isArray(input.rawSlidesJson.slides)
+        ? input.rawSlidesJson.slides
+        : [];
+    if (slides.length === 0) {
+      qualityWarnings.push('No slides were generated for this course.');
+    }
+  }
+
+  // 3. Judge — the quiz reviewer flagged unresolved (ambiguous or invalid) questions.
+  if (isRecord(input.rawJudgeJson)) {
+    const ambiguousCount = Array.isArray(input.rawJudgeJson.ambiguous)
+      ? input.rawJudgeJson.ambiguous.length
+      : 0;
+    const invalidCount = Array.isArray(input.rawJudgeJson.invalid)
+      ? input.rawJudgeJson.invalid.length
+      : 0;
+    const flaggedCount = ambiguousCount + invalidCount;
+    if (flaggedCount > 0) {
+      qualityWarnings.push(
+        `The automated quiz review flagged ${flaggedCount} question${
+          flaggedCount === 1 ? '' : 's'
+        } as ambiguous or invalid.`,
+      );
+    }
+  }
+
+  // 4. Article meta — the source document lacked enough content for reliable training.
+  if (isV46) {
+    const articleMeta = input.rawArticleMeta as Record<string, unknown>;
+    const meta = isRecord(articleMeta.meta) ? articleMeta.meta : undefined;
+    if (meta?.status === 'needs_sources') {
+      qualityWarnings.push(
+        'The source document did not provide enough content to generate reliable training.',
+      );
+    }
+  }
+
+  return { reviewRequired: qualityWarnings.length > 0, qualityWarnings };
+}
+
 export async function createFullCourse(data: {
   title: string;
   description: string;
@@ -682,6 +849,16 @@ export async function createFullCourse(data: {
   // Detect prompt version
   const promptVersion = data.rawArticleMeta ? 'v4.6' : data.rawCourseJson ? 'v3.1' : undefined;
 
+  // Compute the publish-review gate SERVER-SIDE from the persisted artifacts.
+  // A degraded generation is saved as a draft with warnings rather than published.
+  const { reviewRequired, qualityWarnings } = assessCourseQuality({
+    quizQuestionCount: data.quiz.length,
+    rawQuizJson: data.rawQuizJson,
+    rawSlidesJson: data.rawSlidesJson,
+    rawJudgeJson: data.rawJudgeJson,
+    rawArticleMeta: data.rawArticleMeta,
+  });
+
   // 1. Create Course, Lessons, Quiz in one transaction (nested write)
   const course = await prisma.course.create({
     data: {
@@ -690,7 +867,9 @@ export async function createFullCourse(data: {
       categoryId: data.categoryId || null,
       duration: parseInt(data.duration) || 0,
       objectives: data.objectives || [],
-      status: 'published',
+      status: reviewRequired ? 'draft' : 'published',
+      reviewRequired,
+      qualityWarnings,
       createdBy: session.user.id,
       // Pipeline version tracking
       promptVersion,
@@ -791,6 +970,8 @@ export async function createFullCourse(data: {
       return {
         success: true,
         courseId: course.id,
+        reviewRequired,
+        qualityWarnings,
         inviteResults,
       };
     }
@@ -833,7 +1014,7 @@ export async function createFullCourse(data: {
 
     const newUserPromises = newEmails.map(async (email) => {
       const tempPassword = crypto.randomBytes(8).toString('hex');
-      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_COST);
 
       // Create user + profile
       const newUser = await prisma.user.create({
@@ -917,6 +1098,8 @@ export async function createFullCourse(data: {
     courseId: course.id,
     userId: session.user.id,
     promptVersion,
+    reviewRequired,
+    warnings: qualityWarnings.length,
     enrolled: inviteResults.existingEnrolled,
     invited: inviteResults.newInvited,
     failed: inviteResults.failed.length,
@@ -926,6 +1109,8 @@ export async function createFullCourse(data: {
   return {
     success: true,
     courseId: course.id,
+    reviewRequired,
+    qualityWarnings,
     inviteResults,
   };
 }
@@ -982,6 +1167,11 @@ export async function attestCourse(enrollmentId: string, signature: string, role
     courseId: enrollment.courseId,
     userId: enrollment.userId,
   });
+
+  // Clear any open overdue/escalation/retake reminders for this enrollment now
+  // that it has reached a terminal status, so the compliance banner/page
+  // self-clear. Never throws (errors are logged internally).
+  await resolveOnCompletion(enrollmentId);
 
   // Notify Admins of course completion
   if (enrollment.user.organizationId) {

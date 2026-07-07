@@ -52,6 +52,7 @@ export const AnyNull = runtime.AnyNull
 
 export const ModelName = {
   AuditorPack: 'AuditorPack',
+  AuditLog: 'AuditLog',
   User: 'User',
   Profile: 'Profile',
   Invite: 'Invite',
@@ -68,13 +69,16 @@ export const ModelName = {
   CourseArtifact: 'CourseArtifact',
   CourseVersion: 'CourseVersion',
   CourseAssignment: 'CourseAssignment',
-  AssignmentReminder: 'AssignmentReminder',
+  AssignmentReminderStage: 'AssignmentReminderStage',
   Document: 'Document',
   DocumentVersion: 'DocumentVersion',
   PhiReport: 'PhiReport',
   MappingEvidence: 'MappingEvidence',
+  EmailMessage: 'EmailMessage',
   Enrollment: 'Enrollment',
   Certificate: 'Certificate',
+  ReminderLog: 'ReminderLog',
+  ReminderNudge: 'ReminderNudge',
   Job: 'Job',
   Notification: 'Notification',
   NotificationPreference: 'NotificationPreference',
@@ -82,6 +86,7 @@ export const ModelName = {
   Organization: 'Organization',
   Subscription: 'Subscription',
   Invoice: 'Invoice',
+  ProcessedWebhookEvent: 'ProcessedWebhookEvent',
   Quiz: 'Quiz',
   Question: 'Question',
   QuizAttempt: 'QuizAttempt'
@@ -114,6 +119,23 @@ export const AuditorPackScalarFieldEnum = {
 export type AuditorPackScalarFieldEnum = (typeof AuditorPackScalarFieldEnum)[keyof typeof AuditorPackScalarFieldEnum]
 
 
+export const AuditLogScalarFieldEnum = {
+  id: 'id',
+  actorId: 'actorId',
+  actorRole: 'actorRole',
+  action: 'action',
+  targetType: 'targetType',
+  targetId: 'targetId',
+  organizationId: 'organizationId',
+  ip: 'ip',
+  userAgent: 'userAgent',
+  metadata: 'metadata',
+  createdAt: 'createdAt'
+} as const
+
+export type AuditLogScalarFieldEnum = (typeof AuditLogScalarFieldEnum)[keyof typeof AuditLogScalarFieldEnum]
+
+
 export const UserScalarFieldEnum = {
   id: 'id',
   email: 'email',
@@ -125,6 +147,8 @@ export const UserScalarFieldEnum = {
   emailVerified: 'emailVerified',
   mfaEnabled: 'mfaEnabled',
   mfaVerifiedAt: 'mfaVerifiedAt',
+  sessionVersion: 'sessionVersion',
+  managerId: 'managerId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -279,7 +303,9 @@ export const CourseScalarFieldEnum = {
   approvedByUserId: 'approvedByUserId',
   approvedAt: 'approvedAt',
   type: 'type',
-  isGlobal: 'isGlobal'
+  isGlobal: 'isGlobal',
+  reviewRequired: 'reviewRequired',
+  qualityWarnings: 'qualityWarnings'
 } as const
 
 export type CourseScalarFieldEnum = (typeof CourseScalarFieldEnum)[keyof typeof CourseScalarFieldEnum]
@@ -348,6 +374,9 @@ export const CourseAssignmentScalarFieldEnum = {
   courseId: 'courseId',
   assignedByAdminId: 'assignedByAdminId',
   scheduleAt: 'scheduleAt',
+  dueAt: 'dueAt',
+  dueWindowDays: 'dueWindowDays',
+  remindersEnabled: 'remindersEnabled',
   renewalCycle: 'renewalCycle',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -356,14 +385,16 @@ export const CourseAssignmentScalarFieldEnum = {
 export type CourseAssignmentScalarFieldEnum = (typeof CourseAssignmentScalarFieldEnum)[keyof typeof CourseAssignmentScalarFieldEnum]
 
 
-export const AssignmentReminderScalarFieldEnum = {
+export const AssignmentReminderStageScalarFieldEnum = {
   id: 'id',
   assignmentId: 'assignmentId',
-  offsetMinutes: 'offsetMinutes',
-  channel: 'channel'
+  stage: 'stage',
+  offsetDays: 'offsetDays',
+  enabled: 'enabled',
+  channels: 'channels'
 } as const
 
-export type AssignmentReminderScalarFieldEnum = (typeof AssignmentReminderScalarFieldEnum)[keyof typeof AssignmentReminderScalarFieldEnum]
+export type AssignmentReminderStageScalarFieldEnum = (typeof AssignmentReminderStageScalarFieldEnum)[keyof typeof AssignmentReminderStageScalarFieldEnum]
 
 
 export const DocumentScalarFieldEnum = {
@@ -398,6 +429,7 @@ export const PhiReportScalarFieldEnum = {
   documentVersionId: 'documentVersionId',
   hasPHI: 'hasPHI',
   detectedEntities: 'detectedEntities',
+  scannerVersion: 'scannerVersion',
   scannedAt: 'scannedAt'
 } as const
 
@@ -418,6 +450,23 @@ export const MappingEvidenceScalarFieldEnum = {
 export type MappingEvidenceScalarFieldEnum = (typeof MappingEvidenceScalarFieldEnum)[keyof typeof MappingEvidenceScalarFieldEnum]
 
 
+export const EmailMessageScalarFieldEnum = {
+  id: 'id',
+  toEmail: 'toEmail',
+  kind: 'kind',
+  reminderLogId: 'reminderLogId',
+  status: 'status',
+  attempts: 'attempts',
+  maxAttempts: 'maxAttempts',
+  lastError: 'lastError',
+  sentAt: 'sentAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type EmailMessageScalarFieldEnum = (typeof EmailMessageScalarFieldEnum)[keyof typeof EmailMessageScalarFieldEnum]
+
+
 export const EnrollmentScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -436,7 +485,8 @@ export const EnrollmentScalarFieldEnum = {
   retakeOf: 'retakeOf',
   retakeReason: 'retakeReason',
   assignmentId: 'assignmentId',
-  accessAt: 'accessAt'
+  accessAt: 'accessAt',
+  dueAt: 'dueAt'
 } as const
 
 export type EnrollmentScalarFieldEnum = (typeof EnrollmentScalarFieldEnum)[keyof typeof EnrollmentScalarFieldEnum]
@@ -454,6 +504,29 @@ export const CertificateScalarFieldEnum = {
 } as const
 
 export type CertificateScalarFieldEnum = (typeof CertificateScalarFieldEnum)[keyof typeof CertificateScalarFieldEnum]
+
+
+export const ReminderLogScalarFieldEnum = {
+  id: 'id',
+  enrollmentId: 'enrollmentId',
+  stage: 'stage',
+  channels: 'channels',
+  targetDate: 'targetDate',
+  sentAt: 'sentAt'
+} as const
+
+export type ReminderLogScalarFieldEnum = (typeof ReminderLogScalarFieldEnum)[keyof typeof ReminderLogScalarFieldEnum]
+
+
+export const ReminderNudgeScalarFieldEnum = {
+  id: 'id',
+  enrollmentId: 'enrollmentId',
+  kind: 'kind',
+  lastSentAt: 'lastSentAt',
+  count: 'count'
+} as const
+
+export type ReminderNudgeScalarFieldEnum = (typeof ReminderNudgeScalarFieldEnum)[keyof typeof ReminderNudgeScalarFieldEnum]
 
 
 export const JobScalarFieldEnum = {
@@ -540,6 +613,7 @@ export const OrganizationScalarFieldEnum = {
   requireMfa: 'requireMfa',
   complianceDocumentUrl: 'complianceDocumentUrl',
   complianceDocumentName: 'complianceDocumentName',
+  timezone: 'timezone',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -583,6 +657,16 @@ export const InvoiceScalarFieldEnum = {
 } as const
 
 export type InvoiceScalarFieldEnum = (typeof InvoiceScalarFieldEnum)[keyof typeof InvoiceScalarFieldEnum]
+
+
+export const ProcessedWebhookEventScalarFieldEnum = {
+  id: 'id',
+  stripeEventId: 'stripeEventId',
+  eventType: 'eventType',
+  processedAt: 'processedAt'
+} as const
+
+export type ProcessedWebhookEventScalarFieldEnum = (typeof ProcessedWebhookEventScalarFieldEnum)[keyof typeof ProcessedWebhookEventScalarFieldEnum]
 
 
 export const QuizScalarFieldEnum = {

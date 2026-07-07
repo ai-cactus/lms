@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import stripe from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
+import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
 import { MAX_PAUSE_MONTHS, pauseEndDate } from '@/lib/billing';
 
 // POST /api/billing/subscription/pause — pauses subscription for 1–3 months
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
+    // F-012: enforce authentication + MFA step-up + admin role at the data
+    // layer, consistent with the shared guard used across billing routes.
+    const denied = guardApiSession(session, { role: 'admin' });
+    if (denied) return denied;
+    // The guard guarantees an authenticated session past this point; narrow the
+    // id for the DB lookup (guardApiSession does not narrow the session type).
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const stripe = getStripeClient();
 
     // Pause duration in months (1–3). Defaults to the max if not provided.
     let months = MAX_PAUSE_MONTHS;
@@ -82,6 +92,18 @@ export async function POST(request: NextRequest) {
       organizationId: user.organizationId,
       months,
       pauseEndsAt,
+    });
+
+    // F-001: record the sensitive billing mutation on the authorized path.
+    await audit({
+      action: 'billing.subscription.pause',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'subscription',
+      targetId: subscription.id,
+      metadata: { months },
+      ...getClientContext(request.headers),
     });
 
     return NextResponse.json({

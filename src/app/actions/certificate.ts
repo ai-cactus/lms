@@ -6,6 +6,10 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { uploadFile } from '@/lib/storage';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
+import { formatCertificateId } from '@/lib/certificate-id';
+import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
+import { headers } from 'next/headers';
 
 async function resolveSession() {
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
@@ -50,10 +54,23 @@ export async function issueCertificate(enrollmentId: string) {
     return enrollment.certificate;
   }
 
+  // A certificate PDF is immutable once generated, so it must carry the
+  // recipient's real name — never fall back to their email address. Block
+  // issuance until the profile has a full name set.
+  const fullName = enrollment.user.profile?.fullName?.trim();
+  if (!fullName) {
+    logger.warn({
+      msg: '[enrollment] Certificate issuance blocked — recipient has no profile name',
+      enrollmentId,
+      userId: enrollment.userId,
+    });
+    throw new Error('Set your full name in your profile before earning a certificate.');
+  }
+
   // Generate PDF
   const issueDate = new Date();
   const pdfBuffer = await generateCertificatePDF({
-    studentName: enrollment.user.profile?.fullName || enrollment.user.email,
+    studentName: fullName,
     courseName: enrollment.course.title,
     issueDate: issueDate.toLocaleDateString('en-US', {
       year: 'numeric',
@@ -61,7 +78,7 @@ export async function issueCertificate(enrollmentId: string) {
       day: 'numeric',
     }),
     organizationName: enrollment.user.organization?.name,
-    certificateId: `CERT-${enrollmentId.substring(0, 8).toUpperCase()}`,
+    certificateId: formatCertificateId(enrollmentId),
   });
 
   // Upload to storage
@@ -74,11 +91,23 @@ export async function issueCertificate(enrollmentId: string) {
       enrollmentId: enrollment.id,
       userId: enrollment.userId,
       courseId: enrollment.courseId,
-      score: enrollment.score || 100,
+      score: enrollment.score ?? 100,
       pdfStoragePath: uploadResult.storageUri,
       pdfGeneratedAt: new Date(),
       issuedAt: issueDate,
     },
+  });
+
+  // F-001: record certificate issuance on the authorized, successful path.
+  await audit({
+    action: 'certificate.issue',
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    organizationId: enrollment.user.organizationId ?? undefined,
+    targetType: 'certificate',
+    targetId: certificate.id,
+    metadata: { enrollmentId, courseId: enrollment.courseId },
+    ...getClientContext(await headers()),
   });
 
   revalidatePath('/dashboard/training');

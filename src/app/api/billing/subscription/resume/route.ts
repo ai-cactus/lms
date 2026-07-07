@@ -1,17 +1,28 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import stripe from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
+import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
+import { headers } from 'next/headers';
 
 // POST /api/billing/subscription/resume — resumes a paused subscription
 // (the "Continue Plan" action). Clears the pause window and restores access.
 export async function POST() {
   try {
     const session = await auth();
+    // F-012: enforce authentication + MFA step-up + admin role at the data
+    // layer, consistent with the shared guard used across billing routes.
+    const denied = guardApiSession(session, { role: 'admin' });
+    if (denied) return denied;
+    // The guard guarantees an authenticated session past this point; narrow the
+    // id for the DB lookup (guardApiSession does not narrow the session type).
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const stripe = getStripeClient();
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
@@ -59,6 +70,17 @@ export async function POST() {
     logger.info({
       msg: '[POST /api/billing/subscription/resume] Subscription resumed',
       organizationId: user.organizationId,
+    });
+
+    // F-001: record the sensitive billing mutation on the authorized path.
+    await audit({
+      action: 'billing.subscription.resume',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'subscription',
+      targetId: subscription.id,
+      ...getClientContext(await headers()),
     });
 
     return NextResponse.json({ message: 'Subscription has been resumed.', success: true });

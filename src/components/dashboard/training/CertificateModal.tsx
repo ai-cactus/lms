@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { getCertificateDetails } from '@/app/actions/certificate';
 import CertificateDocument, { CERT_HEIGHT, CERT_WIDTH } from './certificate/CertificateDocument';
 import { exportCertificatePdf, generateQrDataUrl } from '@/lib/certificate-export';
+import { formatCertificateId } from '@/lib/certificate-id';
 
 type CertificateData = Awaited<ReturnType<typeof getCertificateDetails>>;
 
@@ -22,10 +23,6 @@ function formatIssueDate(date: Date | string): string {
     month: 'short',
     year: 'numeric',
   });
-}
-
-function readableCertId(data: CertificateData): string {
-  return `CERT-${data.enrollmentId.substring(0, 8).toUpperCase()}`;
 }
 
 export default function CertificateModal({
@@ -153,7 +150,7 @@ export default function CertificateModal({
                   courseName={data.course?.title || 'Course Title'}
                   organizationName={data.user?.organization?.name}
                   issueDate={formatIssueDate(data.issuedAt)}
-                  certificateId={readableCertId(data)}
+                  certificateId={formatCertificateId(data.enrollmentId)}
                   qrDataUrl={qrDataUrl}
                 />
               </div>

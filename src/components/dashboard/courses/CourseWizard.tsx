@@ -11,10 +11,11 @@ import Step6QuizReview from './steps/Step6QuizReview';
 import Step7Publish from './steps/Step7Publish';
 import CourseSuccessModal from './CourseSuccessModal';
 import ConfirmPublishModal from './ConfirmPublishModal';
+import ReviewWarningsModal from './ReviewWarningsModal';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
 import PhiErrorModal from './PhiErrorModal';
-import { createFullCourse } from '@/app/actions/course';
+import { createFullCourse, publishCourse } from '@/app/actions/course';
 import { analyzeStoredDocument } from '@/app/actions/course-ai';
 import { getDocuments, uploadDocument, deleteDocument } from '@/app/actions/documents';
 import { CourseWizardData, GeneratedCourse, CourseDocument } from '@/types/course';
@@ -70,6 +71,14 @@ export default function CourseWizard() {
   const [showPhiError, setShowPhiError] = useState(false);
   const [phiReason, setPhiReason] = useState<string | undefined>(undefined);
   const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
+
+  // Publish-review gate (F-051): populated when a generated course is saved as a
+  // draft because the server flagged quality warnings.
+  const [reviewGate, setReviewGate] = useState<{
+    courseId: string;
+    title: string;
+    warnings: string[];
+  } | null>(null);
 
   // Exit confirmation state
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -234,7 +243,7 @@ export default function CourseWizard() {
           setAnalysisProgress(100);
 
           if (result.error) {
-            logger.error({ msg: 'Analysis failed:', err: result.error });
+            logger.error({ msg: '[course] Stored document analysis failed', reason: result.error });
           } else {
             setFormData((prev) => ({
               ...prev,
@@ -316,6 +325,10 @@ export default function CourseWizard() {
       });
 
       if (result.success) {
+        // Capture the title before resetting form state so the follow-up modal
+        // can still display it.
+        const courseTitle = formData.title;
+
         // Reset all wizard state so the next course creation starts fresh
         setCurrentStep(1);
         setFormData(INITIAL_FORM_DATA);
@@ -331,8 +344,19 @@ export default function CourseWizard() {
         setPhiReason(undefined);
         analyzedDocId.current = null;
         setPendingJobId(null);
-        setCreatedCourseId(result.courseId);
         sessionStorage.removeItem(DRAFT_KEY);
+
+        if (result.reviewRequired) {
+          // Saved as a draft — surface the quality warnings and require an
+          // explicit acknowledgement before publishing.
+          setReviewGate({
+            courseId: result.courseId,
+            title: courseTitle,
+            warnings: result.qualityWarnings,
+          });
+        } else {
+          setCreatedCourseId(result.courseId);
+        }
       } else {
         setPublishError('Failed to create course. Please try again.');
       }
@@ -342,6 +366,34 @@ export default function CourseWizard() {
     } finally {
       setIsPublishing(false);
     }
+  };
+
+  // Publish-review gate: publish a flagged draft after the admin acknowledges
+  // its quality warnings.
+  const handlePublishAnyway = async () => {
+    if (!reviewGate) return;
+    setIsPublishing(true);
+    try {
+      const result = await publishCourse(reviewGate.courseId, { acknowledgeWarnings: true });
+      if (result && 'success' in result && result.success === false) {
+        setPublishError(result.error);
+        return;
+      }
+      const publishedId = reviewGate.courseId;
+      setReviewGate(null);
+      setCreatedCourseId(publishedId);
+    } catch (error) {
+      logger.error({ msg: 'Error publishing course with warnings:', err: error });
+      setPublishError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  // Publish-review gate: leave the course as a draft for later review.
+  const handleKeepDraft = () => {
+    setReviewGate(null);
+    router.push('/dashboard/training');
   };
 
   const handleBack = () => {
@@ -410,7 +462,7 @@ export default function CourseWizard() {
       setAnalysisProgress(100);
 
       if (result.error) {
-        logger.error({ msg: 'Analysis Error:', err: result.error });
+        logger.error({ msg: '[course] Document analysis failed', reason: result.error });
         setUploadError(result.error);
       } else {
         setFormData((prev) => ({
@@ -656,6 +708,18 @@ export default function CourseWizard() {
             onClose={() => setCreatedCourseId(null)}
             courseId={createdCourseId}
             courseTitle={formData.title}
+          />
+        )}
+
+        {reviewGate && (
+          <ReviewWarningsModal
+            isOpen={true}
+            onClose={handleKeepDraft}
+            onPublishAnyway={handlePublishAnyway}
+            onSaveDraft={handleKeepDraft}
+            courseTitle={reviewGate.title}
+            warnings={reviewGate.warnings}
+            isPublishing={isPublishing}
           />
         )}
 

@@ -54,6 +54,8 @@ model Course {
   approvedAt                  DateTime?           @map("approved_at")
   type                        CourseType          @default(text)
   isGlobal                    Boolean             @default(false) @map("is_global")
+  reviewRequired              Boolean             @default(false) @map("review_required")
+  qualityWarnings             String[]            @default([]) @map("quality_warnings")
   courseCategory              CourseCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   approvedBy                  User?               @relation("CourseApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
   creator                     User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
@@ -108,6 +110,7 @@ model Lesson {
   moduleId             String?       @map("module_id")
   module               CourseModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
 
+  @@index([courseId])
   @@index([moduleId])
   @@map("lessons")
 }
@@ -138,21 +141,26 @@ model CourseVersion {
   course            Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
 
+  @@index([courseId])
+  @@index([documentVersionId])
   @@map("course_versions")
 }
 
 model CourseAssignment {
-  id                String               @id @default(uuid())
-  organizationId    String               @map("organization_id")
-  courseId          String               @map("course_id")
-  assignedByAdminId String               @map("assigned_by_admin_id")
-  scheduleAt        DateTime?            @map("schedule_at")
-  renewalCycle      RenewalCycle         @default(none) @map("renewal_cycle")
-  createdAt         DateTime             @default(now()) @map("created_at")
-  updatedAt         DateTime             @updatedAt @map("updated_at")
-  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  course            Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  reminders         AssignmentReminder[]
+  id                String                    @id @default(uuid())
+  organizationId    String                    @map("organization_id")
+  courseId          String                    @map("course_id")
+  assignedByAdminId String                    @map("assigned_by_admin_id")
+  scheduleAt        DateTime?                 @map("schedule_at")
+  dueAt             DateTime?                 @map("due_at")
+  dueWindowDays     Int?                      @map("due_window_days")
+  remindersEnabled  Boolean                   @default(true) @map("reminders_enabled")
+  renewalCycle      RenewalCycle              @default(none) @map("renewal_cycle")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  organization      Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  course            Course                    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  reminderStages    AssignmentReminderStage[]
   enrollments       Enrollment[]
 
   @@index([organizationId])
@@ -160,13 +168,16 @@ model CourseAssignment {
   @@map("course_assignments")
 }
 
-model AssignmentReminder {
-  id            String           @id @default(uuid())
-  assignmentId  String           @map("assignment_id")
-  offsetMinutes Int              @map("offset_minutes")
-  channel       String           @default("email")
-  assignment    CourseAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+model AssignmentReminderStage {
+  id           String           @id @default(uuid())
+  assignmentId String           @map("assignment_id")
+  stage        ReminderStage
+  offsetDays   Int              @map("offset_days")
+  enabled      Boolean          @default(true)
+  channels     String[]         @default(["email", "in_app"])
+  assignment   CourseAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
 
+  @@unique([assignmentId, stage])
   @@index([assignmentId])
-  @@map("assignment_reminders")
+  @@map("assignment_reminder_stages")
 }

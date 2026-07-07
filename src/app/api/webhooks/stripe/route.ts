@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import stripe from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
 import prisma from '@/lib/prisma';
 import Stripe from 'stripe';
 import { logger } from '@/lib/logger';
+import { audit } from '@/lib/audit';
+import { MAX_PAUSE_MONTHS, pauseEndDate } from '@/lib/billing';
 import type {
   SubscriptionPlan,
   SubscriptionBillingCycle,
@@ -11,6 +13,21 @@ import type {
 
 // Stripe webhook secret — required to verify event authenticity
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+/**
+ * True for a Prisma unique-constraint violation (code `P2002`). Used to treat a
+ * concurrent duplicate webhook delivery — one that races to record the same
+ * event id — as already-processed rather than a failure. Duck-typed so it does
+ * not depend on the generated Prisma error class import.
+ */
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2002'
+  );
+}
 
 export async function POST(request: NextRequest) {
   if (!webhookSecret) {
@@ -27,11 +44,27 @@ export async function POST(request: NextRequest) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = getStripeClient().webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error({ msg: `[Stripe Webhook] Signature verification failed: ${message}` });
     return NextResponse.json({ error: `Webhook error: ${message}` }, { status: 400 });
+  }
+
+  // Idempotency: Stripe delivers events at-least-once and redelivers on any
+  // non-2xx. If we've already recorded this event id, acknowledge and skip
+  // re-processing so handlers run at most once.
+  const alreadyProcessed = await prisma.processedWebhookEvent.findUnique({
+    where: { stripeEventId: event.id },
+    select: { id: true },
+  });
+  if (alreadyProcessed) {
+    logger.info({
+      msg: '[Stripe Webhook] Duplicate event ignored (already processed)',
+      stripeEventId: event.id,
+      eventType: event.type,
+    });
+    return NextResponse.json({ received: true, duplicate: true });
   }
 
   try {
@@ -66,10 +99,47 @@ export async function POST(request: NextRequest) {
         // Unhandled event type — acknowledge receipt without error
         break;
     }
+
+    // Record the event as processed ONLY after the handler succeeds, so a
+    // failed handler can be safely redelivered and retried by Stripe.
+    await prisma.processedWebhookEvent.create({
+      data: { stripeEventId: event.id, eventType: event.type },
+    });
+
+    // F-001: record the system-driven billing change. Actor is Stripe/system
+    // (no session, no ip/ua). Org is resolved best-effort from event metadata.
+    const eventObject = event.data.object as { metadata?: Record<string, string> | null };
+    await audit({
+      action: `billing.webhook.${event.type}`,
+      actorRole: 'system',
+      organizationId: eventObject.metadata?.organizationId,
+      targetType: 'stripe_event',
+      targetId: event.id,
+      metadata: { eventType: event.type },
+    });
   } catch (error) {
-    logger.error({ msg: `[Stripe Webhook] Error handling event ${event.type}:`, err: error });
-    // Return 200 to prevent Stripe retrying non-recoverable errors
-    return NextResponse.json({ received: true, error: 'Event processing failed' });
+    // A concurrent delivery may have recorded this same event between our
+    // dedupe check and here — the unique constraint makes that safe to treat as
+    // already-processed rather than a failure.
+    if (isUniqueConstraintError(error)) {
+      logger.info({
+        msg: '[Stripe Webhook] Concurrent duplicate — already processed',
+        stripeEventId: event.id,
+        eventType: event.type,
+      });
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+
+    // Return 5xx so Stripe redelivers. The prior behavior returned 200 here,
+    // which permanently swallowed transient/DB failures and left billing state
+    // desynced with no chance of retry. Handlers are idempotent (upserts plus
+    // the dedupe ledger above), so a redelivery is safe.
+    logger.error({
+      msg: `[Stripe Webhook] Retryable failure handling event ${event.type}`,
+      err: error,
+      stripeEventId: event.id,
+    });
+    return NextResponse.json({ error: 'Event processing failed' }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });
@@ -107,10 +177,39 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const isPaused = !!sub.pause_collection;
   const existing = await prisma.subscription.findUnique({
     where: { organizationId: organization.id },
-    select: { pausedAt: true, pauseEndsAt: true },
+    select: { pausedAt: true, pauseEndsAt: true, stripeSubscriptionId: true },
   });
+
+  // THER-010: protect the canonical subscription row from last-writer-wins
+  // clobbering. If we already track a DIFFERENT subscription for this org and
+  // the incoming event is for a subscription that is not itself active/trialing
+  // (e.g. a superseded duplicate being canceled after a plan swap), ignore it —
+  // otherwise a stale duplicate would overwrite the current plan and make the
+  // UI flip-flop / show "renews automatically" after a cancel. An incoming
+  // active/trialing subscription is allowed through and becomes canonical.
+  const incomingIsActive = sub.status === 'active' || sub.status === 'trialing';
+  if (
+    existing?.stripeSubscriptionId &&
+    existing.stripeSubscriptionId !== sub.id &&
+    !incomingIsActive
+  ) {
+    logger.warn({
+      msg: '[Stripe Webhook] Ignoring non-active duplicate subscription to protect canonical row',
+      organizationId: organization.id,
+    });
+    return;
+  }
+
   const pausedAt = isPaused ? (existing?.pausedAt ?? new Date()) : null;
-  const pauseEndsAt = isPaused ? (existing?.pauseEndsAt ?? null) : null;
+  // F-040: a pause originating from the Stripe portal has no pauseEndsAt of our
+  // own. Leaving it null makes getPauseState() report 'paused' forever — the
+  // resume/cancel prompt would never appear. Default a portal-originated pause
+  // to the same MAX_PAUSE_MONTHS window our pause route uses, so the decision
+  // prompt eventually surfaces.
+  const pauseEndsAt =
+    isPaused && pausedAt
+      ? (existing?.pauseEndsAt ?? pauseEndDate(pausedAt, MAX_PAUSE_MONTHS))
+      : null;
   const hasAuditorAccess = (sub.status === 'active' || sub.status === 'trialing') && !isPaused;
 
   // Upsert subscription record and grant/revoke auditor access atomically

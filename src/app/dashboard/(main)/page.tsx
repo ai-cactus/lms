@@ -2,7 +2,7 @@ import React from 'react';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
-import DashboardCharts from '@/components/dashboard/DashboardCharts';
+import DashboardCharts from '@/components/dashboard/DashboardChartsDynamic';
 import MyCoursesTable from '@/components/dashboard/MyCoursesTable';
 import { getDashboardData } from '@/app/actions/course';
 import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';

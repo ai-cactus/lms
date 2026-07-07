@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import CircularProgress from '@/components/ui/CircularProgress';
 import AttestationModal from './AttestationModal';
 import BadgeSuccessModal from './BadgeSuccessModal';
+import { formatCertificateId } from '@/lib/certificate-id';
 
 interface QuizResultsProps {
   courseId: string;
@@ -258,6 +259,7 @@ export default function QuizResults({
         onClose={() => setIsBadgeOpen(false)}
         courseName={stats.courseName}
         organizationName={organizationName || 'N/A'}
+        badgeId={formatCertificateId(enrollmentId)}
         issuedDate={new Date().toLocaleDateString()}
         courseId={courseId}
       />

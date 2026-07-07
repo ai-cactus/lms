@@ -1,0 +1,22 @@
+// ── Email Delivery Tracking ──────────────────────────────────────────────────
+
+/// Delivery-tracking record for a single outbound email. Written when an email
+/// is queued and updated as delivery is attempted (status/attempts/lastError).
+/// `reminderLogId` is a plain, unconstrained reference to a ReminderLog — kept
+/// decoupled (no relation/FK) so email delivery is independent of reminder data.
+model EmailMessage {
+  id            String    @id @default(uuid())
+  toEmail       String    @map("to_email")
+  kind          String
+  reminderLogId String?   @map("reminder_log_id")
+  status        String    @default("queued")
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3) @map("max_attempts")
+  lastError     String?   @map("last_error")
+  sentAt        DateTime? @map("sent_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, attempts])
+  @@map("email_messages")
+}

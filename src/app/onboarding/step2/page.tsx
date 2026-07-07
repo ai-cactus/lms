@@ -34,7 +34,7 @@ export default function OnboardingStep2() {
   const [files, setFiles] = useState<File[]>([]);
 
   const onSubmit = (data: Step2FormData) => {
-    logger.info({ msg: 'Step 2 Data Saved Locally:', data: data });
+    logger.info({ msg: '[onboarding] Step 2 saved locally', fieldCount: Object.keys(data).length });
     try {
       // Save to localStorage
       if (typeof window !== 'undefined') {

@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { BadgeCheck, ShieldX } from 'lucide-react';
 import prisma from '@/lib/prisma';
 import Logo from '@/components/ui/Logo';
+import { formatCertificateId } from '@/lib/certificate-id';
 
 export const metadata: Metadata = {
   title: 'Verify Certificate · Theraptly',
@@ -27,11 +28,6 @@ function formatIssueDate(date: Date | string): string {
   });
 }
 
-/** Same human-readable id shown on the certificate artwork. */
-function readableCertId(enrollmentId: string): string {
-  return `CERT-${enrollmentId.substring(0, 8).toUpperCase()}`;
-}
-
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-b border-border-light py-4 last:border-b-0">
@@ -52,7 +48,6 @@ export default async function VerifyCertificatePage(props: { params: Promise<{ i
       course: { select: { title: true } },
       user: {
         select: {
-          email: true,
           profile: { select: { fullName: true } },
           organization: { select: { name: true } },
         },
@@ -80,14 +75,14 @@ export default async function VerifyCertificatePage(props: { params: Promise<{ i
             <div className="px-6 py-2">
               <Field
                 label="Recipient"
-                value={certificate.user.profile?.fullName || certificate.user.email}
+                value={certificate.user.profile?.fullName || 'Certificate holder'}
               />
               <Field label="Course" value={certificate.course.title} />
               {certificate.user.organization?.name ? (
                 <Field label="Issued by" value={certificate.user.organization.name} />
               ) : null}
               <Field label="Issued on" value={formatIssueDate(certificate.issuedAt)} />
-              <Field label="Certificate ID" value={readableCertId(certificate.enrollmentId)} />
+              <Field label="Certificate ID" value={formatCertificateId(certificate.enrollmentId)} />
             </div>
           </div>
         ) : (

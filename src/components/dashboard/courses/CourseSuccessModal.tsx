@@ -4,7 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { FileText } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
 interface CourseSuccessModalProps {
@@ -43,6 +43,7 @@ export default function CourseSuccessModal({
         showCloseButton={false}
         className="relative overflow-hidden px-4 pt-2 pb-6 text-center sm:max-w-md"
       >
+        <DialogTitle className="sr-only">Course published</DialogTitle>
         {/* Ambient background glow */}
         <div className="pointer-events-none absolute top-0 left-1/2 z-0 h-[300px] w-[300px] -translate-x-1/2 animate-[pulse_4s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.15)_0%,rgba(16,185,129,0)_70%)]"></div>
 

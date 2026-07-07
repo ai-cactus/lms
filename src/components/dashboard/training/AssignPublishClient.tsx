@@ -3,12 +3,14 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Clock, Plus, X } from 'lucide-react';
-import { RenewalCycle } from '@/generated/prisma/enums';
+import { Check, ChevronDown, X } from 'lucide-react';
+import { RenewalCycle, ReminderStage } from '@/generated/prisma/enums';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -17,6 +19,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import DatePicker from '@/components/ui/DatePicker';
+import { cn } from '@/lib/utils';
+import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
 import { enrollUsers } from '@/app/actions/enrollment';
 import { publishCourse } from '@/app/actions/course';
 import { logger } from '@/lib/logger';
@@ -32,12 +36,21 @@ const RENEWAL_OPTIONS: { value: RenewalCycle; label: string }[] = [
   { value: 'annual', label: 'Annual Renewal (12 Months)' },
 ];
 
-const REMINDER_OPTIONS: { value: number; label: string }[] = [
-  { value: 30, label: '30 minutes before' },
-  { value: 60, label: '1 hour before' },
-  { value: 1440, label: '1 day before' },
-  { value: 10080, label: '1 week before' },
-];
+/** Human-readable labels for the editable reminder ladder (sweep stages only). */
+const STAGE_LABELS: Record<ReminderStage, string> = {
+  INITIAL_LAUNCH: 'Launch',
+  FRIENDLY_REMINDER: 'Friendly reminder',
+  URGENT_REMINDER: 'Urgent reminder',
+  DAY_OF_DEADLINE: 'Day of deadline',
+  GRACE_SOFT_ESCALATION: 'Grace period (soft escalation)',
+  HARD_ESCALATION: 'Overdue (hard escalation)',
+};
+
+interface StageRow {
+  stage: ReminderStage;
+  offsetDays: number;
+  enabled: boolean;
+}
 
 interface AssignPublishClientProps {
   courseId: string;
@@ -59,8 +72,17 @@ export default function AssignPublishClient({
   const [entries, setEntries] = useState<StaffEntry[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [scheduleDate, setScheduleDate] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [renewalCycle, setRenewalCycle] = useState<RenewalCycle>('annual');
-  const [reminders, setReminders] = useState<number[]>([30]);
+  const [remindersEnabled, setRemindersEnabled] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [stages, setStages] = useState<StageRow[]>(() =>
+    SWEEP_STAGES.map((stage) => ({
+      stage,
+      offsetDays: REMINDER_STAGE_DEFAULTS[stage].offsetDays,
+      enabled: true,
+    })),
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,17 +120,11 @@ export default function AssignPublishClient({
 
   const removeEntry = (index: number) => setEntries((prev) => prev.filter((_, i) => i !== index));
 
-  // ── Reminders ────────────────────────────────────────────────────────────
-  const addReminder = () => {
-    // Default each new reminder to the first option not already chosen.
-    const used = new Set(reminders);
-    const next = REMINDER_OPTIONS.find((o) => !used.has(o.value))?.value ?? 30;
-    setReminders((prev) => [...prev, next]);
-  };
-  const setReminderAt = (index: number, value: number) =>
-    setReminders((prev) => prev.map((r, i) => (i === index ? value : r)));
-  const removeReminder = (index: number) =>
-    setReminders((prev) => prev.filter((_, i) => i !== index));
+  // ── Reminder cadence ───────────────────────────────────────────────────────
+  const setStageOffset = (stage: ReminderStage, offsetDays: number) =>
+    setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, offsetDays } : s)));
+  const setStageEnabled = (stage: ReminderStage, enabled: boolean) =>
+    setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, enabled } : s)));
 
   // ── Publish ──────────────────────────────────────────────────────────────
   const canPublish = entries.length > 0 && !submitting;
@@ -123,8 +139,10 @@ export default function AssignPublishClient({
     try {
       const res = await enrollUsers(courseId, entries, {
         scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
+        dueAt: dueDate ? new Date(dueDate) : null,
         renewalCycle,
-        reminders: reminders.map((offsetMinutes) => ({ offsetMinutes, channel: 'email' })),
+        remindersEnabled,
+        stages,
       });
 
       if (res.failed.length > 0 && res.success.length + res.newInvited.length === 0) {
@@ -250,6 +268,16 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
+        {/* Due Date */}
+        <SettingRow
+          title="Due Date"
+          description="Deadline for completing the course. Leave empty to compute it automatically."
+        >
+          <DatePicker value={dueDate} onChange={setDueDate} placeholder="Select due date" />
+        </SettingRow>
+
+        <div className="my-6 h-px bg-border" />
+
         {/* Renewal Settings */}
         <SettingRow
           title="Renewal Settings"
@@ -271,54 +299,80 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
-        {/* Reminders */}
+        {/* Deadline reminders */}
         <SettingRow
-          title="Reminder"
-          description="Workers will receive email reminders on this date"
+          title="Deadline Reminders"
+          description="Send workers automated reminders as the deadline approaches and escalate when overdue."
         >
-          <div className="flex flex-col gap-3">
-            {reminders.map((value, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Select
-                  value={String(value)}
-                  onValueChange={(v) => setReminderAt(index, Number(v))}
-                >
-                  <SelectTrigger className="h-11 w-full">
-                    <span className="flex items-center gap-2">
-                      <Clock className="size-4 text-text-secondary" aria-hidden="true" />
-                      <SelectValue />
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REMINDER_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={String(o.value)}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {reminders.length > 1 && (
-                  <button
-                    type="button"
-                    className="text-text-secondary hover:text-error"
-                    onClick={() => removeReminder(index)}
-                    aria-label="Remove reminder"
-                  >
-                    <X className="size-4" aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={addReminder}
-              className="flex items-center gap-1.5 self-end text-sm font-semibold text-primary hover:underline"
-            >
-              <Plus className="size-4" aria-hidden="true" />
-              Add reminder
-            </button>
-          </div>
+          <label className="flex items-center gap-2.5">
+            <Checkbox
+              checked={remindersEnabled}
+              onCheckedChange={(checked) => setRemindersEnabled(checked === true)}
+              disabled={submitting}
+            />
+            <span className="text-sm font-medium text-foreground">Send deadline reminders</span>
+          </label>
         </SettingRow>
+
+        {/* Advanced reminder schedule */}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((prev) => !prev)}
+            aria-expanded={showAdvanced}
+            className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline disabled:opacity-50"
+            disabled={!remindersEnabled || submitting}
+          >
+            <ChevronDown
+              className={cn('size-4 transition-transform', showAdvanced && 'rotate-180')}
+              aria-hidden="true"
+            />
+            Advanced reminder schedule
+          </button>
+
+          {showAdvanced && (
+            <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-background-secondary p-4">
+              <p className="text-xs text-text-secondary">
+                Offset is in days relative to the deadline: negative = days before, 0 = day of,
+                positive = days after.
+              </p>
+              {stages.map((row) => (
+                <div
+                  key={row.stage}
+                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <span className="text-sm font-medium text-foreground">
+                    {STAGE_LABELS[row.stage]}
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      type="number"
+                      step={1}
+                      value={row.offsetDays}
+                      onChange={(e) =>
+                        setStageOffset(
+                          row.stage,
+                          e.target.value === '' ? 0 : Number(e.target.value),
+                        )
+                      }
+                      disabled={!remindersEnabled || !row.enabled || submitting}
+                      aria-label={`${STAGE_LABELS[row.stage]} offset in days`}
+                      className="h-10 w-24"
+                    />
+                    <label className="flex items-center gap-2">
+                      <Checkbox
+                        checked={row.enabled}
+                        onCheckedChange={(checked) => setStageEnabled(row.stage, checked === true)}
+                        disabled={!remindersEnabled || submitting}
+                      />
+                      <span className="text-sm text-text-secondary">Enabled</span>
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Footer actions */}
         <div className="mt-12 flex items-center justify-between">
@@ -340,6 +394,8 @@ export default function AssignPublishClient({
       {/* Success modal */}
       <Dialog open={showSuccess} onOpenChange={() => {}}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
+          {/* Visually-hidden accessible title (Radix requires a DialogTitle). */}
+          <DialogTitle className="sr-only">{courseTitle} assigned successfully</DialogTitle>
           <div className="flex flex-col items-center gap-3 text-center">
             <span className="flex size-16 items-center justify-center rounded-full bg-[#c6f6d5]">
               <span className="flex size-12 items-center justify-center rounded-full bg-[#38a169]">
@@ -357,8 +413,6 @@ export default function AssignPublishClient({
               </Button>
             </div>
           </div>
-          {/* Title for accessibility (success heading shown above) */}
-          <span className="sr-only">{courseTitle} published</span>
         </DialogContent>
       </Dialog>
     </div>

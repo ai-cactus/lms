@@ -22,6 +22,8 @@ model User {
   emailVerified         Boolean           @default(false) @map("email_verified")
   mfaEnabled            Boolean           @default(false) @map("mfa_enabled")
   mfaVerifiedAt         DateTime?         @map("mfa_verified_at")
+  sessionVersion        Int               @default(0) @map("session_version")
+  managerId             String?           @map("manager_id")
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
   courses               Course[]
@@ -31,12 +33,15 @@ model User {
   notificationPrefs     NotificationPreference[]
   profile               Profile?
   organization          Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  manager               User?             @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports               User[]            @relation("UserManager")
   mfaFactors            MfaFactor[]
   mfaRecoveryCodes      MfaRecoveryCode[]
   certificates          Certificate[]
   approvedCourses       Course[]          @relation("CourseApprover")
 
   @@index([organizationId])
+  @@index([managerId])
   @@map("users")
 }
 
@@ -71,6 +76,7 @@ model Invite {
 
   @@index([email])
   @@index([token])
+  @@index([organizationId])
   @@map("invites")
 }
 

@@ -101,7 +101,13 @@ services:
   # ── MinIO (GCS fallback / local object storage) ───────────────────────────────
   minio:
     container_name: lms-production-minio
-    image: minio/minio:latest
+    # Pinned (was minio/minio:latest) so redeploys can't silently pull a newer,
+    # breaking MinIO. This is a PIN, not an upgrade: before the first deploy that
+    # picks this up, ops MUST confirm this tag matches the image already running
+    # on the VM and adjust it if not —
+    #   docker inspect --format='{{.Image}}' lms-production-minio
+    # then map that digest back to its RELEASE tag (docker image ls --digests).
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
     command: server /data
     environment:

@@ -1,5 +1,6 @@
-import nodemailer from 'nodemailer';
-import { logger } from './logger';
+import nodemailer, { type SendMailOptions } from 'nodemailer';
+import prisma from './prisma';
+import { logger, maskEmail } from './logger';
 
 /**
  * Escape a string for safe interpolation into HTML email bodies.
@@ -14,6 +15,23 @@ function escapeHtml(value: unknown): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * Render a deadline/due date in a friendly, human-readable form (e.g.
+ * "June 30, 2026"). Mirrors the locale formatting used by the PDF report
+ * emails. Returns an empty string for missing/invalid dates so callers never
+ * surface "Invalid Date" to recipients.
+ */
+function formatDueDate(date: Date | string | null | undefined): string {
+  if (!date) return '';
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 }
 
 const user = process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
@@ -41,6 +59,73 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+/* -------------------------------------------------------------------------- */
+/* Delivery tracking (F-021)                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Reduce a Nodemailer `to` field to a single loggable/persistable address string. */
+function normalizeRecipient(to: SendMailOptions['to']): string {
+  if (!to) return 'unknown';
+  if (typeof to === 'string') return to;
+  if (Array.isArray(to)) {
+    return to.map((entry) => (typeof entry === 'string' ? entry : entry.address)).join(', ');
+  }
+  return to.address;
+}
+
+/** Trim an unknown error down to a persistable message string. */
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Unknown email transport error';
+}
+
+/**
+ * Persist an {@link @/generated/prisma EmailMessage} delivery record. Best-effort
+ * observability: tracking must never break the actual send, so all failures are
+ * swallowed with an error log. Reminder-ladder sends are tracked separately by
+ * `dispatch.ts` (keyed to their ReminderLog) and therefore bypass this helper.
+ */
+async function recordEmailMessage(data: {
+  toEmail: string;
+  kind: string;
+  status: 'sent' | 'failed';
+  sentAt?: Date;
+  attempts?: number;
+  lastError?: string;
+}): Promise<void> {
+  try {
+    await prisma.emailMessage.create({ data });
+  } catch (err) {
+    logger.error({ msg: '[email] Failed to record email delivery', kind: data.kind, err });
+  }
+}
+
+/**
+ * Transport-layer wrapper around `transporter.sendMail`. Records an EmailMessage
+ * row for every send — `sent` on success, `failed` (attempts = 1, lastError) on
+ * failure — then returns/rethrows exactly as the raw transport would, so callers
+ * keep their existing structured-result handling. `kind` classifies the send for
+ * later auditing; callers pass a specific kind, defaulting to a generic one.
+ */
+async function sendMailTracked(options: SendMailOptions, kind = 'generic') {
+  const toEmail = normalizeRecipient(options.to);
+  try {
+    const info = await transporter.sendMail(options);
+    await recordEmailMessage({ toEmail, kind, status: 'sent', sentAt: new Date() });
+    return info;
+  } catch (error) {
+    await recordEmailMessage({
+      toEmail,
+      kind,
+      status: 'failed',
+      attempts: 1,
+      lastError: describeError(error),
+    });
+    throw error;
+  }
+}
+
 export async function sendInviteEmail(
   to: string,
   inviteLink: string,
@@ -60,20 +145,22 @@ export async function sendInviteEmail(
     `;
 
   try {
-    logger.info({ msg: `[Email Debug] Sending invite to: ${to}` });
-    logger.info({ msg: `[Email Debug] Invite Link: ${inviteLink}` });
-    logger.info({ msg: `[Email Debug] Org: ${orgName}` });
-
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to,
-      subject: `Join ${orgName} on ${appName}`,
-      html,
-    });
-    logger.info({ msg: 'Message sent: %s', data: info.messageId });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        subject: `Join ${orgName} on ${appName}`,
+        html,
+      },
+      'invite',
+    );
+    // Do NOT log the raw recipient or the tokenized invite link — the link
+    // embeds a bearer token (F-067). Mask the address and log only non-sensitive
+    // context.
+    logger.info({ msg: '[email] Invite email sent', messageId: info.messageId, to: maskEmail(to) });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    logger.error({ msg: 'Error sending email:', err: error });
+    logger.error({ msg: '[email] Error sending invite email', err: error, to: maskEmail(to) });
     return { success: false, error };
   }
 }
@@ -96,12 +183,15 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"Theraptly Security" <${user}>`,
-      to: email,
-      subject: `Reset your password - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"Theraptly Security" <${user}>`,
+        to: email,
+        subject: `Reset your password - ${appName}`,
+        html,
+      },
+      'password_reset',
+    );
     logger.info({ msg: 'Password reset sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -127,12 +217,15 @@ export const sendMfaOtpEmail = async (email: string, code: string) => {
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"Theraptly Security" <${user}>`,
-      to: email,
-      subject: `Your ${appName} verification code`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"Theraptly Security" <${user}>`,
+        to: email,
+        subject: `Your ${appName} verification code`,
+        html,
+      },
+      'mfa_otp',
+    );
     logger.info({ msg: 'MFA OTP email sent', messageId: info.messageId });
     return { success: true };
   } catch (error) {
@@ -170,12 +263,15 @@ export const sendEmailVerification = async (email: string, token: string) => {
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"Theraptly" <${user}>`,
-      to: email,
-      subject: `Verify your email - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"Theraptly" <${user}>`,
+        to: email,
+        subject: `Verify your email - ${appName}`,
+        html,
+      },
+      'email_verification',
+    );
     logger.info({ msg: 'Email verification sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -223,12 +319,15 @@ export const sendCourseInviteEmail = async (
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: email,
-      subject: `You've been assigned: ${courseName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: email,
+        subject: `You've been assigned: ${courseName} - ${appName}`,
+        html,
+      },
+      'course_invite',
+    );
     logger.info({ msg: 'Course invite email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -275,12 +374,15 @@ export const sendCourseEnrollmentEmail = async (
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: email,
-      subject: `New Course Assignment: ${courseName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: email,
+        subject: `New Course Assignment: ${courseName} - ${appName}`,
+        html,
+      },
+      'course_enrollment',
+    );
     logger.info({ msg: 'Course enrollment email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -324,12 +426,15 @@ export async function sendQuizLockedEmail(
     `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: adminEmail,
-      subject: `Action Required: ${workerName} locked out of quiz - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: adminEmail,
+        subject: `Action Required: ${workerName} locked out of quiz - ${appName}`,
+        html,
+      },
+      'quiz_locked',
+    );
     logger.info({ msg: 'Quiz locked email sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -454,13 +559,16 @@ export async function sendEnterpriseInquiryEmail({
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to,
-      replyTo: replyToEmail,
-      subject: `Enterprise Plan Inquiry — ${organizationName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        replyTo: replyToEmail,
+        subject: `Enterprise Plan Inquiry — ${organizationName}`,
+        html,
+      },
+      'enterprise_inquiry',
+    );
     logger.info({ msg: '[Email] Enterprise inquiry sent: %s', data: info.messageId });
     return { success: true };
   } catch (error) {
@@ -487,12 +595,15 @@ export async function sendStaffRemovedEmail(email: string, orgName: string) {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: email,
-      subject: `Account disconnected from ${orgName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: email,
+        subject: `Account disconnected from ${orgName} - ${appName}`,
+        html,
+      },
+      'staff_removed',
+    );
     return { success: true, messageId: info.messageId };
   } catch (error) {
     logger.error({ msg: 'Error sending staff removed email:', err: error });
@@ -519,12 +630,15 @@ export async function sendStaffRemovalConfirmationEmail(
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: adminEmail,
-      subject: `Staff Removal Confirmed: ${staffName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: adminEmail,
+        subject: `Staff Removal Confirmed: ${staffName} - ${appName}`,
+        html,
+      },
+      'staff_removal_confirmation',
+    );
     return { success: true, messageId: info.messageId };
   } catch (error) {
     logger.error({ msg: 'Error sending staff removal confirmation email:', err: error });
@@ -575,17 +689,441 @@ export async function sendDemoRequestEmail(data: {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to,
-      replyTo: data.email,
-      subject: `New Demo Request: ${data.organizationName} - ${appName}`,
-      html,
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        replyTo: data.email,
+        subject: `New Demo Request: ${data.organizationName} - ${appName}`,
+        html,
+      },
+      'demo_request',
+    );
     logger.info({ msg: 'Demo request email sent', messageId: info.messageId });
     return { success: true, messageId: info.messageId };
   } catch (error) {
     logger.error({ msg: 'Error sending demo request email', error });
+    return { success: false, error };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reminder & Escalation Emails
+// ---------------------------------------------------------------------------
+
+/** Resolve the server-side base URL using the same precedence as the other emails. */
+function reminderBaseUrl(): string {
+  return (
+    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://staging-lms.theraptly.com'
+  );
+}
+
+/**
+ * Stage 1 — Initial launch. Sent when a course is assigned (the in-app
+ * COURSE_ASSIGNED notification is kept; this is the accompanying email).
+ * Friendly tone, surfaces the due date, links to the worker trainings page.
+ */
+export async function sendCourseLaunchEmail(
+  to: string,
+  userName: string,
+  courseName: string,
+  orgName: string,
+  dueAt: Date | string | null,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Course launch email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const trainingsLink = `${reminderBaseUrl()}/worker/trainings`;
+  const formattedDue = formatDueDate(dueAt);
+
+  const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="color: #4C6EF5; font-size: 28px; margin: 0;">📋 New Required Training Assigned</h1>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Hi <strong>${escapeHtml(userName)}</strong>,
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                <strong>${escapeHtml(orgName)}</strong> has assigned you a new required training course:
+            </p>
+            <div style="background: #f7fafc; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center;">
+                <h3 style="margin: 0; color: #2D3748; font-size: 20px;">${escapeHtml(courseName)}</h3>
+                ${
+                  formattedDue
+                    ? `<p style="margin: 12px 0 0 0; color: #4a5568; font-size: 15px;">Due by <strong>${escapeHtml(formattedDue)}</strong></p>`
+                    : ''
+                }
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Please review the details and log in to begin the course.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${trainingsLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Log In to Begin</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                If you have questions, please contact your administrator.
+            </p>
+        </div>
+    `;
+
+  try {
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        subject: `📋 New Required Training Assigned: ${courseName}`,
+        html,
+      },
+      'course_launch',
+    );
+    logger.info({
+      msg: '[email] Course launch email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send course launch email',
+      err: error,
+      to: maskEmail(to),
+    });
+    return { success: false, error };
+  }
+}
+
+/** Deadline reminder stages (CSV stages 2–4). */
+export type DeadlineReminderStage = 'friendly' | 'urgent' | 'day_of';
+
+/**
+ * Stages 2–4 — Deadline reminders to the worker. A single template whose copy
+ * varies by `stage` (friendly / urgent / day-of). Links to the worker
+ * trainings page.
+ */
+export async function sendDeadlineReminderEmail(
+  to: string,
+  userName: string,
+  courseName: string,
+  dueAt: Date | string | null,
+  stage: DeadlineReminderStage,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Deadline reminder email skipped — missing recipient', stage });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const trainingsLink = `${reminderBaseUrl()}/worker/trainings`;
+  const formattedDue = formatDueDate(dueAt);
+
+  const copy: Record<
+    DeadlineReminderStage,
+    { subject: string; heading: string; headingColor: string; message: string }
+  > = {
+    friendly: {
+      subject: `⏳ Upcoming Deadline: ${courseName}`,
+      heading: '⏳ Upcoming Deadline',
+      headingColor: '#DD6B20',
+      message:
+        'Please complete this training within the next two weeks to stay current with your compliance requirements.',
+    },
+    urgent: {
+      subject: `⚠️ Action Required: ${courseName} expires in 3 days`,
+      heading: '⚠️ Action Required',
+      headingColor: '#E53E3E',
+      message:
+        'This training expires in 3 days. Please finish the modules immediately to prevent a gap in compliance.',
+    },
+    day_of: {
+      subject: `🚨 Final Notice: ${courseName} is due today`,
+      heading: '🚨 Final Notice',
+      headingColor: '#E53E3E',
+      message: 'This training is due today. Please complete it before midnight tonight.',
+    },
+  };
+
+  const { subject, heading, headingColor, message } = copy[stage];
+
+  const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="color: ${headingColor}; font-size: 28px; margin: 0;">${heading}</h1>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Hi <strong>${escapeHtml(userName)}</strong>,
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                This is a reminder about your assigned training:
+            </p>
+            <div style="background: #f7fafc; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center;">
+                <h3 style="margin: 0; color: #2D3748; font-size: 20px;">${escapeHtml(courseName)}</h3>
+                ${
+                  formattedDue
+                    ? `<p style="margin: 12px 0 0 0; color: #4a5568; font-size: 15px;">Due by <strong>${escapeHtml(formattedDue)}</strong></p>`
+                    : ''
+                }
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                ${escapeHtml(message)}
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${trainingsLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Complete Training</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                If you have questions, please contact your administrator.
+            </p>
+        </div>
+    `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      subject,
+      html,
+    });
+    logger.info({
+      msg: '[email] Deadline reminder email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+      stage,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send deadline reminder email',
+      err: error,
+      to: maskEmail(to),
+      stage,
+    });
+    return { success: false, error };
+  }
+}
+
+/**
+ * Stage 5 (worker copy) — Overdue notice. Warning styling; the worker must
+ * complete the training immediately. (The admin/manager side of stage 5 is
+ * handled by sendEscalationEmail.)
+ */
+export async function sendDeadlineOverdueWorkerEmail(
+  to: string,
+  userName: string,
+  courseName: string,
+  dueAt: Date | string | null,
+  daysOverdue: number,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Overdue worker email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const trainingsLink = `${reminderBaseUrl()}/worker/trainings`;
+  const formattedDue = formatDueDate(dueAt);
+
+  const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <h2 style="color: #E53E3E;">🛑 OVERDUE: ${escapeHtml(courseName)} Training</h2>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Hi <strong>${escapeHtml(userName)}</strong>,
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Your required training is now overdue and your compliance is at risk:
+            </p>
+            <div style="background: #FFF5F5; border-left: 4px solid #E53E3E; border-radius: 8px; padding: 20px; margin: 24px 0;">
+                <p style="margin: 4px 0;"><strong>Course:</strong> ${escapeHtml(courseName)}</p>
+                ${
+                  formattedDue
+                    ? `<p style="margin: 4px 0;"><strong>Due Date:</strong> ${escapeHtml(formattedDue)}</p>`
+                    : ''
+                }
+                <p style="margin: 4px 0;"><strong>Days Overdue:</strong> ${escapeHtml(daysOverdue)}</p>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Please complete this training immediately to return to compliance.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${trainingsLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Complete Training Now</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                If you have questions, please contact your administrator.
+            </p>
+        </div>
+    `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      subject: `🛑 OVERDUE: ${courseName} Training`,
+      html,
+    });
+    logger.info({
+      msg: '[email] Overdue worker email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send overdue worker email',
+      err: error,
+      to: maskEmail(to),
+    });
+    return { success: false, error };
+  }
+}
+
+/**
+ * Stages 5 & 6 — Escalation to the worker's manager (or org admins). Warning
+ * styling mirroring sendQuizLockedEmail. `actionLink` may be absolute or a
+ * relative path; relative paths are resolved against the configured base URL.
+ */
+export async function sendEscalationEmail(
+  to: string,
+  recipientName: string,
+  workerName: string,
+  courseName: string,
+  dueAt: Date | string | null,
+  daysOverdue: number,
+  stageLabel: string,
+  actionLink: string,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Escalation email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const formattedDue = formatDueDate(dueAt);
+  const resolvedActionLink = /^https?:\/\//i.test(actionLink)
+    ? actionLink
+    : `${reminderBaseUrl()}${actionLink.startsWith('/') ? '' : '/'}${actionLink}`;
+
+  const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #E53E3E;">📉 Compliance Alert: Action Required</h2>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Hi <strong>${escapeHtml(recipientName)}</strong>,
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                A worker in your organization has an overdue required training that needs your attention:
+            </p>
+            <div style="background: #FFF5F5; border-left: 4px solid #E53E3E; border-radius: 8px; padding: 20px; margin: 24px 0;">
+                <p style="margin: 4px 0;"><strong>Worker:</strong> ${escapeHtml(workerName)}</p>
+                <p style="margin: 4px 0;"><strong>Course:</strong> ${escapeHtml(courseName)}</p>
+                ${
+                  formattedDue
+                    ? `<p style="margin: 4px 0;"><strong>Due Date:</strong> ${escapeHtml(formattedDue)}</p>`
+                    : ''
+                }
+                <p style="margin: 4px 0;"><strong>Days Overdue:</strong> ${escapeHtml(daysOverdue)}</p>
+                <p style="margin: 4px 0;"><strong>Escalation Stage:</strong> ${escapeHtml(stageLabel)}</p>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Please intervene with a manual follow-up, re-assign the training, or take the
+                appropriate compliance action for this worker.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${resolvedActionLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Review Compliance</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                This is an automated notification from ${appName}.
+            </p>
+        </div>
+    `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      subject: `📉 Compliance Alert: Action required for ${workerName}`,
+      html,
+    });
+    logger.info({
+      msg: '[email] Escalation email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send escalation email',
+      err: error,
+      to: maskEmail(to),
+    });
+    return { success: false, error };
+  }
+}
+
+/**
+ * Track B — Retake reminder. Nudges a worker who failed the quiz but still has
+ * attempts remaining to retake it. Links to the worker trainings page.
+ */
+export async function sendRetakeReminderEmail(
+  to: string,
+  userName: string,
+  courseName: string,
+  attemptsRemaining: number,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Retake reminder email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const trainingsLink = `${reminderBaseUrl()}/worker/trainings`;
+
+  const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="color: #DD6B20; font-size: 28px; margin: 0;">🔁 Retake Available</h1>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Hi <strong>${escapeHtml(userName)}</strong>,
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                You did not pass the quiz for your assigned training, but you still have attempts remaining:
+            </p>
+            <div style="background: #f7fafc; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center;">
+                <h3 style="margin: 0; color: #2D3748; font-size: 20px;">${escapeHtml(courseName)}</h3>
+                <p style="margin: 12px 0 0 0; color: #4a5568; font-size: 15px;">Attempts Remaining: <strong>${escapeHtml(attemptsRemaining)}</strong></p>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Please log in and retake the quiz to complete your training and stay compliant.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${trainingsLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Retake the Quiz</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                If you have questions, please contact your administrator.
+            </p>
+        </div>
+    `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      subject: `🔁 Retake Available: ${courseName}`,
+      html,
+    });
+    logger.info({
+      msg: '[email] Retake reminder email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send retake reminder email',
+      err: error,
+      to: maskEmail(to),
+    });
     return { success: false, error };
   }
 }
@@ -632,19 +1170,22 @@ export async function sendUserActivityReportEmail(
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: adminEmail,
-      subject: `Activity Report: ${staffName} — ${orgName}`,
-      html,
-      attachments: [
-        {
-          filename: fileName,
-          content: pdfBuffer,
-          contentType: 'application/pdf',
-        },
-      ],
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: adminEmail,
+        subject: `Activity Report: ${staffName} — ${orgName}`,
+        html,
+        attachments: [
+          {
+            filename: fileName,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ],
+      },
+      'activity_report',
+    );
     logger.info({ msg: '[email] User activity report sent', messageId: info.messageId, staffName });
     return { success: true };
   } catch (error) {
@@ -691,19 +1232,22 @@ export async function sendAuditorPackPdfEmail(
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${appName}" <${user}>`,
-      to: adminEmail,
-      subject: `Auditor Pack Export — ${orgName}`,
-      html,
-      attachments: [
-        {
-          filename: fileName,
-          content: pdfBuffer,
-          contentType: 'application/pdf',
-        },
-      ],
-    });
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: adminEmail,
+        subject: `Auditor Pack Export — ${orgName}`,
+        html,
+        attachments: [
+          {
+            filename: fileName,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ],
+      },
+      'auditor_pack',
+    );
     logger.info({ msg: '[email] Auditor pack PDF sent', messageId: info.messageId, orgName });
     return { success: true };
   } catch (error) {

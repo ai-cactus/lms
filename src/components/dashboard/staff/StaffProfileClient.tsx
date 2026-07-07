@@ -20,11 +20,28 @@ import AssignUserCourseModal from './AssignUserCourseModal';
 import AssignRetakeModal from '../training/AssignRetakeModal';
 import RemoveStaffModal from './RemoveStaffModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
-import { getEnrollmentQuizResult } from '@/app/actions/staff';
+import {
+  getEnrollmentQuizResult,
+  getAssignableManagers,
+  setStaffManager,
+} from '@/app/actions/staff';
 import { getAdminWorkerCertificates } from '@/app/actions/certificate';
 import CertificateCardList from '../training/CertificateCardList';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Alert } from '@/components/ui';
 
 type WorkerCertificate = Awaited<ReturnType<typeof getAdminWorkerCertificates>>[number];
+type AssignableManager = Awaited<ReturnType<typeof getAssignableManagers>>[number];
+
+// Radix Select cannot use an empty string as an item value, so we map the
+// "no manager" option to a sentinel and translate it back to null on submit.
+const NO_MANAGER_VALUE = 'none';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import {
@@ -50,6 +67,8 @@ interface StaffProfileClientProps {
       avatarUrl: string | null;
       role: string;
       jobTitle: string;
+      managerId: string | null;
+      managerName: string | null;
     };
     stats: {
       totalCourses: number;
@@ -110,6 +129,53 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
   const [activeTab, setActiveTab] = useState<'courses' | 'certificates'>('courses');
   const [certificates, setCertificates] = useState<WorkerCertificate[]>([]);
   const [loadingCerts, setLoadingCerts] = useState(false);
+
+  // Manager assignment
+  const [managers, setManagers] = useState<AssignableManager[]>([]);
+  const [loadingManagers, setLoadingManagers] = useState(false);
+  const [managerId, setManagerId] = useState<string>(user.managerId ?? NO_MANAGER_VALUE);
+  const [savingManager, setSavingManager] = useState(false);
+  const [managerMessage, setManagerMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    setLoadingManagers(true);
+    getAssignableManagers()
+      .then((res) => {
+        setManagers(res.filter((m) => m.id !== user.id));
+        setLoadingManagers(false);
+      })
+      .catch((err) => {
+        logger.error({ msg: 'Failed to fetch assignable managers', err });
+        setLoadingManagers(false);
+      });
+  }, [user.id]);
+
+  const handleManagerChange = async (value: string) => {
+    const previous = managerId;
+    const nextManagerId = value === NO_MANAGER_VALUE ? null : value;
+    setManagerId(value);
+    setSavingManager(true);
+    setManagerMessage(null);
+
+    try {
+      const result = await setStaffManager(user.id, nextManagerId);
+      if (result.success) {
+        setManagerMessage({ type: 'success', text: 'Manager updated successfully' });
+      } else {
+        setManagerId(previous);
+        setManagerMessage({ type: 'error', text: result.error || 'Failed to update manager' });
+      }
+    } catch (err) {
+      logger.error({ msg: 'Error updating manager', err });
+      setManagerId(previous);
+      setManagerMessage({ type: 'error', text: 'An unexpected error occurred' });
+    } finally {
+      setSavingManager(false);
+    }
+  };
 
   React.useEffect(() => {
     if (activeTab === 'certificates' && certificates.length === 0) {
@@ -186,6 +252,46 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
             </div>
             <div className="inline-block w-fit rounded bg-[#e6fffa] px-3 py-1 text-xs font-semibold text-[#2c7a7b]">
               {user.jobTitle || 'Direct Support Professional (DSP)'}
+            </div>
+
+            <div className="mt-4 flex flex-col gap-1.5">
+              <label
+                htmlFor="staff-manager-select"
+                className="text-xs font-medium text-text-secondary"
+              >
+                Manager
+              </label>
+              <Select
+                value={managerId}
+                onValueChange={handleManagerChange}
+                disabled={loadingManagers || savingManager}
+              >
+                <SelectTrigger
+                  id="staff-manager-select"
+                  className="h-10 w-full sm:w-[260px]"
+                  aria-label="Assign manager"
+                >
+                  <SelectValue
+                    placeholder={loadingManagers ? 'Loading managers...' : 'Select a manager'}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_MANAGER_VALUE}>No manager</SelectItem>
+                  {managers.map((manager) => (
+                    <SelectItem key={manager.id} value={manager.id}>
+                      {manager.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {managerMessage && (
+                <Alert
+                  variant={managerMessage.type === 'success' ? 'success' : 'error'}
+                  className="mt-1 w-full sm:w-[260px]"
+                >
+                  {managerMessage.text}
+                </Alert>
+              )}
             </div>
           </div>
         </div>
