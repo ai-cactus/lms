@@ -3893,6 +3893,13 @@ export const SubscriptionScalarFieldEnum = {
   cancelAtPeriodEnd: 'cancelAtPeriodEnd',
   pausedAt: 'pausedAt',
   pauseEndsAt: 'pauseEndsAt',
+  discountPromoCode: 'discountPromoCode',
+  discountCouponName: 'discountCouponName',
+  discountPercentOff: 'discountPercentOff',
+  discountAmountOff: 'discountAmountOff',
+  discountCurrency: 'discountCurrency',
+  discountDuration: 'discountDuration',
+  discountEndsAt: 'discountEndsAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const

@@ -197,6 +197,9 @@ export async function POST(request: NextRequest) {
       mode: 'subscription',
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
+      // Let org admins redeem dashboard-created promotion codes on Stripe's
+      // hosted page. Mutually exclusive with the `discounts` param (not used).
+      allow_promotion_codes: true,
       success_url: `${appUrl}/dashboard/billing?tab=overview&checkout=success`,
       cancel_url: `${appUrl}/dashboard/billing?tab=subscription`,
       metadata: {
