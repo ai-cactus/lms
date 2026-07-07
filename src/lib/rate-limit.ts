@@ -12,6 +12,15 @@ import { logger } from '@/lib/logger';
 
 const fallbackCache = new Map<string, number[]>();
 
+/**
+ * E2E-only rate-limit bypass. Double-guarded: only active when NOT in production
+ * AND the explicit opt-in flag is set, so it can never disable rate limiting in
+ * a real deployment. Used so the Playwright suite can exercise auth flows
+ * repeatedly without tripping the login/signup limiters.
+ */
+const e2eBypassRateLimit =
+  process.env.NODE_ENV !== 'production' && process.env.E2E_TEST_BYPASS_RATE_LIMIT === 'true';
+
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
 // Separate lightweight client — does NOT share with BullMQ's blocking connection pool.
@@ -67,6 +76,10 @@ export async function checkRateLimit(
   windowSec = 900,
   options: RateLimitOptions = {},
 ): Promise<RateLimitResult> {
+  if (e2eBypassRateLimit) {
+    return { allowed: true, remaining: limit, resetInSeconds: windowSec };
+  }
+
   const now = Date.now();
   const windowStart = now - windowSec * 1000;
 
@@ -135,6 +148,10 @@ export async function checkRateLimitOnly(
   windowSec = 900,
   options: RateLimitOptions = {},
 ): Promise<RateLimitResult> {
+  if (e2eBypassRateLimit) {
+    return { allowed: true, remaining: limit, resetInSeconds: windowSec };
+  }
+
   const now = Date.now();
   const windowStart = now - windowSec * 1000;
 
@@ -188,6 +205,10 @@ export async function checkRateLimitOnly(
  * Use this after a failed operation to only count failures.
  */
 export async function recordRateLimitAttempt(key: string, windowSec = 900): Promise<void> {
+  if (e2eBypassRateLimit) {
+    return;
+  }
+
   const now = Date.now();
   const windowStart = now - windowSec * 1000;
 
