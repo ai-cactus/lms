@@ -22,6 +22,10 @@ const ADMIN_PASSWORD = process.env.PLAYWRIGHT_ADMIN_PASSWORD ?? 'Admin123!';
 // as visible row text — so rows must be targeted by email.
 const WORKER_EMAIL = 'worker@test.com';
 const SEEDED_COURSE_TITLE = 'E2E Compliance Training';
+// Seeded by prisma/seed.ts specifically for Status Tracker fixtures: a worker
+// whose enrollment dueAt is always ~10 days before "now" at seed time, so it
+// stays past the 7-day HARD_ESCALATION threshold on every run.
+const OVERDUE_WORKER_NAME = 'Olivia Overdue';
 
 async function loginAsAdmin(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/login');
@@ -121,29 +125,72 @@ test.describe('Reminders & Escalations', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Flow 4: Compliance page shows the hard-escalation banner when an overdue
+  // Flow 4: Status Tracker page shows the hard-escalation banner when an overdue
   // enrollment passes the 7-day threshold; banner clears after attestation.
   // ---------------------------------------------------------------------------
-  test('REM-004: compliance page shows hard-escalation banner for 7+ day overdue enrollment', async ({
+  test('REM-004: status tracker page shows hard-escalation banner for 7+ day overdue enrollment', async ({
     page,
   }) => {
-    // This test requires a seeded enrollment that is already ≥7 days overdue.
-    // The standard seed does not provide one, so it stays skipped.
-    test.skip(
-      true,
-      'Requires a seeded enrollment that is ≥7 days past dueAt — skip until such a fixture exists.',
-    );
+    // Uses the seeded "Olivia Overdue" enrollment (dueAt ~10 days ago).
+    await loginAsAdmin(page);
 
-    await page.goto('/login');
-    await page.fill('input[name="email"]', ADMIN_EMAIL);
-    await page.fill('input[name="password"]', ADMIN_PASSWORD);
-    await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard');
-
-    await page.goto('/dashboard/compliance');
-
-    // Hard-escalation banner must be visible
+    // Hard-escalation banner is site-wide for admins, so it must already be
+    // visible right after landing on /dashboard.
     const banner = page.getByRole('alert').filter({ hasText: /escalation|overdue/i });
     await expect(banner).toBeVisible();
+
+    await page.goto('/dashboard/status-tracker');
+    await expect(banner).toBeVisible();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Flow 5: Renamed nav entry ("Compliance" → "Status Tracker") links to the
+  // new /dashboard/status-tracker URL, and the page itself renders under its
+  // new heading.
+  // ---------------------------------------------------------------------------
+  test('REM-005: nav shows "Status Tracker" and links to /dashboard/status-tracker', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+
+    const navLink = page.getByRole('link', { name: 'Status Tracker', exact: true });
+    await expect(navLink).toBeVisible();
+    await expect(navLink).toHaveAttribute('href', '/dashboard/status-tracker');
+
+    await navLink.click();
+    await page.waitForURL('**/dashboard/status-tracker');
+    await expect(page.getByRole('heading', { name: 'Status Tracker', level: 1 })).toBeVisible();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Flow 6: Admin dashboard shows the Status Tracker overview widget — summary
+  // counts, a "View all" link, and the seeded overdue worker in its top-5 list.
+  // ---------------------------------------------------------------------------
+  test('REM-006: admin dashboard shows the Status Tracker overview with the overdue worker', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+
+    const section = page.locator('section', {
+      has: page.getByRole('heading', { name: 'Status Tracker', level: 2 }),
+    });
+    await expect(section).toBeVisible();
+
+    const viewAllLink = section.getByRole('link', { name: /view all/i });
+    await expect(viewAllLink).toHaveAttribute('href', '/dashboard/status-tracker');
+
+    // Summary counts are non-empty since the seeded overdue worker exists.
+    await expect(section.getByText('Overdue training')).toBeVisible();
+    await expect(section.getByText(/Hard escalations/)).toBeVisible();
+
+    // Seeded overdue worker appears in the compact top-5 list.
+    await expect(section.getByText(OVERDUE_WORKER_NAME)).toBeVisible();
+    await expect(section.getByText(SEEDED_COURSE_TITLE)).toBeVisible();
+
+    // Following "View all" lands on the full status-tracker page with the
+    // same worker present.
+    await viewAllLink.click();
+    await page.waitForURL('**/dashboard/status-tracker');
+    await expect(page.getByText(OVERDUE_WORKER_NAME)).toBeVisible();
   });
 });

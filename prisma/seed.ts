@@ -42,6 +42,13 @@ const QUIZ_ID = '66666666-6666-4666-8666-666666666661';
 const QUESTION_ID = '77777777-7777-4777-8777-777777777771';
 const ENROLLMENT_SARAH_ID = '88888888-8888-4888-8888-888888888881';
 const ENROLLMENT_WORKER_ID = '88888888-8888-4888-8888-888888888882';
+// Dedicated worker + enrollment for the Status Tracker (formerly Compliance)
+// overdue population — REM-004 and the admin-dashboard Status Tracker overview
+// e2e coverage need a deterministically ≥7-day-overdue enrollment. Kept
+// separate from sarah/worker so their status-specific fixtures (ENG-020's
+// in_progress quiz flow, ENG-022's locked retake flow) are never disturbed.
+const OVERDUE_WORKER_ID = '22222222-2222-4222-8222-222222222224';
+const ENROLLMENT_OVERDUE_ID = '88888888-8888-4888-8888-888888888883';
 const SUBSCRIPTION_ID = '99999999-9999-4999-8999-999999999991';
 
 // The correct answer is stored as the option TEXT (the worker learn/grading flow
@@ -211,7 +218,39 @@ async function main(): Promise<void> {
       lastName: 'Johnson',
     },
   });
-  log('users + profiles ready (admin, worker, sarah)');
+  const overdueWorker = await prisma.user.upsert({
+    where: { email: 'olivia.overdue@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'worker',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: OVERDUE_WORKER_ID,
+      email: 'olivia.overdue@test.com',
+      password: workerPassword,
+      role: 'worker',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: overdueWorker.id },
+    update: { fullName: 'Olivia Overdue', firstName: 'Olivia', lastName: 'Overdue' },
+    create: {
+      id: overdueWorker.id,
+      email: 'olivia.overdue@test.com',
+      fullName: 'Olivia Overdue',
+      firstName: 'Olivia',
+      lastName: 'Overdue',
+    },
+  });
+  log('users + profiles ready (admin, worker, sarah, overdueWorker)');
 
   // 3. Document + version owned by the admin (feeds the ENG-024 wizard picker).
   await prisma.document.upsert({
@@ -379,7 +418,36 @@ async function main(): Promise<void> {
       lockedAt: now,
     },
   });
-  log('enrollments ready (sarah in_progress, worker locked; retakes + quiz attempts reset)');
+  // Overdue enrollment for the Status Tracker fixtures: dueAt is always computed
+  // relative to "now" at seed time (10 days ago), so it stays ≥7 days overdue
+  // (the HARD_ESCALATION threshold) on every run regardless of when CI executes.
+  const tenDaysAgo = new Date(now);
+  tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_OVERDUE_ID },
+    update: {
+      status: 'in_progress',
+      progress: 0,
+      score: null,
+      completedAt: null,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+      dueAt: tenDaysAgo,
+    },
+    create: {
+      id: ENROLLMENT_OVERDUE_ID,
+      userId: overdueWorker.id,
+      courseId: COURSE_ID,
+      status: 'in_progress',
+      progress: 0,
+      startedAt: now,
+      dueAt: tenDaysAgo,
+    },
+  });
+  log(
+    'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue; retakes + quiz attempts reset)',
+  );
 
   log('seed complete');
 }
