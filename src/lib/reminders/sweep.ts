@@ -240,10 +240,11 @@ async function runTrackA(
   // One query for the active reminder population.
   //
   // Include assignment-less enrollments (`assignmentId: null`) so the ladder
-  // matches the compliance page's overdue population (getOverdueComplianceForOrg
-  // lists every overdue enrollment regardless of assignment). Without this, an
-  // overdue enrollment with no CourseAssignment would surface on the compliance
-  // page yet never be escalated — a silent gap. Such enrollments fall back to
+  // matches the status-tracker page's overdue population
+  // (getStatusTrackerSummaryForOrg lists every overdue enrollment regardless of
+  // assignment). Without this, an overdue enrollment with no CourseAssignment
+  // would surface on the status-tracker page yet never be escalated — a silent
+  // gap. Such enrollments fall back to
   // REMINDER_STAGE_DEFAULTS for their offsets/channels. We still exclude
   // enrollments whose assignment explicitly opted out (`remindersEnabled: false`).
   const enrollments = await prisma.enrollment.findMany({
@@ -505,7 +506,7 @@ async function runTrackB(
 
 /**
  * Stamp `resolvedAt`/`isRead` on the open reminder/escalation notifications for
- * an enrollment once it completes, so the compliance banner/page self-clear.
+ * an enrollment once it completes, so the status-tracker banner/page self-clear.
  * Called wherever an enrollment transitions to completed/attested (Phase 8).
  * Never throws.
  */

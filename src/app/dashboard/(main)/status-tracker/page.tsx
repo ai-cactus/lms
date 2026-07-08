@@ -2,22 +2,22 @@ import React from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import { getOverdueComplianceForOrg } from '@/lib/reminders/compliance';
+import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
-import ComplianceTableClient, {
-  type ComplianceRowView,
-} from '@/components/dashboard/compliance/ComplianceTableClient';
+import StatusTrackerTableClient, {
+  type StatusTrackerRowView,
+} from '@/components/dashboard/status-tracker/StatusTrackerTableClient';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Compliance | Theraptly LMS',
+  title: 'Status Tracker | Theraptly LMS',
   description: 'Workers with overdue training that needs attention.',
 };
 
 const HARD_THRESHOLD_DAYS = REMINDER_STAGE_DEFAULTS.HARD_ESCALATION.offsetDays;
 
-export default async function CompliancePage() {
+export default async function StatusTrackerPage() {
   const session = await auth();
   if (!session?.user?.id) {
     redirect('/login');
@@ -34,11 +34,11 @@ export default async function CompliancePage() {
   }
 
   const summary = user.organizationId
-    ? await getOverdueComplianceForOrg(user.organizationId)
+    ? await getStatusTrackerSummaryForOrg(user.organizationId)
     : { overdueCount: 0, hardEscalationCount: 0, rows: [] };
 
   // Serialize Date across the server/client boundary.
-  const rows: ComplianceRowView[] = summary.rows.map((row) => ({
+  const rows: StatusTrackerRowView[] = summary.rows.map((row) => ({
     ...row,
     dueAt: row.dueAt.toISOString(),
   }));
@@ -46,7 +46,7 @@ export default async function CompliancePage() {
   return (
     <div>
       <div className="mb-7">
-        <h1 className="mb-1 text-[28px] font-bold text-foreground">Compliance</h1>
+        <h1 className="mb-1 text-[28px] font-bold text-foreground">Status Tracker</h1>
         <p className="text-sm text-text-tertiary">
           Workers with training past its deadline. Escalations of {HARD_THRESHOLD_DAYS}+ days are
           highlighted.
@@ -74,7 +74,7 @@ export default async function CompliancePage() {
         </div>
       </div>
 
-      <ComplianceTableClient rows={rows} hardThresholdDays={HARD_THRESHOLD_DAYS} />
+      <StatusTrackerTableClient rows={rows} hardThresholdDays={HARD_THRESHOLD_DAYS} />
     </div>
   );
 }

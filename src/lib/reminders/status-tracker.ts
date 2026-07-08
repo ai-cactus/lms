@@ -3,7 +3,7 @@ import { REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, diffInDaysInTz } from './time';
 
 /**
- * Compliance reporting for the admin compliance page and dashboard banner.
+ * Status tracker reporting for the admin status-tracker page and dashboard banner.
  *
  * "Overdue" means an enrollment whose deadline (`dueAt`) has passed and which has
  * not reached a terminal status (`completed`/`attested`). A "hard escalation" is
@@ -21,7 +21,7 @@ const TERMINAL_STATUSES = ['completed', 'attested'] as const;
 /** Days-overdue boundary at which an enrollment is a hard escalation. */
 const HARD_ESCALATION_THRESHOLD_DAYS = REMINDER_STAGE_DEFAULTS.HARD_ESCALATION.offsetDays;
 
-export interface ComplianceRow {
+export interface StatusTrackerRow {
   enrollmentId: string;
   userId: string;
   workerName: string;
@@ -34,14 +34,14 @@ export interface ComplianceRow {
   managerName: string | null;
 }
 
-export interface ComplianceSummary {
+export interface StatusTrackerSummary {
   overdueCount: number;
   hardEscalationCount: number;
-  rows: ComplianceRow[];
+  rows: StatusTrackerRow[];
 }
 
 /**
- * Overdue / at-risk compliance picture for a single organization.
+ * Overdue / at-risk status-tracker picture for a single organization.
  *
  * One bulk query (no N+1) joins each overdue enrollment to its course, worker
  * profile/email, the worker's manager name, and the org timezone. Rows are sorted
@@ -50,10 +50,10 @@ export interface ComplianceSummary {
  * `now` is injectable (defaulting to the current instant) so callers/tests can
  * pin the clock — mirroring `runReminderSweep`'s explicit `now`.
  */
-export async function getOverdueComplianceForOrg(
+export async function getStatusTrackerSummaryForOrg(
   orgId: string,
   now: Date = new Date(),
-): Promise<ComplianceSummary> {
+): Promise<StatusTrackerSummary> {
   const enrollments = await prisma.enrollment.findMany({
     where: {
       dueAt: { not: null, lt: now },
@@ -78,7 +78,7 @@ export async function getOverdueComplianceForOrg(
     },
   });
 
-  const rows: ComplianceRow[] = enrollments.map((enrollment) => {
+  const rows: StatusTrackerRow[] = enrollments.map((enrollment) => {
     // `dueAt` is guaranteed non-null by the query filter; assert for the type.
     const dueAt = enrollment.dueAt as Date;
     const tz = enrollment.user.organization?.timezone ?? DEFAULT_TZ;

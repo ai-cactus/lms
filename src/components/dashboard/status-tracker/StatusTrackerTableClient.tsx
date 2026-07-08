@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select';
 
 /** Row shape with `dueAt` serialized to an ISO string for the client boundary. */
-export interface ComplianceRowView {
+export interface StatusTrackerRowView {
   enrollmentId: string;
   userId: string;
   workerName: string;
@@ -35,7 +35,7 @@ export interface ComplianceRowView {
 }
 
 interface Props {
-  rows: ComplianceRowView[];
+  rows: StatusTrackerRowView[];
   /** Days-overdue boundary at/above which a row is a hard escalation (red). */
   hardThresholdDays: number;
 }
@@ -58,10 +58,10 @@ function statusLabel(status: string): string {
 }
 
 /**
- * Client-side filtering + responsive table for the admin compliance page. Data is
- * fetched server-side; this component only filters the already-loaded rows.
+ * Client-side filtering + responsive table for the admin status-tracker page. Data
+ * is fetched server-side; this component only filters the already-loaded rows.
  */
-export default function ComplianceTableClient({ rows, hardThresholdDays }: Props) {
+export default function StatusTrackerTableClient({ rows, hardThresholdDays }: Props) {
   const [courseFilter, setCourseFilter] = useState<string>(ALL);
   const [managerFilter, setManagerFilter] = useState<string>(ALL);
   const [minDays, setMinDays] = useState<string>('0');
