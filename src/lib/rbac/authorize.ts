@@ -43,6 +43,16 @@ export async function authorize(permission: Permission): Promise<AuthResult> {
   const role = session.user.role;
   const roleKey = dbRoleToRoleKey(role);
 
+  if (!roleKey) {
+    logger.warn({
+      msg: '[rbac] Unknown or stale role — denying',
+      userId: session.user.id,
+      role,
+      permission,
+    });
+    return { ok: false, response: apiError('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS') };
+  }
+
   if (!can(roleKey, permission)) {
     logger.warn({
       msg: '[rbac] Permission denied',

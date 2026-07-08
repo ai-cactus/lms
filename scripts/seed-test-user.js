@@ -60,6 +60,8 @@ async function main() {
   });
 
   const workerHash = await bcrypt.hash('Worker123!', 10);
+  // Seed a spread of worker-category roles for fixture variety.
+  const workerRoles = ['therapist_clinician', 'nurse', 'front_desk_admin'];
   for (let i = 1; i <= 3; i++) {
     const w = await prisma.user.upsert({
       where: { email: `worker${i}@test.com` },
@@ -67,7 +69,7 @@ async function main() {
       create: {
         email: `worker${i}@test.com`,
         password: workerHash,
-        role: 'worker',
+        role: workerRoles[i - 1],
         emailVerified: true,
         organizationId: org.id,
       },

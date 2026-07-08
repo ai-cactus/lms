@@ -150,14 +150,32 @@ const everythingExceptBilling: Permission[] = everything.filter(
 
 export interface Role {
   id: string;
+  category: 'manager' | 'worker';
   displayName: string;
   description: string;
   permissions: Permission[];
 }
 
+// The uniform permission ceiling shared by every worker-category role. All eight
+// worker roles are functionally identical at the permission layer — they differ
+// only by `category` + `displayName`/`description`. Defined once here so the
+// literal set is never duplicated across the role definitions below.
+const workerPermissions: Permission[] = [
+  'course.read',
+  'enrollment.read',
+  'enrollment.edit',
+  'assessment.create',
+  'assessment.read',
+  'certificate.read',
+  'notification.read',
+  'notification.edit',
+  'notification.delete',
+];
+
 export const roles = {
   owner: {
     id: 'owner',
+    category: 'manager',
     displayName: 'Owner (Organisation Admin)',
     description:
       'Top-tier tenant seat (CEO, Founder, Practice Owner) — typically the user who created the organisation. Full access to every resource across the ENTIRE organisation, spanning all facilities under it. The widest scope available to a customer; higher than a facility Supervisor.',
@@ -166,6 +184,7 @@ export const roles = {
 
   supervisor: {
     id: 'supervisor',
+    category: 'manager',
     displayName: 'Supervisor (Facility Admin)',
     description:
       'Facility-level overseer. Full access to every resource EXCEPT billing, scoped to a SINGLE facility (an org branch/location) — enforced at the data layer. Cannot reach other facilities, organisation-wide configuration, or any billing/subscription/payment function (billing is reserved for Owner and Finance). Narrower scope than an organisation Owner.',
@@ -174,6 +193,7 @@ export const roles = {
 
   hr: {
     id: 'hr',
+    category: 'manager',
     displayName: 'HR',
     description:
       'Workforce personnel & operational compliance manager. Manages worker details, invites staff, assigns general courses (HIPAA/OSHA) and views broad pass/fail and completion metrics. Blocked from billing, from modifying clinical courses, and from question-by-question assessment scoring.',
@@ -208,6 +228,7 @@ export const roles = {
 
   clinicalDirector: {
     id: 'clinical_director',
+    category: 'manager',
     displayName: 'Clinical Director',
     description:
       'Clinical quality-assurance & assessment oversight lead. Builds and edits clinical modules/assessments, assigns clinical training paths, and reviews granular, question-by-question assessment logs. Blocked from billing, subscription tiers and HR payroll configuration.',
@@ -250,6 +271,7 @@ export const roles = {
 
   finance: {
     id: 'finance',
+    category: 'manager',
     displayName: 'Finance',
     description:
       'Billing, subscription & financial reporting manager. Manages billing settings, payment methods and invoices, and views their own personal learner transcripts. Blocked from building courses, assigning compliance paths and viewing any worker test metrics.',
@@ -270,22 +292,76 @@ export const roles = {
       'notification.delete',
     ],
   },
-  worker: {
-    id: 'worker',
-    displayName: 'Worker (Student)',
+  psychiatristPrescriber: {
+    id: 'psychiatrist_prescriber',
+    category: 'worker',
+    displayName: 'Psychiatrist / Prescriber',
     description:
-      'Default account with zero administrative access. Interface is restricted exclusively to personal training: view the personal dashboard, complete assigned courses, launch assessments and download own certificates. All records are scoped to the user (data-layer enforced). Hard-blocked from every administrative dashboard, roster, metric and setting.',
-    permissions: [
-      'course.read',
-      'enrollment.read',
-      'enrollment.edit',
-      'assessment.create',
-      'assessment.read',
-      'certificate.read',
-      'notification.read',
-      'notification.edit',
-      'notification.delete',
-    ],
+      'Prescribing clinician (psychiatrist / medical provider) completing their own assigned training. Zero administrative access — restricted to personal courses, assessments and certificates, all scoped to the user (data-layer enforced).',
+    permissions: workerPermissions,
+  },
+
+  nurse: {
+    id: 'nurse',
+    category: 'worker',
+    displayName: 'Nurse',
+    description:
+      'Nursing staff completing their own assigned training. Zero administrative access — restricted to personal courses, assessments and certificates, all scoped to the user (data-layer enforced).',
+    permissions: workerPermissions,
+  },
+
+  therapistClinician: {
+    id: 'therapist_clinician',
+    category: 'worker',
+    displayName: 'Therapist / Clinician',
+    description:
+      'Therapist / clinician completing their own assigned training. Zero administrative access — restricted to personal courses, assessments and certificates, all scoped to the user (data-layer enforced).',
+    permissions: workerPermissions,
+  },
+
+  caseManager: {
+    id: 'case_manager',
+    category: 'worker',
+    displayName: 'Case Manager',
+    description:
+      'Case manager coordinating client care and completing their own assigned training. Zero administrative access — restricted to personal courses, assessments and certificates, all scoped to the user (data-layer enforced).',
+    permissions: workerPermissions,
+  },
+
+  behavioralHealthTechnician: {
+    id: 'behavioral_health_technician',
+    category: 'worker',
+    displayName: 'Behavioral Health Technician / Mental Health Associate',
+    description:
+      'Behavioral health technician / mental health associate completing their own assigned training. Zero administrative access — restricted to personal courses, assessments and certificates, all scoped to the user (data-layer enforced).',
+    permissions: workerPermissions,
+  },
+
+  peerSupportSpecialist: {
+    id: 'peer_support_specialist',
+    category: 'worker',
+    displayName: 'Peer Support Specialist',
+    description:
+      'Peer support specialist completing their own assigned training. Zero administrative access — restricted to personal courses, assessments and certificates, all scoped to the user (data-layer enforced).',
+    permissions: workerPermissions,
+  },
+
+  frontDeskAdmin: {
+    id: 'front_desk_admin',
+    category: 'worker',
+    displayName: 'Front Desk / Administrative Support',
+    description:
+      'Front desk / administrative support staff completing their own assigned training. Zero administrative access — restricted to personal courses, assessments and certificates, all scoped to the user (data-layer enforced).',
+    permissions: workerPermissions,
+  },
+
+  facilitiesSupport: {
+    id: 'facilities_support',
+    category: 'worker',
+    displayName: 'Facilities / Support Staff',
+    description:
+      'Facilities / support staff completing their own assigned training. Zero administrative access — restricted to personal courses, assessments and certificates, all scoped to the user (data-layer enforced).',
+    permissions: workerPermissions,
   },
 } as const satisfies Record<string, Role>;
 
@@ -293,6 +369,10 @@ export const getRoles = (): Role[] => Object.values(roles);
 
 export type RoleKey = keyof typeof roles;
 
-export function can(role: RoleKey, permission: Permission): boolean {
-  return (roles[role].permissions as readonly Permission[]).includes(permission);
+export function can(role: RoleKey | undefined, permission: Permission): boolean {
+  // Unknown/stale role keys (e.g. a JWT minted before a role was retired) map to
+  // no entry — treat as least-privilege deny rather than throwing.
+  const entry = roles[role as RoleKey];
+  if (!entry) return false;
+  return (entry.permissions as readonly Permission[]).includes(permission);
 }

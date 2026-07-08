@@ -5,11 +5,13 @@
  *   1. A user with the new 'supervisor' role (previously 'admin') can log in to
  *      the admin dashboard and lands at /dashboard — not /worker.
  *   2. A user with the 'owner' role (org founder) can also reach /dashboard.
- *   3. A 'worker' role user logs in via /login?worker=true and lands at /worker.
+ *   3. A worker-category role (e.g. 'nurse') user logs in via /login?worker=true
+ *      and lands at /worker.
  *   4. Attempting to log in with a password-auth user at the wrong portal is blocked
  *      (worker at /login lands at /worker; admin-role at /login?worker=true blocked).
- *   5. The stale 'admin' role no longer exists in the DB after migration — all
- *      formerly-admin users are now 'supervisor'. (Verified via DB query.)
+ *   5. The stale 'admin' and single 'worker' roles no longer exist in the DB after
+ *      migration — formerly-admin users are now 'supervisor', and workers are one
+ *      of 8 job-specific roles. (Verified via DB query.)
  *
  * Pre-conditions:
  *   - App is running on http://localhost:3005 (started by webServer config).
@@ -34,10 +36,25 @@ async function db(): Promise<Client> {
   return client;
 }
 
+type UserRole =
+  | 'owner'
+  | 'supervisor'
+  | 'hr'
+  | 'clinical_director'
+  | 'finance'
+  | 'psychiatrist_prescriber'
+  | 'nurse'
+  | 'therapist_clinician'
+  | 'case_manager'
+  | 'behavioral_health_technician'
+  | 'peer_support_specialist'
+  | 'front_desk_admin'
+  | 'facilities_support';
+
 interface SeedOptions {
   email: string;
   password: string;
-  role: 'owner' | 'supervisor' | 'hr' | 'clinical_director' | 'finance' | 'worker';
+  role: UserRole;
   firstName?: string;
   lastName?: string;
 }
@@ -46,7 +63,9 @@ interface SeedOptions {
  * Insert a fully-seeded test user with organization + facility.
  * Returns the user id for cleanup.
  */
-async function seedUser(opts: SeedOptions): Promise<{ userId: string; orgId: string; facilityId: string | null }> {
+async function seedUser(
+  opts: SeedOptions,
+): Promise<{ userId: string; orgId: string; facilityId: string | null }> {
   const client = await db();
   try {
     const hashed = await bcrypt.hash(opts.password, 10);
@@ -56,7 +75,9 @@ async function seedUser(opts: SeedOptions): Promise<{ userId: string; orgId: str
     const userId = crypto.randomUUID();
 
     // Only create an org for admin-role users to reflect realistic data
-    const isAdmin = ['owner', 'supervisor', 'hr', 'clinical_director', 'finance'].includes(opts.role);
+    const isAdmin = ['owner', 'supervisor', 'hr', 'clinical_director', 'finance'].includes(
+      opts.role,
+    );
     let resolvedOrgId: string | null = null;
     let resolvedFacilityId: string | null = null;
 
@@ -84,8 +105,13 @@ async function seedUser(opts: SeedOptions): Promise<{ userId: string; orgId: str
     await client.query(
       `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [userId, opts.email, opts.firstName ?? 'Test', opts.lastName ?? 'User',
-       `${opts.firstName ?? 'Test'} ${opts.lastName ?? 'User'}`],
+      [
+        userId,
+        opts.email,
+        opts.firstName ?? 'Test',
+        opts.lastName ?? 'User',
+        `${opts.firstName ?? 'Test'} ${opts.lastName ?? 'User'}`,
+      ],
     );
 
     return { userId, orgId: resolvedOrgId ?? '', facilityId: resolvedFacilityId };
@@ -140,26 +166,47 @@ test.describe('RBAC migration — login and role routing', () => {
     try {
       // The old "admin" enum value no longer exists; this column comparison should
       // return 0 rows. If it throws a type error, the migration also succeeded.
-      const res = await client.query(
-        `SELECT count(*) FROM users WHERE role::text = 'admin'`,
-      );
+      const res = await client.query(`SELECT count(*) FROM users WHERE role::text = 'admin'`);
       expect(Number(res.rows[0].count)).toBe(0);
     } finally {
       await client.end();
     }
   });
 
-  test('the six new UserRole enum values are accepted by the DB', async () => {
+  test('no user has the retired single "worker" role after the 8-role split migration', async () => {
     const client = await db();
     try {
-      // Each of the six roles must be a valid enum value.  We insert and immediately
-      // roll back so no data is persisted.
-      const roles = ['owner', 'supervisor', 'hr', 'clinical_director', 'finance', 'worker'];
+      // The old single "worker" enum value no longer exists; it was replaced by
+      // 8 job-specific worker-category roles. This should return 0 rows.
+      const res = await client.query(`SELECT count(*) FROM users WHERE role::text = 'worker'`);
+      expect(Number(res.rows[0].count)).toBe(0);
+    } finally {
+      await client.end();
+    }
+  });
+
+  test('the thirteen UserRole enum values (5 manager + 8 worker) are accepted by the DB', async () => {
+    const client = await db();
+    try {
+      // Each of the thirteen roles must be a valid enum value. We select a cast and
+      // immediately discard it so no data is persisted.
+      const roles = [
+        'owner',
+        'supervisor',
+        'hr',
+        'clinical_director',
+        'finance',
+        'psychiatrist_prescriber',
+        'nurse',
+        'therapist_clinician',
+        'case_manager',
+        'behavioral_health_technician',
+        'peer_support_specialist',
+        'front_desk_admin',
+        'facilities_support',
+      ];
       for (const role of roles) {
-        const res = await client.query(
-          `SELECT $1::\"UserRole\" AS role_value`,
-          [role],
-        );
+        const res = await client.query(`SELECT $1::\"UserRole\" AS role_value`, [role]);
         expect(res.rows[0].role_value).toBe(role);
       }
     } finally {
@@ -206,10 +253,12 @@ test.describe('RBAC migration — login and role routing', () => {
     }
   });
 
-  test('worker login at /login?worker=true reaches /worker', async ({ page }) => {
+  test('worker-category role (nurse) login at /login?worker=true reaches /worker', async ({
+    page,
+  }) => {
     const email = uniqueEmail('worker');
     const password = 'W0rkerPwd!77';
-    const { userId } = await seedUser({ email, password, role: 'worker' });
+    const { userId } = await seedUser({ email, password, role: 'nurse' });
 
     try {
       await loginAs(page, email, password, 'worker');

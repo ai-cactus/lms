@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { isAdminRole, DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -78,7 +78,7 @@ export async function getAvailableUsers() {
     id: user.id,
     email: user.email,
     fullName: user.profile?.fullName || user.email,
-    role: user.role || 'worker',
+    role: user.role,
     avatarUrl: user.profile?.avatarUrl,
   }));
 }
@@ -233,8 +233,9 @@ export async function enrollUsers(
       firstName && lastName ? `${firstName} ${lastName}` : (firstName ?? lastName ?? undefined);
     // CSV supplies a coarse "admin" / "worker" token (entry.role is the literal
     // 'admin' | 'worker'). Map "admin" to the RBAC successor `supervisor`
-    // (facility admin); everything else is a worker.
-    const userRole: UserRole = entry.role === 'admin' ? 'supervisor' : 'worker';
+    // (facility admin); everything else becomes the default self-serve worker role.
+    const userRole: UserRole =
+      entry.role === 'admin' ? 'supervisor' : DEFAULT_SELF_SERVE_WORKER_ROLE;
 
     let user = await prisma.user.findUnique({
       where: { email: normalizedEmail },

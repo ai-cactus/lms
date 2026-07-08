@@ -3,18 +3,35 @@
  *
  * Acceptance criteria:
  *   - An 'owner' or 'supervisor' sees the full grantable set in the role selector:
- *       supervisor, hr, clinical_director, finance, worker
+ *       supervisor, hr, clinical_director, finance, + all 8 job-specific worker
+ *       roles (e.g. Nurse, Case Manager, ...)
  *     but NOT 'owner' (non-grantable).
- *   - An 'hr' inviter sees: hr, clinical_director, finance, worker
+ *   - An 'hr' inviter sees: hr, clinical_director, finance, + all 8 worker roles
  *     but NOT 'supervisor' or 'owner'.
  *   - 'owner' never appears as an option in any inviter's role selector.
+ *
+ * Note: the single 'worker' role was replaced by 8 job-specific worker-category
+ * roles (see src/lib/rbac/permissions.ts); the role selector shows each by its
+ * own `displayName` (e.g. "Nurse", "Case Manager") rather than a generic
+ * "Worker" label, so assertions target specific worker displayNames.
+ *
+ * IMPORTANT — modal is now a 2-step flow (staff-invite rewrite): opening the
+ * modal lands on the "Invite New Staffs" email-entry step, which has NO role
+ * selector at all. The role picker only appears on step 2 ("Assign roles"),
+ * reached by typing/pasting at least one valid email and clicking "Continue".
+ * `loginAndOpenInviteModal` below performs that email → Continue hop before
+ * returning, so callers land directly on the Assign-roles step. The full
+ * submit → success path (createInvites actually firing) is covered separately
+ * in tests/e2e/staff-invite-flow.spec.ts; this spec only asserts the grant
+ * matrix visible in the role dropdown.
  *
  * Flow:
  *   1. Seed a test user with the target inviter role.
  *   2. Log in as that user.
  *   3. Navigate to /dashboard/staff (the invite-staff page).
- *   4. Open the invite modal.
- *   5. Assert the role selector options match the expected GRANTABLE_ROLES matrix.
+ *   4. Open the invite modal, enter one email, click Continue to reach step 2.
+ *   5. Open the "Set every role to" bulk selector and assert its options match
+ *      the expected GRANTABLE_ROLES matrix.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005.
@@ -31,7 +48,20 @@ import * as crypto from 'crypto';
 const DB_URL =
   process.env.DATABASE_URL || 'postgresql://postgres:0951@localhost:5433/lms?schema=public';
 
-type Role = 'owner' | 'supervisor' | 'hr' | 'clinical_director' | 'finance' | 'worker';
+type Role =
+  | 'owner'
+  | 'supervisor'
+  | 'hr'
+  | 'clinical_director'
+  | 'finance'
+  | 'psychiatrist_prescriber'
+  | 'nurse'
+  | 'therapist_clinician'
+  | 'case_manager'
+  | 'behavioral_health_technician'
+  | 'peer_support_specialist'
+  | 'front_desk_admin'
+  | 'facilities_support';
 
 interface Seeded {
   userId: string;
@@ -106,22 +136,35 @@ async function loginAndOpenInviteModal(
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', password);
   await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard**', { timeout: 15000 });
+  // Generous timeout: against a dev server (Turbopack), the FIRST hit to a
+  // given route/server-action across all parallel workers pays an on-demand
+  // compile cost that can exceed several seconds under worker contention —
+  // this is dev-only overhead (production is pre-compiled), not app latency.
+  await page.waitForURL('**/dashboard**', { timeout: 45000 });
   await page.goto('/dashboard/staff');
   await page.waitForLoadState('networkidle');
-  // Open the invite modal — button label is "Add Worker" on the staff page
-  const inviteBtn = page.getByRole('button', { name: /add worker/i }).first();
+  // Open the invite modal — button label is "Add Workers" on the staff page.
+  const inviteBtn = page.getByRole('button', { name: /add workers?/i }).first();
   await inviteBtn.click();
-  // Wait for modal to appear
+  // Wait for modal to appear (step 1 — email entry).
   await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
+
+  // Step 1 → step 2: type a throwaway email and click Continue. The role
+  // selector only exists on step 2 ("Assign roles").
+  await page
+    .getByPlaceholder(/enter emails separated by/i)
+    .fill(`probe-${crypto.randomBytes(3).toString('hex')}@invite-e2e.invalid`);
+  await page.getByRole('button', { name: /^continue$/i }).click();
+  await expect(page.getByText('Assign roles')).toBeVisible({ timeout: 5000 });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test.describe('Invite modal — role selector per inviter role', () => {
-  test('owner sees supervisor, hr, clinical_director, finance, worker — but NOT owner', async ({
+  test('owner sees supervisor, hr, clinical_director, finance, + all 8 worker roles — but NOT owner', async ({
     page,
   }) => {
+    test.setTimeout(90_000);
     const email = uid('inv-owner');
     const seeded = await seedInviter('owner', email, 'Owne!r99xP');
     try {
@@ -131,12 +174,25 @@ test.describe('Invite modal — role selector per inviter role', () => {
       const select = page.getByRole('combobox').first();
       await select.click();
 
-      // All grantable roles must be visible
+      // All grantable admin roles must be visible
       await expect(page.getByRole('option', { name: /supervisor/i })).toBeVisible();
-      await expect(page.getByRole('option', { name: /hr/i })).toBeVisible();
+      await expect(page.getByRole('option', { name: /^hr$/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /clinical director/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /finance/i })).toBeVisible();
-      await expect(page.getByRole('option', { name: /worker/i })).toBeVisible();
+
+      // All 8 job-specific worker-category roles must be visible (by displayName)
+      await expect(page.getByRole('option', { name: /psychiatrist.*prescriber/i })).toBeVisible();
+      await expect(page.getByRole('option', { name: /^nurse$/i })).toBeVisible();
+      await expect(page.getByRole('option', { name: /therapist.*clinician/i })).toBeVisible();
+      await expect(page.getByRole('option', { name: /case manager/i })).toBeVisible();
+      await expect(
+        page.getByRole('option', { name: /behavioral health technician/i }),
+      ).toBeVisible();
+      await expect(page.getByRole('option', { name: /peer support specialist/i })).toBeVisible();
+      await expect(
+        page.getByRole('option', { name: /front desk.*administrative support/i }),
+      ).toBeVisible();
+      await expect(page.getByRole('option', { name: /facilities.*support staff/i })).toBeVisible();
 
       // Owner must NOT be an option
       await expect(page.getByRole('option', { name: /^owner/i })).not.toBeVisible();
@@ -145,9 +201,10 @@ test.describe('Invite modal — role selector per inviter role', () => {
     }
   });
 
-  test('hr sees hr, clinical_director, finance, worker — but NOT supervisor or owner', async ({
+  test('hr sees hr, clinical_director, finance, + all 8 worker roles — but NOT supervisor or owner', async ({
     page,
   }) => {
+    test.setTimeout(90_000);
     const email = uid('inv-hr');
     const seeded = await seedInviter('hr', email, 'Hr!Pass99x');
     try {
@@ -156,11 +213,17 @@ test.describe('Invite modal — role selector per inviter role', () => {
       const select = page.getByRole('combobox').first();
       await select.click();
 
-      // HR's grantable roles
+      // HR's grantable admin roles
       await expect(page.getByRole('option', { name: /^hr$/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /clinical director/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /finance/i })).toBeVisible();
-      await expect(page.getByRole('option', { name: /worker/i })).toBeVisible();
+
+      // HR can also grant all 8 job-specific worker-category roles
+      await expect(page.getByRole('option', { name: /^nurse$/i })).toBeVisible();
+      await expect(page.getByRole('option', { name: /case manager/i })).toBeVisible();
+      await expect(
+        page.getByRole('option', { name: /front desk.*administrative support/i }),
+      ).toBeVisible();
 
       // Supervisor and owner must NOT be options (D1)
       await expect(page.getByRole('option', { name: /supervisor/i })).not.toBeVisible();

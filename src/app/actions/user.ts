@@ -8,7 +8,6 @@ import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { logger } from '@/lib/logger';
 import bcrypt from 'bcryptjs';
-import type { UserRole } from '@/generated/prisma/enums';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -76,7 +75,7 @@ export async function getStaffUsers() {
       name: user.profile?.fullName || user.email.split('@')[0],
       email: user.email,
       avatarUrl: user.profile?.avatarUrl || null,
-      role: user.role || 'worker',
+      role: user.role,
       jobTitle: user.profile?.jobTitle || 'Staff Member',
       dateInvited: user.createdAt,
       isPending: false,
@@ -93,7 +92,7 @@ export async function getStaffUsers() {
           name: invite.email.split('@')[0],
           email: invite.email,
           avatarUrl: null,
-          role: invite.role || 'worker',
+          role: invite.role,
           jobTitle: isExpired ? 'Expired Invite' : 'Pending Invite',
           dateInvited: invite.createdAt,
           isPending: true,
@@ -148,7 +147,7 @@ export async function searchStaffUsers(query: string) {
       name: user.profile?.fullName || user.email.split('@')[0],
       email: user.email,
       initials: (user.profile?.fullName || user.email).slice(0, 2).toUpperCase(),
-      role: user.role || 'worker',
+      role: user.role,
     }));
   } catch (error) {
     logger.error({ msg: 'Failed to search staff:', err: error });
@@ -157,50 +156,6 @@ export async function searchStaffUsers(query: string) {
 }
 
 // --- Onboarding / Profile Management ---
-
-export async function updateRole(role: 'admin' | 'worker') {
-  // The onboarding UI offers a binary "admin vs worker" choice. Map it to the
-  // RBAC role stored in the DB: choosing "admin" means founding an organisation,
-  // so the user becomes an `owner`.
-  const dbRole: UserRole = role === 'admin' ? 'owner' : 'worker';
-  const session = await resolveSession();
-
-  if (!session?.user?.email || !session?.user?.id) {
-    return { success: false, error: 'Not authenticated' };
-  }
-
-  try {
-    // Self-service role selection is only permitted during initial onboarding,
-    // i.e. before the user has been attached to an organization. Once a user
-    // belongs to an org, this path must not allow self-promotion (e.g. a worker
-    // escalating to admin).
-    const current = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { organizationId: true },
-    });
-
-    if (!current) {
-      return { success: false, error: 'User not found' };
-    }
-
-    if (current.organizationId) {
-      return { success: false, error: 'Role can no longer be changed for this account.' };
-    }
-
-    await prisma.user.update({
-      where: {
-        email: session.user.email,
-      },
-      data: { role: dbRole },
-    });
-
-    revalidatePath('/dashboard');
-    return { success: true };
-  } catch (error) {
-    logger.error({ msg: 'Failed to update role:', err: error });
-    return { success: false, error: 'Failed to update role' };
-  }
-}
 
 export async function updateProfile(data: {
   first_name: string;

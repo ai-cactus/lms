@@ -7,3 +7,7 @@
 - [Reminders engine test patterns](reminders-test-patterns.md) — DST midnight gotcha, P2002 mock class pattern, enrollment.findMany call ordering in sweep, fake timers for compliance
 - [QA wave 1 regression patterns](qa-wave1-regression-patterns.md) — billing double-charge/webhook guards, course-ai-v4.6 settle-race testing, PHI fail-closed, pdf-parse import crash, async server component testing
 - [Org/Facility split test patterns](org-facility-split-test-patterns.md) — DEFAULT_TZ-matches-fixture regression trap, facility.staffCount billing gotcha, clearAllMocks doesn't reset mockResolvedValue, Radix Select untested in this repo
+- [RBAC 8-worker-role split test patterns](rbac-8-worker-role-split.md) — dbRoleToRoleKey/can() throws (not 403) on unrecognized role; GRANTABLE_ROLES default is an admin role not worker; e2e specs seed via raw enum INSERT
+- [join/[token] critical fix + RBAC UI gates regression suite](join-invite-critical-fix-regression.md) — findUnique single-lookup fix, permissions.ts can() no longer throws, invite.create/billing.read role facts, 4 new test files
+- [Signup owner-only + e2e env notes](signup-owner-only-e2e-env.md) — MailHog wired to real SMTP in dev (e2e can submit real signup form), auth.spec.ts Microsoft/logout tests are pre-existing env failures
+- [Onboarding wizard/invite/settings phase tests](onboarding-invite-settings-phase-tests.md) — Radix Select id-clone doesn't reach trigger DOM (getByLabel fails), Docker/Postgres can hang under disk pressure, new test files list

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
-import { ALL_ROLES } from '@/lib/rbac/role-utils';
+import { ALL_ROLES, DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 
 const getBaseUrl = () => {
@@ -75,12 +75,12 @@ export async function POST(request: NextRequest) {
 
     // Validate the pending role against the current role set before trusting it.
     // A token minted before the RBAC rollout may still carry a retired value
-    // (e.g. `admin`); anything not in ALL_ROLES falls back to `worker`.
+    // (e.g. `admin`); anything not in ALL_ROLES falls back to the default worker role.
     const pendingRole = verificationToken.role;
     const userRole: UserRole =
       pendingRole && ALL_ROLES.includes(pendingRole as Role)
         ? (pendingRole as UserRole)
-        : UserRole.worker;
+        : DEFAULT_SELF_SERVE_WORKER_ROLE;
 
     await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({

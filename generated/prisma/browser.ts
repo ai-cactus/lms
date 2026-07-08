@@ -186,6 +186,11 @@ export type Organization = Prisma.OrganizationModel
  */
 export type Facility = Prisma.FacilityModel
 /**
+ * Model FacilityDocument
+ * 
+ */
+export type FacilityDocument = Prisma.FacilityDocumentModel
+/**
  * Model Subscription
  * 
  */

@@ -36,6 +36,7 @@ export type UserMinAggregateOutputType = {
   emailVerified: boolean | null
   mfaEnabled: boolean | null
   mfaVerifiedAt: Date | null
+  lastLoginAt: Date | null
   managerId: string | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -53,6 +54,7 @@ export type UserMaxAggregateOutputType = {
   emailVerified: boolean | null
   mfaEnabled: boolean | null
   mfaVerifiedAt: Date | null
+  lastLoginAt: Date | null
   managerId: string | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -70,6 +72,7 @@ export type UserCountAggregateOutputType = {
   emailVerified: number
   mfaEnabled: number
   mfaVerifiedAt: number
+  lastLoginAt: number
   managerId: number
   createdAt: number
   updatedAt: number
@@ -89,6 +92,7 @@ export type UserMinAggregateInputType = {
   emailVerified?: true
   mfaEnabled?: true
   mfaVerifiedAt?: true
+  lastLoginAt?: true
   managerId?: true
   createdAt?: true
   updatedAt?: true
@@ -106,6 +110,7 @@ export type UserMaxAggregateInputType = {
   emailVerified?: true
   mfaEnabled?: true
   mfaVerifiedAt?: true
+  lastLoginAt?: true
   managerId?: true
   createdAt?: true
   updatedAt?: true
@@ -123,6 +128,7 @@ export type UserCountAggregateInputType = {
   emailVerified?: true
   mfaEnabled?: true
   mfaVerifiedAt?: true
+  lastLoginAt?: true
   managerId?: true
   createdAt?: true
   updatedAt?: true
@@ -213,6 +219,7 @@ export type UserGroupByOutputType = {
   emailVerified: boolean
   mfaEnabled: boolean
   mfaVerifiedAt: Date | null
+  lastLoginAt: Date | null
   managerId: string | null
   createdAt: Date
   updatedAt: Date
@@ -251,6 +258,7 @@ export type UserWhereInput = {
   emailVerified?: Prisma.BoolFilter<"User"> | boolean
   mfaEnabled?: Prisma.BoolFilter<"User"> | boolean
   mfaVerifiedAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
+  lastLoginAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
   managerId?: Prisma.StringNullableFilter<"User"> | string | null
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
@@ -282,6 +290,7 @@ export type UserOrderByWithRelationInput = {
   emailVerified?: Prisma.SortOrder
   mfaEnabled?: Prisma.SortOrder
   mfaVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  lastLoginAt?: Prisma.SortOrderInput | Prisma.SortOrder
   managerId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -316,6 +325,7 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   emailVerified?: Prisma.BoolFilter<"User"> | boolean
   mfaEnabled?: Prisma.BoolFilter<"User"> | boolean
   mfaVerifiedAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
+  lastLoginAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
   managerId?: Prisma.StringNullableFilter<"User"> | string | null
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
@@ -347,6 +357,7 @@ export type UserOrderByWithAggregationInput = {
   emailVerified?: Prisma.SortOrder
   mfaEnabled?: Prisma.SortOrder
   mfaVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  lastLoginAt?: Prisma.SortOrderInput | Prisma.SortOrder
   managerId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -370,6 +381,7 @@ export type UserScalarWhereWithAggregatesInput = {
   emailVerified?: Prisma.BoolWithAggregatesFilter<"User"> | boolean
   mfaEnabled?: Prisma.BoolWithAggregatesFilter<"User"> | boolean
   mfaVerifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"User"> | Date | string | null
+  lastLoginAt?: Prisma.DateTimeNullableWithAggregatesFilter<"User"> | Date | string | null
   managerId?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
@@ -381,10 +393,11 @@ export type UserCreateInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -411,10 +424,11 @@ export type UserUncheckedCreateInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -441,6 +455,7 @@ export type UserUpdateInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -471,6 +486,7 @@ export type UserUncheckedUpdateInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -495,10 +511,11 @@ export type UserCreateManyInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -514,6 +531,7 @@ export type UserUpdateManyMutationInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -530,6 +548,7 @@ export type UserUncheckedUpdateManyInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -562,6 +581,7 @@ export type UserCountOrderByAggregateInput = {
   emailVerified?: Prisma.SortOrder
   mfaEnabled?: Prisma.SortOrder
   mfaVerifiedAt?: Prisma.SortOrder
+  lastLoginAt?: Prisma.SortOrder
   managerId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -579,6 +599,7 @@ export type UserMaxOrderByAggregateInput = {
   emailVerified?: Prisma.SortOrder
   mfaEnabled?: Prisma.SortOrder
   mfaVerifiedAt?: Prisma.SortOrder
+  lastLoginAt?: Prisma.SortOrder
   managerId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -596,6 +617,7 @@ export type UserMinOrderByAggregateInput = {
   emailVerified?: Prisma.SortOrder
   mfaEnabled?: Prisma.SortOrder
   mfaVerifiedAt?: Prisma.SortOrder
+  lastLoginAt?: Prisma.SortOrder
   managerId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -908,10 +930,11 @@ export type UserCreateWithoutReportsInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -937,10 +960,11 @@ export type UserUncheckedCreateWithoutReportsInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -967,10 +991,11 @@ export type UserCreateWithoutManagerInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -996,10 +1021,11 @@ export type UserUncheckedCreateWithoutManagerInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseUncheckedCreateNestedManyWithoutCreatorInput
@@ -1046,6 +1072,7 @@ export type UserUpdateWithoutReportsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -1075,6 +1102,7 @@ export type UserUncheckedUpdateWithoutReportsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1121,6 +1149,7 @@ export type UserScalarWhereInput = {
   emailVerified?: Prisma.BoolFilter<"User"> | boolean
   mfaEnabled?: Prisma.BoolFilter<"User"> | boolean
   mfaVerifiedAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
+  lastLoginAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
   managerId?: Prisma.StringNullableFilter<"User"> | string | null
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
@@ -1132,10 +1161,11 @@ export type UserCreateWithoutProfileInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -1161,10 +1191,11 @@ export type UserUncheckedCreateWithoutProfileInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1206,6 +1237,7 @@ export type UserUpdateWithoutProfileInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -1235,6 +1267,7 @@ export type UserUncheckedUpdateWithoutProfileInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1256,10 +1289,11 @@ export type UserCreateWithoutMfaFactorsInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -1285,10 +1319,11 @@ export type UserUncheckedCreateWithoutMfaFactorsInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1330,6 +1365,7 @@ export type UserUpdateWithoutMfaFactorsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -1359,6 +1395,7 @@ export type UserUncheckedUpdateWithoutMfaFactorsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1380,10 +1417,11 @@ export type UserCreateWithoutMfaRecoveryCodesInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -1409,10 +1447,11 @@ export type UserUncheckedCreateWithoutMfaRecoveryCodesInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1454,6 +1493,7 @@ export type UserUpdateWithoutMfaRecoveryCodesInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -1483,6 +1523,7 @@ export type UserUncheckedUpdateWithoutMfaRecoveryCodesInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1504,10 +1545,11 @@ export type UserCreateWithoutApprovedCoursesInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -1533,10 +1575,11 @@ export type UserUncheckedCreateWithoutApprovedCoursesInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1563,10 +1606,11 @@ export type UserCreateWithoutCoursesInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   documents?: Prisma.DocumentCreateNestedManyWithoutUserInput
@@ -1592,10 +1636,11 @@ export type UserUncheckedCreateWithoutCoursesInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1637,6 +1682,7 @@ export type UserUpdateWithoutApprovedCoursesInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -1666,6 +1712,7 @@ export type UserUncheckedUpdateWithoutApprovedCoursesInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1702,6 +1749,7 @@ export type UserUpdateWithoutCoursesInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   documents?: Prisma.DocumentUpdateManyWithoutUserNestedInput
@@ -1731,6 +1779,7 @@ export type UserUncheckedUpdateWithoutCoursesInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1752,10 +1801,11 @@ export type UserCreateWithoutDocumentsInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -1781,10 +1831,11 @@ export type UserUncheckedCreateWithoutDocumentsInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1826,6 +1877,7 @@ export type UserUpdateWithoutDocumentsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -1855,6 +1907,7 @@ export type UserUncheckedUpdateWithoutDocumentsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1876,10 +1929,11 @@ export type UserCreateWithoutEnrollmentsInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -1905,10 +1959,11 @@ export type UserUncheckedCreateWithoutEnrollmentsInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1950,6 +2005,7 @@ export type UserUpdateWithoutEnrollmentsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -1979,6 +2035,7 @@ export type UserUncheckedUpdateWithoutEnrollmentsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -2000,10 +2057,11 @@ export type UserCreateWithoutCertificatesInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -2029,10 +2087,11 @@ export type UserUncheckedCreateWithoutCertificatesInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -2074,6 +2133,7 @@ export type UserUpdateWithoutCertificatesInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -2103,6 +2163,7 @@ export type UserUncheckedUpdateWithoutCertificatesInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -2124,10 +2185,11 @@ export type UserCreateWithoutNotificationsInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -2153,10 +2215,11 @@ export type UserUncheckedCreateWithoutNotificationsInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -2198,6 +2261,7 @@ export type UserUpdateWithoutNotificationsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -2227,6 +2291,7 @@ export type UserUncheckedUpdateWithoutNotificationsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -2248,10 +2313,11 @@ export type UserCreateWithoutNotificationPrefsInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -2277,10 +2343,11 @@ export type UserUncheckedCreateWithoutNotificationPrefsInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -2322,6 +2389,7 @@ export type UserUpdateWithoutNotificationPrefsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -2351,6 +2419,7 @@ export type UserUncheckedUpdateWithoutNotificationPrefsInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -2372,10 +2441,11 @@ export type UserCreateWithoutOrganizationInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -2400,10 +2470,11 @@ export type UserUncheckedCreateWithoutOrganizationInput = {
   passwordResetRequired?: boolean
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -2452,10 +2523,11 @@ export type UserCreateWithoutFacilityInput = {
   password: string
   passwordResetRequired?: boolean
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   courses?: Prisma.CourseCreateNestedManyWithoutCreatorInput
@@ -2480,10 +2552,11 @@ export type UserUncheckedCreateWithoutFacilityInput = {
   passwordResetRequired?: boolean
   organizationId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -2534,10 +2607,11 @@ export type UserCreateManyManagerInput = {
   organizationId?: string | null
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -2552,6 +2626,7 @@ export type UserUpdateWithoutManagerInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -2581,6 +2656,7 @@ export type UserUncheckedUpdateWithoutManagerInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUncheckedUpdateManyWithoutCreatorNestedInput
@@ -2608,6 +2684,7 @@ export type UserUncheckedUpdateManyWithoutManagerInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -2619,10 +2696,11 @@ export type UserCreateManyOrganizationInput = {
   passwordResetRequired?: boolean
   facilityId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -2638,6 +2716,7 @@ export type UserUpdateWithoutOrganizationInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -2666,6 +2745,7 @@ export type UserUncheckedUpdateWithoutOrganizationInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -2693,6 +2773,7 @@ export type UserUncheckedUpdateManyWithoutOrganizationInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -2705,10 +2786,11 @@ export type UserCreateManyFacilityInput = {
   passwordResetRequired?: boolean
   organizationId?: string | null
   authProvider?: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: Date | string | null
+  lastLoginAt?: Date | string | null
   managerId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -2724,6 +2806,7 @@ export type UserUpdateWithoutFacilityInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   courses?: Prisma.CourseUpdateManyWithoutCreatorNestedInput
@@ -2752,6 +2835,7 @@ export type UserUncheckedUpdateWithoutFacilityInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -2779,6 +2863,7 @@ export type UserUncheckedUpdateManyWithoutFacilityInput = {
   emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   mfaVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastLoginAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   managerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -2908,6 +2993,7 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: boolean
+  lastLoginAt?: boolean
   managerId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -2940,6 +3026,7 @@ export type UserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: boolean
+  lastLoginAt?: boolean
   managerId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -2960,6 +3047,7 @@ export type UserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: boolean
+  lastLoginAt?: boolean
   managerId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -2980,12 +3068,13 @@ export type UserSelectScalar = {
   emailVerified?: boolean
   mfaEnabled?: boolean
   mfaVerifiedAt?: boolean
+  lastLoginAt?: boolean
   managerId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "password" | "passwordResetRequired" | "organizationId" | "facilityId" | "authProvider" | "role" | "emailVerified" | "mfaEnabled" | "mfaVerifiedAt" | "managerId" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
+export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "password" | "passwordResetRequired" | "organizationId" | "facilityId" | "authProvider" | "role" | "emailVerified" | "mfaEnabled" | "mfaVerifiedAt" | "lastLoginAt" | "managerId" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
 export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   courses?: boolean | Prisma.User$coursesArgs<ExtArgs>
   documents?: boolean | Prisma.User$documentsArgs<ExtArgs>
@@ -3044,6 +3133,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     emailVerified: boolean
     mfaEnabled: boolean
     mfaVerifiedAt: Date | null
+    lastLoginAt: Date | null
     managerId: string | null
     createdAt: Date
     updatedAt: Date
@@ -3495,6 +3585,7 @@ export interface UserFieldRefs {
   readonly emailVerified: Prisma.FieldRef<"User", 'Boolean'>
   readonly mfaEnabled: Prisma.FieldRef<"User", 'Boolean'>
   readonly mfaVerifiedAt: Prisma.FieldRef<"User", 'DateTime'>
+  readonly lastLoginAt: Prisma.FieldRef<"User", 'DateTime'>
   readonly managerId: Prisma.FieldRef<"User", 'String'>
   readonly createdAt: Prisma.FieldRef<"User", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"User", 'DateTime'>

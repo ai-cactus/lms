@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
+import { getRoles } from '@/lib/rbac/permissions';
 import { Eye, Trash2 } from 'lucide-react';
 import { getAllUsers, getUserDeletePreview } from '@/app/actions/system-admin';
 import type { SystemUserRow, DeletePreview } from '@/app/actions/system-admin';
@@ -92,7 +93,7 @@ export default function SystemUsersClient({
   }
 
   const adminCount = users.filter((u) => isAdminRole(u.role)).length;
-  const workerCount = users.filter((u) => u.role === 'worker').length;
+  const workerCount = users.filter((u) => isWorkerRole(u.role)).length;
 
   function getInitials(user: SystemUserRow): string {
     if (user.profile?.fullName) {
@@ -166,8 +167,11 @@ export default function SystemUsersClient({
           className="h-11 rounded-[10px] border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           <option value="">All Roles</option>
-          <option value="admin">Admin</option>
-          <option value="worker">Worker</option>
+          {getRoles().map((role) => (
+            <option key={role.id} value={role.id}>
+              {role.displayName}
+            </option>
+          ))}
         </select>
         <select
           value={orgFilter}

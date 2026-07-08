@@ -74,7 +74,7 @@ export async function getStaffDetails(userId: string) {
         name: user.profile?.fullName || user.email.split('@')[0],
         email: user.email,
         avatarUrl: user.profile?.avatarUrl ?? null,
-        role: user.role || 'worker',
+        role: user.role,
         jobTitle: user.profile?.jobTitle || 'Staff Member',
         managerId: user.managerId ?? null,
         managerName: user.manager ? (user.manager.profile?.fullName ?? user.manager.email) : null,

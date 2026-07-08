@@ -4,6 +4,7 @@ import stripe from '@/lib/stripe';
 import { logger } from '@/lib/logger';
 import { authorize } from '@/lib/rbac/authorize';
 import { apiError } from '@/lib/api-response';
+import { WORKER_ROLES } from '@/lib/rbac/role-utils';
 
 // GET /api/billing/overview — returns current plan, staff usage, payment method, last 2 invoices
 export async function GET() {
@@ -34,7 +35,7 @@ export async function GET() {
     const activeStaffCount = await prisma.user.count({
       where: {
         organizationId,
-        role: 'worker',
+        role: { in: [...WORKER_ROLES] },
       },
     });
 

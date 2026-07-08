@@ -18,8 +18,14 @@ import type { InviteStatus, UserRole } from '@/generated/prisma/enums';
 
 export interface InviteResultItem {
   email: string;
-  status: 'sent' | 'pending' | 'exists' | 'error' | 'resent';
+  status: 'sent' | 'pending' | 'exists' | 'error' | 'resent' | 'forbidden';
   message?: string;
+}
+
+/** A single email + the role to grant it. */
+export interface InviteItem {
+  email: string;
+  role: UserRole;
 }
 
 interface InviteResult {
@@ -34,12 +40,12 @@ interface InviteResult {
   };
 }
 
-export async function createInvites(emails: string[], role: UserRole): Promise<InviteResult> {
+export async function createInvites(items: InviteItem[]): Promise<InviteResult> {
   // SECURITY: `organizationId` and `inviterId` are intentionally NOT accepted
   // from the client — they are derived from the authenticated admin session below
-  // to prevent cross-org invite injection. The requested `role` IS a parameter,
-  // but it is validated against the inviter's grant matrix before use.
-  if (!emails.length) return { success: false, results: [], error: 'No emails provided' };
+  // to prevent cross-org invite injection. Each item's `role` IS client-supplied,
+  // but every role is validated against the inviter's grant matrix before use.
+  if (!items.length) return { success: false, results: [], error: 'No emails provided' };
 
   // ── Authorization: only an authenticated org admin may create invites, and the
   //    target organization + inviter are taken from the session — never the client.
@@ -57,25 +63,44 @@ export async function createInvites(emails: string[], role: UserRole): Promise<I
     return { success: false, results: [], error: 'Forbidden' };
   }
 
-  // The requested role must be a real role...
-  if (!ALL_ROLES.includes(role)) {
-    return { success: false, results: [], error: 'Invalid role' };
-  }
-  // ...and one the inviter is permitted to grant (privilege-escalation fence).
-  if (!GRANTABLE_ROLES[session.user.role].includes(role)) {
-    logger.warn({
-      msg: '[invite] Role grant denied',
-      inviterRole: session.user.role,
-      requestedRole: role,
-      email: maskEmail(session.user.email),
-    });
-    return { success: false, results: [], error: 'You cannot grant the requested role' };
-  }
-
   const organizationId = session.user.organizationId;
   const inviterId = session.user.id;
+  const grantableRoles = GRANTABLE_ROLES[session.user.role];
 
   const results: InviteResultItem[] = [];
+
+  // Per-row role validation: reject only the offending rows (invalid or
+  // non-grantable role) rather than failing the whole batch. Surviving rows keep
+  // the FIRST role seen for a given email — a defensive dedupe against a caller
+  // that lists the same email twice with conflicting roles.
+  const emailRoleMap = new Map<string, UserRole>();
+  for (const item of items) {
+    const isRealRole = ALL_ROLES.includes(item.role);
+    const isGrantable = grantableRoles.includes(item.role);
+    if (!isRealRole || !isGrantable) {
+      logger.warn({
+        msg: '[invite] Role grant denied',
+        inviterRole: session.user.role,
+        requestedRole: item.role,
+        email: maskEmail(session.user.email),
+      });
+      results.push({
+        email: item.email,
+        status: 'forbidden',
+        message: isRealRole ? 'You cannot grant the requested role.' : 'Invalid role.',
+      });
+      continue;
+    }
+    if (!emailRoleMap.has(item.email)) emailRoleMap.set(item.email, item.role);
+  }
+
+  const emails = [...emailRoleMap.keys()];
+
+  // Every row was rejected — nothing left to process, but surface the per-row
+  // outcomes so the client can show which rows failed.
+  if (emails.length === 0) {
+    return { success: true, results };
+  }
 
   try {
     // Fetch org name and subscription plan in one round-trip
@@ -156,7 +181,7 @@ export async function createInvites(emails: string[], role: UserRole): Promise<I
 
           return {
             success: false,
-            results: [],
+            results,
             error:
               remaining === 0
                 ? `Your ${planConfig.name} plan has reached its limit of ${staffMax} workers. ` +
@@ -232,7 +257,7 @@ export async function createInvites(emails: string[], role: UserRole): Promise<I
         email,
         token,
         organizationId,
-        role: role as UserRole,
+        role: emailRoleMap.get(email) as UserRole,
         expiresAt,
         invitedBy: inviterId,
         status: 'pending' as InviteStatus,
@@ -248,7 +273,6 @@ export async function createInvites(emails: string[], role: UserRole): Promise<I
       logger.info({
         msg: '[invite] Invites created',
         organizationId,
-        role,
         count: newInvitesData.length,
       });
     }
@@ -257,7 +281,7 @@ export async function createInvites(emails: string[], role: UserRole): Promise<I
     const emailPromises = emails.map(async (email) => {
       if (existingUserMap.has(email)) return; // Already handled above
 
-      const roleDisplayName = getRoleDisplayName(role);
+      const roleDisplayName = getRoleDisplayName(emailRoleMap.get(email) as UserRole);
 
       const existingInvite = existingInviteMap.get(email);
       if (existingInvite) {
@@ -283,7 +307,11 @@ export async function createInvites(emails: string[], role: UserRole): Promise<I
       if (result.status === 'fulfilled') {
         if (result.value) results.push(result.value as InviteResultItem);
       } else {
-        logger.error({ msg: `Error processing invite for ${email}:`, err: result.reason });
+        logger.error({
+          msg: '[invite] Error processing invite',
+          email: maskEmail(email),
+          err: result.reason,
+        });
         results.push({ email, status: 'error', message: 'Failed to process invitation.' });
       }
     });

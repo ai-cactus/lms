@@ -6,13 +6,27 @@ import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 import { logger, maskEmail } from '@/lib/logger';
 import { isSessionMfaVerified } from '@/lib/session-mfa';
-import { ADMIN_ROLES, WORKER_ROLES, ALL_ROLES } from '@/lib/rbac/role-utils';
+import {
+  ADMIN_ROLES,
+  WORKER_ROLES,
+  ALL_ROLES,
+  DEFAULT_SELF_SERVE_WORKER_ROLE,
+} from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 
 interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
   allowedRoles: readonly Role[];
   basePath: string; // "/api/auth" | "/api/auth-worker"
+}
+
+// Record the user's most-recent sign-in time. Fire-and-forget and fully
+// guarded: a failure here must never break the auth path, so it is logged at
+// `warn` and swallowed rather than propagated.
+function recordLoginTimestamp(userId: string, instance: string) {
+  prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } }).catch((err) => {
+    logger.warn({ msg: '[auth] Failed to record lastLoginAt', userId, instance, err });
+  });
 }
 
 export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
@@ -119,6 +133,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             mfaEnabled: user.mfaEnabled,
           });
 
+          recordLoginTimestamp(user.id, cookiePrefix);
+
           return {
             id: user.id,
             email: user.email,
@@ -159,9 +175,10 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           if (!dbUser) {
             // D3: a brand-new admin-instance user with no invite becomes `owner`
             // (they are founding an organisation). A worker-instance user with no
-            // invite becomes `worker`.
+            // invite becomes the default self-serve worker role.
             let matchedOrgId = null;
-            let matchedRole: Role = allowedRoles.includes('worker') ? 'worker' : 'owner';
+            let matchedRole: Role =
+              cookiePrefix === 'worker' ? DEFAULT_SELF_SERVE_WORKER_ROLE : 'owner';
 
             logger.info({
               msg: 'OAuth: creating new user',
@@ -173,7 +190,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               matchedOrgId = pendingInvite.organizationId;
               const inviteRole = pendingInvite.role;
               const isValidRole = (r: unknown): r is Role => ALL_ROLES.includes(r as Role);
-              matchedRole = isValidRole(inviteRole) ? inviteRole : 'worker';
+              matchedRole = isValidRole(inviteRole) ? inviteRole : DEFAULT_SELF_SERVE_WORKER_ROLE;
               logger.info({
                 msg: 'OAuth: pending invite found',
                 email: maskEmail(user.email!),
@@ -234,7 +251,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                   facilityId: inviteFacility?.id ?? null,
                   role: ALL_ROLES.includes(pendingInvite.role as Role)
                     ? pendingInvite.role
-                    : 'worker',
+                    : DEFAULT_SELF_SERVE_WORKER_ROLE,
                 },
                 select: { id: true, organizationId: true, role: true },
               });
@@ -264,6 +281,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           user.id = dbUser.id;
           user.organizationId = dbUser.organizationId;
           user.role = dbUser.role as Role;
+
+          recordLoginTimestamp(dbUser.id, cookiePrefix);
           // OAuth users bypass MFA — Microsoft Entra ID has its own MFA policies
           (user as User & { mfaVerified?: boolean }).mfaVerified = true;
 
@@ -322,7 +341,9 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
         if (token.id) {
           // Retired-role guard: the legacy `admin` role no longer exists. Any JWT
           // still carrying it predates the RBAC rollout and must be forced to
-          // re-authenticate. NOTE: `worker` is NOT retired — worker sessions stay.
+          // re-authenticate. A stale `worker` token needs no such guard — it
+          // self-heals below when DB re-validation overwrites token.role with the
+          // user's migrated worker-category role.
           if (token.role === 'admin') {
             logger.warn({
               msg: '[Auth] Stale JWT with retired admin role detected, forcing re-auth',

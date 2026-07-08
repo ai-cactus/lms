@@ -416,6 +416,7 @@ export const ModelName = {
   OrgCourseOffering: 'OrgCourseOffering',
   Organization: 'Organization',
   Facility: 'Facility',
+  FacilityDocument: 'FacilityDocument',
   Subscription: 'Subscription',
   Invoice: 'Invoice',
   Quiz: 'Quiz',
@@ -436,7 +437,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "auditorPack" | "user" | "profile" | "invite" | "verificationToken" | "mfaFactor" | "mfaRecoveryCode" | "courseCategory" | "standardManual" | "manualChunk" | "manualChunkCategory" | "course" | "courseModule" | "lesson" | "courseArtifact" | "courseVersion" | "courseAssignment" | "assignmentReminderStage" | "document" | "documentVersion" | "phiReport" | "mappingEvidence" | "enrollment" | "certificate" | "reminderLog" | "reminderNudge" | "job" | "notification" | "notificationPreference" | "orgCourseOffering" | "organization" | "facility" | "subscription" | "invoice" | "quiz" | "question" | "quizAttempt"
+    modelProps: "auditorPack" | "user" | "profile" | "invite" | "verificationToken" | "mfaFactor" | "mfaRecoveryCode" | "courseCategory" | "standardManual" | "manualChunk" | "manualChunkCategory" | "course" | "courseModule" | "lesson" | "courseArtifact" | "courseVersion" | "courseAssignment" | "assignmentReminderStage" | "document" | "documentVersion" | "phiReport" | "mappingEvidence" | "enrollment" | "certificate" | "reminderLog" | "reminderNudge" | "job" | "notification" | "notificationPreference" | "orgCourseOffering" | "organization" | "facility" | "facilityDocument" | "subscription" | "invoice" | "quiz" | "question" | "quizAttempt"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -2808,6 +2809,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    FacilityDocument: {
+      payload: Prisma.$FacilityDocumentPayload<ExtArgs>
+      fields: Prisma.FacilityDocumentFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.FacilityDocumentFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.FacilityDocumentFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        findFirst: {
+          args: Prisma.FacilityDocumentFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.FacilityDocumentFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        findMany: {
+          args: Prisma.FacilityDocumentFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>[]
+        }
+        create: {
+          args: Prisma.FacilityDocumentCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        createMany: {
+          args: Prisma.FacilityDocumentCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.FacilityDocumentCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>[]
+        }
+        delete: {
+          args: Prisma.FacilityDocumentDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        update: {
+          args: Prisma.FacilityDocumentUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        deleteMany: {
+          args: Prisma.FacilityDocumentDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.FacilityDocumentUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.FacilityDocumentUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>[]
+        }
+        upsert: {
+          args: Prisma.FacilityDocumentUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        aggregate: {
+          args: Prisma.FacilityDocumentAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateFacilityDocument>
+        }
+        groupBy: {
+          args: Prisma.FacilityDocumentGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FacilityDocumentGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.FacilityDocumentCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FacilityDocumentCountAggregateOutputType> | number
+        }
+      }
+    }
     Subscription: {
       payload: Prisma.$SubscriptionPayload<ExtArgs>
       fields: Prisma.SubscriptionFieldRefs
@@ -3240,6 +3315,7 @@ export const UserScalarFieldEnum = {
   emailVerified: 'emailVerified',
   mfaEnabled: 'mfaEnabled',
   mfaVerifiedAt: 'mfaVerifiedAt',
+  lastLoginAt: 'lastLoginAt',
   managerId: 'managerId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -3685,6 +3761,7 @@ export const FacilityScalarFieldEnum = {
   id: 'id',
   organizationId: 'organizationId',
   name: 'name',
+  type: 'type',
   address: 'address',
   city: 'city',
   state: 'state',
@@ -3702,6 +3779,20 @@ export const FacilityScalarFieldEnum = {
 } as const
 
 export type FacilityScalarFieldEnum = (typeof FacilityScalarFieldEnum)[keyof typeof FacilityScalarFieldEnum]
+
+
+export const FacilityDocumentScalarFieldEnum = {
+  id: 'id',
+  facilityId: 'facilityId',
+  url: 'url',
+  name: 'name',
+  sizeBytes: 'sizeBytes',
+  mimeType: 'mimeType',
+  uploadedById: 'uploadedById',
+  createdAt: 'createdAt'
+} as const
+
+export type FacilityDocumentScalarFieldEnum = (typeof FacilityDocumentScalarFieldEnum)[keyof typeof FacilityDocumentScalarFieldEnum]
 
 
 export const SubscriptionScalarFieldEnum = {
@@ -4255,6 +4346,7 @@ export type GlobalOmitConfig = {
   orgCourseOffering?: Prisma.OrgCourseOfferingOmit
   organization?: Prisma.OrganizationOmit
   facility?: Prisma.FacilityOmit
+  facilityDocument?: Prisma.FacilityDocumentOmit
   subscription?: Prisma.SubscriptionOmit
   invoice?: Prisma.InvoiceOmit
   quiz?: Prisma.QuizOmit

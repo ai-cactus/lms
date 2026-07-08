@@ -34,11 +34,22 @@ interface Seeded {
   facilityId: string;
 }
 
-async function seedWithRole(
-  role: 'owner' | 'supervisor' | 'hr' | 'clinical_director' | 'finance' | 'worker',
-  email: string,
-  password: string,
-): Promise<Seeded> {
+type UserRole =
+  | 'owner'
+  | 'supervisor'
+  | 'hr'
+  | 'clinical_director'
+  | 'finance'
+  | 'psychiatrist_prescriber'
+  | 'nurse'
+  | 'therapist_clinician'
+  | 'case_manager'
+  | 'behavioral_health_technician'
+  | 'peer_support_specialist'
+  | 'front_desk_admin'
+  | 'facilities_support';
+
+async function seedWithRole(role: UserRole, email: string, password: string): Promise<Seeded> {
   const client = new Client({ connectionString: DB_URL });
   await client.connect();
   try {
@@ -119,9 +130,9 @@ test.describe('"Your Facility" tab — visibility per role', () => {
     try {
       await loginAndGoToProfile(page, email, 'Owne!r99xP');
       // The tab should be visible — ProfileForm renders tabs as <button> elements (no role="tab")
-      await expect(
-        page.getByRole('button', { name: /your facility/i }),
-      ).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('button', { name: /your facility/i })).toBeVisible({
+        timeout: 10000,
+      });
     } finally {
       await cleanup(seeded);
     }
@@ -132,9 +143,9 @@ test.describe('"Your Facility" tab — visibility per role', () => {
     const seeded = await seedWithRole('supervisor', email, 'Sup3rv!s0r');
     try {
       await loginAndGoToProfile(page, email, 'Sup3rv!s0r');
-      await expect(
-        page.getByRole('button', { name: /your facility/i }),
-      ).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('button', { name: /your facility/i })).toBeVisible({
+        timeout: 10000,
+      });
     } finally {
       await cleanup(seeded);
     }
@@ -146,13 +157,21 @@ test.describe('"Your Facility" tab — visibility per role', () => {
     try {
       await loginAndGoToProfile(page, email, 'Hr!Pass99x');
       // The "Your Facility" tab must be absent for HR — ProfileForm renders tabs as <button> elements
-      await expect(
-        page.getByRole('button', { name: /your facility/i }),
-      ).not.toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('button', { name: /your facility/i })).not.toBeVisible({
+        timeout: 5000,
+      });
     } finally {
       await cleanup(seeded);
     }
   });
+
+  // NOTE: a worker-category role (e.g. 'nurse') cannot be exercised through
+  // loginAndGoToProfile() here — src/app/actions/auth.ts redirects any
+  // isWorkerRole() user straight to /worker regardless of which login portal
+  // was used, so it never reaches /dashboard/profile at all. That is already
+  // covered at the routing layer by tests/e2e/rbac-roles.spec.ts (worker-category
+  // login lands at /worker); asserting tab *invisibility* for a role that can't
+  // reach the page would be redundant with that routing guard.
 });
 
 test.describe('"Your Facility" tab — owner can edit and persist a facility field', () => {
@@ -195,10 +214,9 @@ test.describe('"Your Facility" tab — owner can edit and persist a facility fie
       const client = new Client({ connectionString: DB_URL });
       await client.connect();
       try {
-        const res = await client.query(
-          `SELECT phone FROM facilities WHERE id = $1`,
-          [seeded.facilityId],
-        );
+        const res = await client.query(`SELECT phone FROM facilities WHERE id = $1`, [
+          seeded.facilityId,
+        ]);
         expect(res.rows[0]?.phone).toBe(expectedPhone);
       } finally {
         await client.end();

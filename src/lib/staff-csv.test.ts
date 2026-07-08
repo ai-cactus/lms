@@ -7,8 +7,13 @@ import { describe, it, expect } from 'vitest';
 import {
   extractStaffEmailsFromRows,
   buildStaffCsvTemplate,
+  extractManagerInvitesFromRows,
+  buildManagerCsvTemplate,
   STAFF_CSV_EMAIL_HEADER,
+  MANAGER_CSV_ROLE_HEADER,
 } from './staff-csv';
+
+const MANAGER_ROLES = new Set(['supervisor', 'hr', 'clinical_director', 'finance']);
 
 describe('extractStaffEmailsFromRows — header detection & valid rows', () => {
   it('skips an `email` header row and imports the valid emails below it', () => {
@@ -150,5 +155,161 @@ describe('extractStaffEmailsFromRows — row cap', () => {
 describe('buildStaffCsvTemplate', () => {
   it('starts with the expected header', () => {
     expect(buildStaffCsvTemplate().split('\n')[0]).toBe(STAFF_CSV_EMAIL_HEADER);
+  });
+});
+
+describe('extractManagerInvitesFromRows — header detection & valid rows', () => {
+  it('reads email + role header columns in the given order', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['alice@example.com', 'hr'],
+        ['bob@example.com', 'finance'],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toEqual([
+      { email: 'alice@example.com', role: 'hr' },
+      { email: 'bob@example.com', role: 'finance' },
+    ]);
+    expect(result.invalidEmailCount).toBe(0);
+    expect(result.duplicateCount).toBe(0);
+  });
+
+  it('detects the header columns in either order (role before email)', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['role', 'email'],
+        ['hr', 'alice@example.com'],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toEqual([{ email: 'alice@example.com', role: 'hr' }]);
+  });
+
+  it('normalises role tokens (case, spaces, hyphens) against the valid-role set', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['alice@example.com', 'Clinical Director'],
+        ['bob@example.com', 'CLINICAL-DIRECTOR'],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toEqual([
+      { email: 'alice@example.com', role: 'clinical_director' },
+      { email: 'bob@example.com', role: 'clinical_director' },
+    ]);
+  });
+
+  it('treats the first two columns as email/role when no header row is present', () => {
+    const result = extractManagerInvitesFromRows([['alice@example.com', 'hr']], {
+      validRoles: MANAGER_ROLES,
+    });
+
+    expect(result.invites).toEqual([{ email: 'alice@example.com', role: 'hr' }]);
+  });
+});
+
+describe('extractManagerInvitesFromRows — missing/bad role values', () => {
+  it('yields an empty role ("") for a blank role cell rather than an error', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['alice@example.com', ''],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toEqual([{ email: 'alice@example.com', role: '' }]);
+    expect(result.invalidEmailCount).toBe(0);
+  });
+
+  it('yields an empty role for an unrecognised role value (e.g. a worker role or garbage)', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['alice@example.com', 'nurse'],
+        ['bob@example.com', 'owner'],
+        ['carol@example.com', 'super-admin'],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toEqual([
+      { email: 'alice@example.com', role: '' },
+      { email: 'bob@example.com', role: '' },
+      { email: 'carol@example.com', role: '' },
+    ]);
+  });
+
+  it('handles a file with no role column at all — every row gets an empty role', () => {
+    const result = extractManagerInvitesFromRows(
+      [['email'], ['alice@example.com'], ['bob@example.com']],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toEqual([
+      { email: 'alice@example.com', role: '' },
+      { email: 'bob@example.com', role: '' },
+    ]);
+  });
+});
+
+describe('extractManagerInvitesFromRows — invalid emails, duplicates, blank rows', () => {
+  it('excludes malformed emails and counts them separately from duplicates', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['good@example.com', 'hr'],
+        ['not-an-email', 'hr'],
+        ['good@example.com', 'finance'],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toEqual([{ email: 'good@example.com', role: 'hr' }]);
+    expect(result.invalidEmailCount).toBe(1);
+    expect(result.duplicateCount).toBe(1);
+  });
+
+  it('ignores fully-blank rows without counting them', () => {
+    const result = extractManagerInvitesFromRows(
+      [['email', 'role'], ['alice@example.com', 'hr'], [''], [null, undefined]],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toHaveLength(1);
+  });
+
+  it('returns an empty result for an empty file', () => {
+    const result = extractManagerInvitesFromRows([], { validRoles: MANAGER_ROLES });
+
+    expect(result).toEqual({
+      invites: [],
+      invalidEmailCount: 0,
+      duplicateCount: 0,
+      truncated: false,
+    });
+  });
+});
+
+describe('extractManagerInvitesFromRows — row cap', () => {
+  it('truncates at maxRows and reports it', () => {
+    const rows = Array.from({ length: 5 }, (_, i) => [`user${i}@example.com`, 'hr']);
+    const result = extractManagerInvitesFromRows(rows, { validRoles: MANAGER_ROLES, maxRows: 3 });
+
+    expect(result.invites).toHaveLength(3);
+    expect(result.truncated).toBe(true);
+  });
+});
+
+describe('buildManagerCsvTemplate', () => {
+  it('starts with the expected email,role header', () => {
+    const [header] = buildManagerCsvTemplate().split('\n');
+    expect(header).toBe(`${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}`);
   });
 });

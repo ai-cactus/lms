@@ -171,3 +171,126 @@ export async function readStaffSpreadsheetRows(file: File): Promise<unknown[][]>
 export function buildStaffCsvTemplate(): string {
   return `${STAFF_CSV_EMAIL_HEADER}\nworker1@example.com\nworker2@example.com\n`;
 }
+
+/** Header label the manager template uses and the manager parser detects. */
+export const MANAGER_CSV_ROLE_HEADER = 'role';
+
+export interface ManagerCsvInvite {
+  /** Lowercased, valid email. */
+  email: string;
+  /**
+   * Matched manager role value (e.g. `hr`), or `''` when the row's role cell is
+   * blank/unrecognised — the UI prompts the admin to pick one in that case.
+   */
+  role: string;
+}
+
+export interface ManagerCsvParseResult {
+  /** Unique importable invites in file order (valid email, best-effort role). */
+  invites: ManagerCsvInvite[];
+  invalidEmailCount: number;
+  duplicateCount: number;
+  /** True when the file exceeded {@link MAX_STAFF_CSV_ROWS} and was truncated. */
+  truncated: boolean;
+}
+
+interface ExtractManagerOptions {
+  /**
+   * Accepted manager role values (e.g. `new Set(['supervisor','hr',...])`).
+   * A row's role cell is normalised (lowercased, spaces/hyphens → underscores)
+   * and matched against this set; a miss yields an empty role rather than an
+   * error, so the row is still importable.
+   */
+  validRoles: Set<string>;
+  /** Override the row cap (primarily for tests). */
+  maxRows?: number;
+}
+
+function normaliseRoleToken(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+/**
+ * Manager-invite counterpart of {@link extractStaffEmailsFromRows}: reads an
+ * `email` column plus an optional `role` column. Detects both header labels
+ * (any order); with no header the first column is the email and the second is
+ * the role. Roles are validated against the provided manager set — an
+ * unrecognised or missing role becomes `''` (the admin assigns it in the UI).
+ */
+export function extractManagerInvitesFromRows(
+  rows: unknown[][],
+  options: ExtractManagerOptions,
+): ManagerCsvParseResult {
+  const maxRows = options.maxRows ?? MAX_STAFF_CSV_ROWS;
+  const { validRoles } = options;
+
+  let emailCol = 0;
+  let roleCol = 1;
+  let dataStartIndex = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+    if (!row.some((cell) => cellToString(cell) !== '')) continue;
+
+    const emailIdx = row.findIndex(
+      (cell) => cellToString(cell).toLowerCase() === STAFF_CSV_EMAIL_HEADER,
+    );
+    const roleIdx = row.findIndex(
+      (cell) => cellToString(cell).toLowerCase() === MANAGER_CSV_ROLE_HEADER,
+    );
+    if (emailIdx !== -1 || roleIdx !== -1) {
+      emailCol = emailIdx !== -1 ? emailIdx : 0;
+      roleCol = roleIdx !== -1 ? roleIdx : emailCol === 1 ? 0 : 1;
+      dataStartIndex = i + 1;
+    } else {
+      emailCol = 0;
+      roleCol = 1;
+      dataStartIndex = i;
+    }
+    break;
+  }
+
+  const invites: ManagerCsvInvite[] = [];
+  const seen = new Set<string>();
+  let invalidEmailCount = 0;
+  let duplicateCount = 0;
+  let truncated = false;
+
+  for (let i = dataStartIndex; i < rows.length; i++) {
+    const row = rows[i];
+    const rawEmail = Array.isArray(row) ? cellToString(row[emailCol]) : '';
+    if (rawEmail === '') continue;
+
+    if (invites.length + invalidEmailCount + duplicateCount >= maxRows) {
+      truncated = true;
+      break;
+    }
+
+    const lower = rawEmail.toLowerCase();
+    if (!EMAIL_REGEX.test(rawEmail)) {
+      invalidEmailCount++;
+      continue;
+    }
+    if (seen.has(lower)) {
+      duplicateCount++;
+      continue;
+    }
+
+    const rawRole = Array.isArray(row) ? cellToString(row[roleCol]) : '';
+    const token = normaliseRoleToken(rawRole);
+    const role = validRoles.has(token) ? token : '';
+
+    seen.add(lower);
+    invites.push({ email: lower, role });
+  }
+
+  return { invites, invalidEmailCount, duplicateCount, truncated };
+}
+
+/** Manager CSV template: `email,role` header with sample rows. */
+export function buildManagerCsvTemplate(): string {
+  return `${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}\nmanager1@example.com,hr\nmanager2@example.com,finance\n`;
+}

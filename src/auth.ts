@@ -1,8 +1,9 @@
 import { createAuthInstance } from '@/lib/create-auth-instance';
+import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
 
 const adminAuth = createAuthInstance({
   cookiePrefix: 'admin',
-  allowedRoles: ['owner', 'supervisor', 'hr', 'clinical_director', 'finance'],
+  allowedRoles: ADMIN_ROLES,
   basePath: '/api/auth',
 });
 

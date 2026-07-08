@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import type { Role } from '@/types/next-auth';
 import { Logo } from '@/components/ui';
 import Header from '@/components/dashboard/Header';
 import Link from 'next/link';
@@ -15,6 +17,7 @@ import {
   CreditCard,
   ChevronDown,
   ShieldAlert,
+  Settings,
 } from 'lucide-react';
 
 interface DashboardLayoutClientProps {
@@ -33,6 +36,12 @@ export default function DashboardLayoutClient({
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isProfilePage = pathname === '/dashboard/profile';
+
+  // Billing is reserved for roles that actually hold `billing.read` (owner,
+  // finance) — supervisor and other admins must not see the nav entry.
+  const canAccessBilling = role ? can(dbRoleToRoleKey(role as Role), 'billing.read') : false;
+  // Settings is owner-only (facility + team-access management).
+  const isOwner = role === 'owner';
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync sidebar state with navigation
@@ -165,18 +174,30 @@ export default function DashboardLayoutClient({
             </div>
           )}
 
-          {/* SETTINGS Section — admin only */}
-          {isAdminRole(role) && (
+          {/* SETTINGS Section — Settings is owner-only; Billing needs billing access */}
+          {(isOwner || canAccessBilling) && (
             <div className="flex flex-col gap-2">
               <h4 className={navSectionLabelCls}>SETTINGS</h4>
 
-              <Link
-                href="/dashboard/billing"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/billing') ? navItemActive : ''}`}
-              >
-                <CreditCard className="size-5" />
-                <span>Billing</span>
-              </Link>
+              {isOwner && (
+                <Link
+                  href="/dashboard/settings"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/settings') ? navItemActive : ''}`}
+                >
+                  <Settings className="size-5" />
+                  <span>Settings</span>
+                </Link>
+              )}
+
+              {canAccessBilling && (
+                <Link
+                  href="/dashboard/billing"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/billing') ? navItemActive : ''}`}
+                >
+                  <CreditCard className="size-5" />
+                  <span>Billing</span>
+                </Link>
+              )}
             </div>
           )}
         </nav>

@@ -1,4 +1,17 @@
-export type Role = 'owner' | 'supervisor' | 'hr' | 'clinical_director' | 'finance' | 'worker';
+export type Role =
+  | 'owner'
+  | 'supervisor'
+  | 'hr'
+  | 'clinical_director'
+  | 'finance'
+  | 'psychiatrist_prescriber'
+  | 'nurse'
+  | 'therapist_clinician'
+  | 'case_manager'
+  | 'behavioral_health_technician'
+  | 'peer_support_specialist'
+  | 'front_desk_admin'
+  | 'facilities_support';
 import 'next-auth';
 import 'next-auth/jwt';
 

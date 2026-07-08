@@ -6,7 +6,14 @@ enum UserRole {
   hr
   clinical_director
   finance
-  worker
+  psychiatrist_prescriber
+  nurse
+  therapist_clinician
+  case_manager
+  behavioral_health_technician
+  peer_support_specialist
+  front_desk_admin
+  facilities_support
 }
 
 enum InviteStatus {
@@ -23,10 +30,11 @@ model User {
   organizationId        String?           @map("organization_id")
   facilityId            String?           @map("facility_id")
   authProvider          String            @default("credentials") @map("auth_provider")
-  role                  UserRole          @default(worker)
+  role                  UserRole
   emailVerified         Boolean           @default(false) @map("email_verified")
   mfaEnabled            Boolean           @default(false) @map("mfa_enabled")
   mfaVerifiedAt         DateTime?         @map("mfa_verified_at")
+  lastLoginAt           DateTime?         @map("last_login_at")
   managerId             String?           @map("manager_id")
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")

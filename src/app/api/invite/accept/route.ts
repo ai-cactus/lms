@@ -21,6 +21,10 @@ export async function POST(req: Request) {
     const result = acceptInviteSchema.safeParse(body);
 
     if (!result.success) {
+      logger.warn({
+        msg: '[invite] Rejected accept-invite request with invalid payload',
+        fields: Object.keys(result.error.flatten().fieldErrors),
+      });
       return NextResponse.json(
         { error: 'Invalid input data', details: result.error.flatten().fieldErrors },
         { status: 400 },
@@ -37,11 +41,18 @@ export async function POST(req: Request) {
       );
     }
 
+    // `token` is Zod-validated as a non-empty string and `token` is @unique, so
+    // this lookup resolves to exactly the invite that owns the token or none —
+    // a crafted POST can never widen to reach another organization's invite.
     const invite = await prisma.invite.findUnique({
       where: { token, status: 'pending' },
     });
 
     if (!invite || new Date() > invite.expiresAt) {
+      logger.warn({
+        msg: '[invite] Accept attempt with invalid or expired token',
+        tokenPrefix: token.slice(0, 8),
+      });
       return NextResponse.json({ error: 'Invalid or expired invite' }, { status: 400 });
     }
 

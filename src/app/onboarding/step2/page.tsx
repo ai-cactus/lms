@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import { FileText, Trash2 } from 'lucide-react';
+import { FileText, Trash2, Loader2 } from 'lucide-react';
 import { FileUpload } from '@/components/ui';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,10 +17,25 @@ import {
 } from '@/components/ui/select';
 import Stepper from '@/components/onboarding/Stepper';
 import { logger } from '@/lib/logger';
+import type { OnboardingDocument } from '@/app/actions/onboarding-complete';
 
 interface Step2FormData {
   licenseNumber: string;
   hipaaCompliant: string;
+}
+
+interface UploadingFile {
+  id: string;
+  name: string;
+}
+
+function readDraft(): Record<string, unknown> {
+  if (typeof window === 'undefined') return {};
+  try {
+    return JSON.parse(localStorage.getItem('onboarding_data') || '{}');
+  } catch {
+    return {};
+  }
 }
 
 export default function OnboardingStep2() {
@@ -31,15 +46,32 @@ export default function OnboardingStep2() {
     control,
     formState: { errors },
   } = useForm<Step2FormData>();
-  const [files, setFiles] = useState<File[]>([]);
+  const [documents, setDocuments] = useState<OnboardingDocument[]>([]);
+  const [uploading, setUploading] = useState<UploadingFile[]>([]);
+  const [uploadError, setUploadError] = useState('');
+
+  useEffect(() => {
+    const draft = readDraft();
+    const step2 = draft.step2 as { documents?: OnboardingDocument[] } | undefined;
+    if (step2?.documents?.length) {
+      setDocuments(step2.documents);
+    }
+  }, []);
+
+  const persistDocuments = (docs: OnboardingDocument[]) => {
+    if (typeof window === 'undefined') return;
+    const draft = readDraft();
+    draft.step2 = { ...(draft.step2 as object), documents: docs };
+    localStorage.setItem('onboarding_data', JSON.stringify(draft));
+  };
 
   const onSubmit = (data: Step2FormData) => {
-    logger.info({ msg: '[onboarding] Step 2 saved locally', fieldCount: Object.keys(data).length });
+    logger.info({ msg: '[onboarding] Step 2 saved locally', documentCount: documents.length });
     try {
       if (typeof window !== 'undefined') {
-        const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
-        const updated = { ...existing, step2: data };
-        localStorage.setItem('onboarding_data', JSON.stringify(updated));
+        const draft = readDraft();
+        draft.step2 = { ...data, documents };
+        localStorage.setItem('onboarding_data', JSON.stringify(draft));
       }
       router.push('/onboarding/step3');
     } catch (error) {
@@ -47,12 +79,49 @@ export default function OnboardingStep2() {
     }
   };
 
-  const handleFilesSelected = (newFiles: File[]) => {
-    setFiles((prev) => [...prev, ...newFiles]);
+  const handleFilesSelected = async (newFiles: File[]) => {
+    setUploadError('');
+    const { uploadOnboardingDocument } = await import('@/app/actions/onboarding-documents');
+
+    await Promise.all(
+      newFiles.map(async (file) => {
+        const id = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        setUploading((prev) => [...prev, { id, name: file.name }]);
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          const result = await uploadOnboardingDocument(formData);
+          if (result.success) {
+            setDocuments((prev) => {
+              const next = [...prev, result.document];
+              persistDocuments(next);
+              return next;
+            });
+          } else {
+            setUploadError(result.error);
+          }
+        } catch (error) {
+          logger.error({ msg: '[onboarding] Upload failed', err: error });
+          setUploadError('Failed to upload file. Please try again.');
+        } finally {
+          setUploading((prev) => prev.filter((u) => u.id !== id));
+        }
+      }),
+    );
   };
 
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeFile = async (doc: OnboardingDocument) => {
+    setDocuments((prev) => {
+      const next = prev.filter((d) => d.url !== doc.url);
+      persistDocuments(next);
+      return next;
+    });
+    try {
+      const { deleteOnboardingDocument } = await import('@/app/actions/onboarding-documents');
+      await deleteOnboardingDocument(doc.url);
+    } catch (error) {
+      logger.error({ msg: '[onboarding] Delete failed', err: error });
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -67,14 +136,14 @@ export default function OnboardingStep2() {
     return errors[fieldName]?.message;
   };
 
-  const getFileIconClass = (file: File) => {
-    if (file.type === 'application/pdf') return 'text-error'; // Red for PDF
+  const getFileIconClass = (mimeType: string) => {
+    if (mimeType === 'application/pdf') return 'text-error';
     if (
-      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      file.type === 'application/msword'
+      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      mimeType === 'application/msword'
     )
-      return 'text-primary'; // Blue for DOCX
-    return 'text-text-secondary'; // Gray for others
+      return 'text-primary';
+    return 'text-text-secondary';
   };
 
   return (
@@ -130,38 +199,60 @@ export default function OnboardingStep2() {
         <div className="flex flex-col gap-2">
           <label className="text-sm font-semibold text-foreground">
             Upload your compliance certifications{' '}
-            <span className="text-xs text-text-tertiary">(optional)</span>
+            <span className="font-normal text-primary">(optional)</span>
           </label>
           <FileUpload
             onFilesSelected={handleFilesSelected}
             multiple={true}
             accept=".pdf,.docx,.jpg,.png"
+            error={uploadError || undefined}
           />
 
-          {files.length > 0 && (
+          {(uploading.length > 0 || documents.length > 0) && (
             <div className="mt-4 flex flex-col gap-3">
-              {files.map((file, index) => (
+              {uploading.map((file) => (
                 <div
-                  key={index}
+                  key={file.id}
                   className="flex items-center justify-between rounded-lg border border-border bg-background p-4"
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex size-8 items-center justify-center rounded-md bg-primary/10">
-                      <FileText className={`size-5 ${getFileIconClass(file)}`} aria-hidden="true" />
+                      <Loader2 className="size-5 animate-spin text-primary" aria-hidden="true" />
                     </div>
                     <div className="flex flex-col">
                       <span className="text-sm font-medium text-foreground">{file.name}</span>
+                      <span className="text-xs text-text-tertiary">Uploading…</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {documents.map((doc) => (
+                <div
+                  key={doc.url}
+                  className="flex items-center justify-between rounded-lg border border-border bg-background p-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-8 items-center justify-center rounded-md bg-primary/10">
+                      <FileText
+                        className={`size-5 ${getFileIconClass(doc.mimeType)}`}
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-foreground">{doc.name}</span>
                       <span className="text-xs text-text-tertiary">
-                        {formatFileSize(file.size)}
+                        {formatFileSize(doc.sizeBytes)}
                       </span>
                     </div>
                   </div>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon-sm"
                     type="button"
-                    onClick={() => removeFile(index)}
-                    className="text-error"
+                    onClick={() => removeFile(doc)}
+                    className="rounded-full bg-primary/10 text-primary hover:bg-primary/20"
+                    aria-label={`Remove ${doc.name}`}
                   >
                     <Trash2 className="size-[18px]" aria-hidden="true" />
                   </Button>
@@ -180,7 +271,7 @@ export default function OnboardingStep2() {
           >
             Back
           </Button>
-          <Button type="submit" className="w-full md:w-auto">
+          <Button type="submit" disabled={uploading.length > 0} className="w-full md:w-auto">
             Next
           </Button>
         </div>

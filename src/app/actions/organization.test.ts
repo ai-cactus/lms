@@ -351,4 +351,35 @@ describe('updateFacility', () => {
 
     expect(result.success).toBe(true);
   });
+
+  it('writes the new name and type fields to the facility', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ facilityId: 'facility-1' } as never);
+
+    const result = await updateFacility({ name: 'Sunrise Behavioral', type: 'Behavioral health' });
+
+    expect(result.success).toBe(true);
+    expect(prisma.facility.update).toHaveBeenCalledWith({
+      where: { id: 'facility-1' },
+      data: expect.objectContaining({ name: 'Sunrise Behavioral', type: 'Behavioral health' }),
+    });
+  });
+
+  it('regression: a stale/unknown role (e.g. the retired "worker" role) is denied cleanly, not thrown', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'worker' } });
+
+    const result = await updateFacility(facilityData);
+
+    expect(result).toEqual({ success: false, error: 'Forbidden' });
+    expect(prisma.facility.update).not.toHaveBeenCalled();
+  });
+
+  it('regression: an entirely bogus role string is denied cleanly, not thrown', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'nope' } });
+
+    const result = await updateFacility(facilityData);
+
+    expect(result).toEqual({ success: false, error: 'Forbidden' });
+    expect(prisma.facility.update).not.toHaveBeenCalled();
+  });
 });

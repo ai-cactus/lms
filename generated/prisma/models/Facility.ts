@@ -28,6 +28,7 @@ export type FacilityMinAggregateOutputType = {
   id: string | null
   organizationId: string | null
   name: string | null
+  type: string | null
   address: string | null
   city: string | null
   state: string | null
@@ -47,6 +48,7 @@ export type FacilityMaxAggregateOutputType = {
   id: string | null
   organizationId: string | null
   name: string | null
+  type: string | null
   address: string | null
   city: string | null
   state: string | null
@@ -66,6 +68,7 @@ export type FacilityCountAggregateOutputType = {
   id: number
   organizationId: number
   name: number
+  type: number
   address: number
   city: number
   state: number
@@ -88,6 +91,7 @@ export type FacilityMinAggregateInputType = {
   id?: true
   organizationId?: true
   name?: true
+  type?: true
   address?: true
   city?: true
   state?: true
@@ -107,6 +111,7 @@ export type FacilityMaxAggregateInputType = {
   id?: true
   organizationId?: true
   name?: true
+  type?: true
   address?: true
   city?: true
   state?: true
@@ -126,6 +131,7 @@ export type FacilityCountAggregateInputType = {
   id?: true
   organizationId?: true
   name?: true
+  type?: true
   address?: true
   city?: true
   state?: true
@@ -219,6 +225,7 @@ export type FacilityGroupByOutputType = {
   id: string
   organizationId: string
   name: string
+  type: string | null
   address: string | null
   city: string | null
   state: string | null
@@ -260,6 +267,7 @@ export type FacilityWhereInput = {
   id?: Prisma.StringFilter<"Facility"> | string
   organizationId?: Prisma.StringFilter<"Facility"> | string
   name?: Prisma.StringFilter<"Facility"> | string
+  type?: Prisma.StringNullableFilter<"Facility"> | string | null
   address?: Prisma.StringNullableFilter<"Facility"> | string | null
   city?: Prisma.StringNullableFilter<"Facility"> | string | null
   state?: Prisma.StringNullableFilter<"Facility"> | string | null
@@ -276,12 +284,14 @@ export type FacilityWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"Facility"> | Date | string
   organization?: Prisma.XOR<Prisma.OrganizationScalarRelationFilter, Prisma.OrganizationWhereInput>
   users?: Prisma.UserListRelationFilter
+  documents?: Prisma.FacilityDocumentListRelationFilter
 }
 
 export type FacilityOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   name?: Prisma.SortOrder
+  type?: Prisma.SortOrderInput | Prisma.SortOrder
   address?: Prisma.SortOrderInput | Prisma.SortOrder
   city?: Prisma.SortOrderInput | Prisma.SortOrder
   state?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -298,6 +308,7 @@ export type FacilityOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrder
   organization?: Prisma.OrganizationOrderByWithRelationInput
   users?: Prisma.UserOrderByRelationAggregateInput
+  documents?: Prisma.FacilityDocumentOrderByRelationAggregateInput
 }
 
 export type FacilityWhereUniqueInput = Prisma.AtLeast<{
@@ -307,6 +318,7 @@ export type FacilityWhereUniqueInput = Prisma.AtLeast<{
   NOT?: Prisma.FacilityWhereInput | Prisma.FacilityWhereInput[]
   organizationId?: Prisma.StringFilter<"Facility"> | string
   name?: Prisma.StringFilter<"Facility"> | string
+  type?: Prisma.StringNullableFilter<"Facility"> | string | null
   address?: Prisma.StringNullableFilter<"Facility"> | string | null
   city?: Prisma.StringNullableFilter<"Facility"> | string | null
   state?: Prisma.StringNullableFilter<"Facility"> | string | null
@@ -323,12 +335,14 @@ export type FacilityWhereUniqueInput = Prisma.AtLeast<{
   updatedAt?: Prisma.DateTimeFilter<"Facility"> | Date | string
   organization?: Prisma.XOR<Prisma.OrganizationScalarRelationFilter, Prisma.OrganizationWhereInput>
   users?: Prisma.UserListRelationFilter
+  documents?: Prisma.FacilityDocumentListRelationFilter
 }, "id">
 
 export type FacilityOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   name?: Prisma.SortOrder
+  type?: Prisma.SortOrderInput | Prisma.SortOrder
   address?: Prisma.SortOrderInput | Prisma.SortOrder
   city?: Prisma.SortOrderInput | Prisma.SortOrder
   state?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -355,6 +369,7 @@ export type FacilityScalarWhereWithAggregatesInput = {
   id?: Prisma.StringWithAggregatesFilter<"Facility"> | string
   organizationId?: Prisma.StringWithAggregatesFilter<"Facility"> | string
   name?: Prisma.StringWithAggregatesFilter<"Facility"> | string
+  type?: Prisma.StringNullableWithAggregatesFilter<"Facility"> | string | null
   address?: Prisma.StringNullableWithAggregatesFilter<"Facility"> | string | null
   city?: Prisma.StringNullableWithAggregatesFilter<"Facility"> | string | null
   state?: Prisma.StringNullableWithAggregatesFilter<"Facility"> | string | null
@@ -374,6 +389,7 @@ export type FacilityScalarWhereWithAggregatesInput = {
 export type FacilityCreateInput = {
   id?: string
   name: string
+  type?: string | null
   address?: string | null
   city?: string | null
   state?: string | null
@@ -390,12 +406,14 @@ export type FacilityCreateInput = {
   updatedAt?: Date | string
   organization: Prisma.OrganizationCreateNestedOneWithoutFacilitiesInput
   users?: Prisma.UserCreateNestedManyWithoutFacilityInput
+  documents?: Prisma.FacilityDocumentCreateNestedManyWithoutFacilityInput
 }
 
 export type FacilityUncheckedCreateInput = {
   id?: string
   organizationId: string
   name: string
+  type?: string | null
   address?: string | null
   city?: string | null
   state?: string | null
@@ -411,11 +429,13 @@ export type FacilityUncheckedCreateInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutFacilityInput
+  documents?: Prisma.FacilityDocumentUncheckedCreateNestedManyWithoutFacilityInput
 }
 
 export type FacilityUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -432,12 +452,14 @@ export type FacilityUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   organization?: Prisma.OrganizationUpdateOneRequiredWithoutFacilitiesNestedInput
   users?: Prisma.UserUpdateManyWithoutFacilityNestedInput
+  documents?: Prisma.FacilityDocumentUpdateManyWithoutFacilityNestedInput
 }
 
 export type FacilityUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -453,12 +475,14 @@ export type FacilityUncheckedUpdateInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutFacilityNestedInput
+  documents?: Prisma.FacilityDocumentUncheckedUpdateManyWithoutFacilityNestedInput
 }
 
 export type FacilityCreateManyInput = {
   id?: string
   organizationId: string
   name: string
+  type?: string | null
   address?: string | null
   city?: string | null
   state?: string | null
@@ -478,6 +502,7 @@ export type FacilityCreateManyInput = {
 export type FacilityUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -498,6 +523,7 @@ export type FacilityUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -533,6 +559,7 @@ export type FacilityCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   name?: Prisma.SortOrder
+  type?: Prisma.SortOrder
   address?: Prisma.SortOrder
   city?: Prisma.SortOrder
   state?: Prisma.SortOrder
@@ -553,6 +580,7 @@ export type FacilityMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   name?: Prisma.SortOrder
+  type?: Prisma.SortOrder
   address?: Prisma.SortOrder
   city?: Prisma.SortOrder
   state?: Prisma.SortOrder
@@ -572,6 +600,7 @@ export type FacilityMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   name?: Prisma.SortOrder
+  type?: Prisma.SortOrder
   address?: Prisma.SortOrder
   city?: Prisma.SortOrder
   state?: Prisma.SortOrder
@@ -585,6 +614,11 @@ export type FacilityMinOrderByAggregateInput = {
   timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+}
+
+export type FacilityScalarRelationFilter = {
+  is?: Prisma.FacilityWhereInput
+  isNot?: Prisma.FacilityWhereInput
 }
 
 export type FacilityCreateNestedOneWithoutUsersInput = {
@@ -654,9 +688,24 @@ export type FacilityUpdateprogramServicesInput = {
   push?: string | string[]
 }
 
+export type FacilityCreateNestedOneWithoutDocumentsInput = {
+  create?: Prisma.XOR<Prisma.FacilityCreateWithoutDocumentsInput, Prisma.FacilityUncheckedCreateWithoutDocumentsInput>
+  connectOrCreate?: Prisma.FacilityCreateOrConnectWithoutDocumentsInput
+  connect?: Prisma.FacilityWhereUniqueInput
+}
+
+export type FacilityUpdateOneRequiredWithoutDocumentsNestedInput = {
+  create?: Prisma.XOR<Prisma.FacilityCreateWithoutDocumentsInput, Prisma.FacilityUncheckedCreateWithoutDocumentsInput>
+  connectOrCreate?: Prisma.FacilityCreateOrConnectWithoutDocumentsInput
+  upsert?: Prisma.FacilityUpsertWithoutDocumentsInput
+  connect?: Prisma.FacilityWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.FacilityUpdateToOneWithWhereWithoutDocumentsInput, Prisma.FacilityUpdateWithoutDocumentsInput>, Prisma.FacilityUncheckedUpdateWithoutDocumentsInput>
+}
+
 export type FacilityCreateWithoutUsersInput = {
   id?: string
   name: string
+  type?: string | null
   address?: string | null
   city?: string | null
   state?: string | null
@@ -672,12 +721,14 @@ export type FacilityCreateWithoutUsersInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   organization: Prisma.OrganizationCreateNestedOneWithoutFacilitiesInput
+  documents?: Prisma.FacilityDocumentCreateNestedManyWithoutFacilityInput
 }
 
 export type FacilityUncheckedCreateWithoutUsersInput = {
   id?: string
   organizationId: string
   name: string
+  type?: string | null
   address?: string | null
   city?: string | null
   state?: string | null
@@ -692,6 +743,7 @@ export type FacilityUncheckedCreateWithoutUsersInput = {
   timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  documents?: Prisma.FacilityDocumentUncheckedCreateNestedManyWithoutFacilityInput
 }
 
 export type FacilityCreateOrConnectWithoutUsersInput = {
@@ -713,6 +765,7 @@ export type FacilityUpdateToOneWithWhereWithoutUsersInput = {
 export type FacilityUpdateWithoutUsersInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -728,12 +781,14 @@ export type FacilityUpdateWithoutUsersInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   organization?: Prisma.OrganizationUpdateOneRequiredWithoutFacilitiesNestedInput
+  documents?: Prisma.FacilityDocumentUpdateManyWithoutFacilityNestedInput
 }
 
 export type FacilityUncheckedUpdateWithoutUsersInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -748,11 +803,13 @@ export type FacilityUncheckedUpdateWithoutUsersInput = {
   timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  documents?: Prisma.FacilityDocumentUncheckedUpdateManyWithoutFacilityNestedInput
 }
 
 export type FacilityCreateWithoutOrganizationInput = {
   id?: string
   name: string
+  type?: string | null
   address?: string | null
   city?: string | null
   state?: string | null
@@ -768,11 +825,13 @@ export type FacilityCreateWithoutOrganizationInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutFacilityInput
+  documents?: Prisma.FacilityDocumentCreateNestedManyWithoutFacilityInput
 }
 
 export type FacilityUncheckedCreateWithoutOrganizationInput = {
   id?: string
   name: string
+  type?: string | null
   address?: string | null
   city?: string | null
   state?: string | null
@@ -788,6 +847,7 @@ export type FacilityUncheckedCreateWithoutOrganizationInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutFacilityInput
+  documents?: Prisma.FacilityDocumentUncheckedCreateNestedManyWithoutFacilityInput
 }
 
 export type FacilityCreateOrConnectWithoutOrganizationInput = {
@@ -823,6 +883,7 @@ export type FacilityScalarWhereInput = {
   id?: Prisma.StringFilter<"Facility"> | string
   organizationId?: Prisma.StringFilter<"Facility"> | string
   name?: Prisma.StringFilter<"Facility"> | string
+  type?: Prisma.StringNullableFilter<"Facility"> | string | null
   address?: Prisma.StringNullableFilter<"Facility"> | string | null
   city?: Prisma.StringNullableFilter<"Facility"> | string | null
   state?: Prisma.StringNullableFilter<"Facility"> | string | null
@@ -839,9 +900,114 @@ export type FacilityScalarWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"Facility"> | Date | string
 }
 
+export type FacilityCreateWithoutDocumentsInput = {
+  id?: string
+  name: string
+  type?: string | null
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  country?: string | null
+  zipCode?: string | null
+  phone?: string | null
+  licenseNumber?: string | null
+  staffCount?: string | null
+  programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
+  complianceDocumentUrl?: string | null
+  complianceDocumentName?: string | null
+  timezone?: string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  organization: Prisma.OrganizationCreateNestedOneWithoutFacilitiesInput
+  users?: Prisma.UserCreateNestedManyWithoutFacilityInput
+}
+
+export type FacilityUncheckedCreateWithoutDocumentsInput = {
+  id?: string
+  organizationId: string
+  name: string
+  type?: string | null
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  country?: string | null
+  zipCode?: string | null
+  phone?: string | null
+  licenseNumber?: string | null
+  staffCount?: string | null
+  programServices?: Prisma.FacilityCreateprogramServicesInput | string[]
+  complianceDocumentUrl?: string | null
+  complianceDocumentName?: string | null
+  timezone?: string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  users?: Prisma.UserUncheckedCreateNestedManyWithoutFacilityInput
+}
+
+export type FacilityCreateOrConnectWithoutDocumentsInput = {
+  where: Prisma.FacilityWhereUniqueInput
+  create: Prisma.XOR<Prisma.FacilityCreateWithoutDocumentsInput, Prisma.FacilityUncheckedCreateWithoutDocumentsInput>
+}
+
+export type FacilityUpsertWithoutDocumentsInput = {
+  update: Prisma.XOR<Prisma.FacilityUpdateWithoutDocumentsInput, Prisma.FacilityUncheckedUpdateWithoutDocumentsInput>
+  create: Prisma.XOR<Prisma.FacilityCreateWithoutDocumentsInput, Prisma.FacilityUncheckedCreateWithoutDocumentsInput>
+  where?: Prisma.FacilityWhereInput
+}
+
+export type FacilityUpdateToOneWithWhereWithoutDocumentsInput = {
+  where?: Prisma.FacilityWhereInput
+  data: Prisma.XOR<Prisma.FacilityUpdateWithoutDocumentsInput, Prisma.FacilityUncheckedUpdateWithoutDocumentsInput>
+}
+
+export type FacilityUpdateWithoutDocumentsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
+  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  organization?: Prisma.OrganizationUpdateOneRequiredWithoutFacilitiesNestedInput
+  users?: Prisma.UserUpdateManyWithoutFacilityNestedInput
+}
+
+export type FacilityUncheckedUpdateWithoutDocumentsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  organizationId?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  programServices?: Prisma.FacilityUpdateprogramServicesInput | string[]
+  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  users?: Prisma.UserUncheckedUpdateManyWithoutFacilityNestedInput
+}
+
 export type FacilityCreateManyOrganizationInput = {
   id?: string
   name: string
+  type?: string | null
   address?: string | null
   city?: string | null
   state?: string | null
@@ -861,6 +1027,7 @@ export type FacilityCreateManyOrganizationInput = {
 export type FacilityUpdateWithoutOrganizationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -876,11 +1043,13 @@ export type FacilityUpdateWithoutOrganizationInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutFacilityNestedInput
+  documents?: Prisma.FacilityDocumentUpdateManyWithoutFacilityNestedInput
 }
 
 export type FacilityUncheckedUpdateWithoutOrganizationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -896,11 +1065,13 @@ export type FacilityUncheckedUpdateWithoutOrganizationInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutFacilityNestedInput
+  documents?: Prisma.FacilityDocumentUncheckedUpdateManyWithoutFacilityNestedInput
 }
 
 export type FacilityUncheckedUpdateManyWithoutOrganizationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
+  type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -924,10 +1095,12 @@ export type FacilityUncheckedUpdateManyWithoutOrganizationInput = {
 
 export type FacilityCountOutputType = {
   users: number
+  documents: number
 }
 
 export type FacilityCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   users?: boolean | FacilityCountOutputTypeCountUsersArgs
+  documents?: boolean | FacilityCountOutputTypeCountDocumentsArgs
 }
 
 /**
@@ -947,11 +1120,19 @@ export type FacilityCountOutputTypeCountUsersArgs<ExtArgs extends runtime.Types.
   where?: Prisma.UserWhereInput
 }
 
+/**
+ * FacilityCountOutputType without action
+ */
+export type FacilityCountOutputTypeCountDocumentsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.FacilityDocumentWhereInput
+}
+
 
 export type FacilitySelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   organizationId?: boolean
   name?: boolean
+  type?: boolean
   address?: boolean
   city?: boolean
   state?: boolean
@@ -968,6 +1149,7 @@ export type FacilitySelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   updatedAt?: boolean
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
   users?: boolean | Prisma.Facility$usersArgs<ExtArgs>
+  documents?: boolean | Prisma.Facility$documentsArgs<ExtArgs>
   _count?: boolean | Prisma.FacilityCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["facility"]>
 
@@ -975,6 +1157,7 @@ export type FacilitySelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   id?: boolean
   organizationId?: boolean
   name?: boolean
+  type?: boolean
   address?: boolean
   city?: boolean
   state?: boolean
@@ -996,6 +1179,7 @@ export type FacilitySelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   id?: boolean
   organizationId?: boolean
   name?: boolean
+  type?: boolean
   address?: boolean
   city?: boolean
   state?: boolean
@@ -1017,6 +1201,7 @@ export type FacilitySelectScalar = {
   id?: boolean
   organizationId?: boolean
   name?: boolean
+  type?: boolean
   address?: boolean
   city?: boolean
   state?: boolean
@@ -1033,10 +1218,11 @@ export type FacilitySelectScalar = {
   updatedAt?: boolean
 }
 
-export type FacilityOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "name" | "address" | "city" | "state" | "country" | "zipCode" | "phone" | "licenseNumber" | "staffCount" | "programServices" | "complianceDocumentUrl" | "complianceDocumentName" | "timezone" | "createdAt" | "updatedAt", ExtArgs["result"]["facility"]>
+export type FacilityOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "name" | "type" | "address" | "city" | "state" | "country" | "zipCode" | "phone" | "licenseNumber" | "staffCount" | "programServices" | "complianceDocumentUrl" | "complianceDocumentName" | "timezone" | "createdAt" | "updatedAt", ExtArgs["result"]["facility"]>
 export type FacilityInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
   users?: boolean | Prisma.Facility$usersArgs<ExtArgs>
+  documents?: boolean | Prisma.Facility$documentsArgs<ExtArgs>
   _count?: boolean | Prisma.FacilityCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type FacilityIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -1051,11 +1237,13 @@ export type $FacilityPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
   objects: {
     organization: Prisma.$OrganizationPayload<ExtArgs>
     users: Prisma.$UserPayload<ExtArgs>[]
+    documents: Prisma.$FacilityDocumentPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
     organizationId: string
     name: string
+    type: string | null
     address: string | null
     city: string | null
     state: string | null
@@ -1466,6 +1654,7 @@ export interface Prisma__FacilityClient<T, Null = never, ExtArgs extends runtime
   readonly [Symbol.toStringTag]: "PrismaPromise"
   organization<T extends Prisma.OrganizationDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.OrganizationDefaultArgs<ExtArgs>>): Prisma.Prisma__OrganizationClient<runtime.Types.Result.GetResult<Prisma.$OrganizationPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   users<T extends Prisma.Facility$usersArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Facility$usersArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  documents<T extends Prisma.Facility$documentsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Facility$documentsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$FacilityDocumentPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1498,6 +1687,7 @@ export interface FacilityFieldRefs {
   readonly id: Prisma.FieldRef<"Facility", 'String'>
   readonly organizationId: Prisma.FieldRef<"Facility", 'String'>
   readonly name: Prisma.FieldRef<"Facility", 'String'>
+  readonly type: Prisma.FieldRef<"Facility", 'String'>
   readonly address: Prisma.FieldRef<"Facility", 'String'>
   readonly city: Prisma.FieldRef<"Facility", 'String'>
   readonly state: Prisma.FieldRef<"Facility", 'String'>
@@ -1934,6 +2124,30 @@ export type Facility$usersArgs<ExtArgs extends runtime.Types.Extensions.Internal
   take?: number
   skip?: number
   distinct?: Prisma.UserScalarFieldEnum | Prisma.UserScalarFieldEnum[]
+}
+
+/**
+ * Facility.documents
+ */
+export type Facility$documentsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the FacilityDocument
+   */
+  select?: Prisma.FacilityDocumentSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the FacilityDocument
+   */
+  omit?: Prisma.FacilityDocumentOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.FacilityDocumentInclude<ExtArgs> | null
+  where?: Prisma.FacilityDocumentWhereInput
+  orderBy?: Prisma.FacilityDocumentOrderByWithRelationInput | Prisma.FacilityDocumentOrderByWithRelationInput[]
+  cursor?: Prisma.FacilityDocumentWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.FacilityDocumentScalarFieldEnum | Prisma.FacilityDocumentScalarFieldEnum[]
 }
 
 /**

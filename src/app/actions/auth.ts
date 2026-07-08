@@ -14,6 +14,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 import { logger, maskEmail } from '@/lib/logger';
 import { createMfaChallenge } from '@/lib/mfa-challenge';
+import { isWorkerRole } from '@/lib/rbac/role-utils';
 
 // Pre-computed dummy hash for constant-time response when a user email doesn't exist.
 // bcrypt runs its full ~100ms computation and returns false, preventing timing-based
@@ -80,7 +81,7 @@ export async function authenticate(
       return { error: 'Invalid credentials.' };
     }
 
-    if (lookupUser.role === 'worker') {
+    if (isWorkerRole(lookupUser.role)) {
       role = 'worker';
     }
 
@@ -132,35 +133,15 @@ export async function authenticate(
 
 export type SignupResult = { success: true } | { success: false; error: string };
 
-export async function signup(
-  prevState: SignupResult | undefined,
-  formData: FormData,
-): Promise<SignupResult> {
-  // Legacy function - kept for backwards compatibility
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
-  const firstName = formData.get('firstName') as string;
-  const lastName = formData.get('lastName') as string;
-
-  return signupWithRole({
-    email,
-    password,
-    firstName,
-    lastName,
-    role: 'worker',
-  });
-}
-
-interface SignupWithRoleData {
+interface SignupData {
   email: string;
   password: string;
   firstName: string;
   lastName: string;
-  role: 'admin' | 'worker';
 }
 
-export async function signupWithRole(data: SignupWithRoleData): Promise<SignupResult> {
-  const { email, password, firstName, lastName, role } = data;
+export async function signup(data: SignupData): Promise<SignupResult> {
+  const { email, password, firstName, lastName } = data;
 
   // Rate limiting — 5 attempts per IP per 10 minutes. Runs before any DB access
   // (existence check, token creation) and before any email send.
@@ -175,7 +156,7 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
     return { success: false, error: 'Too many signup attempts. Please try again later.' };
   }
 
-  if (!email || !password || !firstName || !lastName || !role) {
+  if (!email || !password || !firstName || !lastName) {
     return { success: false, error: 'All fields are required' };
   }
 
@@ -201,10 +182,9 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
     });
 
     // Create verification token with pending user data including role (24 hour expiry).
-    // The signup UI offers a binary "admin vs worker" choice; persist it as the
-    // RBAC role the account will be created with. "admin" means founding an
-    // organisation, so the account becomes an `owner`.
-    const persistedRole = role === 'admin' ? 'owner' : 'worker';
+    // Self-serve signup always founds an organisation, so the account becomes an `owner`.
+    // Worker accounts are created only via invites (join/[token] flow), never here.
+    const persistedRole = 'owner';
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MS);
 

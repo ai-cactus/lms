@@ -1,22 +1,16 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { X, Download, UploadCloud, CheckCircle2, AlertCircle, FileSpreadsheet } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import React, { useMemo, useRef, useState } from 'react';
+import { Check, ChevronLeft, Trash2, Upload, Download, FileSpreadsheet } from 'lucide-react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Alert, FileUpload } from '@/components/ui';
-import { Field } from '@/components/ui/field';
+import { Alert } from '@/components/ui';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -25,11 +19,10 @@ import {
   readStaffSpreadsheetRows,
   extractStaffEmailsFromRows,
   buildStaffCsvTemplate,
-  type StaffCsvParseResult,
 } from '@/lib/staff-csv';
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
-import { GRANTABLE_ROLES, getRoleDisplayName } from '@/lib/rbac/role-utils';
+import { groupRolesForSelect } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 
 interface InviteStaffModalProps {
@@ -47,10 +40,45 @@ interface InviteStaffModalProps {
   inviterRole: Role;
   /**
    * Emails already present as members or pending invites, used only to flag
-   * such rows in the CSV import preview. The server action remains the source
-   * of truth for seat limits and duplicate handling.
+   * such rows during CSV import. The server action remains the source of truth
+   * for seat limits and duplicate handling.
    */
   existingEmails?: string[];
+}
+
+interface Contact {
+  email: string;
+  name?: string;
+  /** '' until the admin assigns a role in step 2. */
+  role: Role | '';
+}
+
+type Step = 'input' | 'assign' | 'success';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseEmailText(text: string): { valid: string[]; invalidCount: number } {
+  const tokens = text
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const valid: string[] = [];
+  const seen = new Set<string>();
+  let invalidCount = 0;
+
+  for (const token of tokens) {
+    if (!EMAIL_REGEX.test(token)) {
+      invalidCount++;
+      continue;
+    }
+    const lower = token.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    valid.push(lower);
+  }
+
+  return { valid, invalidCount };
 }
 
 export default function InviteStaffModal({
@@ -61,120 +89,61 @@ export default function InviteStaffModal({
   inviterRole,
   existingEmails = [],
 }: InviteStaffModalProps) {
-  const grantableRoles = GRANTABLE_ROLES[inviterRole];
+  const router = useRouter();
+  const roleGroups = useMemo(() => groupRolesForSelect(inviterRole), [inviterRole]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const isLimitedPlan = remainingSeats !== null;
   const seatsExhausted = isLimitedPlan && remainingSeats === 0;
-  const [emails, setEmails] = useState<string[]>([]);
-  const [inputValue, setInputValue] = useState('');
-  const [selectedRole, setSelectedRole] = useState<Role>('worker');
-  const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const [csvFileName, setCsvFileName] = useState<string | null>(null);
-  const [csvParsing, setCsvParsing] = useState(false);
-  const [parseResult, setParseResult] = useState<StaffCsvParseResult | null>(null);
-
-  const router = useRouter();
-  // Owner is seat-exempt (D2); every other role consumes a plan seat.
-  const seatCapApplies = selectedRole !== 'owner';
 
   const knownEmails = useMemo(
     () => new Set(existingEmails.map((e) => e.toLowerCase())),
     [existingEmails],
   );
 
-  const isValidEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
+  const [step, setStep] = useState<Step>('input');
+  const [emailText, setEmailText] = useState('');
+  const [csvContacts, setCsvContacts] = useState<Contact[]>([]);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
+  const [csvParsing, setCsvParsing] = useState(false);
 
-  // Shared submit path — both the manual and CSV tabs funnel valid emails
-  // through the same `createInvites` server action. Returns the number of
-  // invites actually sent so the caller can clear its own input on success.
-  const runInvites = async (finalEmails: string[]): Promise<number> => {
-    setIsLoading(true);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [invitedCount, setInvitedCount] = useState(0);
+
+  const textParsed = useMemo(() => parseEmailText(emailText), [emailText]);
+
+  // Combined, de-duplicated importable emails from both the textarea and any CSV.
+  const combinedEmails = useMemo(() => {
+    const map = new Map<string, Contact>();
+    for (const email of textParsed.valid) {
+      if (!map.has(email)) map.set(email, { email, role: '' });
+    }
+    for (const contact of csvContacts) {
+      if (!map.has(contact.email)) map.set(contact.email, { ...contact, role: '' });
+    }
+    return [...map.values()];
+  }, [textParsed.valid, csvContacts]);
+
+  const resetState = () => {
+    setStep('input');
+    setEmailText('');
+    setCsvContacts([]);
+    setCsvFileName(null);
+    setCsvParsing(false);
+    setContacts([]);
+    setIsLoading(false);
     setMessage(null);
-
-    try {
-      const result = await createInvites(finalEmails, selectedRole);
-
-      if (!result.success) {
-        setMessage({ type: 'error', text: result.error || 'Failed to send invites' });
-        return 0;
-      }
-
-      const sent = result.results.filter(
-        (r) => r.status === 'sent' || r.status === 'resent',
-      ).length;
-      const existed = result.results.filter((r) => r.status === 'exists').length;
-      const errors = result.results.filter((r) => r.status === 'error').length;
-
-      let text = '';
-      if (sent > 0) text += `Sent ${sent} invite(s). `;
-      if (existed > 0) text += `${existed} user(s) already exist. `;
-      if (errors > 0) text += `${errors} failed. `;
-
-      const type: 'success' | 'error' = errors > 0 ? 'error' : 'success';
-      setMessage({ type, text: text.trim() || 'No changes were made.' });
-
-      if (sent > 0) {
-        setTimeout(() => {
-          onClose();
-          router.refresh();
-        }, 2500);
-      }
-
-      return sent;
-    } catch {
-      setMessage({ type: 'error', text: 'An unexpected error occurred' });
-      return 0;
-    } finally {
-      setIsLoading(false);
-    }
+    setInvitedCount(0);
   };
 
-  // ── Manual entry ───────────────────────────────────────────────────────────
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (['Enter', ' ', ','].includes(e.key)) {
-      e.preventDefault();
-      const val = inputValue.trim();
-      if (val && isValidEmail(val)) {
-        if (!emails.includes(val)) {
-          setEmails([...emails, val]);
-        }
-        setInputValue('');
-        setMessage(null);
-      }
-    } else if (e.key === 'Backspace' && !inputValue && emails.length > 0) {
-      setEmails(emails.slice(0, -1));
-    }
+  const handleClose = () => {
+    resetState();
+    onClose();
   };
 
-  const removeEmail = (emailToRemove: string) => {
-    setEmails(emails.filter((email) => email !== emailToRemove));
-  };
-
-  const handleManualSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const finalEmails = [...emails];
-    const currentVal = inputValue.trim();
-    if (currentVal && isValidEmail(currentVal) && !finalEmails.includes(currentVal)) {
-      finalEmails.push(currentVal);
-    }
-
-    if (finalEmails.length === 0) {
-      setMessage({ type: 'error', text: 'Please enter at least one valid email address' });
-      return;
-    }
-
-    const sent = await runInvites(finalEmails);
-    if (sent > 0) {
-      setEmails([]);
-      setInputValue('');
-    }
-  };
-
-  // ── CSV / bulk import ────────────────────────────────────────────────────────
+  // ── Step 1 — CSV import ──────────────────────────────────────────────────────
   const downloadTemplate = () => {
     const blob = new Blob([buildStaffCsvTemplate()], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -187,28 +156,25 @@ export default function InviteStaffModal({
     URL.revokeObjectURL(url);
   };
 
-  const handleCsvFile = async (files: File[]) => {
-    if (files.length === 0) return;
-
-    const file = files[0];
+  const handleCsvFile = async (file: File) => {
     setCsvParsing(true);
     setMessage(null);
-    setParseResult(null);
-    setCsvFileName(null);
-
     try {
       const rows = await readStaffSpreadsheetRows(file);
       const result = extractStaffEmailsFromRows(rows, { knownEmails });
 
-      setCsvFileName(file.name);
-      setParseResult(result);
-
-      if (result.rows.length === 0) {
+      if (result.validEmails.length === 0) {
         setMessage({
           type: 'error',
-          text: 'No email rows found in the file. Check the format or download the template.',
+          text: 'No new email rows found in the file. Check the format or download the template.',
         });
+        setCsvContacts([]);
+        setCsvFileName(null);
+        return;
       }
+
+      setCsvContacts(result.validEmails.map((email) => ({ email, role: '' })));
+      setCsvFileName(file.name);
     } catch (err) {
       logger.error({ msg: '[staff] CSV bulk-import parse failed', err });
       setMessage({
@@ -220,278 +186,342 @@ export default function InviteStaffModal({
     }
   };
 
+  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) void handleCsvFile(file);
+    e.target.value = '';
+  };
+
   const clearCsv = () => {
+    setCsvContacts([]);
     setCsvFileName(null);
-    setParseResult(null);
     setMessage(null);
   };
 
-  const handleCsvSubmit = async () => {
-    if (!parseResult || parseResult.validEmails.length === 0) return;
-    const sent = await runInvites(parseResult.validEmails);
-    if (sent > 0) {
-      clearCsv();
+  const goToAssign = () => {
+    if (combinedEmails.length === 0) return;
+    setContacts(combinedEmails);
+    setMessage(null);
+    setStep('assign');
+  };
+
+  // ── Step 2 — role assignment ─────────────────────────────────────────────────
+  const setAllRoles = (role: Role) => {
+    setContacts((prev) => prev.map((c) => ({ ...c, role })));
+  };
+
+  const setContactRole = (email: string, role: Role) => {
+    setContacts((prev) => prev.map((c) => (c.email === email ? { ...c, role } : c)));
+  };
+
+  const removeContact = (email: string) => {
+    setContacts((prev) => prev.filter((c) => c.email !== email));
+  };
+
+  const allAssigned = contacts.length > 0 && contacts.every((c) => c.role !== '');
+
+  const backToInput = () => {
+    setMessage(null);
+    setStep('input');
+  };
+
+  const submitInvites = async () => {
+    if (!allAssigned) return;
+    setIsLoading(true);
+    setMessage(null);
+
+    try {
+      const items = contacts.map((c) => ({ email: c.email, role: c.role as Role }));
+      const result = await createInvites(items);
+
+      if (!result.success) {
+        setMessage({ type: 'error', text: result.error || 'Failed to send invites' });
+        return;
+      }
+
+      const sent = result.results.filter(
+        (r) => r.status === 'sent' || r.status === 'resent',
+      ).length;
+      const existed = result.results.filter((r) => r.status === 'exists').length;
+      const forbidden = result.results.filter((r) => r.status === 'forbidden').length;
+      const errored = result.results.filter((r) => r.status === 'error').length;
+      const issues = existed + forbidden + errored;
+
+      if (sent > 0) router.refresh();
+
+      if (issues === 0 && sent > 0) {
+        setInvitedCount(sent);
+        setStep('success');
+        return;
+      }
+
+      // Partial (or total) failure — keep the admin on the assign step and
+      // surface a per-status breakdown so they can adjust and retry.
+      const parts: string[] = [];
+      if (sent > 0) parts.push(`${sent} invited`);
+      if (existed > 0) parts.push(`${existed} already a member or invited`);
+      if (forbidden > 0) parts.push(`${forbidden} could not be granted the selected role`);
+      if (errored > 0) parts.push(`${errored} failed to send`);
+      setMessage({
+        type: sent > 0 ? 'success' : 'error',
+        text: parts.join(' • ') || 'No changes were made.',
+      });
+    } catch {
+      setMessage({ type: 'error', text: 'An unexpected error occurred' });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Owner is seat-exempt (D2); hide the seat hint when the selected role consumes no seat.
-  const seatsHint =
-    isLimitedPlan && seatCapApplies ? (
-      <p
-        className={
-          seatsExhausted
-            ? 'text-[13px] font-semibold text-error'
-            : 'text-[13px] text-text-secondary'
-        }
-      >
-        {seatsExhausted
-          ? `Your ${planName} plan has no remaining worker seats. Please upgrade to invite more.`
-          : `${remainingSeats} seat${remainingSeats !== 1 ? 's' : ''} remaining on your ${planName} plan.`}
-      </p>
-    ) : null;
+  const roleOptions = (
+    <>
+      {roleGroups.map((group) => (
+        <SelectGroup key={group.label}>
+          <SelectLabel className="uppercase tracking-wide">{group.label}</SelectLabel>
+          {group.roles.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.displayName}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      ))}
+    </>
+  );
+
+  const seatsHint = isLimitedPlan ? (
+    <p
+      className={
+        seatsExhausted ? 'text-[13px] font-semibold text-error' : 'text-[13px] text-text-secondary'
+      }
+    >
+      {seatsExhausted
+        ? `Your ${planName} plan has no remaining worker seats. Please upgrade to invite more.`
+        : `${remainingSeats} seat${remainingSeats !== 1 ? 's' : ''} remaining on your ${planName} plan.`}
+    </p>
+  ) : null;
 
   return (
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) handleClose();
       }}
     >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Invite New Staff</DialogTitle>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-lg" showCloseButton={step !== 'success'}>
+        {step === 'input' && (
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold text-foreground">Invite New Staffs</h2>
+              <p className="text-sm text-text-secondary">
+                Add the emails of people to invite, or upload a CSV. We&apos;ll pull out the
+                contacts so you can assign roles.
+              </p>
+            </div>
 
-        <Tabs defaultValue="manual" className="w-full">
-          <TabsList className="w-full">
-            <TabsTrigger value="manual">Enter emails</TabsTrigger>
-            <TabsTrigger value="csv">Import CSV</TabsTrigger>
-          </TabsList>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="invite-email-textarea"
+                className="text-sm font-medium text-foreground"
+              >
+                Email address
+              </label>
+              <textarea
+                id="invite-email-textarea"
+                value={emailText}
+                onChange={(e) => setEmailText(e.target.value)}
+                placeholder="Enter emails separated by commas, spaces, or new lines"
+                className="min-h-[110px] w-full resize-y rounded-[10px] border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-[color,box-shadow] placeholder:text-text-secondary focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              />
+              {(combinedEmails.length > 0 || textParsed.invalidCount > 0) && (
+                <p className="text-xs text-text-secondary">
+                  {combinedEmails.length} valid email{combinedEmails.length !== 1 ? 's' : ''} found
+                  {textParsed.invalidCount > 0 ? ` • ${textParsed.invalidCount} skipped` : ''}
+                </p>
+              )}
+            </div>
 
-          <TabsContent value="manual">
-            <form onSubmit={handleManualSubmit} className="flex flex-col gap-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-text-secondary">
-                  Email Addresses
-                </label>
-                <div
-                  className="flex min-h-[42px] flex-wrap items-center gap-2 rounded-[10px] border border-border bg-background p-2"
-                  onClick={() => document.getElementById('email-chip-input')?.focus()}
-                >
-                  {emails.map((email) => (
-                    <div
-                      key={email}
-                      className="flex items-center rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary"
-                    >
-                      {email}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeEmail(email);
-                        }}
-                        className="ml-1.5 flex items-center text-primary"
-                      >
-                        <X className="size-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  ))}
-                  <input
-                    id="email-chip-input"
-                    type="text"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={emails.length === 0 ? 'Enter emails...' : ''}
-                    className="min-w-[120px] flex-1 border-none bg-transparent text-sm text-foreground outline-none"
-                  />
+            {csvFileName ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background-secondary p-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <FileSpreadsheet className="size-5 shrink-0 text-success" aria-hidden="true" />
+                  <div className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {csvFileName}
+                    </span>
+                    <span className="text-xs text-success">
+                      {csvContacts.length} contact{csvContacts.length !== 1 ? 's' : ''} imported
+                    </span>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-text-secondary">
-                  Press Space or Enter to add an email.
-                </p>
-              </div>
-
-              {grantableRoles.length > 0 && (
-                <Field label="Role">
-                  <Select
-                    value={selectedRole}
-                    onValueChange={(value) => setSelectedRole(value as Role)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {grantableRoles.map((role) => (
-                        <SelectItem key={role} value={role}>
-                          {getRoleDisplayName(role)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              )}
-
-              {message && (
-                <Alert variant={message.type === 'success' ? 'success' : 'error'}>
-                  {message.text}
-                </Alert>
-              )}
-
-              {seatsHint}
-
-              <DialogFooter className="mt-2">
-                <Button variant="outline" type="button" onClick={onClose}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="default"
-                  type="submit"
-                  loading={isLoading}
-                  disabled={
-                    (emails.length === 0 && !inputValue) || (seatsExhausted && seatCapApplies)
-                  }
-                >
-                  Send Invites
-                </Button>
-              </DialogFooter>
-            </form>
-          </TabsContent>
-
-          <TabsContent value="csv">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm text-text-secondary">
-                  Upload a .csv or .xlsx file with an <span className="font-medium">email</span>{' '}
-                  column.
-                </p>
-                <Button
-                  variant="ghost"
+                <button
                   type="button"
-                  size="sm"
+                  onClick={clearCsv}
+                  className="shrink-0 text-text-secondary transition-colors hover:text-error"
+                  aria-label="Remove uploaded file"
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={csvParsing}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary disabled:opacity-60"
+                >
+                  <Upload className="size-4" aria-hidden="true" />
+                  {csvParsing ? 'Parsing…' : 'Click to upload .csv file instead'}
+                </button>
+                <button
+                  type="button"
                   onClick={downloadTemplate}
-                  className="shrink-0 gap-1.5 px-2 font-semibold text-primary"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary transition-colors hover:text-foreground"
                 >
                   <Download className="size-4" aria-hidden="true" />
-                  Template
-                </Button>
+                  Download sample .csv template
+                </button>
               </div>
+            )}
 
-              {!parseResult ? (
-                <div className="h-48">
-                  <FileUpload
-                    onFilesSelected={handleCsvFile}
-                    multiple={false}
-                    accept=".csv,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    description={
-                      csvParsing ? 'Parsing file…' : '.csv or .xlsx files only. 10MB max.'
-                    }
-                  />
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between rounded-lg border border-border bg-background-secondary p-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <FileSpreadsheet
-                        className="size-5 shrink-0 text-primary"
-                        aria-hidden="true"
-                      />
-                      <span className="truncate text-sm font-medium text-foreground">
-                        {csvFileName}
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      type="button"
-                      onClick={clearCsv}
-                      className="shrink-0 gap-1.5 px-2 text-text-secondary"
-                    >
-                      <UploadCloud className="size-4" aria-hidden="true" />
-                      Replace
-                    </Button>
-                  </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={onFileInputChange}
+            />
 
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
-                    <span className="font-medium text-success">{parseResult.validCount} valid</span>
-                    <span className="text-text-secondary">{parseResult.invalidCount} skipped</span>
-                    {parseResult.duplicateCount > 0 && (
-                      <span className="text-text-secondary">
-                        {parseResult.duplicateCount} duplicate
-                        {parseResult.duplicateCount !== 1 ? 's' : ''}
-                      </span>
+            {message && (
+              <Alert variant={message.type === 'success' ? 'success' : 'error'}>
+                {message.text}
+              </Alert>
+            )}
+            {seatsHint}
+
+            <div className="mt-1 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" type="button" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                type="button"
+                onClick={goToAssign}
+                disabled={combinedEmails.length === 0 || (seatsExhausted && isLimitedPlan)}
+              >
+                Continue
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'assign' && (
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={backToInput}
+                  className="rounded-md text-text-secondary transition-colors hover:text-foreground"
+                  aria-label="Back to email entry"
+                >
+                  <ChevronLeft className="size-5" aria-hidden="true" />
+                </button>
+                <h2 className="text-lg font-semibold text-foreground">Assign roles</h2>
+              </div>
+              <p className="pl-7 text-sm text-text-secondary">
+                {`${contacts.length} contact${contacts.length !== 1 ? 's' : ''} found. Assign a role to each — they'll be invited by email.`}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-background-secondary px-3 py-2.5">
+              <span className="text-sm font-medium text-foreground">Set every role to</span>
+              <Select onValueChange={(value) => setAllRoles(value as Role)}>
+                <SelectTrigger className="w-[190px]">
+                  <SelectValue placeholder="Choose a role" />
+                </SelectTrigger>
+                <SelectContent>{roleOptions}</SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex max-h-[320px] flex-col gap-2 overflow-y-auto">
+              {contacts.map((contact) => (
+                <div
+                  key={contact.email}
+                  className="flex items-center gap-3 rounded-lg border border-border p-3"
+                >
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {contact.name ?? contact.email}
+                    </span>
+                    {contact.name && (
+                      <span className="truncate text-xs text-text-secondary">{contact.email}</span>
                     )}
                   </div>
-
-                  {parseResult.truncated && (
-                    <Alert variant="warning">
-                      Only the first {parseResult.totalRows} rows were read. Split larger lists into
-                      multiple files.
-                    </Alert>
-                  )}
-
-                  {parseResult.rows.length > 0 && (
-                    <ul className="max-h-52 divide-y divide-border overflow-y-auto rounded-lg border border-border">
-                      {parseResult.rows.map((row, index) => (
-                        <li
-                          key={`${row.email}-${index}`}
-                          className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
-                        >
-                          <span className="flex min-w-0 items-center gap-2">
-                            {row.valid ? (
-                              <CheckCircle2
-                                className="size-4 shrink-0 text-success"
-                                aria-hidden="true"
-                              />
-                            ) : (
-                              <AlertCircle
-                                className="size-4 shrink-0 text-error"
-                                aria-hidden="true"
-                              />
-                            )}
-                            <span className="truncate text-foreground">{row.email}</span>
-                          </span>
-                          {!row.valid && (
-                            <span className="shrink-0 text-xs text-error">{row.error}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <Select
+                    value={contact.role || undefined}
+                    onValueChange={(value) => setContactRole(contact.email, value as Role)}
+                  >
+                    <SelectTrigger className="w-[170px] shrink-0">
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>{roleOptions}</SelectContent>
+                  </Select>
+                  <button
+                    type="button"
+                    onClick={() => removeContact(contact.email)}
+                    className="shrink-0 text-text-secondary transition-colors hover:text-error"
+                    aria-label={`Remove ${contact.email}`}
+                  >
+                    <Trash2 className="size-4" aria-hidden="true" />
+                  </button>
                 </div>
-              )}
-
-              {message && (
-                <Alert variant={message.type === 'success' ? 'success' : 'error'}>
-                  {message.text}
-                </Alert>
-              )}
-
-              {seatsHint}
-
-              <DialogFooter className="mt-2">
-                <Button variant="outline" type="button" onClick={onClose}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="default"
-                  type="button"
-                  onClick={handleCsvSubmit}
-                  loading={isLoading}
-                  disabled={
-                    csvParsing ||
-                    !parseResult ||
-                    parseResult.validEmails.length === 0 ||
-                    (seatsExhausted && seatCapApplies)
-                  }
-                >
-                  {parseResult && parseResult.validCount > 0
-                    ? `Send ${parseResult.validCount} Invite${parseResult.validCount !== 1 ? 's' : ''}`
-                    : 'Send Invites'}
-                </Button>
-              </DialogFooter>
+              ))}
             </div>
-          </TabsContent>
-        </Tabs>
+
+            {message && (
+              <Alert variant={message.type === 'success' ? 'success' : 'error'}>
+                {message.text}
+              </Alert>
+            )}
+            {seatsHint}
+
+            <div className="mt-1 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" type="button" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                type="button"
+                onClick={submitInvites}
+                loading={isLoading}
+                disabled={!allAssigned || (seatsExhausted && isLimitedPlan)}
+              >
+                Continue
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'success' && (
+          <div className="flex flex-col items-center gap-4 py-4 text-center">
+            <div className="flex size-16 items-center justify-center rounded-full bg-success/10 ring-8 ring-success/5">
+              <div className="flex size-11 items-center justify-center rounded-full bg-success text-white">
+                <Check className="size-6" aria-hidden="true" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold text-foreground">Invite sent</h2>
+              <p className="text-sm text-text-secondary">
+                {invitedCount} person{invitedCount !== 1 ? 's have' : ' has'} been invited.
+                They&apos;ll get an email to join and start their assigned training.
+              </p>
+            </div>
+            <Button variant="default" type="button" className="w-full" onClick={handleClose}>
+              Done
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

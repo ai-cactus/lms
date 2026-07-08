@@ -39,7 +39,7 @@ const MANAGER_ADMIN = {
   organizationId: 'org-1',
   profile: { fullName: 'Alice Manager' },
 };
-const MANAGER_NON_ADMIN = { ...MANAGER_ADMIN, id: 'mgr-2', role: 'worker' };
+const MANAGER_NON_ADMIN = { ...MANAGER_ADMIN, id: 'mgr-2', role: 'nurse' };
 const MANAGER_CROSS_ORG = { ...MANAGER_ADMIN, id: 'mgr-3', organizationId: 'org-2' };
 const ORG_ADMIN = {
   id: 'admin-1',

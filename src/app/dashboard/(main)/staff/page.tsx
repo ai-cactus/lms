@@ -4,6 +4,7 @@ import StaffListClient from '@/components/dashboard/staff/StaffListClient';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { BILLING_PLANS } from '@/lib/billing-plans';
+import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,7 @@ export default async function StaffPage() {
   const sessionUser = session?.user as { organizationId?: string; role?: Role } | undefined;
   const hasOrganization = !!sessionUser?.organizationId;
   const organizationId = sessionUser?.organizationId;
-  const inviterRole: Role = sessionUser?.role ?? 'worker';
+  const inviterRole: Role = sessionUser?.role ?? DEFAULT_SELF_SERVE_WORKER_ROLE;
 
   // Only fetch users if org exists, otherwise return empty list
   const users = hasOrganization ? await getStaffUsers() : [];

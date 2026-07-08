@@ -70,7 +70,7 @@ describe('updateFacility() — unauthenticated', () => {
 // ── Forbidden roles (no facility.edit) ───────────────────────────────────────
 
 describe('updateFacility() — permission denied (403)', () => {
-  it.each(['hr', 'clinical_director', 'finance', 'worker'] as const)(
+  it.each(['hr', 'clinical_director', 'finance', 'nurse'] as const)(
     '%s is forbidden from updating the facility',
     async (role) => {
       mockAuth.mockResolvedValue(makeSession(role));
@@ -109,6 +109,33 @@ describe('updateFacility() — supervisor is allowed', () => {
     expect(result.success).toBe(true);
     expect(mockFacilityUpdate).toHaveBeenCalledOnce();
     expect(mockFacilityUpdate.mock.calls[0][0].where).toEqual({ id: 'fac-7' });
+  });
+});
+
+// ── Settings → Facility tab: name/type fields (new in this session) ─────────
+
+describe('updateFacility() — name/type fields (Settings Facility tab)', () => {
+  it('persists name and type alongside the existing location fields', async () => {
+    mockAuth.mockResolvedValue(makeSession('owner'));
+    mockUserFindUnique.mockResolvedValue({ facilityId: 'fac-42' });
+
+    const result = await updateFacility({ name: 'Acme Downtown Clinic', type: 'clinic' });
+
+    expect(result.success).toBe(true);
+    const data = mockFacilityUpdate.mock.calls[0][0].data;
+    expect(data.name).toBe('Acme Downtown Clinic');
+    expect(data.type).toBe('clinic');
+  });
+
+  it('leaves name/type as undefined (no-op update) when not supplied', async () => {
+    mockAuth.mockResolvedValue(makeSession('owner'));
+    mockUserFindUnique.mockResolvedValue({ facilityId: 'fac-42' });
+
+    await updateFacility({ phone: '555-2222' });
+
+    const data = mockFacilityUpdate.mock.calls[0][0].data;
+    expect(data.name).toBeUndefined();
+    expect(data.type).toBeUndefined();
   });
 });
 

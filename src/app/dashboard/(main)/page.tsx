@@ -10,6 +10,7 @@ import DashboardCreateCourseButton from '@/components/dashboard/DashboardCreateC
 import AvailableCoursesTable from '@/components/dashboard/courses/AvailableCoursesTable';
 import { listAvailableVideoCourses } from '@/app/actions/offering';
 import { hasActiveBilling } from '@/lib/billing';
+import { isWorkerRole } from '@/lib/rbac/role-utils';
 import { BookOpen, Users, Activity } from 'lucide-react';
 
 export default async function DashboardPage() {
@@ -17,7 +18,7 @@ export default async function DashboardPage() {
   if (!session?.user) redirect('/login');
 
   const role = session.user.role;
-  if (role === 'worker') redirect('/worker');
+  if (isWorkerRole(role)) redirect('/worker');
 
   // Fetch billing status alongside dashboard data so the Create Course button
   // can apply the same billing gate as the Courses list page.

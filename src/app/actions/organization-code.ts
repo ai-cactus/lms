@@ -9,6 +9,7 @@ import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { logger } from '@/lib/logger';
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 
 // Helper to generate a cryptographically-random 6-digit code
 function generateCode() {
@@ -183,7 +184,7 @@ export async function joinOrganization(code: string) {
       data: {
         organizationId: orgId,
         facilityId: facility?.id ?? null,
-        role: 'worker',
+        role: DEFAULT_SELF_SERVE_WORKER_ROLE,
       },
     });
 

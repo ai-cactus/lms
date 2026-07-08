@@ -1,5 +1,5 @@
 /**
- * Regression tests for signupWithRole signup-hardening fixes:
+ * Regression tests for signup signup-hardening fixes:
  *
  *   1. Rate limiting blocks the call before any DB/email access.
  *   2. Verification token expires exactly EMAIL_VERIFICATION_EXPIRY_MS from now.
@@ -51,14 +51,14 @@ vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
 
-// Dynamic import inside signupWithRole — mock the module path it imports.
+// Dynamic import inside signup — mock the module path it imports.
 vi.mock('@/lib/email', () => ({
   sendEmailVerification: mockSendEmailVerification,
   sendPasswordResetEmail: vi.fn(),
 }));
 
 vi.mock('bcryptjs', () => ({
-  // authenticate() uses the default import (`bcrypt.compare`); signupWithRole
+  // authenticate() uses the default import (`bcrypt.compare`); signup
   // uses it too (`bcrypt.hash`) — both must be present on `default`.
   default: {
     hash: vi.fn().mockResolvedValue('hashed-pw'),
@@ -88,7 +88,7 @@ vi.mock('@/lib/mfa-challenge', () => ({
 // ---------------------------------------------------------------------------
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
-import { signupWithRole, authenticate } from './auth';
+import { signup, authenticate } from './auth';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -99,7 +99,6 @@ const VALID_DATA = {
   password: 'StrongP@ss1',
   firstName: 'Alice',
   lastName: 'Smith',
-  role: 'admin' as const,
 };
 
 function stubHeadersIp(ip = '1.2.3.4') {
@@ -111,7 +110,7 @@ function stubHeadersIp(ip = '1.2.3.4') {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('signupWithRole — rate limiting', () => {
+describe('signup — rate limiting', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stubHeadersIp();
@@ -120,7 +119,7 @@ describe('signupWithRole — rate limiting', () => {
   it('returns rate-limit error and does NOT touch DB or email when checkRateLimit denies', async () => {
     mockCheckRateLimit.mockResolvedValue({ allowed: false, remaining: 0, resetInSeconds: 600 });
 
-    const result = await signupWithRole(VALID_DATA);
+    const result = await signup(VALID_DATA);
 
     expect(result).toEqual({
       success: false,
@@ -140,7 +139,7 @@ describe('signupWithRole — rate limiting', () => {
     mockCheckRateLimit.mockResolvedValue({ allowed: false, remaining: 0, resetInSeconds: 600 });
     stubHeadersIp('10.0.0.1');
 
-    await signupWithRole(VALID_DATA);
+    await signup(VALID_DATA);
 
     expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:10.0.0.1', 5, 600);
   });
@@ -150,7 +149,7 @@ describe('signupWithRole — rate limiting', () => {
     mockHeaders.mockResolvedValue(noIpHeaders);
     mockCheckRateLimit.mockResolvedValue({ allowed: false, remaining: 0, resetInSeconds: 600 });
 
-    await signupWithRole(VALID_DATA);
+    await signup(VALID_DATA);
 
     expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:unknown', 5, 600);
   });
@@ -162,7 +161,7 @@ describe('signupWithRole — rate limiting', () => {
     prismaMock.verificationToken.create.mockResolvedValue({});
     mockSendEmailVerification.mockResolvedValue({ success: true });
 
-    const result = await signupWithRole(VALID_DATA);
+    const result = await signup(VALID_DATA);
 
     expect(result).toEqual({ success: true });
     expect(prismaMock.user.findUnique).toHaveBeenCalledOnce();
@@ -171,7 +170,39 @@ describe('signupWithRole — rate limiting', () => {
   });
 });
 
-describe('signupWithRole — token expiry (EMAIL_VERIFICATION_EXPIRY_MS)', () => {
+describe('signup — role persistence (owner-only self-serve signup)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubHeadersIp();
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 4, resetInSeconds: 600 });
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    prismaMock.verificationToken.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.verificationToken.create.mockResolvedValue({});
+    mockSendEmailVerification.mockResolvedValue({ success: true });
+  });
+
+  it('always persists the verification token with role "owner", regardless of caller input', async () => {
+    const result = await signup(VALID_DATA);
+
+    expect(result).toEqual({ success: true });
+    const createCall = prismaMock.verificationToken.create.mock.calls[0][0];
+    expect(createCall.data.role).toBe('owner');
+  });
+
+  it('ignores an unexpected "role" field on the input payload — self-serve signup can never mint a worker', async () => {
+    // The SignupData type has no `role` field, but a caller could still pass one through
+    // (e.g. a stale client bundle). Self-serve signup must always found an organisation
+    // as the owner — worker accounts are only ever created via the invite flow.
+    const dataWithSpoofedRole = { ...VALID_DATA, role: 'front_desk_admin' } as typeof VALID_DATA;
+
+    await signup(dataWithSpoofedRole);
+
+    const createCall = prismaMock.verificationToken.create.mock.calls[0][0];
+    expect(createCall.data.role).toBe('owner');
+  });
+});
+
+describe('signup — token expiry (EMAIL_VERIFICATION_EXPIRY_MS)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stubHeadersIp();
@@ -184,7 +215,7 @@ describe('signupWithRole — token expiry (EMAIL_VERIFICATION_EXPIRY_MS)', () =>
 
   it('creates the verification token with expires ≈ now + EMAIL_VERIFICATION_EXPIRY_MS', async () => {
     const before = Date.now();
-    await signupWithRole(VALID_DATA);
+    await signup(VALID_DATA);
     const after = Date.now();
 
     const createCall = prismaMock.verificationToken.create.mock.calls[0][0];

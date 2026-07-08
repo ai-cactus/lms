@@ -77,8 +77,8 @@ describe('authorize() — unauthenticated (401)', () => {
 });
 
 describe('authorize() — authenticated but permission denied (403)', () => {
-  it('returns ok:false with a 403 response when worker requests billing.read', async () => {
-    mockAuth.mockResolvedValue(makeSession('worker'));
+  it('returns ok:false with a 403 response when a worker-category role requests billing.read', async () => {
+    mockAuth.mockResolvedValue(makeSession('nurse'));
 
     const result = await authorize('billing.read');
 
@@ -87,7 +87,7 @@ describe('authorize() — authenticated but permission denied (403)', () => {
   });
 
   it('calls logger.warn with masked email on 403', async () => {
-    const session = makeSession('worker', { email: 'worker@acme.com' });
+    const session = makeSession('nurse', { email: 'worker@acme.com' });
     mockAuth.mockResolvedValue(session);
 
     await authorize('billing.read');
@@ -96,7 +96,7 @@ describe('authorize() — authenticated but permission denied (403)', () => {
     const call = mockLoggerWarn.mock.calls[0][0];
     expect(call.msg).toContain('[rbac]');
     expect(call.userId).toBe('user-123');
-    expect(call.role).toBe('worker');
+    expect(call.role).toBe('nurse');
     expect(call.permission).toBe('billing.read');
     // maskEmail must have been applied — the raw email must NOT appear in the log
     expect(mockMaskEmail).toHaveBeenCalledWith('worker@acme.com');
@@ -127,6 +127,40 @@ describe('authorize() — authenticated but permission denied (403)', () => {
     mockAuth.mockResolvedValue(makeSession('supervisor'));
 
     const result = await authorize('billing.read');
+
+    expect(result.ok).toBe(false);
+    expect(mockApiError).toHaveBeenCalledWith('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS');
+  });
+});
+
+describe('authorize() — regression: stale/unknown role denies cleanly instead of throwing', () => {
+  it('returns ok:false with a 403 response (not a thrown TypeError) for the retired "worker" role', async () => {
+    mockAuth.mockResolvedValue(makeSession('worker'));
+
+    const result = await authorize('course.read');
+
+    expect(result.ok).toBe(false);
+    expect(mockApiError).toHaveBeenCalledWith('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS');
+  });
+
+  it('logs a single [rbac] warn for the unknown role, distinct from the permission-denied warn', async () => {
+    mockAuth.mockResolvedValue(makeSession('worker'));
+
+    await authorize('course.read');
+
+    expect(mockLoggerWarn).toHaveBeenCalledTimes(1);
+    const call = mockLoggerWarn.mock.calls[0][0];
+    expect(call.msg).toContain('[rbac]');
+    expect(call.msg.toLowerCase()).toContain('unknown or stale role');
+    expect(call.userId).toBe('user-123');
+    expect(call.role).toBe('worker');
+    expect(call.permission).toBe('course.read');
+  });
+
+  it('returns ok:false for an entirely bogus role string', async () => {
+    mockAuth.mockResolvedValue(makeSession('nope'));
+
+    const result = await authorize('course.read');
 
     expect(result.ok).toBe(false);
     expect(mockApiError).toHaveBeenCalledWith('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS');

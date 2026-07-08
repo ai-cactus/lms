@@ -22,7 +22,7 @@ import {
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
-  Plus,
+  UserPlus,
   Search,
   Eye,
   FileText,
@@ -35,6 +35,8 @@ import {
   Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 
 interface StaffEntry {
@@ -78,6 +80,10 @@ export default function StaffListClient({
   pendingInviteCount,
   inviterRole,
 }: StaffListClientProps) {
+  // Only roles that actually hold `invite.create` may see the invite affordance;
+  // the server still enforces this, this just hides the dead-end UI (e.g. finance).
+  const canInvite = can(dbRoleToRoleKey(inviterRole), 'invite.create');
+
   // Total seats consumed = active workers + pending invites
   const totalUsed = currentWorkerCount + pendingInviteCount;
   const isAtLimit = planLimit !== null && totalUsed >= planLimit;
@@ -207,21 +213,21 @@ export default function StaffListClient({
     <div className="mx-auto flex w-full max-w-[1400px] flex-col">
       <div className="mb-6 flex items-start justify-between gap-4 max-sm:flex-col">
         <div className="flex flex-col">
-          <h1 className="text-2xl font-bold text-[#1a202c]">Staff Details</h1>
-          <p className="text-sm text-[#718096]">Here is an overview of your staff details</p>
+          <h1 className="text-2xl font-bold text-foreground">Staff Details</h1>
+          <p className="text-sm text-text-secondary">Here is an overview of your staff details</p>
           {/* Plan seat usage badge — only shown when the org has a capped plan */}
           {planLimit !== null && (
             <p
               className={cn(
                 'mt-1 text-[13px]',
-                isAtLimit ? 'font-semibold text-[#C53030]' : 'text-[#718096]',
+                isAtLimit ? 'font-semibold text-error' : 'text-text-secondary',
               )}
             >
               {isAtLimit ? (
                 <>
                   ⚠️ Worker limit reached &mdash; {totalUsed}/{planLimit} seats used ({planName}{' '}
                   plan).{' '}
-                  <a href="/dashboard/billing" className="text-[#3182CE] underline">
+                  <a href="/dashboard/billing" className="text-primary underline">
                     Upgrade
                   </a>{' '}
                   to add more.
@@ -235,25 +241,27 @@ export default function StaffListClient({
             </p>
           )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            if (isAtLimit) {
-              setShowWorkerLimitModal(true);
-            } else if (!hasOrganization) {
-              setShowFeatureGate(true);
-            } else {
-              setShowInviteModal(true);
-            }
-          }}
-        >
-          <Plus className="size-4" />
-          Add Staff
-        </Button>
+        {canInvite && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (isAtLimit) {
+                setShowWorkerLimitModal(true);
+              } else if (!hasOrganization) {
+                setShowFeatureGate(true);
+              } else {
+                setShowInviteModal(true);
+              }
+            }}
+          >
+            <UserPlus className="size-4" />
+            Add Workers
+          </Button>
+        )}
       </div>
 
-      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
+      <div className="rounded-xl border border-border bg-background p-6">
         <div className="mb-6 w-full sm:w-[380px]">
           <Input
             className="h-11"
@@ -271,6 +279,7 @@ export default function StaffListClient({
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
               <TableHead className="pl-12">Name</TableHead>
+              <TableHead>Role</TableHead>
               <TableHead className="hidden sm:table-cell text-right pr-12">Date Invited</TableHead>
               <TableHead className="w-12 text-right pr-4">Actions</TableHead>
             </TableRow>
@@ -285,7 +294,7 @@ export default function StaffListClient({
                 >
                   <TableCell className="pl-6">
                     <div className="flex items-center gap-3">
-                      <div className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e2e8f0] text-[#4a5568]">
+                      <div className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-background-secondary text-text-secondary">
                         {user.avatarUrl ? (
                           <Image
                             src={user.avatarUrl}
@@ -300,35 +309,41 @@ export default function StaffListClient({
                           </div>
                         )}
                         {!user.isPending && (
-                          <div className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-white bg-green-500"></div>
+                          <div className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-background bg-success"></div>
                         )}
                       </div>
                       <div className="flex flex-col">
-                        <div className="flex items-center gap-2 font-semibold text-[#1a202c]">
+                        <div className="flex items-center gap-2 font-semibold text-foreground">
                           {user.email}
                           {user.isPending &&
                             (user.isExpired ? (
-                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-[#FFFAF0] text-[#DD6B20] tracking-wide">
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-warning/10 text-warning tracking-wide">
                                 Expired
                               </span>
                             ) : (
-                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-[#EBF4FF] text-[#3182CE] tracking-wide">
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-primary/10 text-primary tracking-wide">
                                 Pending
                               </span>
                             ))}
                         </div>
-                        <div className="text-xs text-[#718096]">{user.jobTitle}</div>
+                        <div className="text-xs text-text-secondary">{user.jobTitle}</div>
                       </div>
                     </div>
                   </TableCell>
 
+                  <TableCell>
+                    <span className="inline-flex items-center rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success">
+                      {getRoleDisplayName(user.role as Role)}
+                    </span>
+                  </TableCell>
+
                   {/* Date cell — hidden on small screens */}
-                  <TableCell className="hidden sm:table-cell text-right text-slate-500 pr-6 whitespace-nowrap">
+                  <TableCell className="hidden sm:table-cell text-right text-text-secondary pr-6 whitespace-nowrap">
                     {getRelativeTime(user.dateInvited)}
                     {exportFeedback?.id === user.id && (
                       <div
                         className={`mt-1 text-[11px] font-medium ${
-                          exportFeedback.ok ? 'text-green-600' : 'text-red-600'
+                          exportFeedback.ok ? 'text-success' : 'text-error'
                         }`}
                       >
                         {exportFeedback.msg}
@@ -337,7 +352,7 @@ export default function StaffListClient({
                     {inviteFeedback?.id === user.id && (
                       <div
                         className={`mt-1 text-[11px] font-medium ${
-                          inviteFeedback.ok ? 'text-green-600' : 'text-red-600'
+                          inviteFeedback.ok ? 'text-success' : 'text-error'
                         }`}
                       >
                         {inviteFeedback.msg}
@@ -404,11 +419,13 @@ export default function StaffListClient({
               ))
             ) : (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={3} className="text-center p-[60px] text-slate-500">
+                <TableCell colSpan={4} className="text-center p-[60px] text-text-secondary">
                   <div className="flex flex-col items-center gap-3">
-                    <Users className="size-16 text-slate-300" />
-                    <p className="text-base font-semibold text-[#2D3748]">No staff members found</p>
-                    <p className="text-sm text-slate-500">
+                    <Users className="size-16 text-text-secondary/40" />
+                    <p className="text-base font-semibold text-foreground">
+                      No staff members found
+                    </p>
+                    <p className="text-sm text-text-secondary">
                       Get started by adding a new staff member to your organization.
                     </p>
                   </div>
@@ -418,8 +435,8 @@ export default function StaffListClient({
           </TableBody>
         </Table>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
-          <div className="text-sm text-[#718096]">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4">
+          <div className="text-sm text-text-secondary">
             Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
             {Math.min(startIndex + itemsPerPage, totalEntries)} of {totalEntries} entries
           </div>
@@ -455,7 +472,7 @@ export default function StaffListClient({
             </Button>
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-[#718096]">
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
             Show
             <Select
               value={itemsPerPage.toString()}
@@ -484,15 +501,17 @@ export default function StaffListClient({
         isOpen={showFeatureGate}
         onClose={() => setShowFeatureGate(false)}
       />
-      <InviteStaffModal
-        isOpen={showInviteModal}
-        onClose={() => setShowInviteModal(false)}
-        organizationId={organizationId}
-        remainingSeats={planLimit !== null ? Math.max(0, planLimit - totalUsed) : null}
-        planName={planName}
-        inviterRole={inviterRole}
-        existingEmails={initialUsers.map((u) => u.email)}
-      />
+      {canInvite && (
+        <InviteStaffModal
+          isOpen={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+          organizationId={organizationId}
+          remainingSeats={planLimit !== null ? Math.max(0, planLimit - totalUsed) : null}
+          planName={planName}
+          inviterRole={inviterRole}
+          existingEmails={initialUsers.map((u) => u.email)}
+        />
+      )}
       {revokeTarget && (
         <RevokeInviteModal
           isOpen={!!revokeTarget}

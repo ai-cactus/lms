@@ -83,6 +83,7 @@ export const ModelName = {
   OrgCourseOffering: 'OrgCourseOffering',
   Organization: 'Organization',
   Facility: 'Facility',
+  FacilityDocument: 'FacilityDocument',
   Subscription: 'Subscription',
   Invoice: 'Invoice',
   Quiz: 'Quiz',
@@ -129,6 +130,7 @@ export const UserScalarFieldEnum = {
   emailVerified: 'emailVerified',
   mfaEnabled: 'mfaEnabled',
   mfaVerifiedAt: 'mfaVerifiedAt',
+  lastLoginAt: 'lastLoginAt',
   managerId: 'managerId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -574,6 +576,7 @@ export const FacilityScalarFieldEnum = {
   id: 'id',
   organizationId: 'organizationId',
   name: 'name',
+  type: 'type',
   address: 'address',
   city: 'city',
   state: 'state',
@@ -591,6 +594,20 @@ export const FacilityScalarFieldEnum = {
 } as const
 
 export type FacilityScalarFieldEnum = (typeof FacilityScalarFieldEnum)[keyof typeof FacilityScalarFieldEnum]
+
+
+export const FacilityDocumentScalarFieldEnum = {
+  id: 'id',
+  facilityId: 'facilityId',
+  url: 'url',
+  name: 'name',
+  sizeBytes: 'sizeBytes',
+  mimeType: 'mimeType',
+  uploadedById: 'uploadedById',
+  createdAt: 'createdAt'
+} as const
+
+export type FacilityDocumentScalarFieldEnum = (typeof FacilityDocumentScalarFieldEnum)[keyof typeof FacilityDocumentScalarFieldEnum]
 
 
 export const SubscriptionScalarFieldEnum = {

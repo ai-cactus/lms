@@ -11,3 +11,6 @@
 - [Audit Reports Patterns](audit-reports-patterns.md) — Courses/Staff "Export all" silently uses org scope (mislabeled), NO date-range filtering exists, audit scope is enrollment-only (no docs/invites/billing), duplicate-download bug
 - [Worker Invite/Join Flow](worker-invite-join-flow.md) — /join/[token] 404s ambiguously for bad/expired/already-accepted invites; Phase 6 (2026-07-01) blocked by stale invite link, always use a freshly-issued link
 - [Microsoft SSO Signup Flow](microsoft-sso-signup-flow.md) — tenant=common accepts personal accounts; KNOWN BUG: /signup/role-selection bounces authenticated OAuth users back to public /signup instead of dashboard
+- [RBAC Join-Token Critical Bug](rbac-join-token-critical-bug.md) — RESOLVED 2026-07-06: /join/[token] now awaits params + findUnique-by-token; re-verified live under adversarial multi-invite setup
+- [RBAC Role Grant Matrix](rbac-role-grant-matrix.md) — confirmed six-role grant matrix, worker/manager routing, billing-scope-by-role (UI-hidden fix confirmed), self-signup-needs-onboarding-wizard gotcha, join-by-code layout bug (fixed)
+- [Local Dev Env Access](local-dev-env-access.md) — localhost:3000 app, lms-dev-db Postgres (snake_case columns), MailHog, password-reset-for-unknown-password pattern, stale-session signup gotcha

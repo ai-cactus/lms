@@ -56,7 +56,7 @@ async function main() {
       data: {
         email: s.email,
         password: hashedPassword,
-        role: 'worker',
+        role: 'therapist_clinician',
         profile: {
           create: {
             email: s.email,

@@ -5,29 +5,36 @@ import { CheckCircle2 } from 'lucide-react';
 import JoinPageClient from '@/app/join/[token]/JoinPageClient';
 import { notFound } from 'next/navigation';
 import prisma from '@/lib/prisma';
+import { logger } from '@/lib/logger';
 import { Logo } from '@/components/ui';
 import { Button } from '@/components/ui/button';
 
-export default async function JoinPage({ params }: { params: { token: string } }) {
-  const invite = await prisma.invite.findFirst({
-    where: { token: params.token, status: 'pending' },
+export default async function JoinPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+
+  // Fail closed on a missing/blank token before touching the database. Prisma
+  // silently drops a strict-`undefined` filter, so an unguarded lookup would
+  // widen to match an unrelated invite — never let that happen.
+  if (typeof token !== 'string' || token.trim() === '') {
+    logger.warn({ msg: '[invite] Join page requested without a valid token', tokenLength: 0 });
+    return notFound();
+  }
+
+  // `token` is @unique, so a single lookup by exact token can only ever return
+  // the invite that owns it (or none) — no cross-org/cross-invite match possible.
+  const invite = await prisma.invite.findUnique({
+    where: { token },
     include: { organization: true },
   });
 
   // Valid, unexpired, still-pending invite → render the account-creation form.
-  if (invite && new Date() <= invite.expiresAt) {
+  if (invite && invite.status === 'pending' && new Date() <= invite.expiresAt) {
     return <JoinPageClient invite={invite} orgName={invite.organization.name} />;
   }
 
-  // The strict lookup missed (or the invite is expired). Distinguish an invite
-  // that has already been accepted from a genuinely unknown/expired token so we
-  // can show an actionable message instead of a bare 404.
-  const anyInvite = await prisma.invite.findFirst({
-    where: { token: params.token },
-    select: { status: true },
-  });
-
-  if (anyInvite?.status === 'accepted') {
+  // Distinguish an invite that has already been accepted from a genuinely
+  // unknown/expired token so we can show an actionable message instead of a 404.
+  if (invite?.status === 'accepted') {
     return (
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background-secondary px-4 py-10">
         <div className="w-full max-w-[480px] overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
@@ -55,5 +62,9 @@ export default async function JoinPage({ params }: { params: { token: string } }
   }
 
   // Unknown or expired token → genuine 404.
+  logger.warn({
+    msg: '[invite] Join page: no valid pending invite for token',
+    tokenPrefix: token.slice(0, 8),
+  });
   return notFound();
 }

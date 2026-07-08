@@ -5,6 +5,7 @@ import { AUDITOR_EXPORT_QUEUE_NAME } from './auditor-export-queue';
 import { logger } from '@/lib/logger';
 import { Prisma } from '@/generated/prisma/browser';
 import { startedAtWhere, toReportPeriod } from '@/lib/audit-reports/date-range';
+import { WORKER_ROLES } from '@/lib/rbac/role-utils';
 
 export function getExportWorker() {
   const globalAny = globalThis as unknown as { __auditorWorker?: Worker };
@@ -213,7 +214,7 @@ export function getExportWorker() {
             },
             orderBy: { title: 'asc' },
           }),
-          prisma.user.count({ where: { organizationId, role: 'worker' } }),
+          prisma.user.count({ where: { organizationId, role: { in: [...WORKER_ROLES] } } }),
         ]);
 
         await updateDbJob(60, 'Aggregating course activity...');
@@ -244,7 +245,7 @@ export function getExportWorker() {
       } else if (scope === 'all-staff') {
         const [workers, totalCourses] = await Promise.all([
           prisma.user.findMany({
-            where: { organizationId, role: 'worker' },
+            where: { organizationId, role: { in: [...WORKER_ROLES] } },
             select: {
               email: true,
               role: true,
@@ -296,7 +297,7 @@ export function getExportWorker() {
             orderBy: [{ user: { email: 'asc' } }, { startedAt: 'desc' }],
           }),
           prisma.course.count({ where: { createdBy: { in: orgUserIds }, status: 'published' } }),
-          prisma.user.count({ where: { organizationId, role: 'worker' } }),
+          prisma.user.count({ where: { organizationId, role: { in: [...WORKER_ROLES] } } }),
         ]);
 
         await updateDbJob(60, 'Aggregating organization activity...');

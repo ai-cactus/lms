@@ -54,6 +54,7 @@ model Facility {
   id                     String       @id @default(uuid())
   organizationId         String       @map("organization_id")
   name                   String
+  type                   String?
   address                String?
   city                   String?
   state                  String?
@@ -70,9 +71,25 @@ model Facility {
   updatedAt              DateTime     @updatedAt @map("updated_at")
   organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   users                  User[]
+  documents              FacilityDocument[]
 
   @@index([organizationId])
   @@map("facilities")
+}
+
+model FacilityDocument {
+  id           String   @id @default(uuid())
+  facilityId   String   @map("facility_id")
+  url          String
+  name         String
+  sizeBytes    Int      @map("size_bytes")
+  mimeType     String   @map("mime_type")
+  uploadedById String?  @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  facility     Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId])
+  @@map("facility_documents")
 }
 
 model Subscription {

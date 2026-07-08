@@ -77,7 +77,7 @@ function makeAdminSession(role = 'owner') {
 const baseData = {
   firstName: 'Jane',
   lastName: 'Doe',
-  role: 'worker' as const,
+  role: 'nurse' as const,
   jobTitle: 'Nurse',
 };
 
@@ -85,7 +85,7 @@ const ADMIN = { role: 'owner', organizationId: 'org-1' };
 const PENDING_INVITE = {
   organizationId: 'org-1',
   email: 'newstaff@example.com',
-  role: 'worker',
+  role: 'nurse',
   status: 'pending',
   organization: { name: 'Acme Co' },
 };
@@ -116,7 +116,7 @@ describe('updateStaffDetails() — auth guard', () => {
 
   it('returns Unauthorized when the requester is a worker', async () => {
     mockAuth.mockResolvedValue({
-      user: { id: 'w-1', email: 'w@a.com', role: 'worker', organizationId: 'org-1' },
+      user: { id: 'w-1', email: 'w@a.com', role: 'nurse', organizationId: 'org-1' },
     });
     const result = await updateStaffDetails('target-1', baseData);
     expect(result.success).toBe(false);
@@ -130,7 +130,7 @@ describe('updateStaffDetails() — owner role cannot be granted via edit (one-ow
   it('rejects promotion of a worker to owner', async () => {
     mockAuth.mockResolvedValue(makeAdminSession('owner'));
     // Target is currently a worker (non-owner)
-    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'worker' });
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'nurse' });
 
     const result = await updateStaffDetails('target-1', {
       ...baseData,
@@ -178,7 +178,7 @@ describe('updateStaffDetails() — tenant isolation', () => {
   it('rejects when the target user belongs to a different org', async () => {
     mockAuth.mockResolvedValue(makeAdminSession('owner'));
     // Target is in a different org
-    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-OTHER', role: 'worker' });
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-OTHER', role: 'nurse' });
 
     const result = await updateStaffDetails('target-1', baseData);
 
@@ -202,7 +202,7 @@ describe('updateStaffDetails() — tenant isolation', () => {
 describe('updateStaffDetails() — happy path', () => {
   it('updates the user role and profile when all checks pass', async () => {
     mockAuth.mockResolvedValue(makeAdminSession('owner'));
-    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'worker' });
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'nurse' });
 
     const result = await updateStaffDetails('target-1', {
       firstName: 'Jane',
@@ -231,7 +231,7 @@ describe('resendInvite — authorization', () => {
   });
 
   it('rejects a non-admin caller', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ role: 'worker', organizationId: 'org-1' });
+    prismaMock.user.findUnique.mockResolvedValue({ role: 'nurse', organizationId: 'org-1' });
 
     const result = await resendInvite('invite-1');
 
@@ -299,7 +299,7 @@ describe('resendInvite — happy path (token + expiry regeneration, status reset
       'newstaff@example.com',
       expect.stringContaining(`https://app.example.com/join/${updateCall.data.token}`),
       'Acme Co',
-      'worker',
+      'nurse',
     );
   });
 

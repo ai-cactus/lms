@@ -137,6 +137,8 @@ export async function getOrganization() {
 }
 
 interface FacilityUpdateData {
+  name?: string;
+  type?: string;
   staffCount?: string;
   phone?: string;
   address?: string;
@@ -160,6 +162,14 @@ export async function updateFacility(data: FacilityUpdateData) {
     }
 
     const roleKey = dbRoleToRoleKey(session.user.role);
+    if (!roleKey) {
+      logger.warn({
+        msg: '[facility] updateFacility: unknown or stale role — denying',
+        userId: session.user.id,
+        role: session.user.role,
+      });
+      return { success: false, error: 'Forbidden' };
+    }
     if (!can(roleKey, 'facility.edit')) {
       logger.warn({
         msg: '[facility] updateFacility: permission denied',
@@ -185,6 +195,8 @@ export async function updateFacility(data: FacilityUpdateData) {
     await prisma.facility.update({
       where: { id: user.facilityId },
       data: {
+        name: data.name,
+        type: data.type,
         staffCount: data.staffCount,
         phone: data.phone,
         address: data.address,

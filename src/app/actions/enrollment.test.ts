@@ -357,7 +357,7 @@ describe('enrollUsers — CSV role mapping (entry.role "admin" → DB role "supe
     );
   });
 
-  it('maps CSV role "worker" to DB role "worker" for a newly-created user', async () => {
+  it('maps CSV role "worker" to DB role "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE) for a newly-created user', async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(null);
     prismaMock.user.create.mockResolvedValue({
       id: 'new-user-2',
@@ -368,11 +368,11 @@ describe('enrollUsers — CSV role mapping (entry.role "admin" → DB role "supe
     await enrollUsers('own-course-001', [{ email: 'newworker@example.com', role: 'worker' }]);
 
     expect(prismaMock.user.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ role: 'worker' }) }),
+      expect.objectContaining({ data: expect.objectContaining({ role: 'front_desk_admin' }) }),
     );
   });
 
-  it('defaults to DB role "worker" when the CSV role column is omitted', async () => {
+  it('defaults to DB role "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE) when the CSV role column is omitted', async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(null);
     prismaMock.user.create.mockResolvedValue({
       id: 'new-user-3',
@@ -383,7 +383,7 @@ describe('enrollUsers — CSV role mapping (entry.role "admin" → DB role "supe
     await enrollUsers('own-course-001', [{ email: 'norole@example.com' }]);
 
     expect(prismaMock.user.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ role: 'worker' }) }),
+      expect.objectContaining({ data: expect.objectContaining({ role: 'front_desk_admin' }) }),
     );
   });
 });

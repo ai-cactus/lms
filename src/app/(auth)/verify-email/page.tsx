@@ -32,7 +32,6 @@ function VerifyEmailContent() {
 
   useEffect(() => {
     if (success === 'true' && email) {
-      localStorage.removeItem('pendingVerificationRole');
       router.push(`/login?verified=true`);
     }
   }, [success, email, router]);

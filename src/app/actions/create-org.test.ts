@@ -63,7 +63,7 @@ const validData = {
 
 function makeSession(overrides: Record<string, unknown> = {}) {
   return {
-    user: { id: 'user-1', email: 'u@acme.com', role: 'worker', organizationId: null, ...overrides },
+    user: { id: 'user-1', email: 'u@acme.com', role: 'nurse', organizationId: null, ...overrides },
   };
 }
 

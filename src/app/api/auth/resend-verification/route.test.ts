@@ -128,17 +128,17 @@ describe('POST /api/auth/resend-verification — role preservation', () => {
     expect(createCall.data.role).toBe('admin'); // preserves role from EXISTING_TOKEN
   });
 
-  it('preserves role: "worker" from the existing token', async () => {
+  it('preserves role: "nurse" from the existing token', async () => {
     prismaMock.verificationToken.findFirst.mockResolvedValue({
       ...EXISTING_TOKEN,
-      role: 'worker',
+      role: 'nurse',
     });
 
     const res = await POST(makeRequest({ email: 'user@example.com' }) as never);
 
     expect(res.status).toBe(200);
     const createCall = prismaMock.verificationToken.create.mock.calls[0][0];
-    expect(createCall.data.role).toBe('worker');
+    expect(createCall.data.role).toBe('nurse');
   });
 
   it('also sends the verification email on success', async () => {

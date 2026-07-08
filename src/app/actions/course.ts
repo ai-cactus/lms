@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { isAdminRole, WORKER_ROLES, DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -365,7 +365,7 @@ export async function getDashboardData() {
     totalOrgStaff = await prisma.user.count({
       where: {
         organizationId: currentUser.organizationId,
-        role: 'worker',
+        role: { in: [...WORKER_ROLES] },
       },
     });
   }
@@ -824,7 +824,7 @@ export async function createFullCourse(data: {
         data: {
           email,
           password: hashedPassword,
-          role: 'worker',
+          role: DEFAULT_SELF_SERVE_WORKER_ROLE,
           organizationId: currentUser.organizationId,
           emailVerified: true,
           profile: {

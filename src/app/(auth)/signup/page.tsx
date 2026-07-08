@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useActionState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -13,16 +13,13 @@ import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AuthShell } from '@/components/auth/AuthShell';
-import { signup, SignupResult } from '@/app/actions/auth';
+import { signup } from '@/app/actions/auth';
 import { validatePassword } from '@/lib/password-policy';
+import { logger } from '@/lib/logger';
 import PasswordStrengthIndicator from '@/components/ui/PasswordStrengthIndicator';
 
 export default function SignupPage() {
   const router = useRouter();
-  const [result, , isPending] = useActionState<SignupResult | undefined, FormData>(
-    signup,
-    undefined,
-  );
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -38,10 +35,10 @@ export default function SignupPage() {
 
   const handleMicrosoftSignup = () => {
     setIsMicrosoftLoading(true);
-    // Calling signIn will route through create-auth-instance.ts logic
-    // which creates new users if they don't exist
+    // Calling signIn routes through create-auth-instance.ts, which creates a new
+    // admin-instance user as an `owner` when they don't already exist.
     signIn('microsoft-entra-id', {
-      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/signup/role-selection`,
+      callbackUrl: '/dashboard',
     });
   };
 
@@ -101,33 +98,29 @@ export default function SignupPage() {
 
     if (!validateForm()) return;
     setErrors({});
+    setIsFormLoading(true);
 
-    // Store form data in sessionStorage for role selection page
-    sessionStorage.setItem(
-      'pendingSignup',
-      JSON.stringify({
+    try {
+      const result = await signup({
         email: formData.email,
         password: formData.password,
         firstName: formData.firstName,
         lastName: formData.lastName,
-      }),
-    );
+      });
 
-    setIsFormLoading(true);
-    router.push('/signup/role-selection');
-  };
-
-  useEffect(() => {
-    if (result) {
       if (result.success) {
-        // This shouldn't happen anymore as signup is called from role-selection
+        localStorage.setItem('pendingVerificationEmail', formData.email);
         router.push('/verify-email');
       } else {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional sync of server error to local state
         setErrors((prev) => ({ ...prev, email: result.error }));
+        setIsFormLoading(false);
       }
+    } catch (err) {
+      logger.error({ msg: '[auth] Signup submit failed', err });
+      setErrors((prev) => ({ ...prev, email: 'An unexpected error occurred. Please try again.' }));
+      setIsFormLoading(false);
     }
-  }, [result, router]);
+  };
 
   return (
     <AuthShell>
@@ -249,10 +242,9 @@ export default function SignupPage() {
           type="submit"
           size="lg"
           className="w-full"
-          loading={isFormLoading || isPending}
+          loading={isFormLoading}
           disabled={
             isFormLoading ||
-            isPending ||
             !formData.firstName.trim() ||
             !formData.lastName.trim() ||
             !formData.email ||
