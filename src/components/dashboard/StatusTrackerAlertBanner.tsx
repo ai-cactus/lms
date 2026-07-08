@@ -10,11 +10,11 @@ interface Props {
 /**
  * Site-wide banner shown to admins when one or more workers have training overdue
  * by the hard-escalation threshold, so the compliance risk is visible everywhere —
- * not only on the compliance page. Self-clears once the underlying enrollments are
- * completed (the count drops to zero). Renders nothing when there is no hard
+ * not only on the status-tracker page. Self-clears once the underlying enrollments
+ * are completed (the count drops to zero). Renders nothing when there is no hard
  * escalation. Modeled on {@link BillingPausedBanner}.
  */
-export default function ComplianceAlertBanner({ hardEscalationCount }: Props) {
+export default function StatusTrackerAlertBanner({ hardEscalationCount }: Props) {
   if (hardEscalationCount <= 0) return null;
 
   const workerWord = hardEscalationCount === 1 ? 'worker has' : 'workers have';
@@ -35,10 +35,10 @@ export default function ComplianceAlertBanner({ hardEscalationCount }: Props) {
       </div>
 
       <Link
-        href="/dashboard/compliance"
+        href="/dashboard/status-tracker"
         className="inline-flex shrink-0 items-center gap-1.5 self-stretch rounded-lg bg-error px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-error/90 sm:self-auto"
       >
-        Review compliance
+        Open status tracker
         <ArrowRight className="size-4" aria-hidden="true" />
       </Link>
     </div>

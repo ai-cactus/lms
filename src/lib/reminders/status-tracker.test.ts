@@ -1,7 +1,7 @@
 /**
- * Unit tests for src/lib/reminders/compliance.ts
+ * Unit tests for src/lib/reminders/status-tracker.ts
  *
- * getOverdueComplianceForOrg uses `new Date()` internally for the query filter
+ * getStatusTrackerSummaryForOrg uses `new Date()` internally for the query filter
  * and for daysOverdue math, so vi.useFakeTimers() pins the clock.
  *
  * Covers: correct row mapping (all fields), daysOverdue calculation (tz-aware),
@@ -28,7 +28,7 @@ vi.mock('@/lib/logger', () => ({
 
 // ─── Module under test ────────────────────────────────────────────────────────
 
-import { getOverdueComplianceForOrg } from './compliance';
+import { getStatusTrackerSummaryForOrg } from './status-tracker';
 
 // ─── Fixed clock ──────────────────────────────────────────────────────────────
 
@@ -81,24 +81,24 @@ function makeEnrollment(
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe('getOverdueComplianceForOrg', () => {
+describe('getStatusTrackerSummaryForOrg', () => {
   it('returns an empty summary when prisma returns no overdue enrollments', async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
-    const result = await getOverdueComplianceForOrg('org-1');
+    const result = await getStatusTrackerSummaryForOrg('org-1');
 
     expect(result.overdueCount).toBe(0);
     expect(result.hardEscalationCount).toBe(0);
     expect(result.rows).toHaveLength(0);
   });
 
-  it('maps a single enrollment to a ComplianceRow with all expected fields', async () => {
+  it('maps a single enrollment to a StatusTrackerRow with all expected fields', async () => {
     // dueAt = June 5 → daysOverdue = 10 (June 15 - June 5)
     prismaMock.enrollment.findMany.mockResolvedValue([
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { managerName: 'Alice Manager' }),
     ]);
 
-    const result = await getOverdueComplianceForOrg('org-1');
+    const result = await getStatusTrackerSummaryForOrg('org-1');
 
     expect(result.rows).toHaveLength(1);
     const row = result.rows[0];
@@ -120,7 +120,7 @@ describe('getOverdueComplianceForOrg', () => {
       makeEnrollment('e1', '2024-06-12T12:00:00Z'),
     ]);
 
-    const { rows } = await getOverdueComplianceForOrg('org-1');
+    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
     expect(rows[0].daysOverdue).toBe(3);
   });
 
@@ -131,7 +131,7 @@ describe('getOverdueComplianceForOrg', () => {
       makeEnrollment('e3', '2024-06-12T12:00:00Z'), // 3 days overdue → not hard
     ]);
 
-    const result = await getOverdueComplianceForOrg('org-1');
+    const result = await getStatusTrackerSummaryForOrg('org-1');
 
     expect(result.overdueCount).toBe(3);
     expect(result.hardEscalationCount).toBe(2);
@@ -144,7 +144,7 @@ describe('getOverdueComplianceForOrg', () => {
       makeEnrollment('e3', '2024-06-08T12:00:00Z'), // 7 days overdue
     ]);
 
-    const { rows } = await getOverdueComplianceForOrg('org-1');
+    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
 
     expect(rows.map((r) => r.enrollmentId)).toEqual(['e2', 'e3', 'e1']);
     expect(rows[0].daysOverdue).toBeGreaterThanOrEqual(rows[1].daysOverdue);
@@ -156,7 +156,7 @@ describe('getOverdueComplianceForOrg', () => {
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { fullName: null }),
     ]);
 
-    const { rows } = await getOverdueComplianceForOrg('org-1');
+    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
     expect(rows[0].workerName).toBe('worker-e1@test.com');
   });
 
@@ -165,7 +165,7 @@ describe('getOverdueComplianceForOrg', () => {
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { managerName: null }),
     ]);
 
-    const { rows } = await getOverdueComplianceForOrg('org-1');
+    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
     expect(rows[0].managerName).toBeNull();
   });
 
@@ -175,7 +175,7 @@ describe('getOverdueComplianceForOrg', () => {
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { timezone: null }),
     ]);
 
-    const { rows } = await getOverdueComplianceForOrg('org-1');
+    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
     // Should still compute 10 days using the fallback timezone
     expect(rows[0].daysOverdue).toBe(10);
   });
@@ -183,7 +183,7 @@ describe('getOverdueComplianceForOrg', () => {
   it('queries with the correct orgId filter (passes it to prisma)', async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
-    await getOverdueComplianceForOrg('org-42');
+    await getStatusTrackerSummaryForOrg('org-42');
 
     expect(prismaMock.enrollment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

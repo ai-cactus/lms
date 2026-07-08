@@ -161,11 +161,11 @@ export default function DashboardLayoutClient({
               </Link>
 
               <Link
-                href="/dashboard/compliance"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/compliance') ? navItemActive : ''}`}
+                href="/dashboard/status-tracker"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/status-tracker') ? navItemActive : ''}`}
               >
                 <ShieldAlert className="size-5" />
-                <span>Compliance</span>
+                <span>Status Tracker</span>
               </Link>
             </div>
           )}

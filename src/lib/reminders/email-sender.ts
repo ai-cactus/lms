@@ -22,8 +22,8 @@ import type { EmailDeliveryResult, ReminderEmailMessage, ReminderEmailSender } f
  * recorded on its EmailMessage row and retried, rather than silently dropped.
  */
 
-/** Where escalation recipients land — the admin compliance surface (Phase 8). */
-const COMPLIANCE_LINK = '/dashboard/compliance';
+/** Where escalation recipients land — the admin status-tracker surface (Phase 8). */
+const STATUS_TRACKER_LINK = '/dashboard/status-tracker';
 
 /** Map an `@/lib/email` sender result onto the dispatch delivery contract. */
 function toDelivery(result: { success: boolean; error?: unknown }): EmailDeliveryResult {
@@ -70,7 +70,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             message.dueAt,
             daysOverdue,
             escalationStageLabel(message),
-            COMPLIANCE_LINK,
+            STATUS_TRACKER_LINK,
           ),
         );
     }
@@ -130,7 +130,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             message.dueAt,
             daysOverdue,
             escalationStageLabel(message),
-            COMPLIANCE_LINK,
+            STATUS_TRACKER_LINK,
           ),
         );
       case 'HARD_ESCALATION':
@@ -143,7 +143,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             message.dueAt,
             daysOverdue,
             escalationStageLabel(message),
-            COMPLIANCE_LINK,
+            STATUS_TRACKER_LINK,
           ),
         );
       case 'INITIAL_LAUNCH':

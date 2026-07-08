@@ -409,7 +409,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
             type: 'COMPLIANCE_ESCALATION',
             title: copy.title,
             message: copy.message,
-            linkUrl: '/dashboard/compliance',
+            linkUrl: '/dashboard/status-tracker',
             metadata,
           });
         }
