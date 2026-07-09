@@ -11,3 +11,9 @@
 - [join/[token] critical fix + RBAC UI gates regression suite](join-invite-critical-fix-regression.md) — findUnique single-lookup fix, permissions.ts can() no longer throws, invite.create/billing.read role facts, 4 new test files
 - [Signup owner-only + e2e env notes](signup-owner-only-e2e-env.md) — MailHog wired to real SMTP in dev (e2e can submit real signup form), auth.spec.ts Microsoft/logout tests are pre-existing env failures
 - [Onboarding wizard/invite/settings phase tests](onboarding-invite-settings-phase-tests.md) — Radix Select id-clone doesn't reach trigger DOM (getByLabel fails), Docker/Postgres can hang under disk pressure, new test files list
+- [audit-fx regression patterns](audit-fx-regression-patterns.md) — F-009/F-010 org isolation, F-039 score fallback, F-048/F-038 leak fixes; revert-and-confirm verification technique
+- [Quiz attempt route tests (F-031)](quiz-attempt-route-tests.md) — start/save/submit append-history tx-mock pattern, boundary-score generation, flagged allowedAttempts null inconsistency
+- [getDashboardData test patterns](get-dashboard-data-test-patterns.md) — dual groupBy branch-by-args mocking, "failed" status quirk in coverage, totalStaff vs totalOrgStaff, F-028 perf guard
+- [WSL2 Playwright browser install](wsl2-playwright-browser-install.md) — ubuntu26.04 unsupported by Playwright; use PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64
+- [E2E local AUTH_URL env trap (RESOLVED)](e2e-local-auth-url-env-trap.md) — local runs need AUTH_URL exported too, not just NEXTAUTH_URL, or logins redirect to a dead origin
+- [Status Tracker rename + seed fixture](status-tracker-rename-e2e-seed-fixture.md) — new seeded overdue enrollment (Olivia Overdue); email-substring collision gotcha; WSL2 dev-server cold-start flake pattern

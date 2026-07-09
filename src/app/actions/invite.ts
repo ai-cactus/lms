@@ -5,7 +5,7 @@ import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { sendInviteEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
-import { BILLING_PLANS } from '@/lib/billing-plans';
+import { getSeatUsage } from '@/lib/seat-limits';
 import { can } from '@/lib/rbac/permissions';
 import {
   ADMIN_ROLES,
@@ -103,99 +103,80 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
   }
 
   try {
-    // Fetch org name and subscription plan in one round-trip
+    // Fetch org name (used for invite emails). Seat/plan resolution is handled
+    // by the shared getSeatUsage helper below so the staffMax source stays
+    // single-sourced with the checkout + accept paths.
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
-      select: {
-        name: true,
-        subscription: { select: { plan: true, status: true } },
-      },
+      select: { name: true },
     });
 
     if (!org) return { success: false, results: [], error: 'Organization not found' };
 
-    const subscription = org.subscription;
-    if (subscription && subscription.status !== 'canceled') {
-      const planConfig = BILLING_PLANS.find((p) => p.key === subscription.plan);
+    // F-022: block issuing more invites than remaining plan seats. getSeatUsage
+    // counts active workers + non-expired pending invites and resolves staffMax
+    // from the shared BILLING_PLANS source; staffMax is null (nothing to
+    // enforce) for unlimited plans or when there's no active subscription.
+    const usage = await getSeatUsage(organizationId, { includePendingInvites: true });
+    if (usage.staffMax !== null) {
+      const { staffMax, current: currentTotal } = usage;
+      const planName = usage.planName ?? 'current';
 
-      if (planConfig && planConfig.staffMax !== null) {
-        const staffMax = planConfig.staffMax;
+      // Only brand-new emails (not already members or pending-invited) consume a
+      // new seat, so dedup before computing how many seats this batch needs.
+      const [existingMemberEmails, existingPendingEmails] = await Promise.all([
+        prisma.user.findMany({
+          where: { email: { in: emails }, organizationId },
+          select: { email: true },
+        }),
+        prisma.invite.findMany({
+          where: {
+            email: { in: emails },
+            organizationId,
+            status: 'pending',
+            expiresAt: { gt: new Date() },
+          },
+          select: { email: true },
+        }),
+      ]);
 
-        // Count seat-consuming members + non-expired pending invites in parallel.
-        // D2: every role EXCEPT `owner` consumes a plan seat.
-        const [activeWorkerCount, pendingInviteCount] = await Promise.all([
-          prisma.user.count({
-            where: {
-              organizationId,
-              role: { not: 'owner' },
-            },
-          }),
-          prisma.invite.count({
-            where: {
-              organizationId,
-              role: { not: 'owner' },
-              status: 'pending',
-              expiresAt: { gt: new Date() },
-            },
-          }),
-        ]);
+      const knownEmails = new Set([
+        ...existingMemberEmails.map((u) => u.email.toLowerCase()),
+        ...existingPendingEmails.map((i) => i.email.toLowerCase()),
+      ]);
 
-        const currentTotal = activeWorkerCount + pendingInviteCount;
+      const newSeatsNeeded = emails.filter((e) => !knownEmails.has(e.toLowerCase())).length;
 
-        const [existingMemberEmails, existingPendingEmails] = await Promise.all([
-          prisma.user.findMany({
-            where: { email: { in: emails }, organizationId },
-            select: { email: true },
-          }),
-          prisma.invite.findMany({
-            where: {
-              email: { in: emails },
-              organizationId,
-              status: 'pending',
-              expiresAt: { gt: new Date() },
-            },
-            select: { email: true },
-          }),
-        ]);
+      if (currentTotal + newSeatsNeeded > staffMax) {
+        const remaining = Math.max(0, staffMax - currentTotal);
+        logger.warn({
+          msg: 'Invite rejected: plan seat limit exceeded',
+          data: {
+            organizationId,
+            plan: planName,
+            staffMax,
+            currentTotal,
+            newSeatsNeeded,
+            remaining,
+          },
+        });
 
-        const knownEmails = new Set([
-          ...existingMemberEmails.map((u) => u.email.toLowerCase()),
-          ...existingPendingEmails.map((i) => i.email.toLowerCase()),
-        ]);
-
-        const newSeatsNeeded = emails.filter((e) => !knownEmails.has(e.toLowerCase())).length;
-
-        if (currentTotal + newSeatsNeeded > staffMax) {
-          const remaining = Math.max(0, staffMax - currentTotal);
-          logger.warn({
-            msg: 'Invite rejected: plan seat limit exceeded',
-            data: {
-              organizationId,
-              plan: subscription.plan,
-              staffMax,
-              currentTotal,
-              newSeatsNeeded,
-              remaining,
-            },
-          });
-
-          return {
-            success: false,
-            results,
-            error:
-              remaining === 0
-                ? `Your ${planConfig.name} plan has reached its limit of ${staffMax} workers. ` +
-                  `Please upgrade your plan to add more workers.`
-                : `Your ${planConfig.name} plan allows up to ${staffMax} workers. ` +
-                  `You have ${remaining} seat(s) remaining but are trying to add ${newSeatsNeeded}. ` +
-                  `Please reduce the number of invites or upgrade your plan.`,
-            limitError: {
-              current: currentTotal,
-              limit: staffMax,
-              planName: planConfig.name,
-            },
-          };
-        }
+        return {
+          success: false,
+          results,
+          error:
+            remaining === 0
+              ? `Your ${planName} plan has reached its limit of ${staffMax} workers. ` +
+                `Please upgrade your plan to add more workers.`
+              : `Your ${planName} plan allows up to ${staffMax} workers. ` +
+                `You have ${remaining} seat(s) remaining but are trying to add ${newSeatsNeeded}. ` +
+                `Please reduce the number of invites or upgrade your plan.`,
+          limitError: {
+            current: currentTotal,
+            limit: staffMax,
+            planName,
+          },
+        };
       }
     }
     // ─────────────────────────────────────────────────────────────────────────

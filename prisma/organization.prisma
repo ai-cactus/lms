@@ -110,6 +110,16 @@ model Subscription {
   // When the pause window ends (pausedAt + chosen months, max 3). Once reached,
   // the admin is prompted to either continue (resume) or cancel the plan.
   pauseEndsAt          DateTime?                @map("pause_ends_at")
+  // Active Stripe discount on this subscription (null when none). Populated by
+  // the subscription webhook; promo code text falls back to coupon name when
+  // applied from the dashboard without a promotion code.
+  discountPromoCode    String?                  @map("discount_promo_code")
+  discountCouponName   String?                  @map("discount_coupon_name")
+  discountPercentOff   Float?                   @map("discount_percent_off")
+  discountAmountOff    Int?                     @map("discount_amount_off") // minor units
+  discountCurrency     String?                  @map("discount_currency")
+  discountDuration     String?                  @map("discount_duration") // once | repeating | forever
+  discountEndsAt       DateTime?                @map("discount_ends_at") // null for once/forever
   createdAt            DateTime                 @default(now()) @map("created_at")
   updatedAt            DateTime                 @updatedAt @map("updated_at")
 
@@ -133,4 +143,17 @@ model Invoice {
 
   @@index([organizationId])
   @@map("invoices")
+}
+
+/// Idempotency ledger for Stripe webhook delivery. Each Stripe event is
+/// recorded here on first successful processing; a duplicate delivery of the
+/// same `stripeEventId` is rejected by the unique constraint so handlers run
+/// at most once. Intentionally decoupled from Subscription/Invoice (no FK).
+model ProcessedWebhookEvent {
+  id            String   @id @default(uuid())
+  stripeEventId String   @unique @map("stripe_event_id")
+  eventType     String   @map("event_type")
+  processedAt   DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_webhook_events")
 }

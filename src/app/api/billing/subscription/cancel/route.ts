@@ -2,16 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import stripe from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
+import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
 
 // POST /api/billing/subscription/cancel — cancels subscription at end of current period
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
+    // F-012: enforce authentication + MFA step-up + admin role at the data
+    // layer, consistent with the shared guard used across billing routes.
+    const denied = guardApiSession(session, { role: 'admin' });
+    if (denied) return denied;
+    // The guard guarantees an authenticated session past this point; narrow the
+    // id for the DB lookup (guardApiSession does not narrow the session type).
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const stripe = getStripeClient();
 
     // Optional cancellation reason captured from the survey.
     let reason: string | undefined;
@@ -59,6 +69,18 @@ export async function POST(request: NextRequest) {
     await prisma.subscription.update({
       where: { organizationId: user.organizationId },
       data: { cancelAtPeriodEnd: true },
+    });
+
+    // F-001: record the sensitive billing mutation on the authorized path.
+    await audit({
+      action: 'billing.subscription.cancel',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'subscription',
+      targetId: subscription.id,
+      metadata: { cancelAtPeriodEnd: true },
+      ...getClientContext(request.headers),
     });
 
     return NextResponse.json({

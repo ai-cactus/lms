@@ -25,6 +25,10 @@ const { mockAuth, txMock } = vi.hoisted(() => {
 });
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
+// F-001 audit is a best-effort side-channel — stub it so business-logic tests
+// don't depend on the audit sink or the request-scoped headers() it reads.
+vi.mock('@/lib/audit', () => ({ audit: vi.fn(), getClientContext: () => ({}) }));
+vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 
 // Mock the prisma client
 vi.mock('@/lib/prisma', () => {
@@ -229,7 +233,7 @@ describe('updateOrganization', () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
       organizationId: 'org-1',
       facilityId: 'facility-1',
-      role: 'worker',
+      role: 'nurse',
     } as never);
 
     const result = await updateOrganization(updateData);
@@ -366,7 +370,7 @@ describe('updateFacility', () => {
   });
 
   it('regression: a stale/unknown role (e.g. the retired "worker" role) is denied cleanly, not thrown', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'worker' } });
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'nurse' } });
 
     const result = await updateFacility(facilityData);
 

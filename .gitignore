@@ -72,3 +72,5 @@ docs/*QA-Report*.pdf
 
 # Playwright MCP run artifacts
 .playwright-mcp/
+# Analysis report PDF renderings (generated from docs/analysis/*.md) — kept locally, never committed
+docs/analysis/pdf/

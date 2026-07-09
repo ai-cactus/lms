@@ -1,16 +1,20 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Authentication Flows', () => {
-
-  test('ENG-001: Microsoft OAuth Sign Up callbackUrl points to /dashboard (signup is owner-only, no role selection)', async ({ page }) => {
-    // Navigate to signup
+  test('ENG-001: Microsoft OAuth Sign Up callbackUrl points to /dashboard (signup is owner-only, no role selection)', async ({
+    page,
+  }) => {
     await page.goto('/signup');
 
-    // We intercept the network request to the NextAuth signin endpoint
-    // to verify the redirect generated contains the right callbackUrl in its parameters or cookies.
+    // NextAuth v5's client `signIn('microsoft-entra-id', …)` POSTs to the
+    // sign-in endpoint with the callbackUrl in the body. The provider is only
+    // registered when AUTH_MICROSOFT_ENTRA_ID_ID is set (dummy values in CI),
+    // and constructing it makes no eager network call, so the POST fires safely.
     const [request] = await Promise.all([
-      page.waitForRequest((req) => req.url().includes('microsoft-entra-id') && req.method() === 'POST'),
-      page.click('button:has-text("Microsoft")')
+      page.waitForRequest(
+        (req) => req.url().includes('microsoft-entra-id') && req.method() === 'POST',
+      ),
+      page.getByRole('button', { name: /sign up with microsoft/i }).click(),
     ]);
 
     // Self-serve signup was simplified to owner-only — there is no role-selection
@@ -21,28 +25,30 @@ test.describe('Authentication Flows', () => {
   });
 
   test('ENG-002 & ENG-018: Logout redirect routes correctly', async ({ page }) => {
-    // Visit /login
     await page.goto('/login');
-    
-    // Login as admin
+
+    // Log in as the seeded admin (lands on /dashboard).
     await page.fill('input[type="email"]', 'admin@test.com');
     await page.fill('input[type="password"]', 'Admin123!');
     await page.click('button[type="submit"]');
-
-    // Wait for dashboard load
     await page.waitForURL('**/dashboard');
 
-    // Focus/Click profile to open dropdown
-    // Based on the Header.tsx, the profile div toggles the dropdown
-    await page.locator('header').locator('text=Jane Doe').first().click();
-    
-    // Click Logout button
+    // Open the profile dropdown (the name is shown at desktop widths).
+    await page.locator('header').getByText('Jane Doe').first().click();
+
+    // Logout is a two-step confirm: the dropdown "Logout" opens a dialog whose
+    // footer holds the real Logout button.
+    await page.getByRole('button', { name: 'Logout' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Confirm Logout')).toBeVisible();
+
     await Promise.all([
       page.waitForURL('**/login'),
-      page.click('button:has-text("Logout")') // Might need better selector if text differs
+      dialog.getByRole('button', { name: 'Logout' }).click(),
     ]);
-    
+
     expect(page.url()).toContain('/login');
   });
-
 });

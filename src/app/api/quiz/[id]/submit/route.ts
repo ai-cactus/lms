@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { callVertexAI } from '@/lib/ai-client';
 import { logger } from '@/lib/logger';
 import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
+import { guardApiSession } from '@/lib/auth-guard';
 const submitQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
   answers: z.array(
@@ -90,6 +91,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   try {
     const [workerSession, adminSession] = await Promise.all([workerAuth(), adminAuth()]);
 
+    // F-012: enforce authentication + MFA step-up at the data-access layer.
+    const denied = guardApiSession(workerSession ?? adminSession);
+    if (denied) return denied;
+
     const quizId = params.id;
     const body = await request.json();
 
@@ -169,44 +174,55 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       explanation: explanations[a.questionId] || '',
     }));
 
-    const existingAttempt = await prisma.quizAttempt.findUnique({
-      where: {
-        enrollmentId_quizId: { enrollmentId, quizId },
-      },
-    });
+    // Persist this submission as a NEW completed attempt (append-history). The
+    // attempt limit is enforced against the count of prior COMPLETED attempts
+    // (timeTaken !== null), and any in-progress draft left over from the
+    // start/save lifecycle is superseded. Wrapped in a transaction so a
+    // double-submit cannot bypass the limit.
+    const persisted = await prisma.$transaction(async (tx) => {
+      const completedCount = await tx.quizAttempt.count({
+        where: { enrollmentId, quizId, timeTaken: { not: null } },
+      });
 
-    let currentAttemptCount = 1;
-
-    if (existingAttempt) {
       // Hard-enforce attempt limit on submit
-      if (quiz.allowedAttempts && existingAttempt.attemptCount >= quiz.allowedAttempts) {
-        return NextResponse.json(
-          {
-            error: 'No attempts remaining',
-            attemptsUsed: existingAttempt.attemptCount,
-            allowedAttempts: quiz.allowedAttempts,
-          },
-          { status: 403 },
-        );
+      if (quiz.allowedAttempts && completedCount >= quiz.allowedAttempts) {
+        return { blocked: true as const, completedCount };
       }
 
-      currentAttemptCount = existingAttempt.attemptCount;
+      // The in-progress draft (timeTaken null) is transient working state; the
+      // completed attempt below becomes the historical record.
+      await tx.quizAttempt.deleteMany({
+        where: { enrollmentId, quizId, timeTaken: null },
+      });
 
-      await prisma.quizAttempt.update({
-        where: { id: existingAttempt.id },
+      const currentAttemptCount = completedCount + 1;
+      await tx.quizAttempt.create({
         data: {
+          enrollmentId,
+          quizId,
           answers: enrichedAnswers,
           score,
-          timeTaken,
-          completedAt: new Date(),
+          timeTaken: timeTaken ?? 0, // non-null marks the attempt as completed
+          attemptCount: currentAttemptCount,
         },
       });
-    } else {
-      await prisma.quizAttempt.create({
-        data: { enrollmentId, quizId, answers: enrichedAnswers, score, timeTaken, attemptCount: 1 },
-      });
+      return { blocked: false as const, currentAttemptCount };
+    });
+
+    if (persisted.blocked) {
+      return NextResponse.json(
+        {
+          error: 'No attempts remaining',
+          attemptsUsed: persisted.completedCount,
+          allowedAttempts: quiz.allowedAttempts,
+        },
+        { status: 403 },
+      );
     }
 
+    const currentAttemptCount = persisted.currentAttemptCount;
+
+    // Update enrollment status and score
     // CORE LOGIC: Passing the quiz does NOT complete the course. Attestation required.
     const isLocked = !passed && quiz.allowedAttempts && currentAttemptCount >= quiz.allowedAttempts;
 

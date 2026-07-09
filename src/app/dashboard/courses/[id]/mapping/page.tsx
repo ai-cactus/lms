@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { getMappingSuggestions } from '@/app/actions/mapping';
 import MappingCard from './mapping-card';
 
-export default async function MappingPage({ params }: { params: { id: string } }) {
+export default async function MappingPage({ params }: { params: Promise<{ id: string }> }) {
   await auth();
   const { id } = await params;
 

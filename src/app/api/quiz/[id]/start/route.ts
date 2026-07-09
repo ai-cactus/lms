@@ -4,6 +4,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { guardApiSession } from '@/lib/auth-guard';
 
 const startQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
@@ -14,6 +15,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   try {
     const workerSession = await workerAuth();
     const adminSession = await adminAuth();
+
+    // F-012: enforce authentication + MFA step-up at the data-access layer.
+    const denied = guardApiSession(workerSession ?? adminSession);
+    if (denied) return denied;
 
     const quizId = params.id;
     const body = await request.json();
@@ -58,61 +63,50 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       );
     }
 
-    // Check for existing attempt
-    // We look for ANY attempt for this enrollment+quiz
-    // The unique constraint is @@unique([enrollmentId, quizId])
-    // So there is only EVER one row per user per quiz in this schema.
-    // This means we are effectively "Using the single slot" for the attempt.
-
-    // Use a transaction to prevent race conditions (double-clicks bypassing attempt limit)
+    // Attempts are append-history: each completed attempt is its own row, plus
+    // at most one in-progress "draft" row (timeTaken === null) for the attempt
+    // currently being taken. Use a transaction to prevent race conditions
+    // (double-clicks bypassing the attempt limit).
     const result = await prisma.$transaction(async (tx) => {
-      const existingAttempt = await tx.quizAttempt.findUnique({
-        where: {
-          enrollmentId_quizId: { enrollmentId, quizId },
-        },
+      // Resume the current in-progress draft if one exists.
+      const activeAttempt = await tx.quizAttempt.findFirst({
+        where: { enrollmentId, quizId, timeTaken: null },
+        orderBy: { completedAt: 'desc' },
       });
 
-      if (existingAttempt) {
-        if (existingAttempt.timeTaken === null) {
-          // Active attempt, just resume
-          return { status: 'resumed', attempt: existingAttempt };
-        }
-
-        // It is completed. Check if we can retake.
-        const quiz = await tx.quiz.findUnique({ where: { id: quizId } });
-        const allowedAttempts = quiz?.allowedAttempts ?? 1;
-
-        if (existingAttempt.attemptCount >= allowedAttempts) {
-          return { status: 'blocked' };
-        }
-
-        // Start new attempt (reuse row)
-        const updated = await tx.quizAttempt.update({
-          where: { id: existingAttempt.id },
-          data: {
-            timeTaken: null, // Mark active
-            answers: [],
-            score: 0,
-            completedAt: new Date(), // Acts as StartedAt for active attempts
-            attemptCount: { increment: 1 },
-          },
-        });
-        return { status: 'started', attempt: updated };
-      } else {
-        // Create first attempt
-        const attempt = await tx.quizAttempt.create({
-          data: {
-            enrollmentId,
-            quizId,
-            answers: [],
-            score: 0,
-            timeTaken: null, // Mark active
-            completedAt: new Date(), // Acts as StartedAt
-            attemptCount: 1,
-          },
-        });
-        return { status: 'created', attempt };
+      if (activeAttempt) {
+        return { status: 'resumed' as const, attempt: activeAttempt };
       }
+
+      // No active draft — start a new attempt, enforcing the limit against the
+      // count of COMPLETED attempts (timeTaken !== null).
+      const quiz = await tx.quiz.findUnique({ where: { id: quizId } });
+
+      const completedCount = await tx.quizAttempt.count({
+        where: { enrollmentId, quizId, timeTaken: { not: null } },
+      });
+
+      // Consistent with the grading path in submit/route.ts: a null/0
+      // allowedAttempts means unlimited; only a positive limit locks out.
+      if (quiz?.allowedAttempts && completedCount >= quiz.allowedAttempts) {
+        return { status: 'blocked' as const };
+      }
+
+      const attempt = await tx.quizAttempt.create({
+        data: {
+          enrollmentId,
+          quizId,
+          answers: [],
+          score: 0,
+          timeTaken: null, // Mark active (in-progress draft)
+          completedAt: new Date(), // Acts as StartedAt for active attempts
+          attemptCount: completedCount + 1,
+        },
+      });
+      return {
+        status: completedCount === 0 ? ('created' as const) : ('started' as const),
+        attempt,
+      };
     });
 
     if (result.status === 'blocked') {

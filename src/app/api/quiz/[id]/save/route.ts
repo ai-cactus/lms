@@ -4,6 +4,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { guardApiSession } from '@/lib/auth-guard';
 
 const saveQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
@@ -21,6 +22,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const workerSession = await workerAuth();
     const adminSession = await adminAuth();
 
+    // F-012: enforce authentication + MFA step-up at the data-access layer.
+    const denied = guardApiSession(workerSession ?? adminSession);
+    if (denied) return denied;
+
     const quizId = params.id;
     const body = await request.json();
 
@@ -34,10 +39,12 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const { enrollmentId, answers } = parsedBody.data;
 
-    const attempt = await prisma.quizAttempt.findUnique({
-      where: {
-        enrollmentId_quizId: { enrollmentId, quizId },
-      },
+    // Save into the latest attempt for this enrollment+quiz. Append-history means
+    // there can be several completed rows plus at most one in-progress draft;
+    // the latest row (completedAt desc) is the one currently being taken.
+    const attempt = await prisma.quizAttempt.findFirst({
+      where: { enrollmentId, quizId },
+      orderBy: { completedAt: 'desc' },
       include: { enrollment: true },
     });
 

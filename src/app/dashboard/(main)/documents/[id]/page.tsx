@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Download } from 'lucide-react';
-import PdfViewer from '@/components/dashboard/documents/PdfViewer';
+import PdfViewer from '@/components/dashboard/documents/PdfViewerDynamic';
 import { getDocumentSignedUrl } from '@/app/actions/storage';
 import { logger } from '@/lib/logger';
 import { deriveDocumentStatus, DOCUMENT_STATUS_LABELS } from '@/lib/documents/status';

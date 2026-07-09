@@ -23,35 +23,36 @@ enum InviteStatus {
 }
 
 model User {
-  id                    String            @id @default(uuid())
-  email                 String            @unique
+  id                    String                   @id @default(uuid())
+  email                 String                   @unique
   password              String
-  passwordResetRequired Boolean           @default(false) @map("password_reset_required")
-  organizationId        String?           @map("organization_id")
-  facilityId            String?           @map("facility_id")
-  authProvider          String            @default("credentials") @map("auth_provider")
+  passwordResetRequired Boolean                  @default(false) @map("password_reset_required")
+  organizationId        String?                  @map("organization_id")
+  facilityId            String?                  @map("facility_id")
+  authProvider          String                   @default("credentials") @map("auth_provider")
   role                  UserRole
-  emailVerified         Boolean           @default(false) @map("email_verified")
-  mfaEnabled            Boolean           @default(false) @map("mfa_enabled")
-  mfaVerifiedAt         DateTime?         @map("mfa_verified_at")
-  lastLoginAt           DateTime?         @map("last_login_at")
-  managerId             String?           @map("manager_id")
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
+  emailVerified         Boolean                  @default(false) @map("email_verified")
+  mfaEnabled            Boolean                  @default(false) @map("mfa_enabled")
+  mfaVerifiedAt         DateTime?                @map("mfa_verified_at")
+  sessionVersion        Int                      @default(0) @map("session_version")
+  lastLoginAt           DateTime?                @map("last_login_at")
+  managerId             String?                  @map("manager_id")
+  createdAt             DateTime                 @default(now()) @map("created_at")
+  updatedAt             DateTime                 @updatedAt @map("updated_at")
   courses               Course[]
   documents             Document[]
   enrollments           Enrollment[]
   notifications         Notification[]
   notificationPrefs     NotificationPreference[]
   profile               Profile?
-  organization          Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  facility              Facility?         @relation(fields: [facilityId], references: [id], onDelete: Restrict)
-  manager               User?             @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
-  reports               User[]            @relation("UserManager")
+  organization          Organization?            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  facility              Facility?                @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+  manager               User?                    @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports               User[]                   @relation("UserManager")
   mfaFactors            MfaFactor[]
   mfaRecoveryCodes      MfaRecoveryCode[]
   certificates          Certificate[]
-  approvedCourses       Course[]          @relation("CourseApprover")
+  approvedCourses       Course[]                 @relation("CourseApprover")
 
   @@index([organizationId])
   @@index([facilityId])
@@ -90,6 +91,7 @@ model Invite {
 
   @@index([email])
   @@index([token])
+  @@index([organizationId])
   @@map("invites")
 }
 

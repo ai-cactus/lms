@@ -102,7 +102,9 @@ export async function verifyOrganizationCode(code: string) {
     const hdrs = await headers();
     const ip =
       hdrs.get('x-forwarded-for')?.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown';
-    const { allowed } = await checkRateLimit(`org-code-verify:${ip}`, 10, 900);
+    const { allowed } = await checkRateLimit(`org-code-verify:${ip}`, 10, 900, {
+      failClosed: true,
+    });
     if (!allowed) {
       return { success: false, error: 'Too many attempts. Please try again later.' };
     }

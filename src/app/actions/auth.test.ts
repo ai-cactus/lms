@@ -17,29 +17,46 @@ import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 // Hoisted mocks — must be constructed before any vi.mock() factory runs.
 // ---------------------------------------------------------------------------
 
-const { prismaMock, mockHeaders, mockCheckRateLimit, mockSendEmailVerification } = vi.hoisted(
-  () => {
-    const prismaMock = {
-      user: { findUnique: vi.fn() },
-      verificationToken: {
-        deleteMany: vi.fn(),
-        create: vi.fn(),
-        findFirst: vi.fn(),
-      },
-    };
+const {
+  prismaMock,
+  mockHeaders,
+  mockCheckRateLimit,
+  mockSendEmailVerification,
+  mockAdminAuth,
+  mockWorkerAuth,
+} = vi.hoisted(() => {
+  const prismaMock = {
+    user: { findUnique: vi.fn(), update: vi.fn() },
+    verificationToken: {
+      deleteMany: vi.fn(),
+      create: vi.fn(),
+      findFirst: vi.fn(),
+    },
+  };
 
-    // next/headers — returns a Headers-like object
-    const mockHeadersInstance = {
-      get: vi.fn(),
-    };
-    const mockHeaders = vi.fn().mockResolvedValue(mockHeadersInstance);
+  // next/headers — returns a Headers-like object
+  const mockHeadersInstance = {
+    get: vi.fn(),
+  };
+  const mockHeaders = vi.fn().mockResolvedValue(mockHeadersInstance);
 
-    const mockCheckRateLimit = vi.fn();
-    const mockSendEmailVerification = vi.fn();
+  const mockCheckRateLimit = vi.fn();
+  const mockSendEmailVerification = vi.fn();
 
-    return { prismaMock, mockHeaders, mockCheckRateLimit, mockSendEmailVerification };
-  },
-);
+  // Session lookups used by forceResetPassword (F-057) — @/auth's `auth()` for
+  // admin sessions and @/auth.worker's `auth()` for worker sessions.
+  const mockAdminAuth = vi.fn();
+  const mockWorkerAuth = vi.fn();
+
+  return {
+    prismaMock,
+    mockHeaders,
+    mockCheckRateLimit,
+    mockSendEmailVerification,
+    mockAdminAuth,
+    mockWorkerAuth,
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Module mocks — declared before any imports of the module under test.
@@ -73,8 +90,8 @@ vi.mock('@/lib/logger', () => ({
   maskEmail: (e: string) => e,
 }));
 
-vi.mock('@/auth', () => ({ signIn: vi.fn() }));
-vi.mock('@/auth.worker', () => ({ signIn: vi.fn() }));
+vi.mock('@/auth', () => ({ signIn: vi.fn(), auth: mockAdminAuth }));
+vi.mock('@/auth.worker', () => ({ signIn: vi.fn(), auth: mockWorkerAuth }));
 
 // password-policy: allow anything unless the test exercises validation
 vi.mock('@/lib/password-policy', () => ({
@@ -88,7 +105,7 @@ vi.mock('@/lib/mfa-challenge', () => ({
 // ---------------------------------------------------------------------------
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
-import { signup, authenticate } from './auth';
+import { signup, authenticate, forceResetPassword } from './auth';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -141,7 +158,10 @@ describe('signup — rate limiting', () => {
 
     await signup(VALID_DATA);
 
-    expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:10.0.0.1', 5, 600);
+    // F-024: auth-critical sites pass { failClosed: true }.
+    expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:10.0.0.1', 5, 600, {
+      failClosed: true,
+    });
   });
 
   it('falls back to "unknown" IP when no forwarding headers present', async () => {
@@ -151,7 +171,9 @@ describe('signup — rate limiting', () => {
 
     await signup(VALID_DATA);
 
-    expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:unknown', 5, 600);
+    expect(mockCheckRateLimit).toHaveBeenCalledWith('signup:unknown', 5, 600, {
+      failClosed: true,
+    });
   });
 
   it('proceeds through normal flow when checkRateLimit allows', async () => {
@@ -297,5 +319,104 @@ describe('authenticate — missing user hint (THER-015 #1)', () => {
 
     expect(result).toEqual({ error: 'Invalid credentials.' });
     expect(prismaMock.verificationToken.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-057: forceResetPassword(currentPassword, newPassword) — email now derived
+// from the authenticated session instead of being passed in by the caller.
+// ---------------------------------------------------------------------------
+
+describe('forceResetPassword — session-derived email (F-057)', () => {
+  const SESSION_EMAIL = 'staff@example.com';
+  const EXISTING_HASH = 'existing-hashed-password';
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    // No session by default — individual tests opt in to admin/worker sessions.
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue(null);
+
+    const bcrypt = await import('bcryptjs');
+    (bcrypt.default.compare as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (bcrypt.default.hash as ReturnType<typeof vi.fn>).mockResolvedValue('new-hashed-password');
+  });
+
+  it('returns "Not authenticated." and touches no DB when there is no admin or worker session', async () => {
+    const result = await forceResetPassword('oldPass1!', 'NewStr0ng!Pass');
+
+    expect(result).toEqual({ error: 'Not authenticated.' });
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("updates the session-derived email's password on a valid admin session + correct current password", async () => {
+    mockAdminAuth.mockResolvedValue({ user: { email: SESSION_EMAIL } });
+    prismaMock.user.findUnique.mockResolvedValue({
+      email: SESSION_EMAIL,
+      password: EXISTING_HASH,
+    });
+    prismaMock.user.update.mockResolvedValue({});
+
+    const bcrypt = await import('bcryptjs');
+    (bcrypt.default.compare as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+    const result = await forceResetPassword('correctCurrentPass1!', 'NewStr0ng!Pass');
+
+    expect(result).toEqual({ success: true });
+    // Looked up the session's email, not any caller-supplied value.
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { email: SESSION_EMAIL } });
+    expect(bcrypt.default.compare).toHaveBeenCalledWith('correctCurrentPass1!', EXISTING_HASH);
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { email: SESSION_EMAIL },
+      // F-059: the reset also bumps sessionVersion to invalidate other sessions.
+      data: {
+        password: 'new-hashed-password',
+        passwordResetRequired: false,
+        sessionVersion: { increment: 1 },
+      },
+    });
+  });
+
+  it('updates the password for a valid worker session (no admin session present)', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue({ user: { email: SESSION_EMAIL } });
+    prismaMock.user.findUnique.mockResolvedValue({
+      email: SESSION_EMAIL,
+      password: EXISTING_HASH,
+    });
+    prismaMock.user.update.mockResolvedValue({});
+
+    const bcrypt = await import('bcryptjs');
+    (bcrypt.default.compare as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+    const result = await forceResetPassword('correctCurrentPass1!', 'NewStr0ng!Pass');
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { email: SESSION_EMAIL },
+      // F-059: the reset also bumps sessionVersion to invalidate other sessions.
+      data: {
+        password: 'new-hashed-password',
+        passwordResetRequired: false,
+        sessionVersion: { increment: 1 },
+      },
+    });
+  });
+
+  it('returns "Invalid current password." and does NOT update when the current password is wrong', async () => {
+    mockAdminAuth.mockResolvedValue({ user: { email: SESSION_EMAIL } });
+    prismaMock.user.findUnique.mockResolvedValue({
+      email: SESSION_EMAIL,
+      password: EXISTING_HASH,
+    });
+
+    const bcrypt = await import('bcryptjs');
+    (bcrypt.default.compare as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    const result = await forceResetPassword('wrongCurrentPass', 'NewStr0ng!Pass');
+
+    expect(result).toEqual({ error: 'Invalid current password.' });
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 });

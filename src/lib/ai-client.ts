@@ -95,6 +95,21 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
       temperature: config?.temperature ?? 0.7,
       maxOutputTokens: config?.maxOutputTokens ?? 8192,
     },
+    // F-049: safety filters are intentionally set to BLOCK_NONE.
+    //
+    // Risk: with untrusted document text as input, BLOCK_NONE means the model's
+    // own safety guardrails will not pre-empt problematic generations — the
+    // prompt-injection defence therefore rests on the delimiter/"treat as data"
+    // framing in the prompt builders (see prompts-v4.6.ts) and the PHI scanner,
+    // not on these thresholds.
+    //
+    // Why keep BLOCK_NONE (conservative choice): this client generates regulated
+    // BEHAVIORAL-HEALTH training content that legitimately discusses sensitive
+    // topics — abuse reporting, self-harm, restraint, medication, grievances.
+    // Non-BLOCK thresholds routinely return finishReason=SAFETY (no content) on
+    // exactly this material, which would break generation quality for the
+    // product's core use case. Tightening thresholds should be paired with an
+    // input-classification layer before it can be done without regressions.
     safetySettings: [
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
@@ -227,37 +242,48 @@ export async function generateBatchEmbeddings(texts: string[]): Promise<number[]
   });
 
   return withRetry(async () => {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body,
-    });
+    // F-066: bound each attempt with an AbortController timeout so a hung
+    // embedding request cannot stall indefinitely (mirrors callVertexAI). An
+    // AbortError is retryable in withRetry, so a timed-out attempt is retried.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), VERTEX_AI_TIMEOUT_MS);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Vertex AI Batch Embedding ${response.status} ${response.statusText}: ${errorText}`,
-      );
-    }
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body,
+        signal: controller.signal,
+      });
 
-    const json = await response.json();
-    const predictions: Array<{ embeddings: { values: number[] } }> = json.predictions ?? [];
-
-    if (predictions.length !== texts.length) {
-      throw new Error(
-        `Vertex AI returned ${predictions.length} predictions for ${texts.length} inputs`,
-      );
-    }
-
-    return predictions.map((p, i) => {
-      const values = p?.embeddings?.values;
-      if (!Array.isArray(values)) {
-        throw new Error(`Vertex AI Embedding: no values for input at index ${i}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Vertex AI Batch Embedding ${response.status} ${response.statusText}: ${errorText}`,
+        );
       }
-      return values;
-    });
+
+      const json = await response.json();
+      const predictions: Array<{ embeddings: { values: number[] } }> = json.predictions ?? [];
+
+      if (predictions.length !== texts.length) {
+        throw new Error(
+          `Vertex AI returned ${predictions.length} predictions for ${texts.length} inputs`,
+        );
+      }
+
+      return predictions.map((p, i) => {
+        const values = p?.embeddings?.values;
+        if (!Array.isArray(values)) {
+          throw new Error(`Vertex AI Embedding: no values for input at index ${i}`);
+        }
+        return values;
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }, 'Embedding');
 }

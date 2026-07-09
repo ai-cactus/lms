@@ -13,6 +13,9 @@ import {
   DEFAULT_SELF_SERVE_WORKER_ROLE,
 } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { audit, getClientContext } from '@/lib/audit';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
@@ -81,11 +84,50 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
     providers: [
       Credentials({
-        async authorize(credentials) {
+        async authorize(credentials, request) {
           const { email, password } = (credentials || {}) as {
             email: string;
             password: string;
           };
+
+          // F-033: Throttle at the credential layer so a direct POST to
+          // /api/auth/callback/credentials is rate-limited even when it bypasses
+          // the `authenticate` server action (which throttles per-IP on its own).
+          // Uses dedicated key namespaces so it doesn't share counters with the
+          // action's `login:${ip}` limiter. Returns null (a normal auth failure)
+          // when exceeded, preserving the existing timing/return behavior.
+          const ip =
+            request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+            request.headers.get('x-real-ip') ||
+            'unknown';
+          const normalizedEmail = email?.toLowerCase().trim();
+          // F-001: client context for the audit trail (best-effort ip/user-agent).
+          const clientCtx = getClientContext(request.headers);
+          const maskedEmail = email ? maskEmail(email) : undefined;
+
+          // F-024: auth-critical — fail CLOSED if Redis is down so an outage can't
+          // open an unlimited credential-stuffing window at the callback layer.
+          const ipCheck = await checkRateLimit(`login:callback:ip:${ip}`, 10, 900, {
+            failClosed: true,
+          });
+          const acctCheck = normalizedEmail
+            ? await checkRateLimit(`login:callback:acct:${normalizedEmail}`, 10, 900, {
+                failClosed: true,
+              })
+            : { allowed: true };
+          if (!ipCheck.allowed || !acctCheck.allowed) {
+            logger.warn({
+              msg: 'Auth login throttled at credential layer',
+              instance: cookiePrefix,
+              ip,
+            });
+            await audit({
+              action: 'auth.login.failure',
+              ...clientCtx,
+              metadata: { reason: 'rate_limited', instance: cookiePrefix, email: maskedEmail },
+            });
+            return null;
+          }
 
           logger.info({
             msg: 'Auth login attempt',
@@ -107,6 +149,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           if (!user || !user.password) {
             logger.warn({ msg: 'Auth login failed: user not found', instance: cookiePrefix });
+            await audit({
+              action: 'auth.login.failure',
+              ...clientCtx,
+              metadata: { reason: 'user_not_found', instance: cookiePrefix, email: maskedEmail },
+            });
             return null;
           }
 
@@ -117,13 +164,55 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               allowed: allowedRoles.join(','),
               instance: cookiePrefix,
             });
+            await audit({
+              action: 'auth.login.failure',
+              actorId: user.id,
+              actorRole: user.role,
+              organizationId: user.organizationId ?? undefined,
+              ...clientCtx,
+              metadata: { reason: 'role_mismatch', instance: cookiePrefix, email: maskedEmail },
+            });
             return null;
           }
 
           const valid = await bcrypt.compare(password, user.password);
           if (!valid) {
             logger.warn({ msg: 'Auth login failed: invalid password', instance: cookiePrefix });
+            await audit({
+              action: 'auth.login.failure',
+              actorId: user.id,
+              actorRole: user.role,
+              organizationId: user.organizationId ?? undefined,
+              ...clientCtx,
+              metadata: { reason: 'invalid_password', instance: cookiePrefix, email: maskedEmail },
+            });
             return null;
+          }
+
+          // F-058: transparently upgrade legacy hashes stored below the current
+          // cost. Best-effort — a failed re-hash must never block a valid login.
+          const costMatch = /^\$2[aby]\$(\d{2})\$/.exec(user.password);
+          const storedCost = costMatch ? parseInt(costMatch[1], 10) : null;
+          if (storedCost !== null && storedCost < BCRYPT_COST) {
+            try {
+              const upgraded = await bcrypt.hash(password, BCRYPT_COST);
+              await prisma.user.update({
+                where: { id: user.id },
+                data: { password: upgraded },
+              });
+              logger.info({
+                msg: 'Auth: upgraded password hash cost on login',
+                userId: user.id,
+                fromCost: storedCost,
+                toCost: BCRYPT_COST,
+              });
+            } catch (rehashErr) {
+              logger.error({
+                msg: 'Auth: password hash upgrade failed (login unaffected)',
+                userId: user.id,
+                err: rehashErr,
+              });
+            }
           }
 
           logger.info({
@@ -131,6 +220,14 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             email: maskEmail(user.email),
             instance: cookiePrefix,
             mfaEnabled: user.mfaEnabled,
+          });
+          await audit({
+            action: 'auth.login.success',
+            actorId: user.id,
+            actorRole: user.role,
+            organizationId: user.organizationId ?? undefined,
+            ...clientCtx,
+            metadata: { instance: cookiePrefix, mfaEnabled: user.mfaEnabled },
           });
 
           recordLoginTimestamp(user.id, cookiePrefix);
@@ -157,6 +254,24 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           ]
         : []),
     ],
+
+    events: {
+      // F-001: audit logout. For the JWT strategy the signOut event carries the
+      // decoded `token`; record the account that signed out (best-effort).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async signOut(message: any) {
+        const token = message && 'token' in message ? message.token : null;
+        if (!token) return;
+        await audit({
+          actorId: token.id ?? token.sub,
+          actorRole: token.role,
+          organizationId: token.organizationId ?? undefined,
+          action: 'auth.logout',
+          targetType: 'user',
+          targetId: token.id ?? token.sub,
+        });
+      },
+    },
 
     callbacks: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -201,7 +316,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
             const randomPassword = await bcrypt.hash(
               crypto.randomUUID() + Date.now().toString(),
-              12,
+              BCRYPT_COST,
             );
 
             // Attach to the org's facility when joining via invite; null otherwise.
@@ -227,10 +342,32 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               select: { id: true, organizationId: true, role: true },
             });
 
+            // F-001: OAuth-originated signup.
+            await audit({
+              action: 'auth.signup',
+              actorId: dbUser.id,
+              actorRole: matchedRole,
+              organizationId: dbUser.organizationId ?? undefined,
+              metadata: {
+                provider: 'microsoft-entra-id',
+                viaInvite: !!pendingInvite,
+                email: maskEmail(user.email!),
+              },
+            });
+
             if (pendingInvite) {
               await prisma.invite.update({
                 where: { id: pendingInvite.id },
                 data: { status: 'accepted' },
+              });
+              await audit({
+                action: 'auth.invite.accept',
+                actorId: dbUser.id,
+                actorRole: matchedRole,
+                organizationId: pendingInvite.organizationId ?? undefined,
+                targetType: 'invite',
+                targetId: pendingInvite.id,
+                metadata: { provider: 'microsoft-entra-id', email: maskEmail(user.email!) },
               });
             }
           } else {
@@ -260,6 +397,16 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 where: { id: pendingInvite.id },
                 data: { status: 'accepted' },
               });
+              // F-001: existing OAuth user consuming a pending invite.
+              await audit({
+                action: 'auth.invite.accept',
+                actorId: dbUser.id,
+                actorRole: (dbUser.role as Role) ?? undefined,
+                organizationId: pendingInvite.organizationId ?? undefined,
+                targetType: 'invite',
+                targetId: pendingInvite.id,
+                metadata: { provider: 'microsoft-entra-id', email: maskEmail(user.email!) },
+              });
             }
           }
 
@@ -285,6 +432,19 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           recordLoginTimestamp(dbUser.id, cookiePrefix);
           // OAuth users bypass MFA — Microsoft Entra ID has its own MFA policies
           (user as User & { mfaVerified?: boolean }).mfaVerified = true;
+
+          // F-001: OAuth login success (role gate already passed above).
+          await audit({
+            action: 'auth.login.success',
+            actorId: dbUser.id,
+            actorRole: (dbUser.role as Role) ?? undefined,
+            organizationId: dbUser.organizationId ?? undefined,
+            metadata: {
+              provider: 'microsoft-entra-id',
+              instance: cookiePrefix,
+              email: maskEmail(user.email!),
+            },
+          });
 
           const profile = await prisma.profile.findUnique({
             where: { id: dbUser.id },
@@ -363,13 +523,18 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 mfaEnabled: true,
                 mfaVerifiedAt: true,
                 passwordResetRequired: true,
+                sessionVersion: true,
                 authProvider: true,
                 profile: { select: { fullName: true } },
               },
             });
           } catch (dbError) {
-            // DB failure (timeout, connection pool exhaustion, etc.) must NOT destroy sessions.
-            // Return the existing token to keep the user logged in.
+            // F-036 (deliberate, do not change): this path is fail-OPEN. A DB
+            // failure (timeout, connection pool exhaustion, etc.) must NOT
+            // destroy sessions — we return the existing token to keep the user
+            // logged in. This trades revocation latency for availability: a DB
+            // blip should never mass-log-out the fleet. Session invalidation
+            // still happens on the next successful decode once the DB recovers.
             logger.error({
               msg: '[Auth] JWT callback DB query failed, preserving session',
               error: String(dbError),
@@ -379,6 +544,22 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           if (!freshUser) return null; // User was deleted — invalidate
           if (!allowedRoles.includes(freshUser.role as Role)) return null; // Role changed — invalidate
+
+          // F-059: a completed password reset bumps `sessionVersion`, logging out
+          // every other existing session. On sign-in `token.sessionVersion` is
+          // still unset (or is a legacy token that predates this field), so we
+          // stamp it below rather than invalidate. Only a definite mismatch —
+          // a number on the token that differs from the freshly-read value —
+          // means the password was reset elsewhere, so invalidate. DB errors
+          // already returned above with the token intact, so a blip never
+          // mass-logs-out.
+          if (
+            typeof token.sessionVersion === 'number' &&
+            token.sessionVersion !== freshUser.sessionVersion
+          ) {
+            return null;
+          }
+          token.sessionVersion = freshUser.sessionVersion;
 
           token.role = freshUser.role as Role;
           token.organizationId = freshUser.organizationId;

@@ -6,12 +6,11 @@ import { redirect } from 'next/navigation';
 import DashboardLayoutClient from '@/components/dashboard/DashboardLayoutClient';
 import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
 import { AdminSessionProvider } from '@/components/providers/AdminSessionProvider';
-import { Toaster } from 'sonner';
 import { ExportJobsProvider } from '@/components/dashboard/auditor/ExportJobsProvider';
 import BillingPausedBanner from '@/components/billing/BillingPausedBanner';
-import ComplianceAlertBanner from '@/components/dashboard/ComplianceAlertBanner';
+import StatusTrackerAlertBanner from '@/components/dashboard/StatusTrackerAlertBanner';
 import { getPauseState } from '@/lib/billing';
-import { getOverdueComplianceForOrg } from '@/lib/reminders/compliance';
+import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -49,12 +48,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const subscription = user?.organization?.subscription;
   const pauseState = isAdminRole(role) ? getPauseState(subscription) : 'none';
 
-  // Surface a site-wide compliance banner to admins when training is overdue by
-  // the hard-escalation threshold. Only queried for admins so non-admin loads are
-  // unaffected.
+  // Surface a site-wide status-tracker banner to admins when training is overdue
+  // by the hard-escalation threshold. Only queried for admins so non-admin loads
+  // are unaffected.
   const hardEscalationCount =
     isAdminRole(role) && organizationId
-      ? (await getOverdueComplianceForOrg(organizationId)).hardEscalationCount
+      ? (await getStatusTrackerSummaryForOrg(organizationId)).hardEscalationCount
       : 0;
 
   return (
@@ -74,10 +73,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
               }
             />
           )}
-          {isAdminRole(role) && <ComplianceAlertBanner hardEscalationCount={hardEscalationCount} />}
+          {isAdminRole(role) && (
+            <StatusTrackerAlertBanner hardEscalationCount={hardEscalationCount} />
+          )}
           {children}
         </DashboardLayoutClient>
-        <Toaster richColors position="top-right" />
       </ExportJobsProvider>
     </AdminSessionProvider>
   );

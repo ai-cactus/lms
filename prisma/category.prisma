@@ -3,10 +3,22 @@
 /// System-wide course categories.
 /// isSystem = true  → seeded by Prisma/migration, visible to all orgs.
 /// isSystem = false → created by an org admin, scoped to their organization.
+///
+/// F-052: `slug` is unique *per organization* rather than globally, so different
+/// orgs may reuse the same slug. Enforced by the `@@unique([organizationId, slug])`
+/// composite below (`course_categories_organization_id_slug_key`).
+///
+/// NOTE: In Postgres a composite unique treats NULLs as DISTINCT, so the composite
+/// alone does NOT stop two *system* categories (organization_id IS NULL) from
+/// sharing a slug. To preserve the previous global-uniqueness guarantee for system
+/// slugs, the migration `20260706120001_enrollment_category_uniques` also adds a
+/// raw partial unique index `course_categories_system_slug_key` on (slug)
+/// WHERE organization_id IS NULL. That partial index is NOT expressible in Prisma
+/// and lives only at the DB level.
 model CourseCategory {
   id             String                @id @default(uuid())
   name           String
-  slug           String                @unique
+  slug           String
   description    String?
   isSystem       Boolean               @default(true) @map("is_system")
   organizationId String?               @map("organization_id")
@@ -15,6 +27,7 @@ model CourseCategory {
   courses        Course[]
   manualMappings ManualChunkCategory[]
 
+  @@unique([organizationId, slug])
   @@index([organizationId])
   @@index([isSystem])
   @@map("course_categories")
@@ -43,13 +56,18 @@ model StandardManual {
 /// The `embedding` column is a 768-dimensional pgvector column managed via raw SQL.
 /// All vector reads/writes use prisma.$queryRaw / prisma.$executeRaw.
 model ManualChunk {
-  id         String                @id @default(uuid())
-  manualId   String                @map("manual_id")
-  chunkIndex Int                   @map("chunk_index")
-  pageNumber Int?                  @map("page_number")
+  id         String                      @id @default(uuid())
+  manualId   String                      @map("manual_id")
+  chunkIndex Int                         @map("chunk_index")
+  pageNumber Int?                        @map("page_number")
   content    String
-  createdAt  DateTime              @default(now()) @map("created_at")
-  manual     StandardManual        @relation(fields: [manualId], references: [id], onDelete: Cascade)
+  /// 768-dimensional pgvector column. Managed exclusively via raw SQL
+  /// (prisma.$queryRaw / prisma.$executeRaw); Prisma cannot read/write it.
+  /// Declared here only so `prisma migrate dev` does not plan to DROP the
+  /// column that migration 20260504100000 added out-of-band.
+  embedding  Unsupported("vector(768)")?
+  createdAt  DateTime                    @default(now()) @map("created_at")
+  manual     StandardManual              @relation(fields: [manualId], references: [id], onDelete: Cascade)
   categories ManualChunkCategory[]
 
   @@index([manualId])

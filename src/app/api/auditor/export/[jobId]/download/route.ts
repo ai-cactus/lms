@@ -5,6 +5,7 @@ import { auth } from '@/auth';
 import * as XLSX from 'xlsx';
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
 import type { AuditReportResult } from '@/lib/audit-reports/types';
 
 /** Flatten a report result into tabular rows for the CSV/DOCX secondary formats. */
@@ -118,6 +119,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Invalid job result formatting' }, { status: 500 });
     }
     const result = job.result as unknown as import('@/lib/audit-reports/types').AuditReportResult;
+
+    // F-001: record the auditor export download (PHI/PII egress) on the
+    // authorized path, with scope/format/row-count context (no PII values).
+    await audit({
+      action: 'export.download',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'job',
+      targetId: jobId,
+      metadata: { scope: result.scope, format, rowCount: flattenResult(result).length },
+      ...getClientContext(req.headers),
+    });
 
     const orgName = org.name || 'Organization';
     const timestamp = new Date().toISOString().split('T')[0];

@@ -1,28 +1,9 @@
-echo "Running pre-commit checks..."
+echo "Running pre-commit checks (lint-staged)..."
 
-# ── 1. Auto-fix formatting & linting ──────────────────────────────────────────
-echo "→ Fixing formatting (Prettier)..."
-npx prettier --write "src/**/*.{ts,tsx,css,json}" || exit 1
+# Fast path only: format & lint the STAGED files via lint-staged
+# (config in package.json). lint-staged re-stages its own fixes.
+# Heavy checks (Prisma generate, typecheck, tests, build) run in
+# .husky/pre-push and in CI (.github/workflows/ci.yml).
+npx lint-staged || exit 1
 
-echo "→ Fixing lint issues (ESLint)..."
-npx eslint src/ --fix || exit 1
-
-# Re-stage any files modified by auto-fix
-git add -u
-
-# ── 2. Type check ─────────────────────────────────────────────────────────────
-echo "→ Generating Prisma client..."
-npx prisma generate || exit 1
-
-echo "→ Type checking (TypeScript)..."
-npx tsc --noEmit || exit 1
-
-# ── 3. Tests ──────────────────────────────────────────────────────────────────
-echo "→ Running tests..."
-npm run test || exit 1
-
-# ── 4. Build ──────────────────────────────────────────────────────────────────
-echo "→ Build check..."
-npm run build || exit 1
-
-echo "All checks passed!"
+echo "Pre-commit checks passed!"

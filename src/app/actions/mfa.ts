@@ -18,6 +18,7 @@ import {
 import { logger } from '@/lib/logger';
 import { checkRateLimitOnly, recordRateLimitAttempt } from '@/lib/rate-limit';
 import { markSessionMfaVerified } from '@/lib/session-mfa';
+import { audit, getClientContext } from '@/lib/audit';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -74,8 +75,10 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
     where: { userId: session.user.id, verified: false },
   });
 
-  // Rate limit OTP sends: 3 per 15 minutes
-  const { allowed: sendAllowed } = await checkRateLimitOnly(`mfa-send:${session.user.id}`, 3, 900);
+  // Rate limit OTP sends: 3 per 15 minutes. F-024: auth-critical — fail closed.
+  const { allowed: sendAllowed } = await checkRateLimitOnly(`mfa-send:${session.user.id}`, 3, 900, {
+    failClosed: true,
+  });
   if (!sendAllowed) {
     return { success: false, error: 'Too many code requests. Please try again later.' };
   }
@@ -98,6 +101,15 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
   await recordRateLimitAttempt(`mfa-send:${session.user.id}`, 900);
 
   logger.info({ msg: 'MFA setup initiated via email', userId: session.user.id });
+  // F-001: MFA enrollment challenge issued.
+  await audit({
+    action: 'auth.mfa.setup',
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    organizationId: session.user.organizationId ?? undefined,
+    ...getClientContext(await headers()),
+    metadata: { factor: 'email' },
+  });
 
   return {
     success: true,
@@ -191,6 +203,15 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
   }
 
   logger.info({ msg: 'MFA enabled successfully', userId: session.user.id });
+  // F-001: MFA factor verified and enabled.
+  await audit({
+    action: 'auth.mfa.verify',
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    organizationId: session.user.organizationId ?? undefined,
+    ...getClientContext(await headers()),
+    metadata: { factor: factor.type, enabled: true },
+  });
 
   // Return the plaintext codes — these match what was just stored and hashed above
   return {
@@ -237,6 +258,14 @@ export async function disableMfa(code: string): Promise<MfaActionResult> {
   });
 
   logger.info({ msg: 'MFA disabled', userId: session.user.id });
+  // F-001: MFA disabled for the account.
+  await audit({
+    action: 'auth.mfa.disable',
+    actorId: session.user.id,
+    actorRole: session.user.role,
+    organizationId: session.user.organizationId ?? undefined,
+    ...getClientContext(await headers()),
+  });
 
   return { success: true };
 }
@@ -317,8 +346,9 @@ export async function verifyUserMfaCode(
   userId: string,
   code: string,
 ): Promise<{ valid: boolean; usedRecoveryCode?: boolean; error?: string }> {
-  // Pre-check rate limit without recording — only failures are counted
-  const { allowed } = await checkRateLimitOnly(`mfa:${userId}`, 5, 900);
+  // Pre-check rate limit without recording — only failures are counted.
+  // F-024: auth-critical (OTP/recovery-code brute-force guard) — fail closed.
+  const { allowed } = await checkRateLimitOnly(`mfa:${userId}`, 5, 900, { failClosed: true });
   if (!allowed) {
     logger.warn({ msg: 'MFA rate limit exceeded', userId });
     return { valid: false, error: 'Too many attempts. Please try again later.' };
@@ -410,8 +440,8 @@ export async function getMfaStatus(): Promise<
  * Send an email OTP code for login.
  */
 export async function sendLoginMfaCode(userId: string): Promise<MfaActionResult> {
-  // Rate limit OTP sends: 3 per 15 minutes
-  const { allowed } = await checkRateLimitOnly(`mfa-send:${userId}`, 3, 900);
+  // Rate limit OTP sends: 3 per 15 minutes. F-024: auth-critical — fail closed.
+  const { allowed } = await checkRateLimitOnly(`mfa-send:${userId}`, 3, 900, { failClosed: true });
   if (!allowed) {
     return { success: false, error: 'Too many code requests. Please try again later.' };
   }
@@ -453,8 +483,10 @@ export async function sendDisableMfaCode(): Promise<MfaActionResult> {
     return { success: false, error: 'Not authenticated' };
   }
 
-  // Rate limit OTP sends: 3 per 15 minutes
-  const { allowed } = await checkRateLimitOnly(`mfa-send:${session.user.id}`, 3, 900);
+  // Rate limit OTP sends: 3 per 15 minutes. F-024: auth-critical — fail closed.
+  const { allowed } = await checkRateLimitOnly(`mfa-send:${session.user.id}`, 3, 900, {
+    failClosed: true,
+  });
   if (!allowed) {
     return { success: false, error: 'Too many code requests. Please try again later.' };
   }

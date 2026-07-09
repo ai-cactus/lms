@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { sendEnterpriseInquiryEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
+import { verifyCaptcha } from '@/lib/captcha';
 
 // ── Request body shape ────────────────────────────────────────────────────────
 
@@ -21,6 +22,8 @@ interface EnterpriseInquiryBody {
   currentAccreditation?: string;
   currentTrainingMethod?: string;
   primaryPainPoint?: string;
+  /** Optional hCaptcha token; verified only when the feature is enabled (inert otherwise). */
+  captchaToken?: string;
 }
 
 // Basic email format guard
@@ -66,7 +69,22 @@ export async function POST(request: NextRequest) {
       currentAccreditation,
       currentTrainingMethod,
       primaryPainPoint,
+      captchaToken,
     } = body;
+
+    // Bot verification — no-op unless hCaptcha is enabled (see src/lib/captcha.ts).
+    const ip =
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      request.headers.get('x-real-ip') ??
+      'unknown';
+    const captchaValid = await verifyCaptcha(captchaToken, ip);
+    if (!captchaValid) {
+      logger.warn({ msg: '[enterprise-inquiry] Captcha verification failed', ip });
+      return NextResponse.json(
+        { error: 'Captcha verification failed. Please try again.' },
+        { status: 400 },
+      );
+    }
 
     // Required field validation
     if (!firstName?.trim()) {

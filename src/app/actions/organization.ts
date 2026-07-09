@@ -6,6 +6,8 @@ import { can } from '@/lib/rbac/permissions';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
+import { headers } from 'next/headers';
 import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 
 interface OrganizationUpdateData {
@@ -102,6 +104,19 @@ export async function updateOrganization(data: OrganizationUpdateData) {
       orgId: user.organizationId,
       userId: session.user.id,
     });
+
+    // F-001: record the sensitive settings mutation on the authorized path.
+    // Metadata is intentionally PII-free (no names/emails/addresses/EIN values).
+    await audit({
+      action: 'org.settings.update',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'organization',
+      targetId: user.organizationId,
+      ...getClientContext(await headers()),
+    });
+
     return { success: true };
   } catch (error) {
     logger.error({ msg: 'Error updating organization:', err: error });

@@ -6,4 +6,7 @@
 - [Org/Facility split](org_facility_split.md) — location/compliance fields moved to Facility; one facility per org; facility.* = owner+supervisor only.
 - [Offline migrations](project_offline_migrations.md) — dev DB (localhost:5433) often unreachable; scaffold Prisma migrations offline via `migrate diff --from-schema/--to-schema`.
 - [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — `prisma migrate dev` autogen drops the raw-SQL pgvector `embedding` col + facility defaults; hand-author migrations instead.
+- [migrate dev HNSW drift](project_migrate_dev_hnsw_drift.md) — every new migration spuriously drops `manual_chunks_embedding_hnsw_idx` (raw-SQL pgvector index); strip the DROP INDEX line.
 - [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db (most-specific first) or value-imports of generated Prisma fail in tests.
+- [Email delivery tracking](project_email_delivery_tracking.md) — EmailMessage has two disjoint recording paths (dispatch vs sendMailTracked); reminder senders bypass sendMailTracked to avoid double-record.
+- [E2E seed infra](project_e2e_seed_infra.md) — prisma/seed.ts (tsx, self-contained client), E2E rate-limit bypass, role-based login landings, quiz shape; assignRetake locked-only bug.

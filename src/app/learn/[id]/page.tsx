@@ -844,6 +844,8 @@ export default function LearnPage() {
                             return (
                               <div
                                 key={i}
+                                data-quiz-option={i}
+                                data-selected={isSelected}
                                 className={`flex cursor-pointer items-center gap-4 rounded-xl border bg-white px-5 py-4 font-medium transition-all hover:-translate-y-px hover:border-primary hover:bg-background-secondary hover:shadow-[0_2px_4px_rgba(0,0,0,0.05)] max-md:gap-3 max-md:px-3.5 max-md:py-3 ${isSelected ? 'border-primary bg-background-secondary font-semibold text-primary shadow-[0_0_0_1px_var(--primary)]' : 'border-[#e5e7eb] text-[#374151]'}`}
                                 onClick={() => handleOptionSelect(opt)}
                               >

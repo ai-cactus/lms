@@ -17,7 +17,6 @@ function ResetPasswordForm() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
   const isForced = searchParams.get('force') === 'true';
-  const emailParam = searchParams.get('email') || '';
 
   const [currentPassword, setCurrentPassword] = useState('');
 
@@ -73,7 +72,7 @@ function ResetPasswordForm() {
     try {
       let result;
       if (isForced) {
-        result = await forceResetPassword(emailParam, currentPassword, newPassword);
+        result = await forceResetPassword(currentPassword, newPassword);
       } else {
         result = await resetPasswordWithToken(token!, newPassword);
       }

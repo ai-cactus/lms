@@ -52,6 +52,7 @@ export const AnyNull = runtime.AnyNull
 
 export const ModelName = {
   AuditorPack: 'AuditorPack',
+  AuditLog: 'AuditLog',
   User: 'User',
   Profile: 'Profile',
   Invite: 'Invite',
@@ -73,6 +74,7 @@ export const ModelName = {
   DocumentVersion: 'DocumentVersion',
   PhiReport: 'PhiReport',
   MappingEvidence: 'MappingEvidence',
+  EmailMessage: 'EmailMessage',
   Enrollment: 'Enrollment',
   Certificate: 'Certificate',
   ReminderLog: 'ReminderLog',
@@ -86,6 +88,7 @@ export const ModelName = {
   FacilityDocument: 'FacilityDocument',
   Subscription: 'Subscription',
   Invoice: 'Invoice',
+  ProcessedWebhookEvent: 'ProcessedWebhookEvent',
   Quiz: 'Quiz',
   Question: 'Question',
   QuizAttempt: 'QuizAttempt'
@@ -118,6 +121,23 @@ export const AuditorPackScalarFieldEnum = {
 export type AuditorPackScalarFieldEnum = (typeof AuditorPackScalarFieldEnum)[keyof typeof AuditorPackScalarFieldEnum]
 
 
+export const AuditLogScalarFieldEnum = {
+  id: 'id',
+  actorId: 'actorId',
+  actorRole: 'actorRole',
+  action: 'action',
+  targetType: 'targetType',
+  targetId: 'targetId',
+  organizationId: 'organizationId',
+  ip: 'ip',
+  userAgent: 'userAgent',
+  metadata: 'metadata',
+  createdAt: 'createdAt'
+} as const
+
+export type AuditLogScalarFieldEnum = (typeof AuditLogScalarFieldEnum)[keyof typeof AuditLogScalarFieldEnum]
+
+
 export const UserScalarFieldEnum = {
   id: 'id',
   email: 'email',
@@ -130,6 +150,7 @@ export const UserScalarFieldEnum = {
   emailVerified: 'emailVerified',
   mfaEnabled: 'mfaEnabled',
   mfaVerifiedAt: 'mfaVerifiedAt',
+  sessionVersion: 'sessionVersion',
   lastLoginAt: 'lastLoginAt',
   managerId: 'managerId',
   createdAt: 'createdAt',
@@ -286,7 +307,9 @@ export const CourseScalarFieldEnum = {
   approvedByUserId: 'approvedByUserId',
   approvedAt: 'approvedAt',
   type: 'type',
-  isGlobal: 'isGlobal'
+  isGlobal: 'isGlobal',
+  reviewRequired: 'reviewRequired',
+  qualityWarnings: 'qualityWarnings'
 } as const
 
 export type CourseScalarFieldEnum = (typeof CourseScalarFieldEnum)[keyof typeof CourseScalarFieldEnum]
@@ -410,6 +433,7 @@ export const PhiReportScalarFieldEnum = {
   documentVersionId: 'documentVersionId',
   hasPHI: 'hasPHI',
   detectedEntities: 'detectedEntities',
+  scannerVersion: 'scannerVersion',
   scannedAt: 'scannedAt'
 } as const
 
@@ -428,6 +452,23 @@ export const MappingEvidenceScalarFieldEnum = {
 } as const
 
 export type MappingEvidenceScalarFieldEnum = (typeof MappingEvidenceScalarFieldEnum)[keyof typeof MappingEvidenceScalarFieldEnum]
+
+
+export const EmailMessageScalarFieldEnum = {
+  id: 'id',
+  toEmail: 'toEmail',
+  kind: 'kind',
+  reminderLogId: 'reminderLogId',
+  status: 'status',
+  attempts: 'attempts',
+  maxAttempts: 'maxAttempts',
+  lastError: 'lastError',
+  sentAt: 'sentAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type EmailMessageScalarFieldEnum = (typeof EmailMessageScalarFieldEnum)[keyof typeof EmailMessageScalarFieldEnum]
 
 
 export const EnrollmentScalarFieldEnum = {
@@ -623,6 +664,13 @@ export const SubscriptionScalarFieldEnum = {
   cancelAtPeriodEnd: 'cancelAtPeriodEnd',
   pausedAt: 'pausedAt',
   pauseEndsAt: 'pauseEndsAt',
+  discountPromoCode: 'discountPromoCode',
+  discountCouponName: 'discountCouponName',
+  discountPercentOff: 'discountPercentOff',
+  discountAmountOff: 'discountAmountOff',
+  discountCurrency: 'discountCurrency',
+  discountDuration: 'discountDuration',
+  discountEndsAt: 'discountEndsAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -646,6 +694,16 @@ export const InvoiceScalarFieldEnum = {
 } as const
 
 export type InvoiceScalarFieldEnum = (typeof InvoiceScalarFieldEnum)[keyof typeof InvoiceScalarFieldEnum]
+
+
+export const ProcessedWebhookEventScalarFieldEnum = {
+  id: 'id',
+  stripeEventId: 'stripeEventId',
+  eventType: 'eventType',
+  processedAt: 'processedAt'
+} as const
+
+export type ProcessedWebhookEventScalarFieldEnum = (typeof ProcessedWebhookEventScalarFieldEnum)[keyof typeof ProcessedWebhookEventScalarFieldEnum]
 
 
 export const QuizScalarFieldEnum = {

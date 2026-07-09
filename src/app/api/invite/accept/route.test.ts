@@ -22,12 +22,26 @@ const { prismaMock, mockLogger, mockBcryptHash } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('@/lib/logger', () => ({ logger: mockLogger }));
+vi.mock('@/lib/logger', () => ({
+  logger: mockLogger,
+  maskEmail: (e: string) => e,
+}));
 vi.mock('bcryptjs', () => ({
   default: { hash: mockBcryptHash, compare: vi.fn() },
   hash: mockBcryptHash,
   compare: vi.fn(),
 }));
+// Rate limiting, captcha, seat limits, and audit are exercised by their own
+// suites — stub them so these tests stay focused on token/org/role correctness.
+vi.mock('@/lib/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+}));
+vi.mock('@/lib/captcha', () => ({ verifyCaptcha: vi.fn().mockResolvedValue(true) }));
+vi.mock('@/lib/seat-limits', () => ({
+  assertSeatAvailable: vi.fn().mockResolvedValue(undefined),
+  SeatLimitError: class SeatLimitError extends Error {},
+}));
+vi.mock('@/lib/audit', () => ({ audit: vi.fn(), getClientContext: () => ({}) }));
 
 import { POST } from './route';
 
@@ -35,7 +49,10 @@ const VALID_PASSWORD = 'StrongPass1!';
 const FUTURE = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
 function makeReq(body: unknown): NextRequest {
-  return { json: vi.fn().mockResolvedValue(body) } as unknown as NextRequest;
+  return {
+    json: vi.fn().mockResolvedValue(body),
+    headers: new Headers(),
+  } as unknown as NextRequest;
 }
 
 beforeEach(() => {

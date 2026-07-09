@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import stripe from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
 import { logger } from '@/lib/logger';
 import { authorize } from '@/lib/rbac/authorize';
 import { apiError } from '@/lib/api-response';
@@ -12,6 +12,8 @@ export async function GET() {
     const authResult = await authorize('billing.read');
     if (!authResult.ok) return authResult.response;
     const { ctx } = authResult;
+
+    const stripe = getStripeClient();
 
     if (!ctx.organizationId) {
       return apiError('No organization found', 404);

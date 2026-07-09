@@ -28,6 +28,9 @@ import type {
   QuizDifficulty,
 } from '@/lib/prompt-types-v4.6';
 import { extractTextFromFile } from '@/lib/file-parser';
+import { scanText } from '@/lib/documents/phiScanner';
+import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/documents/upload-config';
+import { checkRateLimit } from '@/lib/rate-limit';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { JobResponse } from '@/types/job';
@@ -499,6 +502,12 @@ export async function generateCourseAndQuizV46(
   let docFilename = 'User-provided document';
 
   if (file) {
+    // F-017: reject oversized uploads BEFORE buffering/parsing the whole file.
+    if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {
+      const maxMb = Math.round(MAX_DOCUMENT_UPLOAD_BYTES / (1024 * 1024));
+      logger.warn({ msg: '[v4.6] Upload rejected — file too large', size: file.size });
+      return { error: `File is too large. The maximum document size is ${maxMb} MB.` };
+    }
     try {
       logger.info({ msg: `[v4.6] Processing file: ${file.name} (${file.type})` });
       docFilename = file.name;
@@ -511,6 +520,9 @@ export async function generateCourseAndQuizV46(
       return { error: `Failed to read document: ${error.message}` };
     }
   } else if (documentId) {
+    // F-002: No PHI scan here — a stored document was already scanned and gated
+    // at upload time in the Document Hub (see uploadDocument), so re-scanning
+    // would be redundant. Only the fresh-upload path below needs a scan.
     try {
       const session = await auth();
       if (!session?.user?.id) {
@@ -550,6 +562,43 @@ export async function generateCourseAndQuizV46(
   const session = await auth();
   if (!session?.user?.id) {
     return { error: 'Unauthorized' };
+  }
+
+  const userId = session.user.id;
+
+  // F-018: rate-limit the expensive AI generation pipeline per user (10 / 10 min).
+  const rate = await checkRateLimit(`ai-generate:${userId}`, 10, 600);
+  if (!rate.allowed) {
+    logger.warn({ msg: '[v4.6] Course generation rate limit exceeded', userId });
+    return {
+      error: `Too many generation requests. Please wait ${rate.resetInSeconds} seconds and try again.`,
+    };
+  }
+
+  // F-002: PHI gate for the course-wizard UPLOAD path. Freshly-uploaded file
+  // bytes have not been scanned yet (unlike the documentId path above), so we
+  // scan here and block on PHI or scan-failure — mirroring the Document-Hub
+  // gate in uploadDocument. This runs BEFORE any Job is created or scheduled.
+  if (file) {
+    let phiResult;
+    try {
+      phiResult = await scanText(sourceText);
+    } catch (err) {
+      logger.error({ msg: '[v4.6] PHI scan error on upload path', err, userId });
+      return { error: 'We could not verify this document for PHI. Please try again in a moment.' };
+    }
+
+    if (phiResult.scanFailed) {
+      logger.warn({ msg: '[v4.6] Upload blocked — PHI scan could not complete', userId });
+      return { error: 'We could not verify this document for PHI. Please try again in a moment.' };
+    }
+
+    if (phiResult.hasPHI) {
+      logger.warn({ msg: '[v4.6] Upload blocked — PHI detected', userId });
+      return {
+        error: 'This document appears to contain PHI (e.g. SSN/DOB/MRN) and cannot be uploaded.',
+      };
+    }
   }
 
   const job = await prisma.job.create({

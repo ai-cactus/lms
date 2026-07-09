@@ -13,6 +13,7 @@ import {
   Loader2,
   PauseCircle,
   Play,
+  BadgePercent,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getPauseState } from '@/lib/billing';
@@ -53,6 +54,13 @@ interface Subscription {
   cancelAtPeriodEnd: boolean;
   pausedAt: string | null;
   pauseEndsAt: string | null;
+  discountPromoCode: string | null;
+  discountCouponName: string | null;
+  discountPercentOff: number | null;
+  discountAmountOff: number | null;
+  discountCurrency: string | null;
+  discountDuration: string | null;
+  discountEndsAt: string | null;
 }
 
 interface OverviewData {
@@ -100,6 +108,28 @@ function formatDate(dateString: string): string {
 function getPlanDisplayName(planKey: string): string {
   const plan = BILLING_PLANS.find((p) => p.key === planKey);
   return plan ? `${plan.name} Plan` : planKey;
+}
+
+// Human-readable label for the active Stripe discount, or null when there is no
+// live discount. A `discountEndsAt` in the past is treated as no discount to
+// cover the window between expiry and the clearing webhook.
+function getActiveDiscountLabel(sub: Subscription): string | null {
+  const hasDiscount = sub.discountPercentOff !== null || sub.discountAmountOff !== null;
+  if (!hasDiscount) return null;
+  if (sub.discountEndsAt && new Date(sub.discountEndsAt).getTime() < Date.now()) return null;
+
+  const amount =
+    sub.discountPercentOff !== null
+      ? `${sub.discountPercentOff}% off`
+      : `${formatAmount(sub.discountAmountOff ?? 0, sub.discountCurrency ?? 'usd')} off`;
+
+  if (sub.discountDuration === 'repeating') {
+    return sub.discountEndsAt ? `${amount} until ${formatDate(sub.discountEndsAt)}` : amount;
+  }
+  if (sub.discountDuration === 'once') {
+    return `${amount} on your next invoice`;
+  }
+  return amount;
 }
 
 interface Props {
@@ -227,6 +257,19 @@ export default function OverviewTab({ onChangeTab }: Props) {
                   subscription.billingCycle.slice(1)}{' '}
                 billing cycle
               </li>
+              {getActiveDiscountLabel(subscription) && (
+                <li className="flex items-center gap-3 text-sm text-text-secondary">
+                  <BadgePercent size={18} className="shrink-0 text-success" />
+                  <span>
+                    <span className="font-medium text-foreground">
+                      {subscription.discountPromoCode ??
+                        subscription.discountCouponName ??
+                        'Discount'}
+                    </span>{' '}
+                    — {getActiveDiscountLabel(subscription)}
+                  </span>
+                </li>
+              )}
               {!subscription.cancelAtPeriodEnd && !isPaused && (
                 <li className="flex items-center gap-3 text-sm text-text-secondary">
                   <Calendar size={18} className="shrink-0 text-text-secondary" />

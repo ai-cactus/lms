@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import stripe from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
 import { logger } from '@/lib/logger';
 
 // DELETE /api/billing/payment-methods/[id] — detach a saved payment method
@@ -14,6 +14,8 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const stripe = getStripeClient();
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },

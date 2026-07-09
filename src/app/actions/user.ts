@@ -302,11 +302,15 @@ export async function changePassword(data: { currentPassword?: string; newPasswo
 
     const hashedNewPassword = await bcrypt.hash(newPassword, 12);
 
+    // F-059: bump sessionVersion so changing the password also invalidates every
+    // other existing session (the jwt callback compares the token's version on
+    // decode), consistent with the password-reset flows in actions/auth.ts.
     await prisma.user.update({
       where: { id: session.user.id },
       data: {
         password: hashedNewPassword,
         passwordResetRequired: false,
+        sessionVersion: { increment: 1 },
       },
     });
 

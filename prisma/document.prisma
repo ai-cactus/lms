@@ -29,6 +29,7 @@ model DocumentVersion {
   mapping        MappingEvidence[]
   phiReport      PhiReport?
 
+  @@index([documentId])
   @@map("document_versions")
 }
 
@@ -37,6 +38,7 @@ model PhiReport {
   documentVersionId String          @unique @map("document_version_id")
   hasPHI            Boolean         @default(false) @map("has_phi")
   detectedEntities  Json?           @map("detected_entities")
+  scannerVersion    String?         @default("v2") @map("scanner_version")
   scannedAt         DateTime        @default(now()) @map("scanned_at")
   documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
 
@@ -54,5 +56,6 @@ model MappingEvidence {
   updatedAt         DateTime        @updatedAt @map("updated_at")
   documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
 
+  @@index([documentVersionId])
   @@map("mapping_evidence")
 }

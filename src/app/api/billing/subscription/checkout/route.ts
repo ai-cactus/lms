@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import stripe from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
+import { guardApiSession } from '@/lib/auth-guard';
 import { BILLING_PLANS, BillingCycle } from '@/lib/billing-plans';
 import { logger } from '@/lib/logger';
+import { audit, getClientContext } from '@/lib/audit';
 import type { SubscriptionPlan, SubscriptionBillingCycle } from '@/generated/prisma/enums';
 
 // POST /api/billing/subscription/checkout — creates a Checkout session for a new
@@ -12,9 +14,17 @@ import type { SubscriptionPlan, SubscriptionBillingCycle } from '@/generated/pri
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
+    // F-012: enforce authentication + MFA step-up + admin role at the data
+    // layer, consistent with the shared guard used across billing routes.
+    const denied = guardApiSession(session, { role: 'admin' });
+    if (denied) return denied;
+    // The guard guarantees an authenticated session past this point; narrow the
+    // id for the DB lookup (guardApiSession does not narrow the session type).
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const stripe = getStripeClient();
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
@@ -168,6 +178,18 @@ export async function POST(request: NextRequest) {
         billingCycle,
       });
 
+      // F-001: record the sensitive billing mutation on the authorized path.
+      await audit({
+        action: 'billing.subscription.checkout',
+        actorId: session.user.id,
+        actorRole: user.role,
+        organizationId: user.organizationId,
+        targetType: 'subscription',
+        targetId: existingSubscription.id,
+        metadata: { planKey, billingCycle, mode: 'swap' },
+        ...getClientContext(request.headers),
+      });
+
       return NextResponse.json({ updated: true, message: 'Your plan has been updated.' });
     }
 
@@ -175,6 +197,9 @@ export async function POST(request: NextRequest) {
       mode: 'subscription',
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
+      // Let org admins redeem dashboard-created promotion codes on Stripe's
+      // hosted page. Mutually exclusive with the `discounts` param (not used).
+      allow_promotion_codes: true,
       success_url: `${appUrl}/dashboard/billing?tab=overview&checkout=success`,
       cancel_url: `${appUrl}/dashboard/billing?tab=subscription`,
       metadata: {
@@ -196,6 +221,17 @@ export async function POST(request: NextRequest) {
       organizationId: user.organizationId,
       planKey,
       billingCycle,
+    });
+
+    // F-001: record the sensitive billing action (new subscription checkout).
+    await audit({
+      action: 'billing.subscription.checkout',
+      actorId: session.user.id,
+      actorRole: user.role,
+      organizationId: user.organizationId,
+      targetType: 'subscription',
+      metadata: { planKey, billingCycle, mode: 'checkout' },
+      ...getClientContext(request.headers),
     });
 
     return NextResponse.json({ url: checkoutSession.url });

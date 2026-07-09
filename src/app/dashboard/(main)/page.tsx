@@ -2,16 +2,21 @@ import React from 'react';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
-import DashboardCharts from '@/components/dashboard/DashboardCharts';
+import DashboardCharts from '@/components/dashboard/DashboardChartsDynamic';
 import MyCoursesTable from '@/components/dashboard/MyCoursesTable';
 import { getDashboardData } from '@/app/actions/course';
 import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
 import DashboardCreateCourseButton from '@/components/dashboard/DashboardCreateCourseButton';
 import AvailableCoursesTable from '@/components/dashboard/courses/AvailableCoursesTable';
+import StatusTrackerOverview from '@/components/dashboard/status-tracker/StatusTrackerOverview';
 import { listAvailableVideoCourses } from '@/app/actions/offering';
 import { hasActiveBilling } from '@/lib/billing';
 import { isWorkerRole } from '@/lib/rbac/role-utils';
+import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
+import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
 import { BookOpen, Users, Activity } from 'lucide-react';
+
+const HARD_THRESHOLD_DAYS = REMINDER_STAGE_DEFAULTS.HARD_ESCALATION.offsetDays;
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -27,6 +32,7 @@ export default async function DashboardPage() {
     prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
+        organizationId: true,
         organization: {
           select: { subscription: { select: { status: true, pausedAt: true } } },
         },
@@ -36,6 +42,21 @@ export default async function DashboardPage() {
   ]);
 
   const hasBilling = hasActiveBilling(user?.organization?.subscription);
+
+  // Status Tracker overview (admin-only page; workers are already redirected).
+  // Fetched after the user lookup since it needs the resolved organizationId.
+  const statusTracker = user?.organizationId
+    ? await getStatusTrackerSummaryForOrg(user.organizationId)
+    : { overdueCount: 0, hardEscalationCount: 0, rows: [] };
+
+  // Serialize Date across the server/client boundary (same pattern as the full page).
+  const statusTrackerRows = statusTracker.rows.map((row) => ({
+    enrollmentId: row.enrollmentId,
+    workerName: row.workerName,
+    courseTitle: row.courseTitle,
+    dueAt: row.dueAt.toISOString(),
+    daysOverdue: row.daysOverdue,
+  }));
 
   const totalCourses = stats?.totalCourses || 0;
   const totalStaffAssigned = stats?.totalStaffAssigned || 0;
@@ -89,6 +110,13 @@ export default async function DashboardPage() {
 
       {/* Available Video Courses (global catalog to offer from) */}
       <AvailableCoursesTable courses={availableVideoCourses} />
+
+      <StatusTrackerOverview
+        overdueCount={statusTracker.overdueCount}
+        hardEscalationCount={statusTracker.hardEscalationCount}
+        hardThresholdDays={HARD_THRESHOLD_DAYS}
+        rows={statusTrackerRows}
+      />
 
       <DashboardEmptyState totalCourses={totalCourses} />
     </div>

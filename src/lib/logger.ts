@@ -11,6 +11,22 @@
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
+/**
+ * Correlation-ID provider, registered at runtime by the Node-only request
+ * context module (src/lib/request-context.ts) via setCorrelationIdProvider().
+ *
+ * The logger must stay usable in the browser and the Edge middleware runtime,
+ * neither of which can load `node:async_hooks`. Statically importing the
+ * request-context module here would pull that Node builtin into client/edge
+ * bundles and break the build, so we keep the logger dependency-free and let
+ * the server register a provider only where AsyncLocalStorage is available.
+ */
+let correlationIdProvider: (() => string | undefined) | null = null;
+
+export function setCorrelationIdProvider(provider: () => string | undefined): void {
+  correlationIdProvider = provider;
+}
+
 interface LogPayload {
   msg: string;
   err?: unknown;
@@ -59,10 +75,15 @@ function emit(level: LogLevel, payload: LogPayload): void {
 
   const { err, ...rest } = payload;
 
+  // Correlation ID is request/job-scoped, resolved through the provider the
+  // Node server registers (undefined in the browser/edge or outside a scope).
+  const correlationId = correlationIdProvider?.();
+
   const entry: Record<string, unknown> = {
     level,
     time: new Date().toISOString(),
     env: process.env.NODE_ENV,
+    ...(correlationId ? { correlationId } : {}),
     ...rest,
   };
 

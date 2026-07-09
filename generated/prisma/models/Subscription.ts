@@ -20,8 +20,20 @@ export type SubscriptionModel = runtime.Types.Result.DefaultSelection<Prisma.$Su
 
 export type AggregateSubscription = {
   _count: SubscriptionCountAggregateOutputType | null
+  _avg: SubscriptionAvgAggregateOutputType | null
+  _sum: SubscriptionSumAggregateOutputType | null
   _min: SubscriptionMinAggregateOutputType | null
   _max: SubscriptionMaxAggregateOutputType | null
+}
+
+export type SubscriptionAvgAggregateOutputType = {
+  discountPercentOff: number | null
+  discountAmountOff: number | null
+}
+
+export type SubscriptionSumAggregateOutputType = {
+  discountPercentOff: number | null
+  discountAmountOff: number | null
 }
 
 export type SubscriptionMinAggregateOutputType = {
@@ -37,6 +49,13 @@ export type SubscriptionMinAggregateOutputType = {
   cancelAtPeriodEnd: boolean | null
   pausedAt: Date | null
   pauseEndsAt: Date | null
+  discountPromoCode: string | null
+  discountCouponName: string | null
+  discountPercentOff: number | null
+  discountAmountOff: number | null
+  discountCurrency: string | null
+  discountDuration: string | null
+  discountEndsAt: Date | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -54,6 +73,13 @@ export type SubscriptionMaxAggregateOutputType = {
   cancelAtPeriodEnd: boolean | null
   pausedAt: Date | null
   pauseEndsAt: Date | null
+  discountPromoCode: string | null
+  discountCouponName: string | null
+  discountPercentOff: number | null
+  discountAmountOff: number | null
+  discountCurrency: string | null
+  discountDuration: string | null
+  discountEndsAt: Date | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -71,11 +97,28 @@ export type SubscriptionCountAggregateOutputType = {
   cancelAtPeriodEnd: number
   pausedAt: number
   pauseEndsAt: number
+  discountPromoCode: number
+  discountCouponName: number
+  discountPercentOff: number
+  discountAmountOff: number
+  discountCurrency: number
+  discountDuration: number
+  discountEndsAt: number
   createdAt: number
   updatedAt: number
   _all: number
 }
 
+
+export type SubscriptionAvgAggregateInputType = {
+  discountPercentOff?: true
+  discountAmountOff?: true
+}
+
+export type SubscriptionSumAggregateInputType = {
+  discountPercentOff?: true
+  discountAmountOff?: true
+}
 
 export type SubscriptionMinAggregateInputType = {
   id?: true
@@ -90,6 +133,13 @@ export type SubscriptionMinAggregateInputType = {
   cancelAtPeriodEnd?: true
   pausedAt?: true
   pauseEndsAt?: true
+  discountPromoCode?: true
+  discountCouponName?: true
+  discountPercentOff?: true
+  discountAmountOff?: true
+  discountCurrency?: true
+  discountDuration?: true
+  discountEndsAt?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -107,6 +157,13 @@ export type SubscriptionMaxAggregateInputType = {
   cancelAtPeriodEnd?: true
   pausedAt?: true
   pauseEndsAt?: true
+  discountPromoCode?: true
+  discountCouponName?: true
+  discountPercentOff?: true
+  discountAmountOff?: true
+  discountCurrency?: true
+  discountDuration?: true
+  discountEndsAt?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -124,6 +181,13 @@ export type SubscriptionCountAggregateInputType = {
   cancelAtPeriodEnd?: true
   pausedAt?: true
   pauseEndsAt?: true
+  discountPromoCode?: true
+  discountCouponName?: true
+  discountPercentOff?: true
+  discountAmountOff?: true
+  discountCurrency?: true
+  discountDuration?: true
+  discountEndsAt?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -167,6 +231,18 @@ export type SubscriptionAggregateArgs<ExtArgs extends runtime.Types.Extensions.I
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    * 
+   * Select which fields to average
+  **/
+  _avg?: SubscriptionAvgAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
+   * Select which fields to sum
+  **/
+  _sum?: SubscriptionSumAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
    * Select which fields to find the minimum value
   **/
   _min?: SubscriptionMinAggregateInputType
@@ -197,6 +273,8 @@ export type SubscriptionGroupByArgs<ExtArgs extends runtime.Types.Extensions.Int
   take?: number
   skip?: number
   _count?: SubscriptionCountAggregateInputType | true
+  _avg?: SubscriptionAvgAggregateInputType
+  _sum?: SubscriptionSumAggregateInputType
   _min?: SubscriptionMinAggregateInputType
   _max?: SubscriptionMaxAggregateInputType
 }
@@ -214,9 +292,18 @@ export type SubscriptionGroupByOutputType = {
   cancelAtPeriodEnd: boolean
   pausedAt: Date | null
   pauseEndsAt: Date | null
+  discountPromoCode: string | null
+  discountCouponName: string | null
+  discountPercentOff: number | null
+  discountAmountOff: number | null
+  discountCurrency: string | null
+  discountDuration: string | null
+  discountEndsAt: Date | null
   createdAt: Date
   updatedAt: Date
   _count: SubscriptionCountAggregateOutputType | null
+  _avg: SubscriptionAvgAggregateOutputType | null
+  _sum: SubscriptionSumAggregateOutputType | null
   _min: SubscriptionMinAggregateOutputType | null
   _max: SubscriptionMaxAggregateOutputType | null
 }
@@ -252,6 +339,13 @@ export type SubscriptionWhereInput = {
   cancelAtPeriodEnd?: Prisma.BoolFilter<"Subscription"> | boolean
   pausedAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
   pauseEndsAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
+  discountPromoCode?: Prisma.StringNullableFilter<"Subscription"> | string | null
+  discountCouponName?: Prisma.StringNullableFilter<"Subscription"> | string | null
+  discountPercentOff?: Prisma.FloatNullableFilter<"Subscription"> | number | null
+  discountAmountOff?: Prisma.IntNullableFilter<"Subscription"> | number | null
+  discountCurrency?: Prisma.StringNullableFilter<"Subscription"> | string | null
+  discountDuration?: Prisma.StringNullableFilter<"Subscription"> | string | null
+  discountEndsAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Subscription"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Subscription"> | Date | string
   organization?: Prisma.XOR<Prisma.OrganizationScalarRelationFilter, Prisma.OrganizationWhereInput>
@@ -270,6 +364,13 @@ export type SubscriptionOrderByWithRelationInput = {
   cancelAtPeriodEnd?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   pauseEndsAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountPromoCode?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountCouponName?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountPercentOff?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountAmountOff?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountCurrency?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountDuration?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountEndsAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   organization?: Prisma.OrganizationOrderByWithRelationInput
@@ -291,6 +392,13 @@ export type SubscriptionWhereUniqueInput = Prisma.AtLeast<{
   cancelAtPeriodEnd?: Prisma.BoolFilter<"Subscription"> | boolean
   pausedAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
   pauseEndsAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
+  discountPromoCode?: Prisma.StringNullableFilter<"Subscription"> | string | null
+  discountCouponName?: Prisma.StringNullableFilter<"Subscription"> | string | null
+  discountPercentOff?: Prisma.FloatNullableFilter<"Subscription"> | number | null
+  discountAmountOff?: Prisma.IntNullableFilter<"Subscription"> | number | null
+  discountCurrency?: Prisma.StringNullableFilter<"Subscription"> | string | null
+  discountDuration?: Prisma.StringNullableFilter<"Subscription"> | string | null
+  discountEndsAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Subscription"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Subscription"> | Date | string
   organization?: Prisma.XOR<Prisma.OrganizationScalarRelationFilter, Prisma.OrganizationWhereInput>
@@ -309,11 +417,20 @@ export type SubscriptionOrderByWithAggregationInput = {
   cancelAtPeriodEnd?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   pauseEndsAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountPromoCode?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountCouponName?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountPercentOff?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountAmountOff?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountCurrency?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountDuration?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountEndsAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.SubscriptionCountOrderByAggregateInput
+  _avg?: Prisma.SubscriptionAvgOrderByAggregateInput
   _max?: Prisma.SubscriptionMaxOrderByAggregateInput
   _min?: Prisma.SubscriptionMinOrderByAggregateInput
+  _sum?: Prisma.SubscriptionSumOrderByAggregateInput
 }
 
 export type SubscriptionScalarWhereWithAggregatesInput = {
@@ -332,6 +449,13 @@ export type SubscriptionScalarWhereWithAggregatesInput = {
   cancelAtPeriodEnd?: Prisma.BoolWithAggregatesFilter<"Subscription"> | boolean
   pausedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Subscription"> | Date | string | null
   pauseEndsAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Subscription"> | Date | string | null
+  discountPromoCode?: Prisma.StringNullableWithAggregatesFilter<"Subscription"> | string | null
+  discountCouponName?: Prisma.StringNullableWithAggregatesFilter<"Subscription"> | string | null
+  discountPercentOff?: Prisma.FloatNullableWithAggregatesFilter<"Subscription"> | number | null
+  discountAmountOff?: Prisma.IntNullableWithAggregatesFilter<"Subscription"> | number | null
+  discountCurrency?: Prisma.StringNullableWithAggregatesFilter<"Subscription"> | string | null
+  discountDuration?: Prisma.StringNullableWithAggregatesFilter<"Subscription"> | string | null
+  discountEndsAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Subscription"> | Date | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Subscription"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Subscription"> | Date | string
 }
@@ -348,6 +472,13 @@ export type SubscriptionCreateInput = {
   cancelAtPeriodEnd?: boolean
   pausedAt?: Date | string | null
   pauseEndsAt?: Date | string | null
+  discountPromoCode?: string | null
+  discountCouponName?: string | null
+  discountPercentOff?: number | null
+  discountAmountOff?: number | null
+  discountCurrency?: string | null
+  discountDuration?: string | null
+  discountEndsAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   organization: Prisma.OrganizationCreateNestedOneWithoutSubscriptionInput
@@ -366,6 +497,13 @@ export type SubscriptionUncheckedCreateInput = {
   cancelAtPeriodEnd?: boolean
   pausedAt?: Date | string | null
   pauseEndsAt?: Date | string | null
+  discountPromoCode?: string | null
+  discountCouponName?: string | null
+  discountPercentOff?: number | null
+  discountAmountOff?: number | null
+  discountCurrency?: string | null
+  discountDuration?: string | null
+  discountEndsAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -382,6 +520,13 @@ export type SubscriptionUpdateInput = {
   cancelAtPeriodEnd?: Prisma.BoolFieldUpdateOperationsInput | boolean
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  discountPromoCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountCouponName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountPercentOff?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  discountAmountOff?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  discountCurrency?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountDuration?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   organization?: Prisma.OrganizationUpdateOneRequiredWithoutSubscriptionNestedInput
@@ -400,6 +545,13 @@ export type SubscriptionUncheckedUpdateInput = {
   cancelAtPeriodEnd?: Prisma.BoolFieldUpdateOperationsInput | boolean
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  discountPromoCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountCouponName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountPercentOff?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  discountAmountOff?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  discountCurrency?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountDuration?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -417,6 +569,13 @@ export type SubscriptionCreateManyInput = {
   cancelAtPeriodEnd?: boolean
   pausedAt?: Date | string | null
   pauseEndsAt?: Date | string | null
+  discountPromoCode?: string | null
+  discountCouponName?: string | null
+  discountPercentOff?: number | null
+  discountAmountOff?: number | null
+  discountCurrency?: string | null
+  discountDuration?: string | null
+  discountEndsAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -433,6 +592,13 @@ export type SubscriptionUpdateManyMutationInput = {
   cancelAtPeriodEnd?: Prisma.BoolFieldUpdateOperationsInput | boolean
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  discountPromoCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountCouponName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountPercentOff?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  discountAmountOff?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  discountCurrency?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountDuration?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -450,6 +616,13 @@ export type SubscriptionUncheckedUpdateManyInput = {
   cancelAtPeriodEnd?: Prisma.BoolFieldUpdateOperationsInput | boolean
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  discountPromoCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountCouponName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountPercentOff?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  discountAmountOff?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  discountCurrency?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountDuration?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -472,8 +645,20 @@ export type SubscriptionCountOrderByAggregateInput = {
   cancelAtPeriodEnd?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrder
   pauseEndsAt?: Prisma.SortOrder
+  discountPromoCode?: Prisma.SortOrder
+  discountCouponName?: Prisma.SortOrder
+  discountPercentOff?: Prisma.SortOrder
+  discountAmountOff?: Prisma.SortOrder
+  discountCurrency?: Prisma.SortOrder
+  discountDuration?: Prisma.SortOrder
+  discountEndsAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+}
+
+export type SubscriptionAvgOrderByAggregateInput = {
+  discountPercentOff?: Prisma.SortOrder
+  discountAmountOff?: Prisma.SortOrder
 }
 
 export type SubscriptionMaxOrderByAggregateInput = {
@@ -489,6 +674,13 @@ export type SubscriptionMaxOrderByAggregateInput = {
   cancelAtPeriodEnd?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrder
   pauseEndsAt?: Prisma.SortOrder
+  discountPromoCode?: Prisma.SortOrder
+  discountCouponName?: Prisma.SortOrder
+  discountPercentOff?: Prisma.SortOrder
+  discountAmountOff?: Prisma.SortOrder
+  discountCurrency?: Prisma.SortOrder
+  discountDuration?: Prisma.SortOrder
+  discountEndsAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -506,8 +698,20 @@ export type SubscriptionMinOrderByAggregateInput = {
   cancelAtPeriodEnd?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrder
   pauseEndsAt?: Prisma.SortOrder
+  discountPromoCode?: Prisma.SortOrder
+  discountCouponName?: Prisma.SortOrder
+  discountPercentOff?: Prisma.SortOrder
+  discountAmountOff?: Prisma.SortOrder
+  discountCurrency?: Prisma.SortOrder
+  discountDuration?: Prisma.SortOrder
+  discountEndsAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+}
+
+export type SubscriptionSumOrderByAggregateInput = {
+  discountPercentOff?: Prisma.SortOrder
+  discountAmountOff?: Prisma.SortOrder
 }
 
 export type SubscriptionCreateNestedOneWithoutOrganizationInput = {
@@ -554,6 +758,14 @@ export type EnumSubscriptionStatusFieldUpdateOperationsInput = {
   set?: $Enums.SubscriptionStatus
 }
 
+export type NullableFloatFieldUpdateOperationsInput = {
+  set?: number | null
+  increment?: number
+  decrement?: number
+  multiply?: number
+  divide?: number
+}
+
 export type SubscriptionCreateWithoutOrganizationInput = {
   id?: string
   stripeSubscriptionId: string
@@ -566,6 +778,13 @@ export type SubscriptionCreateWithoutOrganizationInput = {
   cancelAtPeriodEnd?: boolean
   pausedAt?: Date | string | null
   pauseEndsAt?: Date | string | null
+  discountPromoCode?: string | null
+  discountCouponName?: string | null
+  discountPercentOff?: number | null
+  discountAmountOff?: number | null
+  discountCurrency?: string | null
+  discountDuration?: string | null
+  discountEndsAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -582,6 +801,13 @@ export type SubscriptionUncheckedCreateWithoutOrganizationInput = {
   cancelAtPeriodEnd?: boolean
   pausedAt?: Date | string | null
   pauseEndsAt?: Date | string | null
+  discountPromoCode?: string | null
+  discountCouponName?: string | null
+  discountPercentOff?: number | null
+  discountAmountOff?: number | null
+  discountCurrency?: string | null
+  discountDuration?: string | null
+  discountEndsAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -614,6 +840,13 @@ export type SubscriptionUpdateWithoutOrganizationInput = {
   cancelAtPeriodEnd?: Prisma.BoolFieldUpdateOperationsInput | boolean
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  discountPromoCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountCouponName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountPercentOff?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  discountAmountOff?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  discountCurrency?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountDuration?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -630,6 +863,13 @@ export type SubscriptionUncheckedUpdateWithoutOrganizationInput = {
   cancelAtPeriodEnd?: Prisma.BoolFieldUpdateOperationsInput | boolean
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  discountPromoCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountCouponName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountPercentOff?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
+  discountAmountOff?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  discountCurrency?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountDuration?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -649,6 +889,13 @@ export type SubscriptionSelect<ExtArgs extends runtime.Types.Extensions.Internal
   cancelAtPeriodEnd?: boolean
   pausedAt?: boolean
   pauseEndsAt?: boolean
+  discountPromoCode?: boolean
+  discountCouponName?: boolean
+  discountPercentOff?: boolean
+  discountAmountOff?: boolean
+  discountCurrency?: boolean
+  discountDuration?: boolean
+  discountEndsAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
@@ -667,6 +914,13 @@ export type SubscriptionSelectCreateManyAndReturn<ExtArgs extends runtime.Types.
   cancelAtPeriodEnd?: boolean
   pausedAt?: boolean
   pauseEndsAt?: boolean
+  discountPromoCode?: boolean
+  discountCouponName?: boolean
+  discountPercentOff?: boolean
+  discountAmountOff?: boolean
+  discountCurrency?: boolean
+  discountDuration?: boolean
+  discountEndsAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
@@ -685,6 +939,13 @@ export type SubscriptionSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.
   cancelAtPeriodEnd?: boolean
   pausedAt?: boolean
   pauseEndsAt?: boolean
+  discountPromoCode?: boolean
+  discountCouponName?: boolean
+  discountPercentOff?: boolean
+  discountAmountOff?: boolean
+  discountCurrency?: boolean
+  discountDuration?: boolean
+  discountEndsAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
@@ -703,11 +964,18 @@ export type SubscriptionSelectScalar = {
   cancelAtPeriodEnd?: boolean
   pausedAt?: boolean
   pauseEndsAt?: boolean
+  discountPromoCode?: boolean
+  discountCouponName?: boolean
+  discountPercentOff?: boolean
+  discountAmountOff?: boolean
+  discountCurrency?: boolean
+  discountDuration?: boolean
+  discountEndsAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type SubscriptionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "stripeSubscriptionId" | "stripePriceId" | "plan" | "billingCycle" | "status" | "currentPeriodStart" | "currentPeriodEnd" | "cancelAtPeriodEnd" | "pausedAt" | "pauseEndsAt" | "createdAt" | "updatedAt", ExtArgs["result"]["subscription"]>
+export type SubscriptionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "stripeSubscriptionId" | "stripePriceId" | "plan" | "billingCycle" | "status" | "currentPeriodStart" | "currentPeriodEnd" | "cancelAtPeriodEnd" | "pausedAt" | "pauseEndsAt" | "discountPromoCode" | "discountCouponName" | "discountPercentOff" | "discountAmountOff" | "discountCurrency" | "discountDuration" | "discountEndsAt" | "createdAt" | "updatedAt", ExtArgs["result"]["subscription"]>
 export type SubscriptionInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
 }
@@ -736,6 +1004,13 @@ export type $SubscriptionPayload<ExtArgs extends runtime.Types.Extensions.Intern
     cancelAtPeriodEnd: boolean
     pausedAt: Date | null
     pauseEndsAt: Date | null
+    discountPromoCode: string | null
+    discountCouponName: string | null
+    discountPercentOff: number | null
+    discountAmountOff: number | null
+    discountCurrency: string | null
+    discountDuration: string | null
+    discountEndsAt: Date | null
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["subscription"]>
@@ -1174,6 +1449,13 @@ export interface SubscriptionFieldRefs {
   readonly cancelAtPeriodEnd: Prisma.FieldRef<"Subscription", 'Boolean'>
   readonly pausedAt: Prisma.FieldRef<"Subscription", 'DateTime'>
   readonly pauseEndsAt: Prisma.FieldRef<"Subscription", 'DateTime'>
+  readonly discountPromoCode: Prisma.FieldRef<"Subscription", 'String'>
+  readonly discountCouponName: Prisma.FieldRef<"Subscription", 'String'>
+  readonly discountPercentOff: Prisma.FieldRef<"Subscription", 'Float'>
+  readonly discountAmountOff: Prisma.FieldRef<"Subscription", 'Int'>
+  readonly discountCurrency: Prisma.FieldRef<"Subscription", 'String'>
+  readonly discountDuration: Prisma.FieldRef<"Subscription", 'String'>
+  readonly discountEndsAt: Prisma.FieldRef<"Subscription", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"Subscription", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Subscription", 'DateTime'>
 }

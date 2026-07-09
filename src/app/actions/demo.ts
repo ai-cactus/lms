@@ -1,8 +1,10 @@
 'use server';
 
 import { z } from 'zod';
+import { headers } from 'next/headers';
 import { sendDemoRequestEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
+import { verifyCaptcha } from '@/lib/captcha';
 
 const demoFormSchema = z.object({
   fullName: z.string().min(1, 'Full Name is required'),
@@ -17,6 +19,19 @@ export type DemoFormData = z.infer<typeof demoFormSchema>;
 
 export async function submitDemoRequest(prevState: unknown, formData: FormData) {
   try {
+    // Bot verification — no-op unless hCaptcha is enabled (see src/lib/captcha.ts).
+    const headersList = await headers();
+    const ip =
+      headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      headersList.get('x-real-ip') ??
+      'unknown';
+    const captchaToken = (formData.get('captchaToken') as string | null) ?? undefined;
+    const captchaValid = await verifyCaptcha(captchaToken, ip);
+    if (!captchaValid) {
+      logger.warn({ msg: '[demo] Demo request captcha verification failed', ip });
+      return { success: false, error: 'Captcha verification failed. Please try again.' };
+    }
+
     const data = {
       fullName: formData.get('fullName'),
       email: formData.get('email'),
