@@ -14,7 +14,7 @@
  *   4. Anything older than the grace window AND not in that set is orphaned.
  *   5. Delete the orphans in small batches (per-item failures are isolated).
  *
- * Note on transcode: scripts/transcode-worker.mjs writes a NEW normalized object
+ * Note on transcode: scripts/transcode-worker.ts writes a NEW normalized object
  * under `system/videos/normalized/...` and repoints the DB at it. The normalized
  * object is therefore protected (its URI is in the DB), while the original
  * upload becomes unreferenced and is intentionally reclaimed by this sweep once

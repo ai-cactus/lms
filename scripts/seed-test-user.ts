@@ -1,24 +1,13 @@
 /*
- * seed-test-user.js — seeds a test organisation with one admin + three workers
+ * seed-test-user.ts — seeds a test organisation with one admin + three workers
  * and a sample document, for local/e2e use.
  *
- * Standalone Node CJS script (not part of the app bundle, not linted with src/),
- * so it uses console output and @prisma/client directly.
- *
- * Usage: node scripts/seed-test-user.js
+ * Usage (pass the env file of the target environment):
+ *   npm run script .env.local seed-test-user.ts
  */
-/* eslint-disable no-console */
-const path = require('path');
-// Load DATABASE_URL for a standalone node run (app/Next loads env itself).
-require('dotenv').config({ path: path.join(__dirname, '..', '.env.local') });
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-const { PrismaPg } = require('@prisma/adapter-pg');
-const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
-
-// Prisma 7.8 (client engine) requires a driver adapter — mirror src/db/index.ts.
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
+import { prisma } from '@/db/index';
+import { UserRole } from '@/generated/prisma/enums';
+import bcrypt from 'bcryptjs';
 
 async function main() {
   const org = await prisma.organization.upsert({
@@ -36,11 +25,11 @@ async function main() {
   const hashed = await bcrypt.hash('Admin123!', 10);
   const admin = await prisma.user.upsert({
     where: { email: 'admin@test.com' },
-    update: { password: hashed, organizationId: org.id, role: 'owner', emailVerified: true },
+    update: { password: hashed, organizationId: org.id, role: UserRole.owner, emailVerified: true },
     create: {
       email: 'admin@test.com',
       password: hashed,
-      role: 'owner',
+      role: UserRole.owner,
       emailVerified: true,
       organizationId: org.id,
     },
@@ -61,7 +50,11 @@ async function main() {
 
   const workerHash = await bcrypt.hash('Worker123!', 10);
   // Seed a spread of worker-category roles for fixture variety.
-  const workerRoles = ['therapist_clinician', 'nurse', 'front_desk_admin'];
+  const workerRoles: UserRole[] = [
+    UserRole.therapist_clinician,
+    UserRole.nurse,
+    UserRole.front_desk_admin,
+  ];
   for (let i = 1; i <= 3; i++) {
     const w = await prisma.user.upsert({
       where: { email: `worker${i}@test.com` },
@@ -120,7 +113,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error(e.message);
+    console.error(e instanceof Error ? e.message : String(e));
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());
