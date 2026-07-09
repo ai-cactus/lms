@@ -84,11 +84,44 @@ function stripeSubscription(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * Minimal invoice event payload. `period_start`/`period_end` default to a
+ * near-equal pair (mirroring real Stripe invoice-assembly-time semantics) so
+ * a test that forgot to assert on the derived line-item period would still
+ * fail loudly rather than accidentally pass. The single line item carries the
+ * real 30-day service window that `deriveInvoiceServicePeriod` should surface
+ * instead.
+ */
+function stripeInvoice(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'in_test',
+    customer: 'cus_1',
+    number: 'INV-001',
+    status: 'paid',
+    amount_paid: 5000,
+    currency: 'usd',
+    hosted_invoice_url: 'https://pay.stripe.com/invoice/test',
+    invoice_pdf: 'https://pay.stripe.com/invoice/test.pdf',
+    period_start: 1_700_000_050,
+    period_end: 1_700_000_060, // near-equal to period_start — the bug this fix guards against
+    lines: {
+      data: [
+        {
+          period: { start: 1_700_000_000, end: 1_702_592_000 },
+          parent: { type: 'subscription_item_details' },
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.organization.findUnique.mockResolvedValue({ id: 'org-1' });
   prismaMock.organization.update.mockResolvedValue({});
   prismaMock.subscription.upsert.mockResolvedValue({});
+  prismaMock.invoice.upsert.mockResolvedValue({});
   // Idempotency ledger: default to "not yet seen" so events process, and a
   // successful record.
   prismaMock.processedWebhookEvent.findUnique.mockResolvedValue(null);
@@ -399,5 +432,85 @@ describe('POST /api/webhooks/stripe — discount persistence', () => {
     expect(res.status).toBe(500);
     expect(prismaMock.subscription.upsert).not.toHaveBeenCalled();
     expect(prismaMock.processedWebhookEvent.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/webhooks/stripe — invoice line-item period derivation', () => {
+  it('invoice.paid persists the line-item-derived period (not the near-equal invoice-level fields) in BOTH create and update', async () => {
+    const incoming = stripeInvoice();
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_invoice_paid',
+      type: 'invoice.paid',
+      data: { object: incoming },
+    });
+
+    const res = await POST(makeReq('{}'));
+
+    expect(res.status).toBe(200);
+    const derivedPeriod = {
+      periodStart: new Date(1_700_000_000 * 1000),
+      periodEnd: new Date(1_702_592_000 * 1000),
+    };
+    expect(prismaMock.invoice.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { stripeInvoiceId: 'in_test' },
+        create: expect.objectContaining(derivedPeriod),
+        update: expect.objectContaining(derivedPeriod),
+      }),
+    );
+
+    // Pin the regression: the invoice-level fields must NOT be what's stored,
+    // since that's exactly the equal-dates bug this fix addresses.
+    const call = prismaMock.invoice.upsert.mock.calls[0]![0];
+    expect(call.create.periodStart).not.toEqual(call.create.periodEnd);
+    expect(call.update.periodStart).not.toEqual(call.update.periodEnd);
+  });
+
+  it('invoice.paid with empty lines.data falls back to the invoice-level period', async () => {
+    const incoming = stripeInvoice({ lines: { data: [] } });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_invoice_paid_no_lines',
+      type: 'invoice.paid',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    const fallbackPeriod = {
+      periodStart: new Date(1_700_000_050 * 1000),
+      periodEnd: new Date(1_700_000_060 * 1000),
+    };
+    expect(prismaMock.invoice.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining(fallbackPeriod),
+        update: expect.objectContaining(fallbackPeriod),
+      }),
+    );
+  });
+
+  it('invoice.payment_failed persists status "uncollectible" alongside the derived period', async () => {
+    const incoming = stripeInvoice({ status: 'open' });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_invoice_failed',
+      type: 'invoice.payment_failed',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(prismaMock.invoice.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          status: 'uncollectible',
+          periodStart: new Date(1_700_000_000 * 1000),
+          periodEnd: new Date(1_702_592_000 * 1000),
+        }),
+        update: expect.objectContaining({
+          status: 'uncollectible',
+          periodStart: new Date(1_700_000_000 * 1000),
+          periodEnd: new Date(1_702_592_000 * 1000),
+        }),
+      }),
+    );
   });
 });
