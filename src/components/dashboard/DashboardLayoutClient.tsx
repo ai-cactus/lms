@@ -96,14 +96,14 @@ export default function DashboardLayoutClient({
     <div className="relative min-h-screen w-full bg-[#f8f9fa]">
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-[90] bg-black/40 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <aside
         className={[
-          'fixed top-0 left-0 z-[100] flex h-screen w-[280px] flex-col border-r border-[#e2e8f0] bg-white p-6',
+          'fixed top-0 left-0 z-40 flex h-screen w-[280px] flex-col border-r border-[#e2e8f0] bg-white p-6',
           'transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
           // On lg+ always visible; on mobile slides in/out
           'lg:translate-x-0',
