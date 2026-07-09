@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { logger } from '@/lib/logger';
 import { audit } from '@/lib/audit';
 import { MAX_PAUSE_MONTHS, pauseEndDate } from '@/lib/billing';
+import { deriveInvoiceServicePeriod } from '@/lib/stripe-invoice-period';
 import type {
   SubscriptionPlan,
   SubscriptionBillingCycle,
@@ -340,6 +341,12 @@ async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string)
   const invoiceNumber = inv.number ?? `TH-${inv.id.slice(-6).toUpperCase()}`;
   const status = overrideStatus ?? inv.status ?? 'open';
 
+  // Invoice-level period_start/period_end reflect invoice assembly time and are
+  // (near-)equal for subscription renewals; the real service window lives on the
+  // line items. Derive it, and write it in BOTH branches so a webhook replay /
+  // Stripe "resend event" self-heals rows persisted before this fix.
+  const { periodStart, periodEnd } = deriveInvoiceServicePeriod(inv);
+
   await prisma.invoice.upsert({
     where: { stripeInvoiceId: inv.id },
     create: {
@@ -351,14 +358,16 @@ async function handleInvoiceUpsert(inv: Stripe.Invoice, overrideStatus?: string)
       status,
       invoiceUrl: inv.hosted_invoice_url ?? null,
       pdfUrl: inv.invoice_pdf ?? null,
-      periodStart: new Date((inv.period_start ?? 0) * 1000),
-      periodEnd: new Date((inv.period_end ?? 0) * 1000),
+      periodStart,
+      periodEnd,
     },
     update: {
       amountPaid: inv.amount_paid,
       status,
       invoiceUrl: inv.hosted_invoice_url ?? null,
       pdfUrl: inv.invoice_pdf ?? null,
+      periodStart,
+      periodEnd,
     },
   });
 }
