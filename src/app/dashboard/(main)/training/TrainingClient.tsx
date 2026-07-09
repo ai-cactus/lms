@@ -17,8 +17,6 @@ interface TrainingClientProps {
 
 import { useRouter } from 'next/navigation';
 
-// ... imports
-
 export default function TrainingClient({ stats, courses }: TrainingClientProps) {
   const router = useRouter();
   // If user has courses, default to showing the dashboard.
@@ -48,9 +46,7 @@ export default function TrainingClient({ stats, courses }: TrainingClientProps) 
         </Button>
 
         <div className="flex flex-col gap-10 p-6 md:flex-row md:p-10">
-          {/* Left Column: Illustration & CTA */}
           <div className="flex flex-1 flex-col items-center rounded-2xl bg-[#d6f5eb] p-8 text-left">
-            {/* ... (illustration code unchanged) ... */}
             <div className="mb-6 flex h-[260px] w-full items-center justify-center">
               <div className="relative flex items-center justify-center">
                 <Image
@@ -80,7 +76,6 @@ export default function TrainingClient({ stats, courses }: TrainingClientProps) 
             </Button>
           </div>
 
-          {/* Right Column: Steps */}
           <div className="flex flex-1 flex-col justify-center md:pl-5">
             <h3 className="mb-6 text-2xl font-bold text-[#111827]">How to get started</h3>
 

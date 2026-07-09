@@ -20,6 +20,8 @@ const { prismaMock, mockAdminAuth, mockWorkerAuth } = vi.hoisted(() => {
     orgCourseOffering: { findUnique: vi.fn(), upsert: vi.fn() },
     courseAssignment: { create: vi.fn() },
     enrollment: { findFirst: vi.fn(), create: vi.fn() },
+    // Added in facility split: enrollUsers looks up facilityId for new users.
+    facility: { findFirst: vi.fn() },
   };
   const mockAdminAuth = vi.fn();
   const mockWorkerAuth = vi.fn();
@@ -88,7 +90,8 @@ const globalVideoCourse = {
 
 const adminUser = {
   id: ADMIN_ID,
-  role: 'admin',
+  // After RBAC migration: 'admin' is retired; 'owner' is the new admin-role equivalent.
+  role: 'owner',
   organizationId: ORG_ID,
   organization: { id: ORG_ID, name: 'Acme Corp' },
 };
@@ -303,5 +306,84 @@ describe('enrollUsers — course-ownership guard', () => {
     );
     // No enrollment work should have happened.
     expect(prismaMock.user.create).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CSV bulk-import role mapping — StaffEntry.role is the coarse legacy
+// 'admin' | 'worker' token from the CSV column; enrollUsers maps 'admin' to
+// the RBAC successor `supervisor` for newly-created users (see the comment
+// at src/app/actions/enrollment.ts ~L235-238). A regression here (e.g. the
+// mapping silently reverting to writing the literal 'admin' DB role) would
+// create users with a role value that no longer exists in the DB enum.
+// ---------------------------------------------------------------------------
+
+describe('enrollUsers — CSV role mapping (entry.role "admin" → DB role "supervisor")', () => {
+  const ownCourse = {
+    id: 'own-course-001',
+    title: 'My Training',
+    createdBy: ADMIN_ID,
+    isGlobal: false,
+    type: 'document',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAdminAuth.mockResolvedValue(adminSession);
+    mockWorkerAuth.mockResolvedValue(null);
+    prismaMock.course.findUnique.mockResolvedValue(ownCourse);
+    prismaMock.enrollment.findFirst.mockResolvedValue(null);
+    prismaMock.enrollment.create.mockResolvedValue({});
+    prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
+    prismaMock.facility.findFirst.mockResolvedValue(null);
+  });
+
+  it('maps CSV role "admin" to DB role "supervisor" for a newly-created user', async () => {
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(adminUser) // currentUser fetch
+      .mockResolvedValueOnce(null); // no existing user with this email → create path
+    prismaMock.user.create.mockResolvedValue({
+      id: 'new-user-1',
+      email: 'newadmin@example.com',
+      profile: null,
+    });
+
+    await enrollUsers('own-course-001', [
+      { email: 'newadmin@example.com', firstName: 'New', lastName: 'Admin', role: 'admin' },
+    ]);
+
+    expect(prismaMock.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'supervisor' }) }),
+    );
+  });
+
+  it('maps CSV role "worker" to DB role "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE) for a newly-created user', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(null);
+    prismaMock.user.create.mockResolvedValue({
+      id: 'new-user-2',
+      email: 'newworker@example.com',
+      profile: null,
+    });
+
+    await enrollUsers('own-course-001', [{ email: 'newworker@example.com', role: 'worker' }]);
+
+    expect(prismaMock.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'front_desk_admin' }) }),
+    );
+  });
+
+  it('defaults to DB role "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE) when the CSV role column is omitted', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(null);
+    prismaMock.user.create.mockResolvedValue({
+      id: 'new-user-3',
+      email: 'norole@example.com',
+      profile: null,
+    });
+
+    await enrollUsers('own-course-001', [{ email: 'norole@example.com' }]);
+
+    expect(prismaMock.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'front_desk_admin' }) }),
+    );
   });
 });

@@ -52,7 +52,6 @@ export default function CourseArticle({
 
   return (
     <div className={`flex h-full w-full flex-col bg-background-secondary ${className}`}>
-      {/* Topbar */}
       {hasFullLayout && (
         <div className="flex shrink-0 items-center justify-between border-b border-border-default bg-background px-4 py-2.5 md:px-6 md:py-3">
           <span className="text-xs font-semibold text-foreground md:text-sm">
@@ -68,7 +67,6 @@ export default function CourseArticle({
 
       {/* Body: content + optional ToC */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Main article content */}
         <div
           className="flex-1 overflow-y-auto bg-background-secondary px-4 py-5 outline-none [scroll-behavior:smooth] md:px-8 md:py-10"
           ref={containerRef}

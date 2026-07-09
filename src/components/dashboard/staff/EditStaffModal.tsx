@@ -14,6 +14,7 @@ import { Field, Alert } from '@/components/ui';
 import { updateStaffDetails } from '@/app/actions/staff';
 import { useRouter } from 'next/navigation';
 import { UserRole } from '@/generated/prisma/enums';
+import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 
 interface EditStaffModalProps {
   isOpen: boolean;
@@ -30,7 +31,7 @@ interface EditStaffModalProps {
 export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModalProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [role, setRole] = useState<UserRole>('worker');
+  const [role, setRole] = useState<UserRole>(DEFAULT_SELF_SERVE_WORKER_ROLE);
   const [jobTitle, setJobTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -43,7 +44,7 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
       const nameParts = staff.name.split(' ');
       setFirstName(nameParts[0] || '');
       setLastName(nameParts.slice(1).join(' ') || '');
-      setRole(staff.role || 'worker');
+      setRole(staff.role);
       setJobTitle(staff.jobTitle || '');
       setMessage(null);
       setErrors({});

@@ -197,13 +197,10 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  // Rename modal
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
 
-  // Search
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -275,7 +272,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
 
   return (
     <>
-      {/* Rename modal */}
       {renameTarget && (
         <RenameModal
           docId={renameTarget.id}
@@ -291,9 +287,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
         </p>
       )}
 
-      {/* Card */}
       <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
-        {/* Search */}
         <div className="mb-6 w-full sm:w-[380px]">
           <Input
             className="h-11"
@@ -309,7 +303,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
           />
         </div>
 
-        {/* Table */}
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
@@ -335,7 +328,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                     onClick={() => handleRowClick(doc.id)}
                     className="cursor-pointer"
                   >
-                    {/* Document name */}
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#f1f5f9]">
@@ -351,7 +343,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                       </div>
                     </TableCell>
 
-                    {/* Date */}
                     <TableCell className="text-[#6b7280] whitespace-nowrap hidden sm:table-cell">
                       {new Date(doc.updatedAt).toLocaleDateString('en-US', {
                         month: 'short',
@@ -360,7 +351,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                       })}
                     </TableCell>
 
-                    {/* Status */}
                     <TableCell className="hidden md:table-cell">
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge status={status} />
@@ -376,7 +366,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                       </div>
                     </TableCell>
 
-                    {/* Action – RowActionsMenu */}
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <RowActionsMenu
                         actions={[
@@ -424,7 +413,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
           </TableBody>
         </Table>
 
-        {/* Pagination */}
         {totalEntries > 0 && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
             <span className="text-sm text-[#718096]">

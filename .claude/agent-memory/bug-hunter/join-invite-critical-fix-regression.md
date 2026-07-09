@@ -1,0 +1,24 @@
+---
+name: join-invite-critical-fix-regression
+description: Regression suite for the THER join/[token] async-params + findUnique critical fix, and the billing.read/invite.create RBAC UI gates that landed alongside it
+metadata:
+  type: project
+---
+
+Verified 2026-07-06 on branch `rbac`, 937/937 vitest green (up from baseline 913), `npx tsc --noEmit` clean. Product fix: `src/app/join/[token]/page.tsx` previously read `params.token` synchronously (Next.js 16 made `params` a `Promise`, so it was always `undefined`), and did `prisma.invite.findFirst({ where: { token: undefined, status: 'pending' } })` — Prisma drops a strict-`undefined` filter, so it silently matched the platform-wide oldest pending invite. Any `/join/<garbage>` URL would render and let someone create an account against the WRONG org's invite. Fix: await `params`, fail closed via `notFound()` on blank/missing token before any query, then a single `prisma.invite.findUnique({ where: { token } })` (token is `@unique`).
+
+**Test file rewritten, not incrementally patched**: `src/app/join/[token]/page.test.tsx` previously mocked `prisma.invite.findFirst` with a two-lookup pattern (strict-pending then any-status) — that whole double-lookup shape is gone now that it's a single `findUnique`. Had to fully replace the mock setup (`prismaMock.invite.findUnique`) and the `params` shape (`Promise.resolve({ token })` instead of a plain object), not just adjust assertions. The strongest regression guard here is asserting the exact call args (`toHaveBeenCalledExactlyOnceWith({ where: { token }, include: { organization: true } })`) plus a test where `findUnique` is mocked via `mockImplementationOnce(({ where }) => ...)` keyed on the token — proves the page can't render a different invite than the one owning the requested token, which is the actual bug scenario.
+
+**`can(role, permission)` in `src/lib/rbac/permissions.ts` does NOT throw for an unrecognized/undefined role** — it does `const entry = roles[role as RoleKey]; if (!entry) return false;`. This supersedes the throw-risk noted in [[rbac-8-worker-role-split]] for this specific `can()` call site (that memory's throw concern was about `roles[undefined].permissions` with no guard — a guard has since been added here). Still worth re-checking `authorize.ts`'s own handling before assuming it's fully hardened everywhere; this note only covers `permissions.ts`'s `can()`.
+
+**Permission facts used to build the RBAC UI-gate test fixtures this session** (`src/lib/rbac/permissions.ts`):
+- `invite.create`: owner, supervisor, hr → yes. finance, clinical_director, all 8 worker roles → no.
+- `billing.read`: owner, finance → yes. supervisor (gets `everythingExceptBilling`), hr, clinical_director, all worker roles → no.
+
+**New test files added this session** (all new, no prior coverage existed for these components):
+- `src/app/api/invite/accept/route.test.ts` — first test for this route. Regression-guards missing/blank token (4xx, no DB query), unknown/expired token (400, no account), and valid token creating the account under exactly that invite's `organizationId`/`role` (asserted via `toHaveBeenCalledExactlyOnceWith`, not just `objectContaining`, on the `user.create` call... actually used `objectContaining` for `user.create` data since `profile.create` nested object isn't the focus, but exact-match on `invite.findUnique`/`invite.update` args).
+- `src/components/dashboard/staff/StaffListClient.test.tsx` — first test for this component. Only tests the `invite.create`-gated "Add Staff" button/modal-mount; stubs all five child modals (`InviteStaffModal`, `OrganizationActivationModal`, `RevokeInviteModal`, `RemoveStaffModal`, `WorkerLimitModal`) since none are under test here — rendering with an empty `users` array sidesteps needing `RowActionsMenu` interaction entirely. Note: `OrganizationActivationModal`'s real import chain requires `useModalContext()` which throws outside a `ModalProvider` — must stub it (or wrap in the provider) rather than let it render for real in any test of this component.
+- `src/app/dashboard/(main)/billing/page.test.tsx` — first test for this server-component route. Followed the async-Server-Component pattern from [[qa-wave1-regression-patterns]] (call the exported function directly, `render()` the returned element). Stubs `@/components/billing/BillingPage` (heavy, dynamic-imports 4 tabs) since only the `billing.read` gate itself is under test.
+- `src/components/dashboard/DashboardLayoutClient.test.tsx` — first test for this component. Stubs `Header` (pulls in notification polling/actions, unrelated) to isolate the nav-visibility branching. Confirms the `billing.read` gate (supervisor hidden, owner/finance shown) is independent from the pre-existing `isAdminRole` gate on the PERFORMANCE section (supervisor still sees that one).
+
+Related: [[rbac-8-worker-role-split]], [[qa-wave1-regression-patterns]], [[project-test-framework]].

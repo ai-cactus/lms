@@ -1,4 +1,3 @@
-// src/lib/audit-reports/date-range.ts
 // Shared, DB-agnostic date-range helpers for audit reports.
 //
 // A range is expressed as optional `from`/`to` calendar dates (`YYYY-MM-DD`) or

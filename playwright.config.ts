@@ -28,5 +28,12 @@ export default defineConfig({
     url: 'http://localhost:3005',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    // Override the app URL for the e2e server only, so email links generated
+    // during tests point at Playwright's 3005 server rather than the 3000 value
+    // in .env.local (which is for manual dev). Injected env wins over .env.local.
+    env: {
+      NEXT_PUBLIC_APP_URL: 'http://localhost:3005',
+      APP_URL: 'http://localhost:3005',
+    },
   },
 });

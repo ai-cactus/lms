@@ -65,7 +65,6 @@ function AuditorPackTabs({ initialStats, initialCourses }: AuditorPackClientProp
         </div>
       </div>
 
-      {/* Tab Panels */}
       {activeTab === 'overview' && (
         <AuditorOverviewTab stats={initialStats} courses={initialCourses} />
       )}

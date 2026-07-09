@@ -58,7 +58,6 @@ const client = new Minio.Client({
 });
 
 async function run() {
-  // 1. Check bucket exists
   console.log('\n─── Step 1: Bucket check ───────────────────────────');
   try {
     const exists = await client.bucketExists(MINIO_BUCKET);
@@ -72,7 +71,6 @@ async function run() {
     return;
   }
 
-  // 2. Find the active manual in DB
   console.log('\n─── Step 2: Active manual in DB ────────────────────');
   let manual;
   try {
@@ -93,7 +91,6 @@ async function run() {
     return;
   }
 
-  // 3. Parse the storage URI
   console.log('\n─── Step 3: Parse storage URI ──────────────────────');
   const uri = manual.storagePath;
   const match = uri.match(/^(gcs|minio):\/\/([^/]+)\/(.+)$/);
@@ -111,7 +108,6 @@ async function run() {
     return;
   }
 
-  // 4. Try getObject
   console.log('\n─── Step 4: Download test ──────────────────────────');
   try {
     const stream = await client.getObject(bucket, key);
@@ -123,14 +119,12 @@ async function run() {
     });
     const buf = Buffer.concat(chunks);
     console.log(`  ✓ Downloaded ${buf.length} bytes`);
-    // Check PDF magic bytes
     const magic = buf.slice(0, 4).toString('ascii');
     console.log(`  PDF magic bytes: "${magic}" — ${magic === '%PDF' ? '✓ valid PDF' : '✗ NOT a valid PDF'}`);
   } catch (err) {
     console.error(`  ✗ getObject failed: [${err.code ?? err.name}] ${err.message}`);
   }
 
-  // 5. Check chunk count in DB
   console.log('\n─── Step 5: ManualChunk count in DB ───────────────');
   try {
     const count = await prisma.manualChunk.count({ where: { manualId: manual.id } });

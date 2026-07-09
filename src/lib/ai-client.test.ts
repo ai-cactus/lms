@@ -69,7 +69,6 @@ describe('ai-client utilities', () => {
     });
 
     it('should approximate well for a long string', () => {
-      // Create a string of 4000 characters
       const longString = 'a'.repeat(4000);
       expect(estimateTokens(longString)).toBe(1000);
 
@@ -440,7 +439,6 @@ describe('ai-client utilities', () => {
         }),
       );
 
-      // Verify maxOutputTokens is included in the body
       const fetchCall = (global.fetch as any).mock.calls[0];
       const fetchBody = JSON.parse(fetchCall[1].body);
       expect(fetchBody.generationConfig.maxOutputTokens).toBe(1000);

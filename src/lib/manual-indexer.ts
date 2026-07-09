@@ -27,8 +27,6 @@ import prisma from '@/lib/prisma';
 import { generateBatchEmbeddings } from './ai-client';
 import { logger } from '@/lib/logger';
 
-// ── Chunking constants ────────────────────────────────────────────────────────
-
 const CHUNK_SIZE = 1500; // target characters per chunk (~350 tokens)
 const CHUNK_OVERLAP = 200; // characters of overlap between consecutive chunks
 const MIN_CHUNK_LEN = 50; // discard very short chunks
@@ -38,8 +36,6 @@ const MIN_CHUNK_LEN = 50; // discard very short chunks
 const EMBED_BATCH_SIZE = 100;
 
 const LOG_INTERVAL = 3; // log progress every N batches
-
-// ── GC helper ────────────────────────────────────────────────────────────────
 
 // V8 defers major GC until the heap is close to --max-old-space-size (4 GB).
 // Without explicit collection between embedding batches, retained fetch/Prisma
@@ -55,8 +51,6 @@ function maybeGc(): void {
     // --expose-gc not set — best-effort only
   }
 }
-
-// ── PDF text extraction ───────────────────────────────────────────────────────
 
 /**
  * Extract plain text from a PDF buffer using the system `pdftotext` binary.
@@ -95,17 +89,13 @@ async function extractTextFromPdf(pdfBuffer: Buffer): Promise<string> {
       );
     });
 
-    // Read the extracted text file
     const { readFile } = await import('fs/promises');
     const text = await readFile(tmpTxt, 'utf8');
     return text.trim();
   } finally {
-    // Always clean up temp files
     await Promise.all([unlink(tmpPdf).catch(() => {}), unlink(tmpTxt).catch(() => {})]);
   }
 }
-
-// ── Chunking ──────────────────────────────────────────────────────────────────
 
 /**
  * Splits a flat text string into overlapping chunks, returning plain strings.
@@ -144,8 +134,6 @@ function splitTextIntoChunks(text: string): string[] {
   return chunks;
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-
 /**
  * Process a PDF Standard Manual end-to-end:
  *  1. Extract text via pdftotext (out-of-process, memory-safe)
@@ -178,7 +166,6 @@ export async function indexStandardManual(manualId: string, pdfBuffer: Buffer): 
       charCount: fullText.length,
     });
 
-    // 2. Chunk the text
     const chunks = splitTextIntoChunks(fullText);
     const totalChunks = chunks.length;
 
@@ -263,7 +250,6 @@ export async function indexStandardManual(manualId: string, pdfBuffer: Buffer): 
       }
     }
 
-    // 5. Finalise
     await prisma.standardManual.update({
       where: { id: manualId },
       data: { processedAt: new Date(), chunkCount: processedCount },

@@ -113,7 +113,6 @@ export default function ConfirmPublishModal({
         <div className="flex max-h-[90vh] flex-col overflow-y-auto md:flex-row md:overflow-hidden">
           {/* ── Left Illustration Panel ───────────────────────── */}
           <div className="flex w-full shrink-0 flex-col gap-2.5 overflow-hidden bg-[#eef1fb] p-4 pt-5 md:w-[42%]">
-            {/* Logo card */}
             <div className="flex min-h-0 flex-1 flex-col items-center overflow-hidden rounded-xl border border-[#e2e8f0] bg-white">
               <div className="flex w-full flex-1 items-center justify-center overflow-hidden px-3 pt-5">
                 {/*
@@ -135,7 +134,6 @@ export default function ConfirmPublishModal({
               </div>
             </div>
 
-            {/* Toast notification */}
             <div className="shrink-0 rounded-[10px] bg-white p-2.5 px-3 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.08),0_2px_4px_-1px_rgba(0,0,0,0.04)]">
               <div className="mb-[3px] flex items-center gap-2">
                 <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#dcfce7]">
@@ -152,7 +150,6 @@ export default function ConfirmPublishModal({
               </p>
             </div>
 
-            {/* Illustrative course list */}
             <div className="flex shrink-0 flex-col gap-[5px]">
               {previewList.map((course) => (
                 <div
@@ -223,7 +220,6 @@ export default function ConfirmPublishModal({
                 />
               </div>
 
-              {/* Confirmation checkbox */}
               <label htmlFor="confirm-checkbox" className="flex cursor-pointer items-start gap-2.5">
                 <Checkbox
                   id="confirm-checkbox"

@@ -84,19 +84,21 @@ function makeReq(body: unknown): NextRequest {
   return { json: vi.fn().mockResolvedValue(body) } as unknown as NextRequest;
 }
 
-const ADMIN_USER = { role: 'admin', organizationId: 'org-1' };
+const ADMIN_USER = { role: 'owner', organizationId: 'org-1' };
 const ORG = {
   name: 'Acme',
   primaryEmail: 'acme@example.com',
   stripeCustomerId: 'cus_123',
-  staffCount: '5',
+  // staffCount moved to Facility in the Org/Facility split; the route reads
+  // organization.facilities[0].staffCount.
+  facilities: [{ staffCount: '5' }],
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   // Session now carries the `role` claim so the F-012 guardApiSession check
   // (auth + MFA + admin role, read from session claims) passes.
-  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'admin' } });
+  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
   prismaMock.organization.findUnique.mockResolvedValue(ORG);
 });
@@ -204,6 +206,44 @@ describe('POST /api/billing/subscription/checkout — THER-001 double-charge gua
       expect.objectContaining({ cancel_at_period_end: false }),
     );
     expect(body).toEqual({ updated: true, message: 'Your plan has been updated.' });
+  });
+
+  it('rejects a plan whose staffMax is below the facility staffCount — regression guard', async () => {
+    // Org/Facility split regression guard: staffCount now lives on
+    // organization.facilities[0], not organization.staffCount directly. If the
+    // route regressed to reading `organization.staffCount` (a field removed
+    // from Organization), that would be `undefined`, `parseInt(undefined ??
+    // '0', 10)` would silently evaluate to 0, and this 422 would never fire —
+    // letting an over-capacity org downgrade to a plan it doesn't fit.
+    prismaMock.organization.findUnique.mockResolvedValue({
+      ...ORG,
+      facilities: [{ staffCount: '15' }], // exceeds starter's staffMax: 10
+    });
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const res = await POST(makeReq({ planKey: 'starter', billingCycle: 'monthly' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(422);
+    expect(body.error).toMatch(/too many staff/i);
+    expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it('allows a plan whose staffMax comfortably covers the facility staffCount', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      ...ORG,
+      facilities: [{ staffCount: '15' }],
+    });
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+    stripeMock.checkout.sessions.create.mockResolvedValue({
+      url: 'https://checkout.stripe.com/session_3',
+    });
+
+    // professional plan staffMax is 50, so 15 staff fits.
+    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.checkout.sessions.create).toHaveBeenCalledOnce();
   });
 
   it('returns 409 without touching Checkout when the live subscription has no line items', async () => {

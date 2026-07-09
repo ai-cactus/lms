@@ -280,7 +280,7 @@ export type InviteCreateInput = {
   id?: string
   email: string
   token: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   status?: $Enums.InviteStatus
   expiresAt: Date | string
   createdAt?: Date | string
@@ -293,7 +293,7 @@ export type InviteUncheckedCreateInput = {
   email: string
   token: string
   organizationId: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   status?: $Enums.InviteStatus
   expiresAt: Date | string
   createdAt?: Date | string
@@ -329,7 +329,7 @@ export type InviteCreateManyInput = {
   email: string
   token: string
   organizationId: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   status?: $Enums.InviteStatus
   expiresAt: Date | string
   createdAt?: Date | string
@@ -455,7 +455,7 @@ export type InviteCreateWithoutOrganizationInput = {
   id?: string
   email: string
   token: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   status?: $Enums.InviteStatus
   expiresAt: Date | string
   createdAt?: Date | string
@@ -466,7 +466,7 @@ export type InviteUncheckedCreateWithoutOrganizationInput = {
   id?: string
   email: string
   token: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   status?: $Enums.InviteStatus
   expiresAt: Date | string
   createdAt?: Date | string
@@ -518,7 +518,7 @@ export type InviteCreateManyOrganizationInput = {
   id?: string
   email: string
   token: string
-  role?: $Enums.UserRole
+  role: $Enums.UserRole
   status?: $Enums.InviteStatus
   expiresAt: Date | string
   createdAt?: Date | string

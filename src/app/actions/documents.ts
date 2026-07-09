@@ -109,7 +109,6 @@ export async function uploadDocument(
   // 5. Persist metadata in DB (transactional)
   try {
     const uploadedDocumentId = await prisma.$transaction(async (tx) => {
-      // Check if document already exists for this user with the same filename
       const existingDoc = await tx.document.findFirst({
         where: { userId, filename: file.name },
       });
@@ -136,7 +135,6 @@ export async function uploadDocument(
         docId = newDoc.id;
       }
 
-      // Create new version record
       const version = await tx.documentVersion.create({
         data: {
           documentId: docId!,
@@ -147,7 +145,6 @@ export async function uploadDocument(
         },
       });
 
-      // Create PHI report for this version.
       // F-003: `phiResult.findings` is the value-free shape ({ type, offsetStart,
       // offsetEnd, confidence }) — raw PHI/PII strings are NEVER persisted.
       await tx.phiReport.create({
@@ -309,7 +306,6 @@ export async function renameDocument(
     return { error: 'Filename is too long (max 255 characters).' };
   }
 
-  // Verify ownership
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
     select: { userId: true },

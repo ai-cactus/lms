@@ -28,6 +28,10 @@ export async function POST(req: Request) {
     const result = acceptInviteSchema.safeParse(body);
 
     if (!result.success) {
+      logger.warn({
+        msg: '[invite] Rejected accept-invite request with invalid payload',
+        fields: Object.keys(result.error.flatten().fieldErrors),
+      });
       return NextResponse.json(
         { error: 'Invalid input data', details: result.error.flatten().fieldErrors },
         { status: 400 },
@@ -63,7 +67,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Server-side password policy enforcement (beyond basic zod length checks)
     const pwCheck = validatePassword(password);
     if (!pwCheck.valid) {
       return NextResponse.json(
@@ -72,16 +75,21 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Find pending invite
+    // `token` is Zod-validated as a non-empty string and `token` is @unique, so
+    // this lookup resolves to exactly the invite that owns the token or none —
+    // a crafted POST can never widen to reach another organization's invite.
     const invite = await prisma.invite.findUnique({
       where: { token, status: 'pending' },
     });
 
     if (!invite || new Date() > invite.expiresAt) {
+      logger.warn({
+        msg: '[invite] Accept attempt with invalid or expired token',
+        tokenPrefix: token.slice(0, 8),
+      });
       return NextResponse.json({ error: 'Invalid or expired invite' }, { status: 400 });
     }
 
-    // 3. Check if user already exists (just in case they signed up manually in the meantime)
     const existingUser = await prisma.user.findUnique({
       where: { email: invite.email },
     });
@@ -90,11 +98,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User with this email already exists' }, { status: 400 });
     }
 
-    // 4. Hash password
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
-    // 5. Create User and Profile within a transaction
-    // Using transaction ensures atomicity
+    const facility = await prisma.facility.findFirst({
+      where: { organizationId: invite.organizationId },
+      select: { id: true },
+    });
+    if (!facility) {
+      logger.warn({
+        msg: '[invite] Accepting invite: no facility for organization',
+        organizationId: invite.organizationId,
+      });
+    }
+
     const newUser = await prisma.$transaction(async (tx) => {
       // F-022: re-check seat availability INSIDE the transaction so a seat that
       // filled between invite issuance and acceptance (concurrent accepts, or
@@ -106,8 +122,10 @@ export async function POST(req: Request) {
       const user = await tx.user.create({
         data: {
           email: invite.email,
+          emailVerified: true,
           password: hashedPassword,
           organizationId: invite.organizationId,
+          facilityId: facility?.id ?? null,
           role: invite.role,
           profile: {
             create: {
@@ -120,7 +138,6 @@ export async function POST(req: Request) {
         },
       });
 
-      // 6. Mark invite as accepted
       await tx.invite.update({
         where: { id: invite.id },
         data: { status: 'accepted' },

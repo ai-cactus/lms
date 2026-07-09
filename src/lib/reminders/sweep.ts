@@ -111,10 +111,6 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
   return summary;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Retry pre-pass — re-send previously failed reminder emails (F-020)          */
-/* -------------------------------------------------------------------------- */
-
 /**
  * Re-attempt reminder emails that failed to deliver on an earlier sweep.
  *
@@ -164,7 +160,7 @@ async function runRetryPrePass(
             select: {
               email: true,
               profile: { select: { fullName: true } },
-              organization: { select: { timezone: true } },
+              facility: { select: { timezone: true } },
             },
           },
         },
@@ -183,7 +179,7 @@ async function runRetryPrePass(
         continue;
       }
 
-      const tz = log.enrollment.user.organization?.timezone ?? DEFAULT_TZ;
+      const tz = log.enrollment.user.facility?.timezone ?? DEFAULT_TZ;
       const resent = await retryReminderEmail({
         sendEmail,
         emailMessage: { id: message.id, toEmail: message.toEmail },
@@ -206,10 +202,6 @@ async function runRetryPrePass(
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Retention pre-pass — dispose of expired/stale rows (F-054)                  */
-/* -------------------------------------------------------------------------- */
-
 /**
  * Run the data-retention purge before the reminder tracks. Deletes expired
  * verification tokens and stale terminal invites/jobs/emails on HIPAA-sensible,
@@ -225,10 +217,6 @@ async function runRetentionPrePass(
   if (opts.dryRun || !isRetentionPurgeEnabled()) return;
   summary.retentionPurged = await runRetentionPurge(opts.now);
 }
-
-/* -------------------------------------------------------------------------- */
-/* Track A — the deadline ladder                                              */
-/* -------------------------------------------------------------------------- */
 
 async function runTrackA(
   opts: ReminderSweepOptions,
@@ -271,7 +259,7 @@ async function runTrackA(
           id: true,
           email: true,
           profile: { select: { fullName: true } },
-          organization: { select: { timezone: true } },
+          facility: { select: { timezone: true } },
         },
       },
     },
@@ -292,7 +280,7 @@ async function runTrackA(
       const dueAt = enrollment.dueAt;
       if (!dueAt) continue; // Defensive: the query already filters non-null.
 
-      const tz = enrollment.user.organization?.timezone ?? DEFAULT_TZ;
+      const tz = enrollment.user.facility?.timezone ?? DEFAULT_TZ;
       const dueStart = startOfDayInTz(dueAt, tz);
       const stageConfig = enrollment.assignment?.reminderStages ?? [];
       const worker = {
@@ -355,10 +343,6 @@ async function runTrackA(
     }
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* Track B — failing / locked quiz nudges                                     */
-/* -------------------------------------------------------------------------- */
 
 async function runTrackB(
   opts: ReminderSweepOptions,
@@ -499,10 +483,6 @@ async function runTrackB(
     }
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* Completion resolution                                                      */
-/* -------------------------------------------------------------------------- */
 
 /**
  * Stamp `resolvedAt`/`isRead` on the open reminder/escalation notifications for

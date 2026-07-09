@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { useParams, useRouter } from 'next/navigation';
 import { Menu, AlertCircle } from 'lucide-react';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -219,7 +220,7 @@ export default function LearnPage() {
   // True when the LAST lesson is a video lesson whose watch-gate has not yet been met.
   // Admins bypass; non-video courses are unaffected (returns false).
   const isVideoQuizGateBlocked = () => {
-    if (!course || userData?.role === 'admin') return false;
+    if (!course || isAdminRole(userData?.role)) return false;
     const lastLesson = course.lessons[course.lessons.length - 1];
     if (!lastLesson?.videoStorageUri) return false;
     return !isQuizUnlocked(watchedPct);
@@ -235,7 +236,7 @@ export default function LearnPage() {
       if (!quizResults && isVideoQuizGateBlocked()) {
         return;
       }
-      if (quizUnlocked || quizResults || userData?.role === 'admin') {
+      if (quizUnlocked || quizResults || isAdminRole(userData?.role)) {
         setIsQuizActive(true);
         setQuizStep(quizResults ? 'review' : 'intro');
         setActiveIndex(index);
@@ -248,7 +249,7 @@ export default function LearnPage() {
     }
 
     // Standard Lesson Selection
-    if (index <= highestUnlockedIndex || userData?.role === 'admin') {
+    if (index <= highestUnlockedIndex || isAdminRole(userData?.role)) {
       setIsQuizActive(false);
       setActiveIndex(index);
     }
@@ -279,7 +280,7 @@ export default function LearnPage() {
       }
       updateProgress(course.lessons.length - 1);
 
-      if (quizUnlocked || userData?.role === 'admin') {
+      if (quizUnlocked || isAdminRole(userData?.role)) {
         setIsQuizActive(true);
         setQuizStep(quizResults ? 'review' : 'intro');
         setActiveIndex(course.lessons.length);
@@ -308,7 +309,6 @@ export default function LearnPage() {
     if (!course?.quiz || !enrollment) return;
 
     try {
-      // Start attempt on backend
       await fetch(`/api/quiz/${course.quiz.id}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -369,7 +369,6 @@ export default function LearnPage() {
           quizResultsData?: QuizResultsData;
         };
 
-        // Map lesson data to include moduleIndex
         if (data.course.lessons) {
           data.course.lessons = data.course.lessons.map((l: Lesson, i: number) => ({
             ...l,
@@ -532,7 +531,7 @@ export default function LearnPage() {
   // Admins opening a VIDEO course get a clean read-only review: the course
   // video + an answer-key walkthrough of the quiz + an Assign action. (Text
   // courses keep the existing editable admin flow below.)
-  if (userData?.role === 'admin' && course.lessons.some((l) => l.videoStorageUri)) {
+  if (isAdminRole(userData?.role) && course.lessons.some((l) => l.videoStorageUri)) {
     const reviewVideoLesson = course.lessons.find((l) => l.videoStorageUri) ?? null;
     return (
       <AdminCourseReview
@@ -572,12 +571,12 @@ export default function LearnPage() {
   // For video lessons, the quiz stays locked until the watch-gate is met.
   // Admins bypass the gate; text lessons keep their existing (non-video) gating.
   const isVideoGateBlocked =
-    isVideoLesson && userData?.role !== 'admin' && !isQuizUnlocked(watchedPct);
+    isVideoLesson && !isAdminRole(userData?.role) && !isQuizUnlocked(watchedPct);
 
-  const isQuizLocked = isQuizActive && quizStep === 'active' && userData?.role !== 'admin';
+  const isQuizLocked = isQuizActive && quizStep === 'active' && !isAdminRole(userData?.role);
 
   const railUnlockedIndex =
-    quizUnlocked || quizResults || userData?.role === 'admin'
+    quizUnlocked || quizResults || isAdminRole(userData?.role)
       ? course?.lessons.length || 9999
       : highestUnlockedIndex;
 
@@ -595,7 +594,7 @@ export default function LearnPage() {
           quiz={course.quiz}
           onExitClick={() => {
             if (!isQuizLocked) {
-              router.push(userData?.role === 'admin' ? '/dashboard/courses' : '/worker');
+              router.push(isAdminRole(userData?.role) ? '/dashboard/courses' : '/worker');
             }
           }}
           disableNav={isQuizLocked}
@@ -702,7 +701,7 @@ export default function LearnPage() {
               />
             </div>
           ) : isQuizIndex ? (
-            userData?.role === 'admin' ? (
+            isAdminRole(userData?.role) ? (
               <div style={{ overflow: 'auto', height: '100%', padding: '24px 0' }}>
                 <AdminQuizEditor
                   courseId={courseId}
@@ -938,7 +937,7 @@ export default function LearnPage() {
               onSelectModule={(index) => {
                 if (index === course.lessons.length) {
                   handleRailSelect(index);
-                } else if (index <= highestUnlockedIndex || userData?.role === 'admin') {
+                } else if (index <= highestUnlockedIndex || isAdminRole(userData?.role)) {
                   setIsQuizActive(false);
                   setActiveIndex(index);
                   // Scroll to the module in article view
@@ -976,7 +975,7 @@ export default function LearnPage() {
                   id={`module-${idx}`}
                   style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}
                 >
-                  {userData?.role === 'admin' ? (
+                  {isAdminRole(userData?.role) ? (
                     <AdminLessonEditor
                       lesson={{
                         ...lesson,
@@ -1058,7 +1057,7 @@ export default function LearnPage() {
       </div>
 
       {/* Modals */}
-      {showQuizGateModal && userData?.role !== 'admin' && (
+      {showQuizGateModal && !isAdminRole(userData?.role) && (
         <div
           className="fixed left-0 top-0 z-[100] flex h-full w-full items-center justify-center bg-black/50 backdrop-blur-[4px] animate-in fade-in duration-200"
           onClick={() => setShowQuizGateModal(false)}

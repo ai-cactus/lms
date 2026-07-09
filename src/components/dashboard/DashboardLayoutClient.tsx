@@ -1,8 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import type { Role } from '@/types/next-auth';
 import { Logo } from '@/components/ui';
 import Header from '@/components/dashboard/Header';
+import SidebarModeSwitcher from '@/components/dashboard/SidebarModeSwitcher';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -13,7 +17,9 @@ import {
   ClipboardCheck,
   CreditCard,
   ChevronDown,
-  ShieldAlert,
+  Gauge,
+  Settings,
+  HelpCircle,
 } from 'lucide-react';
 
 interface DashboardLayoutClientProps {
@@ -33,7 +39,12 @@ export default function DashboardLayoutClient({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isProfilePage = pathname === '/dashboard/profile';
 
-  // Close sidebar on route change
+  // Billing is reserved for roles that actually hold `billing.read` (owner,
+  // finance) — supervisor and other admins must not see the nav entry.
+  const canAccessBilling = role ? can(dbRoleToRoleKey(role as Role), 'billing.read') : false;
+  // Settings is owner-only (facility + team-access management).
+  const isOwner = role === 'owner';
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync sidebar state with navigation
     setSidebarOpen(false);
@@ -51,13 +62,11 @@ export default function DashboardLayoutClient({
     };
   }, [sidebarOpen]);
 
-  // If on profile page, render simplified layout
   if (isProfilePage) {
     return (
       <div className="relative min-h-screen w-full flex flex-col bg-white">
         <header className="flex h-20 w-full items-center justify-between border-b border-[#e2e8f0] px-10">
           <div className="flex items-center">
-            {/* Blue Logo for Profile Page */}
             <Logo size="md" variant="blue" />
           </div>
 
@@ -87,18 +96,16 @@ export default function DashboardLayoutClient({
 
   return (
     <div className="relative min-h-screen w-full bg-[#f8f9fa]">
-      {/* Mobile Backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-[90] bg-black/40 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={[
-          'fixed top-0 left-0 z-[100] flex h-screen w-[280px] flex-col border-r border-[#e2e8f0] bg-white p-6',
+          'fixed top-0 left-0 z-40 flex h-screen w-[280px] flex-col border-r border-[#e2e8f0] bg-white p-6',
           'transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
           // On lg+ always visible; on mobile slides in/out
           'lg:translate-x-0',
@@ -109,8 +116,13 @@ export default function DashboardLayoutClient({
           <Logo size="sm" />
         </div>
 
+        {isAdminRole(role) && (
+          <div className="mb-8">
+            <SidebarModeSwitcher mode="manage" />
+          </div>
+        )}
+
         <nav className="flex flex-col gap-8">
-          {/* MAIN MENU Section */}
           <div className="flex flex-col gap-2">
             <h4 className={navSectionLabelCls}>MAIN MENU</h4>
 
@@ -137,10 +149,20 @@ export default function DashboardLayoutClient({
               <BookOpen className="size-5" />
               <span>Courses</span>
             </Link>
+
+            {isAdminRole(role) && (
+              <Link
+                href="/dashboard/status-tracker"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/status-tracker') ? navItemActive : ''}`}
+              >
+                <Gauge className="size-5" />
+                <span>Status Tracker</span>
+              </Link>
+            )}
           </div>
 
           {/* PERFORMANCE Section — admin only */}
-          {role === 'admin' && (
+          {isAdminRole(role) && (
             <div className="flex flex-col gap-2">
               <h4 className={navSectionLabelCls}>PERFORMANCE</h4>
 
@@ -159,37 +181,48 @@ export default function DashboardLayoutClient({
                 <ClipboardCheck className="size-5" />
                 <span>Audit Reports</span>
               </Link>
-
-              <Link
-                href="/dashboard/status-tracker"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/status-tracker') ? navItemActive : ''}`}
-              >
-                <ShieldAlert className="size-5" />
-                <span>Status Tracker</span>
-              </Link>
             </div>
           )}
 
-          {/* SETTINGS Section — admin only */}
-          {role === 'admin' && (
+          {/* SETTINGS Section — admin-only; Settings is owner-only, Billing needs
+              billing access, Help Center is available to every admin. */}
+          {isAdminRole(role) && (
             <div className="flex flex-col gap-2">
               <h4 className={navSectionLabelCls}>SETTINGS</h4>
 
+              {isOwner && (
+                <Link
+                  href="/dashboard/settings"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/settings') ? navItemActive : ''}`}
+                >
+                  <Settings className="size-5" />
+                  <span>Settings</span>
+                </Link>
+              )}
+
+              {canAccessBilling && (
+                <Link
+                  href="/dashboard/billing"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/billing') ? navItemActive : ''}`}
+                >
+                  <CreditCard className="size-5" />
+                  <span>Billing</span>
+                </Link>
+              )}
+
               <Link
-                href="/dashboard/billing"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/billing') ? navItemActive : ''}`}
+                href="/dashboard/help"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/help') ? navItemActive : ''}`}
               >
-                <CreditCard className="size-5" />
-                <span>Billing</span>
+                <HelpCircle className="size-5" />
+                <span>Help Center</span>
               </Link>
             </div>
           )}
         </nav>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex min-h-screen w-full flex-col lg:ml-[280px] lg:w-[calc(100%-280px)]">
-        {/* Top Header */}
         <Header fullName={fullName} onMenuClick={() => setSidebarOpen(true)} />
 
         <div className="min-w-0 flex-1 p-4 lg:p-10">{children}</div>

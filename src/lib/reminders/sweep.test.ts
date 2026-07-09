@@ -40,8 +40,6 @@ type StageConfig = {
   channels: string[];
 };
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const {
   prismaMock,
   mockDispatchLadderStage,
@@ -75,8 +73,6 @@ const {
   };
 });
 
-// ─── Module mocks ─────────────────────────────────────────────────────────────
-
 vi.mock('@/lib/prisma', () => ({ default: prismaMock, prisma: prismaMock }));
 
 vi.mock('@/lib/reminders/dispatch', () => ({
@@ -103,11 +99,7 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
-// ─── Module under test ────────────────────────────────────────────────────────
-
 import { runReminderSweep, resolveOnCompletion } from './sweep';
-
-// ─── Shared dates ─────────────────────────────────────────────────────────────
 
 /**
  * noon UTC June 15 = 08:00 EDT — local date is "2024-06-15" in America/New_York.
@@ -125,8 +117,6 @@ const DUE_AT_TARGET_YESTERDAY = new Date('2024-06-28T12:00:00Z');
 
 // dueAt that makes FRIENDLY_REMINDER target 3 days ago (daysSinceTarget = 3).
 const DUE_AT_TARGET_3_DAYS_AGO = new Date('2024-06-26T12:00:00Z');
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Assignment slice as selected by the Track A query (null when the enrollment has no CourseAssignment). */
 type AssignmentSlice = { reminderStages: StageConfig[] } | null;
@@ -147,7 +137,7 @@ function makeTrackAEnrollment(
       id: `user-${id}`,
       email: `worker-${id}@test.com`,
       profile: { fullName: `Worker ${id}` },
-      organization: { timezone: null }, // → DEFAULT_TZ (America/New_York)
+      facility: { timezone: null } as { timezone: string | null } | null, // → DEFAULT_TZ (America/New_York)
     },
   };
 }
@@ -181,8 +171,6 @@ const BASE_OPTS = {
   dryRun: false,
 };
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks();
   // Safe defaults: empty result sets (both tracks empty)
@@ -203,8 +191,6 @@ beforeEach(() => {
   });
   delete process.env.RETENTION_PURGE_ENABLED;
 });
-
-// ─── Track A — deadline ladder ────────────────────────────────────────────────
 
 describe('runReminderSweep — Track A (deadline ladder)', () => {
   it('dispatches only FRIENDLY_REMINDER when dueAt is exactly 14 days out (catchUpDays=0)', async () => {
@@ -228,6 +214,47 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     expect(summary.ladderSent).toBe(1);
     expect(summary.skipped).toBe(4); // URGENT, DAY_OF, GRACE, HARD all skip
     expect(summary.errors).toBe(0);
+  });
+
+  it('reads timezone from the worker facility (Org/Facility split) — regression guard', async () => {
+    // Non-default timezone on facility so a fallback-to-DEFAULT_TZ bug (e.g.
+    // reverting to enrollment.user.organization.timezone, which no longer
+    // exists on the select) cannot masquerade as a pass. If the code read
+    // organization.timezone instead, this field is absent from the mock
+    // entirely, so `?? DEFAULT_TZ` would silently kick in and the assertion
+    // below would fail (America/New_York !== America/Los_Angeles).
+    const enrollment = makeTrackAEnrollment('e1');
+    enrollment.user.facility = { timezone: 'America/Los_Angeles' };
+
+    prismaMock.enrollment.findMany.mockResolvedValueOnce([enrollment]).mockResolvedValueOnce([]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    expect(mockDispatchLadderStage).toHaveBeenCalledWith(
+      expect.objectContaining({ timezone: 'America/Los_Angeles' }),
+    );
+
+    // Structural guard: the query must select facility.timezone, not
+    // organization.timezone — Organization no longer has a timezone column.
+    const call = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(call.select.user.select.facility).toEqual({ select: { timezone: true } });
+    expect(call.select.user.select.organization).toBeUndefined();
+  });
+
+  it('falls back to DEFAULT_TZ when the worker has no facility (facility: null)', async () => {
+    const enrollment = makeTrackAEnrollment('e1');
+    // Models a worker who has not been attached to a facility yet.
+    enrollment.user.facility = null;
+
+    prismaMock.enrollment.findMany.mockResolvedValueOnce([enrollment]).mockResolvedValueOnce([]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    expect(mockDispatchLadderStage).toHaveBeenCalledWith(
+      expect.objectContaining({ timezone: 'America/New_York' }),
+    );
   });
 
   it('skips a stage that already has a ReminderLog entry (sentSet dedup)', async () => {
@@ -387,8 +414,6 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
   });
 });
 
-// ─── Track B — quiz nudges ────────────────────────────────────────────────────
-
 describe('runReminderSweep — Track B (quiz nudges)', () => {
   function makeAttempt(enrollmentId: string, score: number, attemptCount: number) {
     return { enrollmentId, score, attemptCount };
@@ -535,7 +560,7 @@ describe('runReminderSweep — email retry pre-pass', () => {
         user: {
           email: 'worker-e1@test.com',
           profile: { fullName: 'Worker e1' },
-          organization: { timezone: null },
+          facility: { timezone: null },
         },
       },
     };

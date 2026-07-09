@@ -33,13 +33,11 @@ export default function CourseRail({
 
   const handleSelect = (index: number) => {
     onSelect(index);
-    // Close rail on mobile after selection
     onClose?.();
   };
 
   return (
     <>
-      {/* Mobile backdrop */}
       {isOpen && <div className="fixed inset-0 z-[55] bg-black/40 md:hidden" onClick={onClose} />}
 
       <nav

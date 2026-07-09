@@ -48,7 +48,6 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
   const workerName = message.workerName ?? message.toName ?? message.to;
   const daysOverdue = message.daysOverdue ?? 0;
 
-  // Track B recurring nudges.
   if (message.kind) {
     switch (message.kind) {
       case 'WORKER_RETAKE':

@@ -29,7 +29,6 @@ export default async function MappingPage({ params }: { params: Promise<{ id: st
       <div className="flex-1 overflow-y-auto border-b border-border bg-background-secondary p-8 md:border-b-0 md:border-r">
         <h2>Document Content</h2>
         <div className="prose mt-4">
-          {/* Render simplistic view of content */}
           {content.split('\n').map((line, i) => (
             <p key={i}>{line}</p>
           ))}

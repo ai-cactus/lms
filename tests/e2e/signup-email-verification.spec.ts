@@ -1,9 +1,12 @@
 /**
- * E2E spec: Email-based signup user story
+ * E2E spec: Email-based signup user story (owner-only self-serve signup)
  *
  * Story:
- *   1. User fills /signup form → routed to /signup/role-selection
- *   2. User selects role → signupWithRole creates verificationToken & sends email
+ *   1. User fills /signup form → submits directly (no role-selection step —
+ *      that flow was removed; self-serve signup always founds an
+ *      organisation, so the account is unconditionally created as `owner`)
+ *   2. `signup()` server action creates a verificationToken (role: 'owner')
+ *      & sends the verification email
  *   3. User lands on /verify-email (copy: "expires in 24 hours")
  *   4. User clicks link → /verify?token=... → POSTs to /api/auth/verify → creates
  *      User+Profile → redirects to /login?verified=true
@@ -11,13 +14,21 @@
  * Acceptance criteria:
  *   AC-1  Happy path: signup through to /verify-email; "expires in 24 hours" copy present
  *   AC-2  Form validation: empty fields / pw mismatch / terms unchecked / weak pw blocked
- *   AC-3  Role selection: both options visible & selectable; Continue triggers signupWithRole
+ *   AC-3  Direct submission: valid form submit navigates straight to /verify-email
+ *         (no role-selection step); the created verification token persists
+ *         role 'owner'; /signup/role-selection no longer exists (404)
  *   AC-4  Token consumption: valid token → user created → redirected to /login?verified=true
- *   AC-5  Role preservation: verified admin signup → user.role === 'admin' in DB
+ *   AC-5  Role resolution: a self-serve token always carries role 'owner' in DB;
+ *         a stale/retired token role (e.g. legacy 'admin', from before the RBAC
+ *         migration) safely falls back to DEFAULT_SELF_SERVE_WORKER_ROLE instead
+ *         of persisting an invalid enum value
  *
  * DB access: pg client connects to the Docker dev Postgres directly.
- * Email bypass: the test inserts verification tokens directly into the DB so
- *   real email sending (unconfigured in dev) is never required.
+ * Email: /signup submits go through the real `signup()` server action, which
+ *   sends via the dev SMTP transport pointed at the local MailHog container
+ *   (SMTP_HOST=localhost, SMTP_PORT=1025 in .env) — no real delivery occurs.
+ *   AC-4/AC-5 token-consumption tests still insert tokens directly into the DB
+ *   to exercise /api/auth/verify in isolation without depending on signup/email.
  * Cleanup: afterEach deletes all test users/tokens for the throwaway address.
  */
 
@@ -29,8 +40,7 @@ import * as bcrypt from 'bcryptjs';
 // ── DB helpers ──────────────────────────────────────────────────────────────
 
 const DB_URL =
-  process.env.DATABASE_URL ||
-  'postgresql://postgres:0951@localhost:5433/lms?schema=public';
+  process.env.DATABASE_URL || 'postgresql://postgres:0951@localhost:5433/lms?schema=public';
 
 async function dbClient(): Promise<Client> {
   const client = new Client({ connectionString: DB_URL });
@@ -42,10 +52,7 @@ async function cleanupTestUser(email: string): Promise<void> {
   const db = await dbClient();
   try {
     await db.query(`DELETE FROM public.users WHERE email = $1`, [email]);
-    await db.query(
-      `DELETE FROM public.verification_tokens WHERE identifier = $1`,
-      [email],
-    );
+    await db.query(`DELETE FROM public.verification_tokens WHERE identifier = $1`, [email]);
   } finally {
     await db.end();
   }
@@ -57,7 +64,12 @@ async function insertVerificationToken(opts: {
   password: string; // plain-text — will be hashed here
   firstName: string;
   lastName: string;
-  role: 'admin' | 'worker';
+  // `verification_tokens.role` is a nullable free-text column (not the `UserRole`
+  // DB enum) so it can carry a stale/retired value (e.g. the old 'admin' or
+  // single 'worker' literal) from a token minted before the RBAC migration —
+  // /api/auth/verify validates it against ALL_ROLES and falls back to
+  // DEFAULT_SELF_SERVE_WORKER_ROLE when it isn't a real role.
+  role: string;
   expiresInMs?: number; // default 24h
 }): Promise<void> {
   const db = await dbClient();
@@ -132,14 +144,17 @@ const VALID_PASSWORD = 'Str0ngP@ssw0rdXYZ!';
  * The Radix Checkbox component renders with role="checkbox" and aria-label
  * derived from the wrapping label — we click it via getByRole.
  */
-async function fillSignupForm(page: Page, opts: {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  password?: string;
-  confirmPassword?: string;
-  agreeTerms?: boolean;
-}) {
+async function fillSignupForm(
+  page: Page,
+  opts: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    password?: string;
+    confirmPassword?: string;
+    agreeTerms?: boolean;
+  },
+) {
   if (opts.firstName !== undefined) {
     await page.getByLabel('First Name').fill(opts.firstName);
   }
@@ -208,7 +223,9 @@ test.describe('Signup: email-based user story', () => {
       if (isDisabled) {
         await page.evaluate(() => {
           const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
-          if (btn) { btn.disabled = false; }
+          if (btn) {
+            btn.disabled = false;
+          }
         });
       }
       await submitBtn.click();
@@ -230,7 +247,9 @@ test.describe('Signup: email-based user story', () => {
       if (isDisabled) {
         await page.evaluate(() => {
           const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
-          if (btn) { btn.disabled = false; }
+          if (btn) {
+            btn.disabled = false;
+          }
         });
       }
       await submitBtn.click();
@@ -238,7 +257,10 @@ test.describe('Signup: email-based user story', () => {
       // Use a scoped locator: find the password Field's error paragraph.
       // We specifically look for the element that appears AFTER the password input in the DOM.
       await expect(
-        page.locator('form').getByText(/at least 12 characters/i).first(),
+        page
+          .locator('form')
+          .getByText(/at least 12 characters/i)
+          .first(),
       ).toBeVisible({ timeout: 3000 });
     });
 
@@ -265,7 +287,9 @@ test.describe('Signup: email-based user story', () => {
       // Force-enable the disabled button to trigger client-side validation
       await page.evaluate(() => {
         const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
-        if (btn) { btn.disabled = false; }
+        if (btn) {
+          btn.disabled = false;
+        }
       });
       await page.click('button[type="submit"]');
       await expect(page.getByText(/must agree to the terms/i)).toBeVisible();
@@ -275,7 +299,9 @@ test.describe('Signup: email-based user story', () => {
   // ── AC-1: Verify-email page shows "expires in 24 hours" copy ────────────
   // (Regression check: this copy was recently updated from a shorter expiry)
 
-  test('AC-1: /verify-email shows "Check your email" heading and "expires in 24 hours" copy', async ({ page }) => {
+  test('AC-1: /verify-email shows "Check your email" heading and "expires in 24 hours" copy', async ({
+    page,
+  }) => {
     // Navigate directly to /verify-email (the page a user lands on after signup)
     await page.goto('/verify-email');
     await expect(page.getByRole('heading', { name: /check your email/i })).toBeVisible();
@@ -283,13 +309,15 @@ test.describe('Signup: email-based user story', () => {
     await expect(page.getByText(/expires in 24 hours/i)).toBeVisible();
   });
 
-  // ── AC-3: Signup form → role-selection navigation ────────────────────────
+  // ── AC-3: Signup form → direct submission (no role-selection step) ───────
 
-  test('AC-3: valid signup form navigates to role-selection; both roles visible and selectable', async ({ page }) => {
+  test('AC-3: valid signup form submits directly to /verify-email and persists role "owner"; role-selection no longer exists', async ({
+    page,
+  }) => {
     await page.goto('/signup');
 
     // Fill all valid fields
-    await page.getByLabel('First Name').fill('QaAdmin');
+    await page.getByLabel('First Name').fill('QaOwner');
     await page.getByLabel('Last Name').fill('Tester');
     await page.getByLabel('Email').fill(email);
     await page.locator('input[name="password"]').fill(VALID_PASSWORD);
@@ -309,47 +337,45 @@ test.describe('Signup: email-based user story', () => {
     }
     await submitBtn.click();
 
-    // Should navigate to role-selection
-    await expect(page).toHaveURL(/signup\/role-selection/, { timeout: 10000 });
+    // No role-selection step — the removal of that page means a valid submit
+    // routes straight to /verify-email.
+    await expect(page).toHaveURL(/verify-email/, { timeout: 15000 });
+    await expect(page.getByRole('heading', { name: /check your email/i })).toBeVisible();
 
-    // AC-3: Both role options visible
-    const adminOption = page.getByRole('button', { name: /health service provider/i });
-    const workerOption = page.getByRole('button', { name: /^worker$/i });
-    await expect(adminOption).toBeVisible();
-    await expect(workerOption).toBeVisible();
-
-    // Admin is selected by default
-    await expect(adminOption).toHaveAttribute('aria-pressed', 'true');
-    await expect(workerOption).toHaveAttribute('aria-pressed', 'false');
-
-    // Can select Worker
-    await workerOption.click();
-    await expect(workerOption).toHaveAttribute('aria-pressed', 'true');
-    await expect(adminOption).toHaveAttribute('aria-pressed', 'false');
-
-    // Can switch back to Admin
-    await adminOption.click();
-    await expect(adminOption).toHaveAttribute('aria-pressed', 'true');
+    // AC-3: the verification token minted by the real signup() action must
+    // always carry role 'owner' — self-serve signup can never mint a worker.
+    const tokenRecord = await getTokenFromDb(email);
+    expect(tokenRecord, 'A verification token must have been created for this email').not.toBeNull();
+    expect(tokenRecord.role).toBe('owner');
   });
 
-  // (AC-3 worker role selection is covered in the combined AC-3 test above)
+  test('AC-3 (regression): /signup/role-selection no longer exists', async ({ page }) => {
+    const response = await page.goto('/signup/role-selection');
+    expect(response?.status()).toBe(404);
+    await expect(page.getByText(/page could not be found|not found|404/i).first()).toBeVisible();
+  });
 
   // ── AC-4 + AC-5: Token consumption → user created → redirect ─────────────
 
-  test('AC-4 + AC-5: valid token creates admin user and redirects to /login?verified=true', async ({ page }) => {
+  test('AC-4 + AC-5: valid token creates owner (founder) user and redirects to /login?verified=true', async ({
+    page,
+  }) => {
     // Pre-cleanup in case a previous test run left artifacts
     await cleanupTestUser(email).catch(() => {});
 
     const token = crypto.randomUUID();
 
-    // Insert a valid verification token directly into the DB (bypasses email)
+    // Insert a valid verification token directly into the DB (bypasses email,
+    // exercising /api/auth/verify in isolation). `signup()` always persists
+    // role 'owner' — the founding user of a new organisation — see
+    // src/app/actions/auth.ts.
     await insertVerificationToken({
       email,
       token,
       password: VALID_PASSWORD,
       firstName: 'QaAdmin',
       lastName: 'Direct',
-      role: 'admin',
+      role: 'owner',
     });
 
     // Navigate to /verify?token=<token>
@@ -365,10 +391,10 @@ test.describe('Signup: email-based user story', () => {
     // Should redirect to /login?verified=true
     await expect(page).toHaveURL(/login\?verified=true/, { timeout: 15000 });
 
-    // AC-5: Confirm user created in DB with role=admin
+    // AC-5: Confirm user created in DB with role=owner
     const user = await getUserFromDb(email);
     expect(user, 'User must exist in DB after verification').not.toBeNull();
-    expect(user.role).toBe('admin');
+    expect(user.role).toBe('owner');
     expect(user.email_verified).toBe(true);
     expect(user.first_name).toBe('QaAdmin');
     expect(user.last_name).toBe('Direct');
@@ -376,6 +402,39 @@ test.describe('Signup: email-based user story', () => {
     // AC-4: Token must be consumed (deleted from DB)
     const tokenRecord = await getTokenFromDb(email);
     expect(tokenRecord, 'Verification token must be deleted after consumption').toBeNull();
+  });
+
+  test('AC-5 (regression): a stale/retired token role (legacy "admin") falls back to DEFAULT_SELF_SERVE_WORKER_ROLE', async ({
+    page,
+  }) => {
+    // A token minted before the RBAC migration may still carry the retired
+    // single "admin" role literal (pre-six-role-split) or "worker" literal
+    // (pre-eight-worker-role-split). /api/auth/verify must not persist an
+    // invalid UserRole enum value — it validates against ALL_ROLES and falls
+    // back to DEFAULT_SELF_SERVE_WORKER_ROLE ('front_desk_admin').
+    await cleanupTestUser(email).catch(() => {});
+
+    const token = crypto.randomUUID();
+
+    await insertVerificationToken({
+      email,
+      token,
+      password: VALID_PASSWORD,
+      firstName: 'QaLegacy',
+      lastName: 'Role',
+      role: 'admin',
+    });
+
+    await page.goto(`/verify?token=${token}`);
+    const verifyBtn = page.getByRole('button', { name: /verify email address/i });
+    await expect(verifyBtn).toBeVisible({ timeout: 10000 });
+    await verifyBtn.click();
+
+    await expect(page).toHaveURL(/login\?verified=true/, { timeout: 15000 });
+
+    const user = await getUserFromDb(email);
+    expect(user, 'User must exist in DB after verification').not.toBeNull();
+    expect(user.role).toBe('front_desk_admin');
   });
 
   // ── Token expiry (regression) ─────────────────────────────────────────────
@@ -393,7 +452,7 @@ test.describe('Signup: email-based user story', () => {
       password: VALID_PASSWORD,
       firstName: 'QaExpired',
       lastName: 'Test',
-      role: 'worker',
+      role: 'front_desk_admin',
       expiresInMs: -(2 * 60 * 1000), // 2 minutes in the past
     });
 
@@ -409,7 +468,9 @@ test.describe('Signup: email-based user story', () => {
 
   // ── Missing token ─────────────────────────────────────────────────────────
 
-  test('verify page with no token redirects to /verify-email?error=missing_token', async ({ page }) => {
+  test('verify page with no token redirects to /verify-email?error=missing_token', async ({
+    page,
+  }) => {
     await page.goto('/verify');
     // The VerifyContent useEffect redirects immediately when no token in searchParams
     await expect(page).toHaveURL(/verify-email\?error=missing_token/, { timeout: 10000 });
@@ -417,7 +478,9 @@ test.describe('Signup: email-based user story', () => {
 
   // ── Verify-email page: "Check your email" state ───────────────────────────
 
-  test('verify-email page: default state shows "Check your email" and "expires in 24 hours"', async ({ page }) => {
+  test('verify-email page: default state shows "Check your email" and "expires in 24 hours"', async ({
+    page,
+  }) => {
     await page.goto('/verify-email');
     await expect(page.getByText(/check your email/i)).toBeVisible();
     await expect(page.getByText(/expires in 24 hours/i)).toBeVisible();

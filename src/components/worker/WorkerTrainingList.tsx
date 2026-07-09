@@ -72,7 +72,6 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
     router.push(`/worker/courses/${courseId}`);
   };
 
-  // Split courses into active and completed buckets
   const activeCourses = courses.filter((c) => c.status !== 'completed' && c.status !== 'attested');
   const completedCourses = courses.filter(
     (c) => c.status === 'completed' || c.status === 'attested',
@@ -82,7 +81,6 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
 
   return (
     <section className="overflow-hidden rounded-xl border border-[#e2e8f0] bg-white">
-      {/* Tab Bar */}
       <div className="flex border-b border-[#e2e8f0] bg-[#f8fafc]">
         {TABS.map((tab) => {
           const count = tab.key === 'active' ? activeCourses.length : completedCourses.length;
@@ -120,7 +118,6 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
             const isFailed = course.status === 'failed';
             const isLocked = course.status === 'locked';
 
-            // Button Logic
             let buttonText = 'Start Course';
             let onClick = () => handleStartClick(course.id);
 

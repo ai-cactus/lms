@@ -121,7 +121,6 @@ export async function checkRateLimit(
       key,
     });
 
-    // In-memory sliding window fallback
     const windowStartFallback = now - windowSec * 1000;
     const timestamps = fallbackCache.get(key) || [];
     const validTimestamps = timestamps.filter((t) => t > windowStartFallback);

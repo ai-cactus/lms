@@ -78,14 +78,12 @@ export const BILLING_PLANS: BillingPlan[] = [
   },
 ];
 
-// Discounts per billing cycle
 export const CYCLE_DISCOUNTS: Record<BillingCycle, number> = {
   monthly: 0,
   quarterly: 0.1, // -10%
   yearly: 0.25, // -25%
 };
 
-// Calculate the effective monthly price for a given plan and cycle
 export function getEffectiveMonthlyPrice(plan: BillingPlan, cycle: BillingCycle): number {
   const discount = CYCLE_DISCOUNTS[cycle];
   return Math.round(plan.monthlyPrice * (1 - discount));

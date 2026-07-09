@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
       select: { role: true, organizationId: true },
     });
 
-    if (!user || user.role !== 'admin') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
         name: true,
         primaryEmail: true,
         stripeCustomerId: true,
-        staffCount: true,
+        facilities: { select: { staffCount: true }, take: 1 },
       },
     });
 
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Enforce plan restriction: orgs with more staff cannot downgrade
-    const orgStaffNum = parseInt(organization.staffCount ?? '0', 10);
+    const orgStaffNum = parseInt(organization.facilities[0]?.staffCount ?? '0', 10);
     if (plan.staffMax !== null && orgStaffNum > plan.staffMax) {
       return NextResponse.json(
         { error: 'Your organization has too many staff members for this plan.' },
@@ -81,7 +82,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve or create Stripe customer
     let customerId = organization.stripeCustomerId ?? undefined;
     if (!customerId) {
       const customer = await stripe.customers.create({

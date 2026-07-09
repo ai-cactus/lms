@@ -15,8 +15,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { UploadUrlResult } from './types';
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const {
   MockGCSProvider,
   mockGCSCreateUploadUrl,
@@ -61,8 +59,6 @@ const {
   };
 });
 
-// ─── Module mocks (survive vi.resetModules() calls) ──────────────────────────
-
 vi.mock('@/lib/storage/gcs-provider', () => ({
   GCSProvider: MockGCSProvider,
 }));
@@ -80,15 +76,11 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks();
   // Flush the module registry so index.ts's _gcs / _gcsInitialised singletons reset.
   vi.resetModules();
 });
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('createUploadUrl — GCS configured and succeeds', () => {
   it('returns the gcs-resumable result when GCS createUploadUrl resolves', async () => {

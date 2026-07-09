@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { isAdminRole, WORKER_ROLES, DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -19,7 +20,6 @@ async function resolveSession() {
 
 // KursWithStats is now imported from '@/types/course'
 
-// Get all courses for current user (admin)
 export async function getCourses(): Promise<CourseWithStats[]> {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -102,7 +102,6 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   return [...own, ...adopted.filter((c) => !seen.has(c.id))];
 }
 
-// Get single course by ID with lessons
 export async function getCourseById(courseId: string): Promise<CourseWithRelations> {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -221,7 +220,6 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
   return course;
 }
 
-// Create a new course
 export async function createCourse(data: { title: string; description?: string }) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -241,7 +239,6 @@ export async function createCourse(data: { title: string; description?: string }
   return course;
 }
 
-// Update course details
 export async function updateCourse(
   courseId: string,
   data: {
@@ -256,7 +253,6 @@ export async function updateCourse(
     throw new Error('Unauthorized');
   }
 
-  // Verify ownership
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
   if (!existing || existing.createdBy !== session.user.id) {
     logger.warn({
@@ -283,7 +279,6 @@ export async function updateCourse(
   return course;
 }
 
-// Publish a course
 export async function publishCourse(courseId: string, opts?: { acknowledgeWarnings?: boolean }) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -339,7 +334,6 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   return course;
 }
 
-// Delete a course
 export async function deleteCourse(courseId: string) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -431,7 +425,7 @@ export async function getDashboardData() {
     totalOrgStaff = await prisma.user.count({
       where: {
         organizationId: currentUser.organizationId,
-        role: 'worker',
+        role: { in: [...WORKER_ROLES] },
       },
     });
   }
@@ -507,7 +501,6 @@ export async function getDashboardData() {
 
   // Calculate Course Performance (Scores vs Courses)
   const coursePerformance = coursesRaw.map((course) => {
-    // Find passing score
     const quiz = course.lessons.find((l) => l.quiz)?.quiz;
     const passingScore = quiz?.passingScore || 70;
 
@@ -631,7 +624,6 @@ export async function getDashboardData() {
   };
 }
 
-// Assign course to users
 export async function assignCourseToUsers(courseId: string, emails: string[]) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -705,7 +697,6 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   return { success: true, count: results.count };
 }
 
-// Create full course with content and assignments
 // Outcome of the server-side course quality assessment used by the publish-review
 // gate (F-051). `reviewRequired` gates publishing; `qualityWarnings` are the
 // human-readable reasons surfaced in the wizard.
@@ -836,7 +827,6 @@ export async function createFullCourse(data: {
     throw new Error('Unauthorized');
   }
 
-  // Get currentUser for Org ID
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { organizationId: true },
@@ -934,7 +924,7 @@ export async function createFullCourse(data: {
         data: {
           courseId: course.id,
           documentVersionId: latestDocVersion.id,
-          version: 1, // Initial version
+          version: 1,
         },
       });
     }
@@ -953,10 +943,8 @@ export async function createFullCourse(data: {
     const bcrypt = await import('bcryptjs');
     const crypto = await import('crypto');
 
-    // Email validation regex
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    // Filter valid emails only
     const validEmails = data.assignments.filter((email) => {
       if (!emailRegex.test(email)) {
         inviteResults.skipped.push(email);
@@ -976,14 +964,12 @@ export async function createFullCourse(data: {
       };
     }
 
-    // Get org details for email
     const org = await prisma.organization.findUnique({
       where: { id: currentUser.organizationId },
       select: { name: true },
     });
     const orgName = org?.name || 'Your Organization';
 
-    // Find existing users in this org
     const existingUsers = await prisma.user.findMany({
       where: {
         organizationId: currentUser.organizationId,
@@ -1009,19 +995,17 @@ export async function createFullCourse(data: {
       (e) => !existingEmails.includes(e) && !otherOrgEmails.includes(e),
     );
 
-    // Create new users for new emails
     const newUserIds: string[] = [];
 
     const newUserPromises = newEmails.map(async (email) => {
       const tempPassword = crypto.randomBytes(8).toString('hex');
       const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_COST);
 
-      // Create user + profile
       const newUser = await prisma.user.create({
         data: {
           email,
           password: hashedPassword,
-          role: 'worker',
+          role: DEFAULT_SELF_SERVE_WORKER_ROLE,
           organizationId: currentUser.organizationId,
           emailVerified: true,
           profile: {
@@ -1055,7 +1039,6 @@ export async function createFullCourse(data: {
       }
     });
 
-    // Combine all user IDs for enrollment
     const allUserIds = [...existingUsers.map((u) => u.id), ...newUserIds];
 
     if (allUserIds.length > 0) {
@@ -1071,7 +1054,6 @@ export async function createFullCourse(data: {
         });
         inviteResults.existingEnrolled = existingUsers.length;
 
-        // Send enrollment emails to existing users
         const { sendCourseEnrollmentEmail } = await import('@/lib/email');
 
         // We do this asynchronously without awaiting to not block the response
@@ -1115,7 +1097,6 @@ export async function createFullCourse(data: {
   };
 }
 
-// Attest a course completion
 export async function attestCourse(enrollmentId: string, signature: string, role: string) {
   // Resolve BOTH sessions to handle cookie collision (admin + worker in same browser)
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
@@ -1189,7 +1170,6 @@ export async function attestCourse(enrollmentId: string, signature: string, role
   return { success: true };
 }
 
-// Start a course (mark as in_progress)
 export async function startCourse(courseId: string) {
   // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
@@ -1239,7 +1219,6 @@ export async function startCourse(courseId: string) {
   return { success: true };
 }
 
-// Update quiz questions (Admin)
 export async function updateQuizQuestions(
   courseId: string,
   questions: {
@@ -1316,7 +1295,6 @@ export async function updateQuizQuestions(
   return { success: true };
 }
 
-// Update lesson content (Admin)
 export async function updateLessonContent(lessonId: string, content: string, title?: string) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -1350,7 +1328,6 @@ export async function updateLessonContent(lessonId: string, content: string, tit
   return { success: true };
 }
 
-// Retake a quiz (reset status to in_progress)
 export async function retakeQuiz(enrollmentId: string) {
   // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
@@ -1427,7 +1404,6 @@ export async function retakeQuiz(enrollmentId: string) {
   return { success: true };
 }
 
-// Assign a retake for a locked enrollment (admin only)
 export async function assignRetake(enrollmentId: string, retakeReason?: string) {
   // Only admins can assign retakes
   const session = await resolveSession();
@@ -1440,7 +1416,7 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     select: { role: true },
   });
 
-  if (!adminUser || adminUser.role !== 'admin') {
+  if (!adminUser || !isAdminRole(adminUser.role)) {
     throw new Error('Insufficient permissions');
   }
 

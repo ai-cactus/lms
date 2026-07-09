@@ -91,7 +91,6 @@ function ClockFace({ mode, h12, minutes, onSelectHour, onSelectMinute }: ClockFa
 
   const angleFor = (n: number, total: number) => ((n / total) * 360 - 90) * (Math.PI / 180);
 
-  // Hand angle
   const handAngleDeg = mode === 'hours' ? (h12 / 12) * 360 - 90 : (minutes / 60) * 360 - 90;
   const handAngleRad = handAngleDeg * (Math.PI / 180);
   const handX = CX + (R - DOT_R) * Math.cos(handAngleRad);
@@ -240,7 +239,6 @@ export default function TimePicker({
   const [mode, setMode] = useState<'hours' | 'minutes'>('hours');
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Sync external value changes
   useEffect(() => {
     const p = parseValue(value);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: syncing controlled value prop into internal clock state
@@ -253,7 +251,6 @@ export default function TimePicker({
     if (value) setTextInput(format(p.h12, p.minutes, p.ampm));
   }, [value]);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
@@ -311,7 +308,6 @@ export default function TimePicker({
 
   return (
     <div className="relative w-full" ref={wrapperRef}>
-      {/* Trigger / Text field row */}
       <div
         className={cn(
           'flex h-14 w-full select-none items-center justify-between rounded-[10px] border bg-background px-4 transition-colors',
@@ -346,13 +342,11 @@ export default function TimePicker({
         </button>
       </div>
 
-      {/* Clock popover */}
       {open && (
         <div
           className="absolute left-0 top-[calc(100%+8px)] z-50 rounded-xl border border-border bg-background shadow-lg"
           onMouseDown={(e) => e.preventDefault()} // prevent blur on clock click
         >
-          {/* Digital time display + AM/PM toggle */}
           <div className="flex items-center justify-center gap-2 px-4 pb-2 pt-4">
             <button
               onClick={() => setMode('hours')}
@@ -377,7 +371,6 @@ export default function TimePicker({
             >
               {pad(minutes)}
             </button>
-            {/* AM / PM */}
             <div className="ml-1 flex flex-col gap-1">
               {(['AM', 'PM'] as const).map((a) => (
                 <button
@@ -396,12 +389,10 @@ export default function TimePicker({
             </div>
           </div>
 
-          {/* Mode label */}
           <div className="mb-1 text-center text-[11px] text-text-tertiary">
             {mode === 'hours' ? 'Select hour' : 'Select minute'}
           </div>
 
-          {/* Clock face */}
           <div className="flex justify-center px-4 pb-2">
             <ClockFace
               mode={mode}
@@ -412,7 +403,6 @@ export default function TimePicker({
             />
           </div>
 
-          {/* OK button */}
           <div className="flex justify-end px-4 py-2 pb-3">
             <button
               onClick={() => {

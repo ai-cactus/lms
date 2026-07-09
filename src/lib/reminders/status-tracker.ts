@@ -72,7 +72,7 @@ export async function getStatusTrackerSummaryForOrg(
           email: true,
           profile: { select: { fullName: true } },
           manager: { select: { profile: { select: { fullName: true } } } },
-          organization: { select: { timezone: true } },
+          facility: { select: { timezone: true } },
         },
       },
     },
@@ -81,7 +81,7 @@ export async function getStatusTrackerSummaryForOrg(
   const rows: StatusTrackerRow[] = enrollments.map((enrollment) => {
     // `dueAt` is guaranteed non-null by the query filter; assert for the type.
     const dueAt = enrollment.dueAt as Date;
-    const tz = enrollment.user.organization?.timezone ?? DEFAULT_TZ;
+    const tz = enrollment.user.facility?.timezone ?? DEFAULT_TZ;
 
     return {
       enrollmentId: enrollment.id,

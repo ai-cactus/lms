@@ -63,7 +63,6 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           flexShrink: 0,
         }}
       >
-        {/* dashed inner frame */}
         <div
           style={{
             position: 'absolute',
@@ -74,7 +73,6 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           }}
         />
 
-        {/* diagonal wordmark watermark */}
         <div
           style={{
             position: 'absolute',
@@ -94,7 +92,6 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           Theraptly
         </div>
 
-        {/* faint clover watermark, lower-centre */}
         <svg
           width={300}
           height={300}
@@ -117,7 +114,6 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           />
         </svg>
 
-        {/* logo, top-right */}
         <div
           style={{
             position: 'absolute',
@@ -141,7 +137,6 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           </span>
         </div>
 
-        {/* seal, right */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/images/certificate-seal.svg"
@@ -151,7 +146,6 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           style={{ position: 'absolute', top: 174, right: 78 }}
         />
 
-        {/* heading, top-left */}
         <div style={{ position: 'absolute', top: 60, left: 64 }}>
           <div
             style={{
@@ -179,7 +173,6 @@ const CertificateDocument = forwardRef<HTMLDivElement, CertificateDocumentProps>
           </div>
         </div>
 
-        {/* body, left-aligned */}
         <div style={{ position: 'absolute', top: 286, left: 64, width: 600 }}>
           <p style={{ margin: 0, fontSize: 19, color: COLORS.body }}>This is to certify that</p>
           <p

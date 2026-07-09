@@ -31,7 +31,6 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
       <div className="w-full flex-1 overflow-y-auto pb-10">
         <h3 className="mb-5 text-[18px] font-bold text-[#1A202C]">Course Quiz</h3>
 
-        {/* Quiz Title */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
           <label className="text-sm font-medium text-[#718096]">Quiz Title</label>
           <Input
@@ -41,7 +40,6 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
           />
         </div>
 
-        {/* Number of Questions */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-start gap-5">
           <label className="mt-2 text-sm font-medium text-[#718096]">Number of Questions</label>
           <div className="flex flex-1 flex-col gap-2">
@@ -70,7 +68,6 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
           </div>
         </div>
 
-        {/* Difficulty */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
           <label className="text-sm font-medium text-[#718096]">Difficulty:</label>
           <Select
@@ -110,7 +107,6 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
           </div>
         </div>
 
-        {/* Pass Mark */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
           <label className="text-sm font-medium text-[#718096]">Pass Mark:</label>
           <div className="relative flex w-full items-center">
@@ -134,7 +130,6 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
           </div>
         </div>
 
-        {/* Attempts */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
           <label className="text-sm font-medium text-[#718096]">Attempts:</label>
           <div>

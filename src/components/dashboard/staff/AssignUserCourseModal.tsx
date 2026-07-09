@@ -222,7 +222,6 @@ export default function AssignUserCourseModal({
           </Select>
         </div>
 
-        {/* Result feedback */}
         {result && (
           <div className="mb-4 flex flex-col gap-2">
             {result.success.length > 0 && (

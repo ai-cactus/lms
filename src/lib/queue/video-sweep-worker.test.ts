@@ -19,8 +19,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const {
   MockWorker,
   mockListFiles,
@@ -69,8 +67,6 @@ const {
   };
 });
 
-// ─── Module mocks ─────────────────────────────────────────────────────────────
-
 vi.mock('bullmq', () => ({ Worker: MockWorker }));
 vi.mock('@/lib/queue/redis', () => ({ redis: {} }));
 vi.mock('@/lib/queue/video-sweep-queue', () => ({
@@ -98,12 +94,8 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
-// ─── Module under test ────────────────────────────────────────────────────────
-
 import { runVideoSweep, getVideoSweepWorker } from './video-sweep-worker';
 import type { Worker } from 'bullmq';
-
-// ─── Time helpers ─────────────────────────────────────────────────────────────
 
 // Fixed epoch used across all sweep tests for deterministic grace-period math.
 const NOW_MS = 1_720_000_000_000; // 2024-07-03T11:06:40.000Z
@@ -115,15 +107,11 @@ const OLD = new Date(NOW_MS - GRACE_MS - 60_000); // 61 min ago
 /** A date clearly inside the grace window. */
 const YOUNG = new Date(NOW_MS - GRACE_MS + 60_000); // 59 min ago
 
-// ─── Default DB mock setup (empty refs) ──────────────────────────────────────
-
 function setupEmptyRefs() {
   mockLessonFindMany.mockResolvedValue([]);
   mockCourseFindMany.mockResolvedValue([]);
   mockCourseArtifactFindMany.mockResolvedValue([]);
 }
-
-// ─── Setup / teardown ─────────────────────────────────────────────────────────
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -141,11 +129,7 @@ afterEach(() => {
   delete process.env.VIDEO_SWEEP_ENABLED;
 });
 
-// ─── runVideoSweep ────────────────────────────────────────────────────────────
-
 describe('runVideoSweep', () => {
-  // ── grace filter ────────────────────────────────────────────────────────────
-
   describe('grace filter', () => {
     it('all objects younger than grace → graceFiltered=total, zero deletes', async () => {
       mockListFiles.mockResolvedValue([
@@ -181,8 +165,6 @@ describe('runVideoSweep', () => {
       expect(mockDeleteFile).toHaveBeenCalledWith('gcs://b/system/videos/old.mp4');
     });
   });
-
-  // ── reference-set protection ─────────────────────────────────────────────────
 
   describe('three-column reference-set', () => {
     it('protects URIs found in lesson.videoStorageUri', async () => {
@@ -268,8 +250,6 @@ describe('runVideoSweep', () => {
     });
   });
 
-  // ── deletion ─────────────────────────────────────────────────────────────────
-
   describe('deletion', () => {
     it('calls deleteFile for an old unreferenced object and counts deleted=1', async () => {
       mockListFiles.mockResolvedValue([
@@ -343,8 +323,6 @@ describe('runVideoSweep', () => {
     });
   });
 
-  // ── normalized-path realism ───────────────────────────────────────────────────
-
   describe('normalized-path realism (transcode lifecycle)', () => {
     it('protects normalized URI (DB-referenced post-transcode) and reclaims the original', async () => {
       // After transcode, DB points to the normalized URI; the original upload
@@ -371,8 +349,6 @@ describe('runVideoSweep', () => {
       expect(mockDeleteFile).not.toHaveBeenCalledWith(normalizedUri);
     });
   });
-
-  // ── summary shape ─────────────────────────────────────────────────────────────
 
   describe('summary shape', () => {
     it('returns a complete VideoSweepSummary with all expected keys', async () => {
@@ -404,8 +380,6 @@ describe('runVideoSweep', () => {
     });
   });
 });
-
-// ─── getVideoSweepWorker ──────────────────────────────────────────────────────
 
 describe('getVideoSweepWorker', () => {
   it('returns null without constructing a Worker when VIDEO_SWEEP_ENABLED=false', () => {

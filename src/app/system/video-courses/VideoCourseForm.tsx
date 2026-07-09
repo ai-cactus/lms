@@ -260,7 +260,6 @@ export default function VideoCourseForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-      {/* Title */}
       <Field label="Title">
         <Input
           name="title"
@@ -272,7 +271,6 @@ export default function VideoCourseForm({
         />
       </Field>
 
-      {/* Description */}
       <Field label="Description">
         <Input
           name="description"
@@ -283,7 +281,6 @@ export default function VideoCourseForm({
         />
       </Field>
 
-      {/* Overview */}
       <Field label="Overview">
         <div className="rounded-[10px] border border-border [&_.ql-container]:!border-none [&_.ql-container]:min-h-[160px] [&_.ql-container]:text-sm [&_.ql-toolbar]:!border-none [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-b-border">
           <ReactQuill
@@ -297,7 +294,6 @@ export default function VideoCourseForm({
         </div>
       </Field>
 
-      {/* Skill level (optional) */}
       <Field label="Skill level (optional)">
         <select
           name="skillLevel"
@@ -313,7 +309,6 @@ export default function VideoCourseForm({
         </select>
       </Field>
 
-      {/* Two-column row: Category + Passing score + Allowed attempts */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <Field label="Category">
           <Input
@@ -349,7 +344,6 @@ export default function VideoCourseForm({
         </Field>
       </div>
 
-      {/* Duration */}
       <Field label="Duration (minutes, optional)">
         <Input
           name="duration"
@@ -365,7 +359,6 @@ export default function VideoCourseForm({
         />
       </Field>
 
-      {/* Preview video (optional) */}
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-foreground" htmlFor="previewVideo">
           Preview video (optional)
@@ -415,7 +408,6 @@ export default function VideoCourseForm({
         </div>
       </div>
 
-      {/* Course video (required) */}
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-foreground" htmlFor="courseVideo">
           Course video <span className="text-error">*</span>

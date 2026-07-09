@@ -29,8 +29,8 @@ const envSchema = z.object({
   NEXTAUTH_SECRET: requiredString('NEXTAUTH_SECRET'),
   AUTH_SECRET: requiredString('AUTH_SECRET'),
   REDIS_URL: requiredString('REDIS_URL'),
-  STRIPE_SECRET_KEY: requiredString('STRIPE_SECRET_KEY'),
-  STRIPE_WEBHOOK_SECRET: requiredString('STRIPE_WEBHOOK_SECRET'),
+  // STRIPE_SECRET_KEY: requiredString('STRIPE_SECRET_KEY'),
+  // STRIPE_WEBHOOK_SECRET: requiredString('STRIPE_WEBHOOK_SECRET'),
 });
 
 /**

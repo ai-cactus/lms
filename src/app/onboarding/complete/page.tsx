@@ -10,7 +10,6 @@ export default function OnboardingComplete() {
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center">
-      {/* Success Icon/Illustration */}
       <div className="relative size-[120px]">
         <div className="absolute top-5 left-5 z-[1] flex size-20 items-center justify-center rounded-full bg-primary/15">
           <div className="flex size-10 items-center justify-center rounded-full bg-primary text-white">

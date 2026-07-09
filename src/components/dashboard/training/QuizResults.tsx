@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import CircularProgress from '@/components/ui/CircularProgress';
 import AttestationModal from './AttestationModal';
 import BadgeSuccessModal from './BadgeSuccessModal';
+import { isWorkerRole } from '@/lib/rbac/role-utils';
 import { formatCertificateId } from '@/lib/certificate-id';
 
 interface QuizResultsProps {
@@ -69,7 +70,6 @@ export default function QuizResults({
 
   const questions = data?.questions || [];
 
-  // Radial Progress Calculation
   const passingScore = data?.passingScore || 70;
   const isPassed = stats.score >= passingScore;
   const strokeColor = isPassed ? '#00C55E' : '#E53E3E'; // Green or Red
@@ -80,19 +80,19 @@ export default function QuizResults({
     if (onAttestSuccess) onAttestSuccess();
   };
 
-  // Retake Logic
   const attemptsUsed = data?.attemptsUsed || 1;
   const allowedAttempts = data?.allowedAttempts || null;
   const canRetake = !isPassed && (allowedAttempts === null || attemptsUsed < allowedAttempts);
 
-  // Callback for retake
   const handleRetake = () => {
     if (onRetake) {
       onRetake();
     }
   };
 
-  const dashboardPath = userRole === 'admin' ? '/dashboard' : '/worker';
+  // Any non-worker viewer (admin-tier roles, or the legacy "admin" view flag)
+  // returns to the admin dashboard; workers return to the worker area.
+  const dashboardPath = isWorkerRole(userRole) ? '/worker' : '/dashboard';
 
   return (
     <div className="mx-auto max-w-[1000px] p-6">
@@ -144,7 +144,6 @@ export default function QuizResults({
         </div>
 
         <div className="relative z-[2] flex flex-col items-center gap-6 sm:flex-row">
-          {/* Grade Circle */}
           <div className="flex size-[120px] shrink-0 items-center justify-center">
             <CircularProgress
               percentage={stats.score}
@@ -155,7 +154,6 @@ export default function QuizResults({
             />
           </div>
 
-          {/* Stats Cards */}
           <div className="flex w-full flex-1 flex-col gap-4 sm:flex-row">
             <div className="relative flex min-h-20 flex-1 flex-col justify-center rounded-xl bg-background p-4 px-5 text-foreground shadow-sm">
               <span className="mb-1 block text-2xl font-bold">{stats.answered}</span>

@@ -44,10 +44,8 @@ export default function CourseSuccessModal({
         className="relative overflow-hidden px-4 pt-2 pb-6 text-center sm:max-w-md"
       >
         <DialogTitle className="sr-only">Course published</DialogTitle>
-        {/* Ambient background glow */}
         <div className="pointer-events-none absolute top-0 left-1/2 z-0 h-[300px] w-[300px] -translate-x-1/2 animate-[pulse_4s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.15)_0%,rgba(16,185,129,0)_70%)]"></div>
 
-        {/* 3D Illustration */}
         <div className="relative z-10 mx-auto mt-[-20px] mb-5 h-[180px] w-[180px]">
           <Image
             src="/images/course-success.png"
@@ -72,7 +70,6 @@ export default function CourseSuccessModal({
               Course Title
             </div>
             <div className="flex items-center justify-center gap-2 text-lg font-bold text-foreground">
-              {/* Small document icon next to title */}
               <FileText className="size-5 text-[#0ea5e9]" aria-hidden="true" />
               {courseTitle}
             </div>

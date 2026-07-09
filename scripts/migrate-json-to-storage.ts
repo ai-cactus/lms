@@ -51,7 +51,6 @@ async function migrateCourseJsonToStorage(
     skipped: 0,
   };
 
-  // Process courses in batches
   let offset = 0;
   let hasMore = true;
 
@@ -83,7 +82,6 @@ async function migrateCourseJsonToStorage(
         const value = (course as Record<string, unknown>)[field.column];
         if (!value) continue;
 
-        // Check if artifact already exists
         const existing = await prisma.courseArtifact.findFirst({
           where: { courseId: course.id, type: field.artifactType },
         });
@@ -127,7 +125,6 @@ async function migrateCourseJsonToStorage(
         }
       }
 
-      // Cleanup: null out legacy columns after successful migration
       if (cleanup && !dryRun) {
         try {
           await prisma.course.update({
@@ -159,7 +156,6 @@ async function migrateCourseJsonToStorage(
   return stats;
 }
 
-// CLI entry point
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');

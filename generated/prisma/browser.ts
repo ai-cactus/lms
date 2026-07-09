@@ -219,6 +219,16 @@ export type OrgCourseOffering = Prisma.OrgCourseOfferingModel
  */
 export type Organization = Prisma.OrganizationModel
 /**
+ * Model Facility
+ * 
+ */
+export type Facility = Prisma.FacilityModel
+/**
+ * Model FacilityDocument
+ * 
+ */
+export type FacilityDocument = Prisma.FacilityDocumentModel
+/**
  * Model Subscription
  * 
  */

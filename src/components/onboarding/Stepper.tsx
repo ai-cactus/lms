@@ -5,7 +5,8 @@ const steps = [
   { id: 1, label: 'Org. details' },
   { id: 2, label: 'Credentialing' },
   { id: 3, label: 'Services' },
-  { id: 4, label: 'Invite' },
+  { id: 4, label: 'Invite Team Members' },
+  { id: 5, label: 'Invite Workers' },
 ];
 
 interface StepperProps {
