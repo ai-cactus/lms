@@ -84,6 +84,8 @@ export const ModelName = {
   NotificationPreference: 'NotificationPreference',
   OrgCourseOffering: 'OrgCourseOffering',
   Organization: 'Organization',
+  Facility: 'Facility',
+  FacilityDocument: 'FacilityDocument',
   Subscription: 'Subscription',
   Invoice: 'Invoice',
   ProcessedWebhookEvent: 'ProcessedWebhookEvent',
@@ -142,12 +144,14 @@ export const UserScalarFieldEnum = {
   password: 'password',
   passwordResetRequired: 'passwordResetRequired',
   organizationId: 'organizationId',
+  facilityId: 'facilityId',
   authProvider: 'authProvider',
   role: 'role',
   emailVerified: 'emailVerified',
   mfaEnabled: 'mfaEnabled',
   mfaVerifiedAt: 'mfaVerifiedAt',
   sessionVersion: 'sessionVersion',
+  lastLoginAt: 'lastLoginAt',
   managerId: 'managerId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -591,26 +595,38 @@ export const OrganizationScalarFieldEnum = {
   slug: 'slug',
   dba: 'dba',
   ein: 'ein',
-  staffCount: 'staffCount',
   primaryContact: 'primaryContact',
   primaryEmail: 'primaryEmail',
-  phone: 'phone',
-  address: 'address',
-  city: 'city',
-  country: 'country',
-  state: 'state',
-  zipCode: 'zipCode',
-  licenseNumber: 'licenseNumber',
   isHipaaCompliant: 'isHipaaCompliant',
   hasAuditorAccess: 'hasAuditorAccess',
   primaryBusinessType: 'primaryBusinessType',
   additionalBusinessTypes: 'additionalBusinessTypes',
-  programServices: 'programServices',
   joinCode: 'joinCode',
   joinCodeExpiresAt: 'joinCodeExpiresAt',
   stripeCustomerId: 'stripeCustomerId',
   inactivityTimeoutMinutes: 'inactivityTimeoutMinutes',
   requireMfa: 'requireMfa',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type OrganizationScalarFieldEnum = (typeof OrganizationScalarFieldEnum)[keyof typeof OrganizationScalarFieldEnum]
+
+
+export const FacilityScalarFieldEnum = {
+  id: 'id',
+  organizationId: 'organizationId',
+  name: 'name',
+  type: 'type',
+  address: 'address',
+  city: 'city',
+  state: 'state',
+  country: 'country',
+  zipCode: 'zipCode',
+  phone: 'phone',
+  licenseNumber: 'licenseNumber',
+  staffCount: 'staffCount',
+  programServices: 'programServices',
   complianceDocumentUrl: 'complianceDocumentUrl',
   complianceDocumentName: 'complianceDocumentName',
   timezone: 'timezone',
@@ -618,7 +634,21 @@ export const OrganizationScalarFieldEnum = {
   updatedAt: 'updatedAt'
 } as const
 
-export type OrganizationScalarFieldEnum = (typeof OrganizationScalarFieldEnum)[keyof typeof OrganizationScalarFieldEnum]
+export type FacilityScalarFieldEnum = (typeof FacilityScalarFieldEnum)[keyof typeof FacilityScalarFieldEnum]
+
+
+export const FacilityDocumentScalarFieldEnum = {
+  id: 'id',
+  facilityId: 'facilityId',
+  url: 'url',
+  name: 'name',
+  sizeBytes: 'sizeBytes',
+  mimeType: 'mimeType',
+  uploadedById: 'uploadedById',
+  createdAt: 'createdAt'
+} as const
+
+export type FacilityDocumentScalarFieldEnum = (typeof FacilityDocumentScalarFieldEnum)[keyof typeof FacilityDocumentScalarFieldEnum]
 
 
 export const SubscriptionScalarFieldEnum = {

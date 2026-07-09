@@ -75,7 +75,7 @@ vi.mock('@/components/dashboard/status-tracker/StatusTrackerOverview', () => ({
 
 import DashboardPage from './page';
 
-const ADMIN_SESSION = { user: { id: 'admin-1', role: 'admin' } };
+const ADMIN_SESSION = { user: { id: 'admin-1', role: 'owner' } };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -160,7 +160,7 @@ describe('DashboardPage — Status Tracker data wiring', () => {
   });
 
   it('redirects workers away from the admin dashboard before any status-tracker fetch', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'worker-1', role: 'worker' } });
+    mockAuth.mockResolvedValue({ user: { id: 'worker-1', role: 'nurse' } });
 
     await expect(DashboardPage()).rejects.toThrow('NEXT_REDIRECT');
 

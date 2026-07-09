@@ -84,14 +84,12 @@ export function VideoPlayer({
     const now = Date.now();
     const msSinceLast = now - lastSavedAtRef.current;
 
-    // Clear any pending debounce timer
     if (debounceTimerRef.current !== null) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
 
     if (immediate || msSinceLast >= DEBOUNCE_MS) {
-      // Save right away
       lastSavedAtRef.current = now;
       saveVideoProgress(enrollmentIdRef.current, currentTime, watchedPct).catch((err: unknown) => {
         logger.warn({

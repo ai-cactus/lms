@@ -199,7 +199,6 @@ async function extractDiscountFields(
 }
 
 async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
-  // Resolve the organization from the Stripe customer ID
   const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
   const organization = await prisma.organization.findUnique({
     where: { stripeCustomerId: customerId },

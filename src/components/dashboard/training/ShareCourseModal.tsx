@@ -277,7 +277,6 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
           </div>
         )}
 
-        {/* Result feedback */}
         {result && (
           <div className="mb-4 flex flex-col gap-2">
             {result.success.length > 0 && (

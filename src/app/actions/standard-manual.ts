@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import { verifySystemAdminCookie } from '@/lib/system-auth';
 
@@ -22,7 +23,7 @@ export async function getStandardManualHistory() {
 
   if (!isSystemAdmin) {
     if (!session?.user) throw new Error('Unauthorized');
-    if (session.user.role !== 'admin') throw new Error('Forbidden');
+    if (!isAdminRole(session.user.role)) throw new Error('Forbidden');
   }
 
   return prisma.standardManual.findMany({

@@ -1,11 +1,11 @@
 import { prisma } from '@/db/index';
+import { WORKER_ROLES } from '@/lib/rbac/role-utils';
 
 async function main() {
-  // First, find all organizations and their workers
   const orgs = await prisma.organization.findMany({
     include: {
       users: {
-        where: { role: 'worker' },
+        where: { role: { in: [...WORKER_ROLES] } },
         select: { id: true, email: true, role: true },
       },
     },

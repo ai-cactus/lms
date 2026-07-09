@@ -12,6 +12,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert } from '@/components/ui/alert';
 import { validatePassword, PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
 import PasswordStrengthIndicator from '@/components/ui/PasswordStrengthIndicator';
+import { getRoleDisplayName } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 
 interface JoinPageClientProps {
   invite: {
@@ -34,8 +36,8 @@ export default function JoinPageClient({ invite, orgName }: JoinPageClientProps)
   const [showBanner, setShowBanner] = useState(true);
   const [captchaToken, setCaptchaToken] = useState<string>();
 
-  // Capitalize role for display
-  const displayRole = invite.role.charAt(0).toUpperCase() + invite.role.slice(1);
+  // Display the friendly role name from the RBAC registry.
+  const displayRole = getRoleDisplayName(invite.role as Role);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

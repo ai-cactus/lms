@@ -1,141 +1,152 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import { PlusCircle, FileSpreadsheet, Trash2 } from 'lucide-react';
-import { FileUpload, TagInput } from '@/components/ui';
+import { Mail, Trash2, PlusCircle, FileSpreadsheet, Download } from 'lucide-react';
+import { FileUpload } from '@/components/ui';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import Stepper from '@/components/onboarding/Stepper';
-import type { OnboardingData } from '@/app/actions/onboarding-complete';
+import { MANAGER_INVITE_ROLES } from '@/lib/rbac/role-utils';
+import {
+  readStaffSpreadsheetRows,
+  extractManagerInvitesFromRows,
+  buildManagerCsvTemplate,
+} from '@/lib/staff-csv';
 import { logger } from '@/lib/logger';
+
+interface ManagerInviteRow {
+  email: string;
+  role: string;
+}
+
+interface Step4FormData {
+  invites: ManagerInviteRow[];
+}
+
+const MANAGER_ROLE_OPTIONS: { value: string; name: string; description: string }[] = [
+  { value: 'supervisor', name: 'Supervisor', description: 'Full facility access except billing.' },
+  {
+    value: 'hr',
+    name: 'HR',
+    description:
+      'Manage staff, assign general courses, and view completion metrics. No billing or clinical scores.',
+  },
+  {
+    value: 'clinical_director',
+    name: 'Clinical Director',
+    description:
+      'Build clinical modules, assign clinical paths, and view granular assessment scores. No billing.',
+  },
+  {
+    value: 'finance',
+    name: 'Finance',
+    description: 'Manage billing, subscription, payment methods, and invoices only.',
+  },
+];
+
+const ROLE_NAME_BY_VALUE = new Map(MANAGER_ROLE_OPTIONS.map((o) => [o.value, o.name]));
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const EMPTY_ROW: ManagerInviteRow = { email: '', role: '' };
 
 export default function OnboardingStep4() {
   const router = useRouter();
-  const [emails, setEmails] = useState<string[]>([]);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const {
+    control,
+    handleSubmit,
+    register,
+    getValues,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = useForm<Step4FormData>({
+    defaultValues: { invites: [{ ...EMPTY_ROW }] },
+  });
+  const { fields, append, remove, replace } = useFieldArray({ control, name: 'invites' });
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [csvError, setCsvError] = useState('');
 
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [csvEmails, setCsvEmails] = useState<string[]>([]);
-
-  const validateEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const persistAndAdvance = (invites: ManagerInviteRow[]) => {
+    if (typeof window !== 'undefined') {
+      const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
+      const updated = { ...existing, step4: { managerInvites: invites } };
+      localStorage.setItem('onboarding_data', JSON.stringify(updated));
+    }
+    router.push('/onboarding/step5');
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    // Combine manual emails and CSV emails
-    const allEmails = [...emails, ...csvEmails];
-
-    setIsLoading(true);
-
-    try {
-      // 1. Gather all data
-      let allData: Record<string, unknown> = {};
-      if (typeof window !== 'undefined') {
-        allData = JSON.parse(localStorage.getItem('onboarding_data') || '{}') as Record<
-          string,
-          unknown
-        >;
-      }
-
-      // Add Step 4 data
-      allData.step4 = { workerEmails: allEmails };
-
-      logger.info({
-        msg: '[onboarding] Submitting full onboarding data',
-        stepCount: Object.keys(allData).length,
-        inviteCount: allEmails.length,
-      });
-
-      // 2. Call Server Action
-      const { completeOnboarding } = await import('@/app/actions/onboarding-complete');
-      const result = await completeOnboarding(allData as unknown as OnboardingData);
-
-      if (!result.success) {
-        setError(result.error || 'Failed to complete onboarding');
-        setIsLoading(false);
-        return;
-      }
-
-      // 3. Clear Storage
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('onboarding_data');
-        // Remove old keys if any
-        localStorage.removeItem('onboarding_org_id');
-      }
-
-      router.push('/onboarding/complete');
-    } catch (e) {
-      logger.error({ msg: 'Error completing onboarding', err: e });
-      setError('System error completing onboarding');
-      setIsLoading(false);
-      return;
+  const collectValidInvites = (rows: ManagerInviteRow[]): ManagerInviteRow[] => {
+    const seen = new Set<string>();
+    const result: ManagerInviteRow[] = [];
+    for (const row of rows) {
+      const email = row.email.trim().toLowerCase();
+      if (!EMAIL_REGEX.test(email) || seen.has(email)) continue;
+      seen.add(email);
+      result.push({ email, role: row.role });
     }
+    return result;
+  };
+
+  const onSubmit = (data: Step4FormData) => {
+    // Block advancing when a row has an email but no role — fully empty rows are
+    // ignored (they are simply dropped by collectValidInvites).
+    let hasMissingRole = false;
+    data.invites.forEach((row, index) => {
+      if (row.email.trim() && !row.role) {
+        setError(`invites.${index}.role` as const, { type: 'required', message: 'Select a role' });
+        hasMissingRole = true;
+      }
+    });
+    if (hasMissingRole) return;
+
+    logger.info({ msg: '[onboarding] Step 4 saved locally', rowCount: data.invites.length });
+    persistAndAdvance(collectValidInvites(data.invites));
+  };
+
+  const handleSkip = () => {
+    persistAndAdvance([]);
   };
 
   const handleCsvUpload = async (files: File[]) => {
     if (files.length === 0) return;
-
-    const file = files[0];
-    setIsLoading(true);
-    setError('');
-
+    setCsvError('');
     try {
-      // xlsx is ~1MB — load it only when a file is actually parsed so it stays
-      // out of the initial onboarding bundle.
-      const XLSX = await import('xlsx');
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-
-      // Get first sheet
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-
-      // Convert to JSON
-      const jsonData = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1 });
-
-      // Find email column (look for header or just use first column with emails)
-      const extractedEmails: string[] = [];
-
-      for (const row of jsonData) {
-        if (Array.isArray(row)) {
-          for (const cell of row) {
-            if (typeof cell === 'string' && validateEmail(cell.trim())) {
-              extractedEmails.push(cell.trim().toLowerCase());
-            }
-          }
-        }
-      }
-
-      // Remove duplicates
-      const uniqueEmails = [...new Set(extractedEmails)];
-
-      if (uniqueEmails.length === 0) {
-        setError('No valid emails found in the file. Please check the file format.');
-        setIsLoading(false);
+      const rows = await readStaffSpreadsheetRows(files[0]);
+      const { invites } = extractManagerInvitesFromRows(rows, {
+        validRoles: new Set(MANAGER_INVITE_ROLES as readonly string[]),
+      });
+      if (invites.length === 0) {
+        setCsvError('No valid emails found in the file. Please check the file format.');
         return;
       }
-
-      setCsvFile(file);
-      setCsvEmails(uniqueEmails);
+      const current = getValues('invites').filter((r) => r.email.trim());
+      replace([...current, ...invites]);
       setIsModalOpen(false);
-      setEmails([]); // Clear manual input if CSV is used
-    } catch (err) {
-      logger.error({ msg: 'Error parsing file:', err: err });
-      setError('Failed to parse file. Please check the format.');
+    } catch (error) {
+      logger.error({ msg: '[onboarding] Manager CSV parse failed', err: error });
+      setCsvError('Failed to parse file. Please check the format.');
     }
-
-    setIsLoading(false);
   };
 
-  const removeCsv = () => {
-    setCsvFile(null);
-    setCsvEmails([]);
+  const downloadTemplate = () => {
+    const blob = new Blob([buildManagerCsvTemplate()], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'managers-template.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -143,69 +154,124 @@ export default function OnboardingStep4() {
       <Stepper currentStep={4} />
 
       <h1 className="mb-2 text-center text-[22px] font-bold text-foreground md:text-[28px]">
-        Invite your Workers/Staffs
+        Invite your managers
       </h1>
       <p className="mb-6 text-center text-sm text-text-secondary md:mb-12 md:text-base">
-        Add your team so they can access assigned trainings and complete compliance requirements.
+        Invite the people who help you run this facility.
       </p>
 
       <form
-        onSubmit={handleSubmit}
+        onSubmit={handleSubmit(onSubmit)}
         className="flex flex-col gap-4 rounded-2xl bg-background p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] md:gap-6 md:p-10"
       >
-        {!csvFile ? (
-          <>
-            <div className="flex flex-col gap-2">
-              <TagInput
-                value={emails}
-                onChange={(newEmails) => {
-                  setEmails(newEmails);
-                  if (newEmails.length > 0) {
-                    setError('');
-                  }
-                }}
-                placeholder="Type email and press Enter..."
-                validate={validateEmail}
-                error={error}
-              />
-            </div>
+        <div className="hidden gap-4 md:flex">
+          <span className="flex-1 text-sm font-semibold text-foreground">Email</span>
+          <span className="w-[220px] text-sm font-semibold text-foreground">Roles</span>
+          <span className="w-11" />
+        </div>
 
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => setIsModalOpen(true)}
-              className="w-fit gap-2 px-0 font-semibold text-primary"
-            >
-              <PlusCircle className="size-5" aria-hidden="true" />
-              Import with .csv file instead
-            </Button>
-          </>
-        ) : (
-          <div className="mt-2 flex items-center justify-between rounded-lg border border-border bg-background p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-8 items-center justify-center rounded-md bg-success text-white">
-                <FileSpreadsheet className="size-5" aria-hidden="true" />
+        <div className="flex flex-col gap-4">
+          {fields.map((row, index) => (
+            <div key={row.id} className="flex flex-col gap-3 md:flex-row md:items-start md:gap-4">
+              <div className="flex-1">
+                <Input
+                  startIcon={<Mail aria-hidden="true" />}
+                  placeholder="Enter manager's email"
+                  type="email"
+                  {...register(`invites.${index}.email` as const)}
+                />
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-foreground">{csvFile.name}</span>
-                <span className="text-xs text-success">
-                  {csvEmails.length} email{csvEmails.length !== 1 ? 's' : ''} found
-                </span>
+              <div className="md:w-[220px]">
+                <Controller
+                  name={`invites.${index}.role` as const}
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        clearErrors(`invites.${index}.role` as const);
+                      }}
+                    >
+                      <SelectTrigger
+                        className="h-14 w-full rounded-[10px]"
+                        aria-invalid={!!errors.invites?.[index]?.role}
+                      >
+                        {field.value ? (
+                          <span className="text-foreground">
+                            {ROLE_NAME_BY_VALUE.get(field.value) ?? field.value}
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="Select role" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent className="max-w-[320px]">
+                        {MANAGER_ROLE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-medium text-foreground">{option.name}</span>
+                              <span className="text-xs text-text-tertiary">
+                                {option.description}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {errors.invites?.[index]?.role && (
+                  <p className="mt-1.5 text-sm text-error">
+                    {errors.invites[index]?.role?.message}
+                  </p>
+                )}
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                type="button"
+                onClick={() => remove(index)}
+                disabled={fields.length === 1}
+                className="text-text-tertiary hover:text-error"
+                aria-label="Remove row"
+              >
+                <Trash2 className="size-5" aria-hidden="true" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              type="button"
-              onClick={removeCsv}
-              className="text-error"
-            >
-              <Trash2 className="size-[18px]" aria-hidden="true" />
-            </Button>
-          </div>
-        )}
+          ))}
+        </div>
 
-        <div className="mt-6 flex flex-col-reverse gap-3 md:flex-row md:justify-between md:gap-4">
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <button
+            type="button"
+            onClick={() => append({ ...EMPTY_ROW })}
+            className="flex items-center gap-1.5 text-sm font-semibold text-primary"
+          >
+            <PlusCircle className="size-4" aria-hidden="true" />
+            Add team member
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCsvError('');
+              setIsModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 text-sm font-semibold text-primary"
+          >
+            <FileSpreadsheet className="size-4" aria-hidden="true" />
+            Import with .csv file instead
+          </button>
+          <button
+            type="button"
+            onClick={downloadTemplate}
+            className="flex items-center gap-1.5 text-sm font-semibold text-primary"
+          >
+            <Download className="size-4" aria-hidden="true" />
+            Download sample .csv template
+          </button>
+        </div>
+
+        <div className="mt-6 flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
           <Button
             variant="outline"
             type="button"
@@ -214,39 +280,41 @@ export default function OnboardingStep4() {
           >
             Back
           </Button>
-          <Button type="submit" disabled={isLoading} className="w-full md:w-auto">
-            Complete Onboarding
-          </Button>
+          <div className="flex flex-col-reverse items-center gap-3 md:flex-row md:gap-4">
+            <button
+              type="button"
+              onClick={handleSkip}
+              className="text-sm font-semibold text-text-secondary hover:text-foreground"
+            >
+              Skip for now
+            </button>
+            <Button type="submit" className="w-full md:w-auto">
+              Next
+            </Button>
+          </div>
         </div>
       </form>
 
-      <Dialog
-        open={isModalOpen}
-        onOpenChange={(open) => {
-          if (!open) setIsModalOpen(false);
-        }}
-      >
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Upload .csv file</DialogTitle>
           </DialogHeader>
 
           <p className="text-sm text-text-secondary">
-            You can add multiple staffs from an uploaded csv file
+            Add multiple managers from a CSV with an <span className="font-medium">email</span>{' '}
+            column and an optional <span className="font-medium">role</span> column.
           </p>
 
           <div className="h-60">
             <FileUpload
               onFilesSelected={handleCsvUpload}
               multiple={false}
-              accept=".csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              description=".csv or .xls files only. 10MB max."
+              accept=".csv,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              description=".csv or .xlsx files only."
+              error={csvError || undefined}
             />
           </div>
-
-          <Button type="button" className="w-full" onClick={() => {}}>
-            Continue
-          </Button>
         </DialogContent>
       </Dialog>
     </div>

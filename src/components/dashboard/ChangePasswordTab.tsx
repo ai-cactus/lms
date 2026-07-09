@@ -130,7 +130,6 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
         </Field>
       </div>
 
-      {/* Password Requirements Checklist */}
       <div className="mb-8 flex flex-col gap-2">
         {[
           { text: 'At least 12 characters', valid: newPassword.length >= 12 },

@@ -24,7 +24,6 @@ import type {
 import { isLegacyPath } from './types';
 import { logger } from '@/lib/logger';
 
-// Re-export helpers and types for convenience
 export { parseStorageUri, isLegacyPath } from './types';
 export type {
   StorageListItem,
@@ -32,8 +31,6 @@ export type {
   StorageBackend,
   UploadUrlResult,
 } from './types';
-
-// ─── Singleton instances ───────────────────────────────────────────────────────
 
 // MinIO is always available (it's in Docker) — lazily instantiated once.
 let _minio: MinIOProvider | null = null;
@@ -57,8 +54,6 @@ function tryGetGCS(): GCSProvider | null {
     return null;
   }
 }
-
-// ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Upload a file buffer using GCS if available, otherwise MinIO.
@@ -210,8 +205,6 @@ export async function listFiles(prefix: string): Promise<StorageListItem[]> {
 
   return [...gcsItems, ...minioItems];
 }
-
-// ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
  * Route a storageUri to the correct provider based on its prefix.

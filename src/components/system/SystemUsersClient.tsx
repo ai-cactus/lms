@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
+import { getRoles } from '@/lib/rbac/permissions';
 import { Eye, Trash2 } from 'lucide-react';
 import { getAllUsers, getUserDeletePreview } from '@/app/actions/system-admin';
 import type { SystemUserRow, DeletePreview } from '@/app/actions/system-admin';
@@ -43,7 +45,6 @@ export default function SystemUsersClient({
   const [orgFilter, setOrgFilter] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Delete modal state
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -91,9 +92,8 @@ export default function SystemUsersClient({
     }
   }
 
-  // Count stats
-  const adminCount = users.filter((u) => u.role === 'admin').length;
-  const workerCount = users.filter((u) => u.role === 'worker').length;
+  const adminCount = users.filter((u) => isAdminRole(u.role)).length;
+  const workerCount = users.filter((u) => isWorkerRole(u.role)).length;
 
   function getInitials(user: SystemUserRow): string {
     if (user.profile?.fullName) {
@@ -128,7 +128,6 @@ export default function SystemUsersClient({
         </p>
       </div>
 
-      {/* Stats */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div className="rounded-[10px] border border-border bg-background p-4">
           <div className="text-2xl font-bold text-foreground">{total}</div>
@@ -148,7 +147,6 @@ export default function SystemUsersClient({
         </div>
       </div>
 
-      {/* Filters */}
       <form
         onSubmit={handleSearchSubmit}
         className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center"
@@ -169,8 +167,11 @@ export default function SystemUsersClient({
           className="h-11 rounded-[10px] border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           <option value="">All Roles</option>
-          <option value="admin">Admin</option>
-          <option value="worker">Worker</option>
+          {getRoles().map((role) => (
+            <option key={role.id} value={role.id}>
+              {role.displayName}
+            </option>
+          ))}
         </select>
         <select
           value={orgFilter}
@@ -189,7 +190,6 @@ export default function SystemUsersClient({
         </select>
       </form>
 
-      {/* Table */}
       <div className="rounded-xl border border-border bg-background">
         {loading && (
           <div className="flex items-center justify-center gap-3 py-12 text-sm text-text-secondary">
@@ -235,7 +235,7 @@ export default function SystemUsersClient({
                     <TableCell className="hidden md:table-cell">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                          user.role === 'admin'
+                          isAdminRole(user.role)
                             ? 'bg-primary/10 text-primary'
                             : 'bg-background-secondary text-text-secondary'
                         }`}
@@ -286,7 +286,6 @@ export default function SystemUsersClient({
           </Table>
         )}
 
-        {/* Pagination */}
         {!loading && totalPages > 1 && (
           <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-3 sm:flex-row">
             <div className="text-sm text-text-secondary">
@@ -328,7 +327,6 @@ export default function SystemUsersClient({
         )}
       </div>
 
-      {/* Delete Modal */}
       {deletePreview && (
         <DeleteUserModal
           preview={deletePreview}

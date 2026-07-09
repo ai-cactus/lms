@@ -14,7 +14,6 @@ export default async function QuizResultsPage({
   try {
     const enrollment = await getEnrollmentWithResults(enrollmentId);
 
-    // Calculate stats from quiz attempts
     const quizAttempts = enrollment.quizAttempts || [];
     const latestAttempt = quizAttempts[quizAttempts.length - 1];
 
@@ -28,15 +27,12 @@ export default async function QuizResultsPage({
       );
     }
 
-    // Build the data for the component
     const allQuestions = enrollment.course.lessons.flatMap(
       (lesson) => lesson.quiz?.questions || [],
     );
 
-    // Parse answers from JSON
     const answers = latestAttempt.answers as { questionId: string; selectedAnswer: string }[];
 
-    // Calculate correct/wrong counts
     let correctCount = 0;
     let wrongCount = 0;
 
@@ -49,7 +45,6 @@ export default async function QuizResultsPage({
       }
     });
 
-    // Build props for the component
     const resultsData = {
       courseName: enrollment.course.title,
       score: latestAttempt.score,

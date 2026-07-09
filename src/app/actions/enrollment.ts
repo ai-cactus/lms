@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { isAdminRole, DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -9,7 +10,7 @@ import { createNotification, notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
-import { RenewalCycle, ReminderStage } from '@/generated/prisma/enums';
+import { RenewalCycle, ReminderStage, type UserRole } from '@/generated/prisma/enums';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
 import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
 
@@ -64,7 +65,6 @@ export async function getAvailableUsers() {
     return [];
   }
 
-  // Get all users within the caller's organization
   const users = await prisma.user.findMany({
     where: { organizationId: caller.organizationId },
     include: {
@@ -79,7 +79,7 @@ export async function getAvailableUsers() {
     id: user.id,
     email: user.email,
     fullName: user.profile?.fullName || user.email,
-    role: user.role || 'worker',
+    role: user.role,
     avatarUrl: user.profile?.avatarUrl,
   }));
 }
@@ -117,7 +117,7 @@ export async function enrollUsers(
   // Enrolling staff is an admin-only action. The session check above only
   // proves *someone* is logged in (a worker session would pass it); require
   // the admin role explicitly (mirrors assertOrgAdmin in offering.ts).
-  if (currentUser?.role !== 'admin') {
+  if (!isAdminRole(currentUser?.role)) {
     throw new Error('Forbidden');
   }
 
@@ -206,6 +206,17 @@ export async function enrollUsers(
   const crypto = await import('crypto');
   const { sendCourseInviteEmail, sendCourseLaunchEmail } = await import('@/lib/email');
 
+  // Resolve the org's facility ONCE (not per-iteration). New CSV users are
+  // attached to it; null if the org has no facility yet.
+  const facilityId = organizationId
+    ? ((
+        await prisma.facility.findFirst({
+          where: { organizationId },
+          select: { id: true },
+        })
+      )?.id ?? null)
+    : null;
+
   for (const entry of staffEntries) {
     const normalizedEmail = entry.email.toLowerCase().trim();
 
@@ -221,10 +232,12 @@ export async function enrollUsers(
     const lastName = entry.lastName?.trim() || undefined;
     const fullName =
       firstName && lastName ? `${firstName} ${lastName}` : (firstName ?? lastName ?? undefined);
-    // Only allow 'admin' or 'worker'; default to 'worker' for safety.
-    const userRole: 'admin' | 'worker' = entry.role === 'admin' ? 'admin' : 'worker';
+    // CSV supplies a coarse "admin" / "worker" token (entry.role is the literal
+    // 'admin' | 'worker'). Map "admin" to the RBAC successor `supervisor`
+    // (facility admin); everything else becomes the default self-serve worker role.
+    const userRole: UserRole =
+      entry.role === 'admin' ? 'supervisor' : DEFAULT_SELF_SERVE_WORKER_ROLE;
 
-    // Find existing user by email.
     let user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
       include: { profile: true },
@@ -243,6 +256,7 @@ export async function enrollUsers(
             role: userRole,
             emailVerified: true,
             organizationId: currentUser?.organizationId || null,
+            facilityId,
             // Hydrate profile immediately so the worker's name is visible
             // throughout the app without requiring them to edit their profile.
             profile:
@@ -322,7 +336,6 @@ export async function enrollUsers(
 
     if (!user) continue;
 
-    // Check if the user is already enrolled in this course.
     const existing = await prisma.enrollment.findFirst({
       where: { userId: user.id, courseId },
     });
@@ -349,7 +362,6 @@ export async function enrollUsers(
       ),
     });
 
-    // Create the enrollment record.
     const enrollment = await prisma.enrollment.create({
       data: {
         userId: user.id,
@@ -680,7 +692,6 @@ export async function removeWorkerAssignment(enrollmentId: string) {
     throw new Error('Unauthorized');
   }
 
-  // Find the enrollment
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
@@ -699,7 +710,6 @@ export async function removeWorkerAssignment(enrollmentId: string) {
   }
 
   // Prevent removing if completed (optional, depending on business logic, but usually we allow removal or maybe block it)
-  // Let's just delete the enrollment
   await prisma.enrollment.delete({
     where: { id: enrollmentId },
   });

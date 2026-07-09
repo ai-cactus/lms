@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { logger } from '@/lib/logger';
 
-// Import React Quill dynamically
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 
 interface AdminLessonEditorProps {
@@ -40,7 +39,6 @@ export default function AdminLessonEditor({
   const [isSaving, setIsSaving] = useState(false);
   const titleRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // Sync state if lesson changes
   React.useEffect(() => {
     setContent(lesson.content);
     setTitle(lesson.title);
@@ -73,7 +71,6 @@ export default function AdminLessonEditor({
     setIsEditing(false);
   };
 
-  // Quill Config
   const quillModules = {
     toolbar: [
       [{ header: [1, 2, false] }],

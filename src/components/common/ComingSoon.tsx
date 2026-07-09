@@ -4,7 +4,7 @@ import Link from 'next/link';
 interface ComingSoonProps {
   title: string;
   description?: string;
-  returnUrl?: string; // Optional URL to return to
+  returnUrl?: string;
 }
 
 export default function ComingSoon({

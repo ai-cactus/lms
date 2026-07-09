@@ -186,7 +186,6 @@ export default function CoursePreview({
 
   return (
     <div className="min-h-screen bg-[#f9fafb]">
-      {/* Dark Header */}
       <div className="relative -m-10 mb-10 bg-[#1a202c] px-6 py-10 text-white md:px-[60px]">
         <div className="relative mx-auto max-w-[1200px]">
           <Link
@@ -249,14 +248,11 @@ export default function CoursePreview({
         </div>
       </div>
 
-      {/* Body */}
       <div className="mx-auto max-w-[1200px]">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-          {/* Left column */}
           <div className="flex flex-col gap-8">
             {course.previewVideoStorageUri && <PreviewVideoPlayer courseId={course.id} />}
 
-            {/* Course Overview */}
             {(course.overview || course.description || objectives.length > 0) && (
               <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
                 {(course.overview || course.description) && (
@@ -287,7 +283,6 @@ export default function CoursePreview({
               </div>
             )}
 
-            {/* Course Contents */}
             {hasCourseContents && (
               <div className="flex flex-col gap-3">
                 <h2 className="text-2xl font-bold text-[#1a202c]">Course Contents</h2>
@@ -361,7 +356,6 @@ export default function CoursePreview({
             )}
           </div>
 
-          {/* Right column (sidebar) */}
           <div className="flex flex-col gap-6">
             {/* Attestation Status Card (worker, attested) */}
             {enrollment?.status === 'attested' && (
@@ -391,7 +385,6 @@ export default function CoursePreview({
               </div>
             )}
 
-            {/* Course Details */}
             {(skillLevel || watchMinutes != null) && (
               <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
                 <h3 className="mb-5 text-lg font-bold text-[#1a202c]">Course Details</h3>
@@ -431,7 +424,6 @@ export default function CoursePreview({
               </div>
             )}
 
-            {/* Included Modules */}
             {lessons.length > 0 && (
               <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
                 <div className="mb-4 flex items-center justify-between">

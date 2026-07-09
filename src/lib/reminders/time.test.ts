@@ -9,9 +9,6 @@ import { describe, it, expect } from 'vitest';
 import { DEFAULT_TZ, localDateKey, startOfDayInTz, addDays, diffInDaysInTz } from './time';
 
 describe('time utilities', () => {
-  // -------------------------------------------------------------------------
-  // localDateKey
-  // -------------------------------------------------------------------------
   describe('localDateKey', () => {
     it('returns YYYY-MM-DD for a UTC instant at midnight EST (America/New_York)', () => {
       // 2024-01-15T05:00:00Z = 2024-01-15T00:00:00 EST (UTC-5)
@@ -59,9 +56,6 @@ describe('time utilities', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
-  // startOfDayInTz
-  // -------------------------------------------------------------------------
   describe('startOfDayInTz', () => {
     it('returns the UTC instant for midnight EST (UTC-5) on a winter day in New York', () => {
       // Noon UTC Jan 15 = 07:00 EST; midnight Jan 15 EST = 05:00 UTC
@@ -103,9 +97,6 @@ describe('time utilities', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
-  // addDays
-  // -------------------------------------------------------------------------
   describe('addDays', () => {
     it('adds positive days', () => {
       expect(addDays(new Date('2024-01-15T00:00:00.000Z'), 5).toISOString()).toBe(
@@ -145,9 +136,6 @@ describe('time utilities', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
-  // diffInDaysInTz
-  // -------------------------------------------------------------------------
   describe('diffInDaysInTz', () => {
     it('returns 0 when both instants fall in the same local calendar day', () => {
       const a = new Date('2024-01-15T20:00:00Z'); // 15:00 EST Jan 15

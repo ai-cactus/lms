@@ -101,7 +101,6 @@ export default function OnboardingStep1() {
   const onSubmit = async (data: Step1FormData) => {
     logger.info({ msg: '[onboarding] Step 1 saved locally', fieldCount: Object.keys(data).length });
     try {
-      // Check availability
       const { checkOrganizationNameAvailable } = await import('@/app/actions/organization');
       const result = await checkOrganizationNameAvailable(data.legalName);
 
@@ -114,7 +113,6 @@ export default function OnboardingStep1() {
         return;
       }
 
-      // Save to localStorage
       if (typeof window !== 'undefined') {
         const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
         const updated = { ...existing, step1: data };
@@ -208,7 +206,7 @@ export default function OnboardingStep1() {
                       <SelectItem value="1-10">1-10</SelectItem>
                       <SelectItem value="11-49">11-49</SelectItem>
                       <SelectItem value="50-499">50-499</SelectItem>
-                      <SelectItem value="500+">500+</SelectItem>
+                      <SelectItem value="500+">500 above</SelectItem>
                     </SelectContent>
                   </Select>
                 </Field>
@@ -247,10 +245,23 @@ export default function OnboardingStep1() {
 
         <div className="flex flex-col gap-4 md:flex-row md:gap-6">
           <div className="flex flex-1 flex-col gap-1.5">
-            <input type="hidden" {...register('country')} />
-            <Field label="Country">
-              <Input value="United States" readOnly tabIndex={-1} />
-            </Field>
+            <Controller
+              name="country"
+              control={control}
+              rules={{ required: 'Country is required' }}
+              render={({ field }) => (
+                <Field label="Country" required error={getError('country')}>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-14 w-full rounded-[10px]">
+                      <SelectValue placeholder="Select an option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="US">United States</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
             <Controller
@@ -284,59 +295,67 @@ export default function OnboardingStep1() {
 
         <div className="flex flex-col gap-4 md:flex-row md:gap-6">
           <div className="flex flex-1 flex-col gap-1.5">
-            <Field label="Street Address" required error={getError('streetAddress')}>
-              <Input
-                {...register('streetAddress', { required: 'Street Address is required' })}
-                placeholder="Enter business street address"
-              />
-            </Field>
+            <label htmlFor="streetAddress" className="text-sm font-semibold text-foreground">
+              Street Address <span className="font-normal text-primary">(optional)</span>
+            </label>
+            <Input
+              id="streetAddress"
+              {...register('streetAddress')}
+              placeholder="Enter business street address"
+            />
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
-            <Field label="Zip Code" required error={getError('zipCode')}>
-              <Input
-                {...register('zipCode', { required: 'Zip Code is required' })}
-                placeholder="e.g. 27601"
-              />
-            </Field>
+            <label htmlFor="zipCode" className="text-sm font-semibold text-foreground">
+              Zip Code <span className="font-normal text-primary">(optional)</span>
+            </label>
+            <Input id="zipCode" {...register('zipCode')} placeholder="e.g. 27601" />
           </div>
         </div>
 
         <div className="flex flex-col gap-4 md:flex-row md:gap-6">
           <div className="flex flex-1 flex-col gap-1.5">
-            <Field label="City" required error={getError('city')}>
-              <Input
-                {...register('city', { required: 'City is required' })}
-                placeholder="Enter city"
-              />
-            </Field>
+            <label htmlFor="city" className="text-sm font-semibold text-foreground">
+              City <span className="font-normal text-primary">(optional)</span>
+            </label>
+            <Input id="city" {...register('city')} placeholder="Enter city" />
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
+            <label className="text-sm font-semibold text-foreground">
+              State <span className="font-normal text-primary">(optional)</span>
+            </label>
             <Controller
               name="state"
               control={control}
-              rules={{ required: 'State is required' }}
               render={({ field }) => (
-                <Field label="State" required error={getError('state')}>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="h-14 w-full rounded-[10px]">
-                      <SelectValue placeholder="Select an option" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {US_STATES.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger className="h-14 w-full rounded-[10px]">
+                    <SelectValue placeholder="Select an option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {US_STATES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             />
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end gap-4">
-          <Button type="submit">Next</Button>
+        <div className="mt-6 flex flex-col-reverse gap-3 md:flex-row md:justify-end md:gap-4">
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => router.push('/dashboard')}
+            className="w-full md:w-auto"
+          >
+            Skip for now
+          </Button>
+          <Button type="submit" className="w-full md:w-auto">
+            Next
+          </Button>
         </div>
       </form>
     </div>

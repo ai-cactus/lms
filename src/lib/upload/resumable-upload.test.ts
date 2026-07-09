@@ -33,16 +33,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { resumableUpload } from './resumable-upload';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const CHUNK = 256 * 1024; // 256 KiB — minimum GCS-valid chunk size
 
 const UPLOAD_URL =
   'https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_type=resumable&name=key';
 const SESSION_URI =
   'https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=AAANsUkFQIWu';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Construct a minimal Response with the given status and optional headers. */
 function makeResponse(status: number, headers: Record<string, string> = {}): Response {
@@ -53,8 +49,6 @@ function makeResponse(status: number, headers: Record<string, string> = {}): Res
 function makeFile(size: number, type = 'video/mp4', name = 'test.mp4'): File {
   return new File([new Uint8Array(size)], name, { type });
 }
-
-// ─── Setup ────────────────────────────────────────────────────────────────────
 
 let mockFetch: ReturnType<typeof vi.fn>;
 
@@ -67,8 +61,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers(); // restore real timers after any test that used fake timers
 });
-
-// ─── Happy path — single chunk ────────────────────────────────────────────────
 
 describe('resumableUpload — happy path (single chunk)', () => {
   it('sends POST to initiate the session, then one PUT that covers the whole file', async () => {
@@ -123,8 +115,6 @@ describe('resumableUpload — happy path (single chunk)', () => {
     ).resolves.toBeUndefined();
   });
 });
-
-// ─── Multi-chunk ──────────────────────────────────────────────────────────────
 
 describe('resumableUpload — multi-chunk', () => {
   it('issues two PUT requests with correct Content-Range headers for a two-chunk file', async () => {
@@ -182,8 +172,6 @@ describe('resumableUpload — multi-chunk', () => {
   });
 });
 
-// ─── Initiation errors ────────────────────────────────────────────────────────
-
 describe('resumableUpload — initiation errors', () => {
   it('throws a descriptive error when Location header is absent from the init response', async () => {
     // 200 but no Location — usually a CORS misconfiguration.
@@ -205,8 +193,6 @@ describe('resumableUpload — initiation errors', () => {
     );
   });
 });
-
-// ─── Retry and backoff ────────────────────────────────────────────────────────
 
 describe('resumableUpload — retry on transient chunk failure', () => {
   it('retries a failed chunk and completes when the retry succeeds', async () => {
@@ -333,8 +319,6 @@ describe('resumableUpload — retry on transient chunk failure', () => {
   });
 });
 
-// ─── Abort ────────────────────────────────────────────────────────────────────
-
 describe('resumableUpload — abort', () => {
   it('throws AbortError immediately when the signal is already aborted before upload starts', async () => {
     const controller = new AbortController();
@@ -371,8 +355,6 @@ describe('resumableUpload — abort', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
-
-// ─── Edge cases ───────────────────────────────────────────────────────────────
 
 describe('resumableUpload — edge cases', () => {
   it('throws immediately for an empty file (size 0) without calling fetch', async () => {

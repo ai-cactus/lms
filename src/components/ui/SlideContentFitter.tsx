@@ -23,7 +23,6 @@ export default function SlideContentFitter({
   // Track if we are currently adjusting to prevent flicker
   const [isAdjusting, setIsAdjusting] = useState(true);
 
-  // Reset to max when content changes
   useLayoutEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset state based on content change
     setFontSize(maxFontSize);
@@ -37,7 +36,6 @@ export default function SlideContentFitter({
       let currentSize = maxFontSize;
       el.style.fontSize = `${currentSize}px`;
 
-      // Loop to shrink
       // Safety counter
       let iterations = 0;
       while (el.scrollHeight > el.clientHeight && currentSize > minFontSize && iterations < 100) {
@@ -46,14 +44,12 @@ export default function SlideContentFitter({
         iterations++;
       }
 
-      // Finalize
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Finalize after layout measurement
       setFontSize(currentSize);
       setIsAdjusting(false);
     }
-  }, [content, maxFontSize, minFontSize, isAdjusting, fontSize]); // Dependencies
+  }, [content, maxFontSize, minFontSize, isAdjusting, fontSize]);
 
-  // Handle Window Resize
   useEffect(() => {
     const handleResize = () => {
       setIsAdjusting(true); // Trigger re-calculation

@@ -1,4 +1,5 @@
 import { auth } from '@/auth';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { BILLING_PLANS } from '@/lib/billing-plans';
@@ -36,7 +37,7 @@ export default async function CancelSubscriptionPage() {
     },
   });
 
-  if (!user || user.role !== 'admin') {
+  if (!user || !isAdminRole(user.role)) {
     redirect('/dashboard');
   }
 

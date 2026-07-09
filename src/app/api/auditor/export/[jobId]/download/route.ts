@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import * as XLSX from 'xlsx';
@@ -84,7 +85,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       where: { id: session.user.id },
       select: { role: true, organizationId: true },
     });
-    if (!user || user.role !== 'admin' || !user.organizationId) {
+    if (!user || !isAdminRole(user.role) || !user.organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

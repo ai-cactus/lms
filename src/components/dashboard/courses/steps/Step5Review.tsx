@@ -8,7 +8,6 @@ import {
 } from '@/app/actions/course-ai-v4.6';
 import { useJobStatus } from '@/hooks/use-job-status';
 
-// Reusable Components
 import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui/button';
@@ -102,11 +101,9 @@ function slidesV46ToHtml(slides: RichSlide[]): string {
 
       let html = `<div class="rich-slide ${typeClass}">`;
 
-      // Type badge
       const typeLabel = type === 'TELL' ? 'CONCEPT' : type === 'SHOW' ? 'SCENARIO' : 'ACTION';
       html += `<span class="slide-type-badge slide-type-badge-${type.toLowerCase()}">${typeLabel}</span>`;
 
-      // Title
       if (slide.title) {
         html += `<h3 class="slide-heading">${slide.title}</h3>`;
       }
@@ -118,13 +115,11 @@ function slidesV46ToHtml(slides: RichSlide[]): string {
 
       // Type-specific content
       if (type === 'TELL') {
-        // Key points bullets
         if (slide.bullets && slide.bullets.length > 0) {
           html += '<ul class="slide-key-points">';
           html += slide.bullets.map((b: string) => `<li>${b}</li>`).join('');
           html += '</ul>';
         }
-        // Terminology box
         if (slide.terminology && slide.terminology.length > 0) {
           html += '<div class="slide-terms-box">';
           html += '<h4 class="slide-box-title">Key Terms</h4>';
@@ -133,7 +128,6 @@ function slidesV46ToHtml(slides: RichSlide[]): string {
           });
           html += '</div>';
         }
-        // Critical Details
         if (slide.criticalDetails && slide.criticalDetails.length > 0) {
           html += '<div class="slide-details-box">';
           html += '<h4 class="slide-box-title">Critical Details</h4>';
@@ -144,7 +138,6 @@ function slidesV46ToHtml(slides: RichSlide[]): string {
       }
 
       if (type === 'SHOW') {
-        // Scenario block
         if (slide.scenario) {
           html += '<div class="slide-scenario">';
           html += `<div class="scenario-label">Workplace Scenario</div>`;
@@ -156,7 +149,6 @@ function slidesV46ToHtml(slides: RichSlide[]): string {
           html += `<div class="scenario-rationale"><span class="scenario-tag">Why</span> ${slide.scenario.rationale}</div>`;
           html += '</div>';
         }
-        // Supporting bullets
         if (slide.bullets && slide.bullets.length > 0) {
           html += '<ul class="slide-key-points">';
           html += slide.bullets.map((b: string) => `<li>${b}</li>`).join('');
@@ -165,13 +157,11 @@ function slidesV46ToHtml(slides: RichSlide[]): string {
       }
 
       if (type === 'DO') {
-        // Action Steps (numbered)
         if (slide.actionSteps && slide.actionSteps.length > 0) {
           html += '<ol class="slide-action-steps">';
           html += slide.actionSteps.map((s: string) => `<li>${s}</li>`).join('');
           html += '</ol>';
         }
-        // Process Sequence
         if (slide.processSequence && slide.processSequence.length > 0) {
           html += '<div class="slide-process-flow">';
           slide.processSequence.forEach((s) => {
@@ -179,7 +169,6 @@ function slidesV46ToHtml(slides: RichSlide[]): string {
           });
           html += '</div>';
         }
-        // Critical Details (forms, timelines)
         if (slide.criticalDetails && slide.criticalDetails.length > 0) {
           html += '<div class="slide-details-box">';
           html += '<h4 class="slide-box-title">What You Need</h4>';
@@ -187,7 +176,6 @@ function slidesV46ToHtml(slides: RichSlide[]): string {
           html += slide.criticalDetails.map((d: string) => `<li>${d}</li>`).join('');
           html += '</ul></div>';
         }
-        // Checklist bullets fallback
         if (!slide.actionSteps?.length && !slide.processSequence?.length && slide.bullets?.length) {
           html += '<ul class="slide-checklist">';
           html += slide.bullets.map((b: string) => `<li>${b}</li>`).join('');
@@ -216,7 +204,6 @@ function splitMarkdownSections(markdown: string): { title: string; content: stri
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.startsWith('## ') || trimmed.startsWith('# ')) {
-      // Save previous section
       if (currentTitle || currentLines.length > 0) {
         sections.push({
           title: currentTitle || 'Untitled Section',
@@ -230,7 +217,6 @@ function splitMarkdownSections(markdown: string): { title: string; content: stri
     }
   }
 
-  // Push last section
   if (currentTitle || currentLines.length > 0) {
     sections.push({
       title: currentTitle || 'Untitled Section',
@@ -258,10 +244,8 @@ const adaptModulesForRenderingV46 = (
   const metaSections = articleMeta?.sections || [];
   const slides = slidesJson?.slides || [];
 
-  // Map each articleMeta section to a module
   return metaSections.map(
     (section: { title: string; sectionId: string; keyPoints?: string[] }, idx: number) => {
-      // Find matching markdown section by title
       const mdSection =
         markdownSections.find(
           (s) =>
@@ -269,7 +253,6 @@ const adaptModulesForRenderingV46 = (
             section.title.toLowerCase().includes(s.title.toLowerCase()),
         ) || markdownSections[idx];
 
-      // Find slides that reference this section
       const sectionSlides = slides.filter((sl: RichSlide) =>
         sl.sourceSections?.includes(section.sectionId),
       );
@@ -398,12 +381,10 @@ export default function Step5Review({
   onComplete,
   pendingJobId,
 }: Step5ReviewProps) {
-  // Core State
   const [generatedContent, setGeneratedContent] = useState<GeneratedCourse | null>(
     initialContent || null,
   );
 
-  // UI View State
   const [viewMode, setViewMode] = useState<'slides' | 'article'>('article');
   const [activeModuleIndex, setActiveModuleIndex] = useState(0);
   const [editedModules, setEditedModules] = useState<RenderableModule[]>(
@@ -531,7 +512,6 @@ export default function Step5Review({
     window.location.href = '/dashboard/courses';
   };
 
-  // Handlers
   const handleModuleChange = (index: number) => {
     if (index < 0 || index >= editedModules.length) return;
     setActiveModuleIndex(index);
@@ -541,7 +521,6 @@ export default function Step5Review({
     setViewMode(mode);
   };
 
-  // Loading / Error States
   if (error && !generatedContent) {
     return (
       <div className="flex flex-row-reverse max-md:flex-col h-screen w-full bg-background-secondary text-[#1a1a1a] overflow-hidden font-sans items-center justify-center">
@@ -588,7 +567,6 @@ export default function Step5Review({
 
   const currentModule = editedModules[activeModuleIndex];
 
-  // Choose content based on view mode
   const displayContent =
     viewMode === 'slides'
       ? currentModule?.slideContent || currentModule?.content || ''
@@ -596,9 +574,7 @@ export default function Step5Review({
 
   return (
     <div className="flex flex-row-reverse max-md:flex-col h-screen w-full bg-background-secondary text-[#1a1a1a] overflow-hidden font-sans">
-      {/* Main Area */}
       <div className="flex-1 flex flex-col overflow-hidden h-full w-full">
-        {/* Content Stage */}
         <div className="flex-1 overflow-hidden relative h-full bg-[#f8f7f4]">
           {viewMode === 'slides' ? (
             <CourseSlide
@@ -631,7 +607,6 @@ export default function Step5Review({
           )}
         </div>
 
-        {/* Warning banner for content shortfall */}
         {(() => {
           const coverageNote = (
             generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } }
@@ -667,7 +642,6 @@ export default function Step5Review({
           );
         })()}
 
-        {/* Warning banner for partial failures */}
         {generatedContent?.warning && (
           <div className="px-4 py-3 bg-[#FEF3C7] border-t border-[#F59E0B] text-[#92400E] text-[13px]">
             ⚠ {generatedContent.warning}

@@ -5,6 +5,19 @@ metadata:
   type: project
 ---
 
+**Update 2026-07-09:** `.env` and `.env.local` no longer set `AUTH_URL` or
+`NEXTAUTH_URL` at all (verified via grep on branch `rbac`). A full local
+`npx playwright test --workers=1` run (all 12 specs, including
+`onboarding-wizard.spec.ts`'s login-form-submitting tests) passed with no
+extra env exported beyond what's already in `.env.local` + the config's
+`webServer.env` override — no `ERR_CONNECTION_REFUSED` reproduced. Treat the
+section below as historical: only re-apply the CI-env-block workaround if
+`AUTH_URL`/`NEXTAUTH_URL` reappear in `.env` pointing at a different port than
+the Playwright server. See also [[e2e-webserver-dev-lock-conflict]] for a
+separate, still-current local-run gotcha (a stray `:3000` dev server blocks
+the webServer from starting at all).
+
+
 Running `npx playwright test tests/e2e` locally (against a dedicated `lms_e2e` Postgres DB,
 `CI=true` forcing workers:1/retries:2) reliably failed the same 6 tests every time — every
 test that submits the real login form (`ENG-002`, `ENG-022`, `ENG-024`, `ENG-020`, `REM-001`,

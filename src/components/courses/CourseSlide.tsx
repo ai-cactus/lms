@@ -173,7 +173,6 @@ export default function CourseSlide({
       ref={slideRef}
       tabIndex={-1}
     >
-      {/* Topbar */}
       <div className="flex shrink-0 items-center justify-between border-b border-border-default bg-background px-4 py-2.5 md:px-6 md:py-3">
         <div className="flex items-center gap-3">
           <span className="text-xs font-semibold text-foreground md:text-sm">
@@ -192,9 +191,7 @@ export default function CourseSlide({
         </div>
       </div>
 
-      {/* Body: thumbnails + main slide card */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Left thumbnail sidebar */}
         <div className="hidden w-[240px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border-default bg-background px-3 py-4 md:flex">
           {pages.map((page, i) => (
             <button
@@ -215,9 +212,7 @@ export default function CourseSlide({
           ))}
         </div>
 
-        {/* Main area */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden px-3 py-4 md:px-8 md:py-6">
-          {/* Slide card */}
           <div className="relative mx-auto flex w-full max-w-full flex-1 flex-col overflow-hidden rounded-xl border border-border-default bg-background shadow-[0_4px_16px_rgba(0,0,0,0.06)] md:max-w-[820px]">
             <div className="h-1.5 w-full shrink-0 bg-success" />
             <div className="flex flex-1 flex-col overflow-y-auto px-[18px] py-4 md:px-9 md:py-7">
@@ -251,7 +246,6 @@ export default function CourseSlide({
             </div>
           </div>
 
-          {/* Bottom navigation */}
           <div className="flex shrink-0 items-center justify-between pt-3 md:pt-4">
             <Button variant="outline" size="sm" onClick={goPrev} disabled={isFirstPage && isFirst}>
               Back

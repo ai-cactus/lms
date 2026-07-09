@@ -1,4 +1,3 @@
-// src/lib/audit-reports/pdf-primitives.ts
 // Generic PDFKit drawing helpers shared by all audit report renderers.
 import PDFDocument from 'pdfkit';
 

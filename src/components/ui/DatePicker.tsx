@@ -27,7 +27,6 @@ export default function DatePicker({
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
 
-  // Initialize calendar view state
   const today = new Date();
   const [viewDate, setViewDate] = useState(() => {
     if (value) {
@@ -75,7 +74,6 @@ export default function DatePicker({
     }
   }, [isOpen]);
 
-  // Calendar Logic
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
@@ -189,7 +187,6 @@ export default function DatePicker({
                 <div key={`empty-${i}`} className="h-9" />
               ))}
 
-              {/* Days */}
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const day = i + 1;
                 const monthStr = String(currentMonth + 1).padStart(2, '0');
@@ -197,13 +194,11 @@ export default function DatePicker({
                 const dateStr = `${currentYear}-${monthStr}-${dayStr}`;
                 const isSelected = value === dateStr;
 
-                // Check if today
                 const isToday =
                   today.getDate() === day &&
                   today.getMonth() === currentMonth &&
                   today.getFullYear() === currentYear;
 
-                // Check if before minDate
                 const thisDate = new Date(currentYear, currentMonth, day);
                 const isPast = thisDate < effectiveMinDate;
 

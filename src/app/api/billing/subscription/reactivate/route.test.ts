@@ -50,7 +50,7 @@ import { POST } from './route';
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const ADMIN_USER = { role: 'admin', organizationId: 'org-1' };
+const ADMIN_USER = { role: 'owner', organizationId: 'org-1' };
 
 const CANCEL_SCHEDULED_SUB = {
   id: 'sub-row-1',
@@ -64,7 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Session carries the `role` claim so the F-012 guardApiSession check
   // (auth + MFA + admin role, read from session claims) passes by default.
-  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'admin' } });
+  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
 });
 
@@ -146,7 +146,7 @@ describe('POST /api/billing/subscription/reactivate', () => {
   });
 
   it('returns 404 when the user has no organization', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ role: 'admin', organizationId: null });
+    prismaMock.user.findUnique.mockResolvedValue({ role: 'owner', organizationId: null });
 
     const res = await POST();
     const body = await res.json();
@@ -168,7 +168,7 @@ describe('POST /api/billing/subscription/reactivate', () => {
   });
 
   it('returns 401/403 (guard-rejected) when the session role is not admin', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-2', role: 'worker' } });
+    mockAuth.mockResolvedValue({ user: { id: 'user-2', role: 'nurse' } });
 
     const res = await POST();
 

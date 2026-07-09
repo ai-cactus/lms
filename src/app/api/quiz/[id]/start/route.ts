@@ -33,7 +33,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const { enrollmentId } = parsedBody.data;
 
-    // Verify enrollment
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
     });

@@ -39,7 +39,9 @@ export default async function WorkerLayout({ children }: { children: React.React
 
   return (
     <WorkerSessionProvider>
-      <WorkerDashboardLayout fullName={fullName}>{children}</WorkerDashboardLayout>
+      <WorkerDashboardLayout fullName={fullName} role={role ?? undefined}>
+        {children}
+      </WorkerDashboardLayout>
     </WorkerSessionProvider>
   );
 }

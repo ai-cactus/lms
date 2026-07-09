@@ -95,7 +95,6 @@ function LoginForm() {
     if (!isValid) return;
 
     setErrors({});
-    // Construct FormData manually
     const form = new FormData();
     form.append('email', formData.email);
     form.append('password', formData.password);

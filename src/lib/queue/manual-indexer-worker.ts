@@ -30,8 +30,6 @@ import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { MANUAL_INDEXER_QUEUE_NAME, type ManualIndexerJobData } from './manual-indexer-queue';
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 declare global {
   var __manualIndexerWorker: Worker | undefined;
 }
@@ -128,8 +126,6 @@ function runIndexerProcess(
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Returns the singleton worker, creating it if it doesn't exist yet.
  * Safe to call multiple times — only one Worker instance will be created.
@@ -187,7 +183,6 @@ export function getManualIndexerWorker(): Worker {
     },
   );
 
-  // ── Global failure handler ──────────────────────────────────────────────
   worker.on('failed', async (job, err) => {
     logger.error({
       msg: '[ManualIndexerWorker] Job exhausted all retries',

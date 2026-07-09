@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import NotificationPanel from '@/components/notifications/NotificationPanel';
 import { useNotifications } from '@/components/notifications/useNotifications';
+import { clearSiblingSessionCookie } from '@/app/actions/session-bridge';
 import { Bell, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
 
 interface HeaderProps {
@@ -66,6 +67,13 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
   };
 
   const handleConfirmLogout = async () => {
+    // Also drop a bridged learner (worker) session so logging out of Manage mode
+    // fully signs the user out. Best-effort — never block the real signOut.
+    try {
+      await clearSiblingSessionCookie('admin');
+    } catch {
+      // Swallow — the primary signOut below is what matters.
+    }
     await signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/login` });
   };
 
@@ -97,7 +105,6 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
         </button>
 
         <div className="flex items-center gap-6 lg:gap-6">
-          {/* Notifications */}
           <div className="relative inline-flex" ref={notifRef}>
             <button
               className="relative rounded-full bg-[#f7fafc] p-2 text-[#718096] transition-colors hover:bg-[#edf2f7]"
@@ -125,7 +132,6 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
             )}
           </div>
 
-          {/* Profile Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <div
               className="flex cursor-pointer select-none items-center gap-3 rounded-full bg-[#f7fafc] py-1.5 pl-1.5 pr-3 transition-colors hover:bg-[#edf2f7]"
@@ -177,7 +183,6 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
         </div>
       </header>
 
-      {/* Logout Confirmation Dialog */}
       <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           <DialogHeader className="items-center text-center">

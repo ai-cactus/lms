@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { AlertTriangle } from 'lucide-react';
 import { deleteUserWithRelations } from '@/app/actions/system-admin';
 import type { DeletePreview } from '@/app/actions/system-admin';
@@ -118,14 +119,13 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </Alert>
           )}
 
-          {/* User Info */}
           <div className="rounded-[10px] bg-background-secondary px-4 py-3">
             <div className="font-semibold text-foreground">{user.name}</div>
             <div className="text-sm text-text-secondary">{user.email}</div>
             <div className="mt-1">
               <span
                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                  user.role === 'admin'
+                  isAdminRole(user.role)
                     ? 'bg-primary/10 text-primary'
                     : 'bg-background-secondary text-text-secondary'
                 }`}
@@ -135,7 +135,6 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </div>
           </div>
 
-          {/* Affected enrollments warning */}
           {affectedEnrollments > 0 && (
             <Alert variant="warning" className="w-full">
               <strong>{affectedEnrollments}</strong> enrollment(s) from other users in courses
@@ -143,7 +142,6 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </Alert>
           )}
 
-          {/* Impact Table */}
           <div>
             <h4 className="mb-2 text-sm font-semibold text-foreground">Records to be deleted:</h4>
             <div className="rounded-[10px] border border-border">
@@ -172,7 +170,6 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </div>
           </div>
 
-          {/* Confirm by typing email */}
           <Field label="To confirm deletion, type the email address below:" helperText={user.email}>
             <Input
               type="text"

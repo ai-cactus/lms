@@ -61,7 +61,6 @@ export default function WorkerWelcomeModal({
   };
 
   const handleStart = () => {
-    // Permanent dismiss
     dismissModal(modalId, -1);
     if (firstCourseId) {
       router.push(`/learn/${firstCourseId}`);
@@ -81,11 +80,8 @@ export default function WorkerWelcomeModal({
     >
       <DialogContent className="max-w-[95vw] gap-0 overflow-hidden p-0 sm:max-w-[900px]">
         <div className="flex max-h-[85vh] w-full flex-col overflow-y-auto md:max-h-none md:min-h-[500px] md:flex-row md:overflow-y-visible">
-          {/* Left Panel */}
           <div className="relative flex flex-1 flex-col items-center justify-center overflow-hidden bg-[#e6fffa] px-6 py-8 text-center md:p-10">
-            {/* Green decoration blob */}
             <div className="absolute -left-[50px] -top-[50px] z-0 size-[200px] rounded-full bg-[#38b2ac] opacity-10 md:size-[300px]" />
-            {/* Illustration */}
             <div className="relative z-[1] mb-5 h-auto w-[180px] md:mb-[30px] md:w-[280px]">
               <Image
                 src="/images/onboarding-welcome.png"
@@ -116,7 +112,6 @@ export default function WorkerWelcomeModal({
             </Button>
           </div>
 
-          {/* Right Panel */}
           <div className="relative flex flex-1 flex-col justify-center px-6 py-8 md:px-10 md:py-12">
             <h3 className="mb-6 font-heading text-xl font-bold text-[#1a202c] md:mb-10 md:text-2xl">
               How to get started

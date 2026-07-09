@@ -6,16 +6,12 @@
 
 import { z } from 'zod';
 
-// ─── Shared ──────────────────────────────────────
-
 const SourceAnchorSchema = z
   .object({
     docId: z.string(),
     hint: z.string(),
   })
   .passthrough();
-
-// ─── Prompt A: Course JSON Schema ────────────────
 
 const ReviewerNoteSchema = z
   .object({
@@ -131,8 +127,6 @@ export const CourseV3Schema = z
   })
   .passthrough();
 
-// ─── Prompt B: Quiz JSON Schema ──────────────────
-
 const QuestionEvidenceSchema = z
   .object({
     moduleSectionId: z.string().optional().default(''),
@@ -210,8 +204,6 @@ export const QuizV3Schema = z
     questions: z.array(QuizQuestionSchema).min(1),
   })
   .passthrough();
-
-// ─── Inferred types from schemas ─────────────────
 
 export type CourseV3Parsed = z.infer<typeof CourseV3Schema>;
 export type QuizV3Parsed = z.infer<typeof QuizV3Schema>;

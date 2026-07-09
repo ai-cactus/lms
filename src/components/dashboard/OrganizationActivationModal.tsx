@@ -47,7 +47,6 @@ export default function OrganizationActivationModal({
       // Register with high priority (10)
       registerModal(modalId, 10);
 
-      // Check if we should show it
       if (!hasOrganization && shouldShowModal(modalId)) {
         requestOpen(modalId);
       }
@@ -78,7 +77,6 @@ export default function OrganizationActivationModal({
 
   const isOpen = isWelcomeMode ? isModalOpen(modalId) : controlledIsOpen;
 
-  // Auto redirect logic
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
 
@@ -127,7 +125,6 @@ export default function OrganizationActivationModal({
         }}
       >
         <div className="flex w-full flex-col overflow-y-auto md:h-[500px] md:flex-row md:overflow-y-visible">
-          {/* Content Section */}
           <div className="flex flex-1 flex-col justify-center px-5 py-6 md:p-12">
             <div className="mb-5 md:mb-6">
               <Logo variant="blue" size="md" />
@@ -151,7 +148,6 @@ export default function OrganizationActivationModal({
             </div>
           </div>
 
-          {/* Visual Section - Image Right */}
           <div className="relative hidden min-h-[400px] w-full md:block md:w-1/2">
             <Image
               src="/images/onboarding-welcome.png"

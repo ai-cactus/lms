@@ -17,8 +17,6 @@ import { logger } from '@/lib/logger';
 
 export const SYSTEM_ADMIN_COOKIE = 'system_admin_auth';
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
-
 function getAuthSecret(): string {
   const secret =
     process.env.NEXTAUTH_SECRET ||
@@ -62,8 +60,6 @@ function isTokenExpired(token: string): boolean {
     return true; // treat parse failure as expired
   }
 }
-
-// ── Public API ────────────────────────────────────────────────────────────────
 
 /**
  * Reads the system-admin cookie from the current request and validates it.

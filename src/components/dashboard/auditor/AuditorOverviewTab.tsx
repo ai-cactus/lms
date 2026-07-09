@@ -61,9 +61,7 @@ export default function AuditorOverviewTab({
 
   return (
     <div>
-      {/* Stat Cards */}
       <div className="mb-7 grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* All Courses */}
         <div className="relative rounded-xl border border-border bg-background px-6 py-5">
           <div className="mb-3 flex size-9 items-center justify-center text-text-secondary">
             <GraduationCap className="size-[22px]" />
@@ -78,7 +76,6 @@ export default function AuditorOverviewTab({
           <p className="text-3xl font-bold leading-none text-foreground">{stats.totalCourses}</p>
         </div>
 
-        {/* Staff Assigned */}
         <div className="relative rounded-xl border border-border bg-background px-6 py-5">
           <div className="mb-3 flex size-9 items-center justify-center text-text-secondary">
             <UserPlus className="size-[22px]" />
@@ -95,7 +92,6 @@ export default function AuditorOverviewTab({
           </p>
         </div>
 
-        {/* Completion Rate */}
         <div className="relative rounded-xl border border-border bg-background px-6 py-5">
           <div className="mb-3 flex size-9 items-center justify-center text-text-secondary">
             <CheckCircle2 className="size-[22px]" />
@@ -111,7 +107,6 @@ export default function AuditorOverviewTab({
         </div>
       </div>
 
-      {/* Recent Assigned Courses Table */}
       <div className="rounded-xl border border-border bg-background p-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-bold text-foreground">Recent Assigned Courses</h2>

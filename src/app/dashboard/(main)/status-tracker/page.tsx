@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import StatusTrackerTableClient, {
   type StatusTrackerRowView,
 } from '@/components/dashboard/status-tracker/StatusTrackerTableClient';
@@ -29,7 +30,7 @@ export default async function StatusTrackerPage() {
   });
 
   // Only admin users may access this page.
-  if (!user || user.role !== 'admin') {
+  if (!user || !isAdminRole(user.role)) {
     redirect('/dashboard');
   }
 
@@ -53,7 +54,6 @@ export default async function StatusTrackerPage() {
         </p>
       </div>
 
-      {/* Summary chips */}
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-border bg-background p-5">
           <p className="text-sm text-text-secondary">Overdue training</p>

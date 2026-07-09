@@ -38,8 +38,8 @@ const user = process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
 const pass = process.env.SMTP_PASSWORD || process.env.ZOHO_MAIL_PASSWORD;
 const host = process.env.SMTP_HOST || 'smtp.zoho.com';
 const port = parseInt(process.env.SMTP_PORT || '465', 10);
-// Port 465 = implicit TLS (secure: true). Port 587 = STARTTLS (secure: false + requireTLS: true).
 const secure = port === 465;
+const isDevelopment = process.env.NODE_ENV === 'development';
 
 if (!user || !pass) {
   logger.warn({ msg: 'SMTP credentials not found in environment variables' });
@@ -49,19 +49,17 @@ const transporter = nodemailer.createTransport({
   host,
   port,
   secure,
-  requireTLS: !secure, // Force STARTTLS on port 587 — prevents plaintext fallback
+  requireTLS: isDevelopment ? undefined : !secure, // Force STARTTLS on port 587 — prevents plaintext fallback
   connectionTimeout: 10_000, // 10 s — fail fast instead of hanging
   greetingTimeout: 8_000, // 8 s — max time to wait for server greeting
   socketTimeout: 10_000, // 10 s — idle socket timeout per send
-  auth: {
-    user,
-    pass,
-  },
+  auth: isDevelopment
+    ? undefined
+    : {
+        user,
+        pass,
+      },
 });
-
-/* -------------------------------------------------------------------------- */
-/* Delivery tracking (F-021)                                                  */
-/* -------------------------------------------------------------------------- */
 
 /** Reduce a Nodemailer `to` field to a single loggable/persistable address string. */
 function normalizeRecipient(to: SendMailOptions['to']): string {
@@ -168,7 +166,6 @@ export async function sendInviteEmail(
 export const sendPasswordResetEmail = async (email: string, token: string) => {
   const resetLink = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
 
-  // Fallback if env var is missing or localhost
   const appName = 'Theraptly LMS';
 
   const html = `
@@ -707,10 +704,6 @@ export async function sendDemoRequestEmail(data: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Reminder & Escalation Emails
-// ---------------------------------------------------------------------------
-
 /** Resolve the server-side base URL using the same precedence as the other emails. */
 function reminderBaseUrl(): string {
   return (
@@ -1127,10 +1120,6 @@ export async function sendRetakeReminderEmail(
     return { success: false, error };
   }
 }
-
-// ---------------------------------------------------------------------------
-// PDF Report Emails
-// ---------------------------------------------------------------------------
 
 /**
  * Sends a staff member's activity report PDF to the admin as an email attachment.

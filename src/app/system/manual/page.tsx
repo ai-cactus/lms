@@ -123,7 +123,6 @@ export default function StandardManualPage() {
         </p>
       </div>
 
-      {/* Active Manual Status Banner */}
       {activeManual && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-[10px] border border-[#e2e8f0] bg-[#f8fafc] px-5 py-3.5">
           <div className="flex flex-wrap items-center gap-2.5">

@@ -40,16 +40,8 @@ export type OrganizationMinAggregateOutputType = {
   slug: string | null
   dba: string | null
   ein: string | null
-  staffCount: string | null
   primaryContact: string | null
   primaryEmail: string | null
-  phone: string | null
-  address: string | null
-  city: string | null
-  country: string | null
-  state: string | null
-  zipCode: string | null
-  licenseNumber: string | null
   isHipaaCompliant: boolean | null
   hasAuditorAccess: boolean | null
   primaryBusinessType: string | null
@@ -58,9 +50,6 @@ export type OrganizationMinAggregateOutputType = {
   stripeCustomerId: string | null
   inactivityTimeoutMinutes: number | null
   requireMfa: boolean | null
-  complianceDocumentUrl: string | null
-  complianceDocumentName: string | null
-  timezone: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -71,16 +60,8 @@ export type OrganizationMaxAggregateOutputType = {
   slug: string | null
   dba: string | null
   ein: string | null
-  staffCount: string | null
   primaryContact: string | null
   primaryEmail: string | null
-  phone: string | null
-  address: string | null
-  city: string | null
-  country: string | null
-  state: string | null
-  zipCode: string | null
-  licenseNumber: string | null
   isHipaaCompliant: boolean | null
   hasAuditorAccess: boolean | null
   primaryBusinessType: string | null
@@ -89,9 +70,6 @@ export type OrganizationMaxAggregateOutputType = {
   stripeCustomerId: string | null
   inactivityTimeoutMinutes: number | null
   requireMfa: boolean | null
-  complianceDocumentUrl: string | null
-  complianceDocumentName: string | null
-  timezone: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -102,29 +80,17 @@ export type OrganizationCountAggregateOutputType = {
   slug: number
   dba: number
   ein: number
-  staffCount: number
   primaryContact: number
   primaryEmail: number
-  phone: number
-  address: number
-  city: number
-  country: number
-  state: number
-  zipCode: number
-  licenseNumber: number
   isHipaaCompliant: number
   hasAuditorAccess: number
   primaryBusinessType: number
   additionalBusinessTypes: number
-  programServices: number
   joinCode: number
   joinCodeExpiresAt: number
   stripeCustomerId: number
   inactivityTimeoutMinutes: number
   requireMfa: number
-  complianceDocumentUrl: number
-  complianceDocumentName: number
-  timezone: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -145,16 +111,8 @@ export type OrganizationMinAggregateInputType = {
   slug?: true
   dba?: true
   ein?: true
-  staffCount?: true
   primaryContact?: true
   primaryEmail?: true
-  phone?: true
-  address?: true
-  city?: true
-  country?: true
-  state?: true
-  zipCode?: true
-  licenseNumber?: true
   isHipaaCompliant?: true
   hasAuditorAccess?: true
   primaryBusinessType?: true
@@ -163,9 +121,6 @@ export type OrganizationMinAggregateInputType = {
   stripeCustomerId?: true
   inactivityTimeoutMinutes?: true
   requireMfa?: true
-  complianceDocumentUrl?: true
-  complianceDocumentName?: true
-  timezone?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -176,16 +131,8 @@ export type OrganizationMaxAggregateInputType = {
   slug?: true
   dba?: true
   ein?: true
-  staffCount?: true
   primaryContact?: true
   primaryEmail?: true
-  phone?: true
-  address?: true
-  city?: true
-  country?: true
-  state?: true
-  zipCode?: true
-  licenseNumber?: true
   isHipaaCompliant?: true
   hasAuditorAccess?: true
   primaryBusinessType?: true
@@ -194,9 +141,6 @@ export type OrganizationMaxAggregateInputType = {
   stripeCustomerId?: true
   inactivityTimeoutMinutes?: true
   requireMfa?: true
-  complianceDocumentUrl?: true
-  complianceDocumentName?: true
-  timezone?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -207,29 +151,17 @@ export type OrganizationCountAggregateInputType = {
   slug?: true
   dba?: true
   ein?: true
-  staffCount?: true
   primaryContact?: true
   primaryEmail?: true
-  phone?: true
-  address?: true
-  city?: true
-  country?: true
-  state?: true
-  zipCode?: true
-  licenseNumber?: true
   isHipaaCompliant?: true
   hasAuditorAccess?: true
   primaryBusinessType?: true
   additionalBusinessTypes?: true
-  programServices?: true
   joinCode?: true
   joinCodeExpiresAt?: true
   stripeCustomerId?: true
   inactivityTimeoutMinutes?: true
   requireMfa?: true
-  complianceDocumentUrl?: true
-  complianceDocumentName?: true
-  timezone?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -327,29 +259,17 @@ export type OrganizationGroupByOutputType = {
   slug: string
   dba: string | null
   ein: string | null
-  staffCount: string | null
   primaryContact: string | null
   primaryEmail: string | null
-  phone: string | null
-  address: string | null
-  city: string | null
-  country: string | null
-  state: string | null
-  zipCode: string | null
-  licenseNumber: string | null
   isHipaaCompliant: boolean
   hasAuditorAccess: boolean
   primaryBusinessType: string | null
   additionalBusinessTypes: string[]
-  programServices: string[]
   joinCode: string | null
   joinCodeExpiresAt: Date | null
   stripeCustomerId: string | null
   inactivityTimeoutMinutes: number
   requireMfa: boolean
-  complianceDocumentUrl: string | null
-  complianceDocumentName: string | null
-  timezone: string | null
   createdAt: Date
   updatedAt: Date
   _count: OrganizationCountAggregateOutputType | null
@@ -383,32 +303,21 @@ export type OrganizationWhereInput = {
   slug?: Prisma.StringFilter<"Organization"> | string
   dba?: Prisma.StringNullableFilter<"Organization"> | string | null
   ein?: Prisma.StringNullableFilter<"Organization"> | string | null
-  staffCount?: Prisma.StringNullableFilter<"Organization"> | string | null
   primaryContact?: Prisma.StringNullableFilter<"Organization"> | string | null
   primaryEmail?: Prisma.StringNullableFilter<"Organization"> | string | null
-  phone?: Prisma.StringNullableFilter<"Organization"> | string | null
-  address?: Prisma.StringNullableFilter<"Organization"> | string | null
-  city?: Prisma.StringNullableFilter<"Organization"> | string | null
-  country?: Prisma.StringNullableFilter<"Organization"> | string | null
-  state?: Prisma.StringNullableFilter<"Organization"> | string | null
-  zipCode?: Prisma.StringNullableFilter<"Organization"> | string | null
-  licenseNumber?: Prisma.StringNullableFilter<"Organization"> | string | null
   isHipaaCompliant?: Prisma.BoolFilter<"Organization"> | boolean
   hasAuditorAccess?: Prisma.BoolFilter<"Organization"> | boolean
   primaryBusinessType?: Prisma.StringNullableFilter<"Organization"> | string | null
   additionalBusinessTypes?: Prisma.StringNullableListFilter<"Organization">
-  programServices?: Prisma.StringNullableListFilter<"Organization">
   joinCode?: Prisma.StringNullableFilter<"Organization"> | string | null
   joinCodeExpiresAt?: Prisma.DateTimeNullableFilter<"Organization"> | Date | string | null
   stripeCustomerId?: Prisma.StringNullableFilter<"Organization"> | string | null
   inactivityTimeoutMinutes?: Prisma.IntFilter<"Organization"> | number
   requireMfa?: Prisma.BoolFilter<"Organization"> | boolean
-  complianceDocumentUrl?: Prisma.StringNullableFilter<"Organization"> | string | null
-  complianceDocumentName?: Prisma.StringNullableFilter<"Organization"> | string | null
-  timezone?: Prisma.StringNullableFilter<"Organization"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Organization"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Organization"> | Date | string
   users?: Prisma.UserListRelationFilter
+  facilities?: Prisma.FacilityListRelationFilter
   invites?: Prisma.InviteListRelationFilter
   subscription?: Prisma.XOR<Prisma.SubscriptionNullableScalarRelationFilter, Prisma.SubscriptionWhereInput> | null
   invoices?: Prisma.InvoiceListRelationFilter
@@ -423,32 +332,21 @@ export type OrganizationOrderByWithRelationInput = {
   slug?: Prisma.SortOrder
   dba?: Prisma.SortOrderInput | Prisma.SortOrder
   ein?: Prisma.SortOrderInput | Prisma.SortOrder
-  staffCount?: Prisma.SortOrderInput | Prisma.SortOrder
   primaryContact?: Prisma.SortOrderInput | Prisma.SortOrder
   primaryEmail?: Prisma.SortOrderInput | Prisma.SortOrder
-  phone?: Prisma.SortOrderInput | Prisma.SortOrder
-  address?: Prisma.SortOrderInput | Prisma.SortOrder
-  city?: Prisma.SortOrderInput | Prisma.SortOrder
-  country?: Prisma.SortOrderInput | Prisma.SortOrder
-  state?: Prisma.SortOrderInput | Prisma.SortOrder
-  zipCode?: Prisma.SortOrderInput | Prisma.SortOrder
-  licenseNumber?: Prisma.SortOrderInput | Prisma.SortOrder
   isHipaaCompliant?: Prisma.SortOrder
   hasAuditorAccess?: Prisma.SortOrder
   primaryBusinessType?: Prisma.SortOrderInput | Prisma.SortOrder
   additionalBusinessTypes?: Prisma.SortOrder
-  programServices?: Prisma.SortOrder
   joinCode?: Prisma.SortOrderInput | Prisma.SortOrder
   joinCodeExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrderInput | Prisma.SortOrder
   inactivityTimeoutMinutes?: Prisma.SortOrder
   requireMfa?: Prisma.SortOrder
-  complianceDocumentUrl?: Prisma.SortOrderInput | Prisma.SortOrder
-  complianceDocumentName?: Prisma.SortOrderInput | Prisma.SortOrder
-  timezone?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   users?: Prisma.UserOrderByRelationAggregateInput
+  facilities?: Prisma.FacilityOrderByRelationAggregateInput
   invites?: Prisma.InviteOrderByRelationAggregateInput
   subscription?: Prisma.SubscriptionOrderByWithRelationInput
   invoices?: Prisma.InvoiceOrderByRelationAggregateInput
@@ -468,30 +366,19 @@ export type OrganizationWhereUniqueInput = Prisma.AtLeast<{
   name?: Prisma.StringFilter<"Organization"> | string
   dba?: Prisma.StringNullableFilter<"Organization"> | string | null
   ein?: Prisma.StringNullableFilter<"Organization"> | string | null
-  staffCount?: Prisma.StringNullableFilter<"Organization"> | string | null
   primaryContact?: Prisma.StringNullableFilter<"Organization"> | string | null
   primaryEmail?: Prisma.StringNullableFilter<"Organization"> | string | null
-  phone?: Prisma.StringNullableFilter<"Organization"> | string | null
-  address?: Prisma.StringNullableFilter<"Organization"> | string | null
-  city?: Prisma.StringNullableFilter<"Organization"> | string | null
-  country?: Prisma.StringNullableFilter<"Organization"> | string | null
-  state?: Prisma.StringNullableFilter<"Organization"> | string | null
-  zipCode?: Prisma.StringNullableFilter<"Organization"> | string | null
-  licenseNumber?: Prisma.StringNullableFilter<"Organization"> | string | null
   isHipaaCompliant?: Prisma.BoolFilter<"Organization"> | boolean
   hasAuditorAccess?: Prisma.BoolFilter<"Organization"> | boolean
   primaryBusinessType?: Prisma.StringNullableFilter<"Organization"> | string | null
   additionalBusinessTypes?: Prisma.StringNullableListFilter<"Organization">
-  programServices?: Prisma.StringNullableListFilter<"Organization">
   joinCodeExpiresAt?: Prisma.DateTimeNullableFilter<"Organization"> | Date | string | null
   inactivityTimeoutMinutes?: Prisma.IntFilter<"Organization"> | number
   requireMfa?: Prisma.BoolFilter<"Organization"> | boolean
-  complianceDocumentUrl?: Prisma.StringNullableFilter<"Organization"> | string | null
-  complianceDocumentName?: Prisma.StringNullableFilter<"Organization"> | string | null
-  timezone?: Prisma.StringNullableFilter<"Organization"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Organization"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Organization"> | Date | string
   users?: Prisma.UserListRelationFilter
+  facilities?: Prisma.FacilityListRelationFilter
   invites?: Prisma.InviteListRelationFilter
   subscription?: Prisma.XOR<Prisma.SubscriptionNullableScalarRelationFilter, Prisma.SubscriptionWhereInput> | null
   invoices?: Prisma.InvoiceListRelationFilter
@@ -506,29 +393,17 @@ export type OrganizationOrderByWithAggregationInput = {
   slug?: Prisma.SortOrder
   dba?: Prisma.SortOrderInput | Prisma.SortOrder
   ein?: Prisma.SortOrderInput | Prisma.SortOrder
-  staffCount?: Prisma.SortOrderInput | Prisma.SortOrder
   primaryContact?: Prisma.SortOrderInput | Prisma.SortOrder
   primaryEmail?: Prisma.SortOrderInput | Prisma.SortOrder
-  phone?: Prisma.SortOrderInput | Prisma.SortOrder
-  address?: Prisma.SortOrderInput | Prisma.SortOrder
-  city?: Prisma.SortOrderInput | Prisma.SortOrder
-  country?: Prisma.SortOrderInput | Prisma.SortOrder
-  state?: Prisma.SortOrderInput | Prisma.SortOrder
-  zipCode?: Prisma.SortOrderInput | Prisma.SortOrder
-  licenseNumber?: Prisma.SortOrderInput | Prisma.SortOrder
   isHipaaCompliant?: Prisma.SortOrder
   hasAuditorAccess?: Prisma.SortOrder
   primaryBusinessType?: Prisma.SortOrderInput | Prisma.SortOrder
   additionalBusinessTypes?: Prisma.SortOrder
-  programServices?: Prisma.SortOrder
   joinCode?: Prisma.SortOrderInput | Prisma.SortOrder
   joinCodeExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrderInput | Prisma.SortOrder
   inactivityTimeoutMinutes?: Prisma.SortOrder
   requireMfa?: Prisma.SortOrder
-  complianceDocumentUrl?: Prisma.SortOrderInput | Prisma.SortOrder
-  complianceDocumentName?: Prisma.SortOrderInput | Prisma.SortOrder
-  timezone?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.OrganizationCountOrderByAggregateInput
@@ -547,29 +422,17 @@ export type OrganizationScalarWhereWithAggregatesInput = {
   slug?: Prisma.StringWithAggregatesFilter<"Organization"> | string
   dba?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   ein?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  staffCount?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   primaryContact?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   primaryEmail?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  phone?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  address?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  city?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  country?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  state?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  zipCode?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  licenseNumber?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   isHipaaCompliant?: Prisma.BoolWithAggregatesFilter<"Organization"> | boolean
   hasAuditorAccess?: Prisma.BoolWithAggregatesFilter<"Organization"> | boolean
   primaryBusinessType?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   additionalBusinessTypes?: Prisma.StringNullableListFilter<"Organization">
-  programServices?: Prisma.StringNullableListFilter<"Organization">
   joinCode?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   joinCodeExpiresAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Organization"> | Date | string | null
   stripeCustomerId?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   inactivityTimeoutMinutes?: Prisma.IntWithAggregatesFilter<"Organization"> | number
   requireMfa?: Prisma.BoolWithAggregatesFilter<"Organization"> | boolean
-  complianceDocumentUrl?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  complianceDocumentName?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
-  timezone?: Prisma.StringNullableWithAggregatesFilter<"Organization"> | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Organization"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Organization"> | Date | string
 }
@@ -580,32 +443,21 @@ export type OrganizationCreateInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceCreateNestedManyWithoutOrganizationInput
@@ -620,32 +472,21 @@ export type OrganizationUncheckedCreateInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityUncheckedCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteUncheckedCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionUncheckedCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceUncheckedCreateNestedManyWithoutOrganizationInput
@@ -660,32 +501,21 @@ export type OrganizationUpdateInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUpdateManyWithoutOrganizationNestedInput
@@ -700,32 +530,21 @@ export type OrganizationUncheckedUpdateInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUncheckedUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUncheckedUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUncheckedUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -740,29 +559,17 @@ export type OrganizationCreateManyInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -773,29 +580,17 @@ export type OrganizationUpdateManyMutationInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -806,29 +601,17 @@ export type OrganizationUncheckedUpdateManyInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -849,29 +632,17 @@ export type OrganizationCountOrderByAggregateInput = {
   slug?: Prisma.SortOrder
   dba?: Prisma.SortOrder
   ein?: Prisma.SortOrder
-  staffCount?: Prisma.SortOrder
   primaryContact?: Prisma.SortOrder
   primaryEmail?: Prisma.SortOrder
-  phone?: Prisma.SortOrder
-  address?: Prisma.SortOrder
-  city?: Prisma.SortOrder
-  country?: Prisma.SortOrder
-  state?: Prisma.SortOrder
-  zipCode?: Prisma.SortOrder
-  licenseNumber?: Prisma.SortOrder
   isHipaaCompliant?: Prisma.SortOrder
   hasAuditorAccess?: Prisma.SortOrder
   primaryBusinessType?: Prisma.SortOrder
   additionalBusinessTypes?: Prisma.SortOrder
-  programServices?: Prisma.SortOrder
   joinCode?: Prisma.SortOrder
   joinCodeExpiresAt?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrder
   inactivityTimeoutMinutes?: Prisma.SortOrder
   requireMfa?: Prisma.SortOrder
-  complianceDocumentUrl?: Prisma.SortOrder
-  complianceDocumentName?: Prisma.SortOrder
-  timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -886,16 +657,8 @@ export type OrganizationMaxOrderByAggregateInput = {
   slug?: Prisma.SortOrder
   dba?: Prisma.SortOrder
   ein?: Prisma.SortOrder
-  staffCount?: Prisma.SortOrder
   primaryContact?: Prisma.SortOrder
   primaryEmail?: Prisma.SortOrder
-  phone?: Prisma.SortOrder
-  address?: Prisma.SortOrder
-  city?: Prisma.SortOrder
-  country?: Prisma.SortOrder
-  state?: Prisma.SortOrder
-  zipCode?: Prisma.SortOrder
-  licenseNumber?: Prisma.SortOrder
   isHipaaCompliant?: Prisma.SortOrder
   hasAuditorAccess?: Prisma.SortOrder
   primaryBusinessType?: Prisma.SortOrder
@@ -904,9 +667,6 @@ export type OrganizationMaxOrderByAggregateInput = {
   stripeCustomerId?: Prisma.SortOrder
   inactivityTimeoutMinutes?: Prisma.SortOrder
   requireMfa?: Prisma.SortOrder
-  complianceDocumentUrl?: Prisma.SortOrder
-  complianceDocumentName?: Prisma.SortOrder
-  timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -917,16 +677,8 @@ export type OrganizationMinOrderByAggregateInput = {
   slug?: Prisma.SortOrder
   dba?: Prisma.SortOrder
   ein?: Prisma.SortOrder
-  staffCount?: Prisma.SortOrder
   primaryContact?: Prisma.SortOrder
   primaryEmail?: Prisma.SortOrder
-  phone?: Prisma.SortOrder
-  address?: Prisma.SortOrder
-  city?: Prisma.SortOrder
-  country?: Prisma.SortOrder
-  state?: Prisma.SortOrder
-  zipCode?: Prisma.SortOrder
-  licenseNumber?: Prisma.SortOrder
   isHipaaCompliant?: Prisma.SortOrder
   hasAuditorAccess?: Prisma.SortOrder
   primaryBusinessType?: Prisma.SortOrder
@@ -935,9 +687,6 @@ export type OrganizationMinOrderByAggregateInput = {
   stripeCustomerId?: Prisma.SortOrder
   inactivityTimeoutMinutes?: Prisma.SortOrder
   requireMfa?: Prisma.SortOrder
-  complianceDocumentUrl?: Prisma.SortOrder
-  complianceDocumentName?: Prisma.SortOrder
-  timezone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -1024,18 +773,23 @@ export type OrganizationCreateadditionalBusinessTypesInput = {
   set: string[]
 }
 
-export type OrganizationCreateprogramServicesInput = {
-  set: string[]
-}
-
 export type OrganizationUpdateadditionalBusinessTypesInput = {
   set?: string[]
   push?: string | string[]
 }
 
-export type OrganizationUpdateprogramServicesInput = {
-  set?: string[]
-  push?: string | string[]
+export type OrganizationCreateNestedOneWithoutFacilitiesInput = {
+  create?: Prisma.XOR<Prisma.OrganizationCreateWithoutFacilitiesInput, Prisma.OrganizationUncheckedCreateWithoutFacilitiesInput>
+  connectOrCreate?: Prisma.OrganizationCreateOrConnectWithoutFacilitiesInput
+  connect?: Prisma.OrganizationWhereUniqueInput
+}
+
+export type OrganizationUpdateOneRequiredWithoutFacilitiesNestedInput = {
+  create?: Prisma.XOR<Prisma.OrganizationCreateWithoutFacilitiesInput, Prisma.OrganizationUncheckedCreateWithoutFacilitiesInput>
+  connectOrCreate?: Prisma.OrganizationCreateOrConnectWithoutFacilitiesInput
+  upsert?: Prisma.OrganizationUpsertWithoutFacilitiesInput
+  connect?: Prisma.OrganizationWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.OrganizationUpdateToOneWithWhereWithoutFacilitiesInput, Prisma.OrganizationUpdateWithoutFacilitiesInput>, Prisma.OrganizationUncheckedUpdateWithoutFacilitiesInput>
 }
 
 export type OrganizationCreateNestedOneWithoutSubscriptionInput = {
@@ -1072,31 +826,20 @@ export type OrganizationCreateWithoutUsersInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  facilities?: Prisma.FacilityCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceCreateNestedManyWithoutOrganizationInput
@@ -1111,31 +854,20 @@ export type OrganizationUncheckedCreateWithoutUsersInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  facilities?: Prisma.FacilityUncheckedCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteUncheckedCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionUncheckedCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1166,31 +898,20 @@ export type OrganizationUpdateWithoutUsersInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  facilities?: Prisma.FacilityUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUpdateManyWithoutOrganizationNestedInput
@@ -1205,31 +926,20 @@ export type OrganizationUncheckedUpdateWithoutUsersInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  facilities?: Prisma.FacilityUncheckedUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUncheckedUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUncheckedUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1244,32 +954,21 @@ export type OrganizationCreateWithoutInvitesInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceCreateNestedManyWithoutOrganizationInput
   customCategories?: Prisma.CourseCategoryCreateNestedManyWithoutOrganizationInput
@@ -1283,32 +982,21 @@ export type OrganizationUncheckedCreateWithoutInvitesInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityUncheckedCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionUncheckedCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceUncheckedCreateNestedManyWithoutOrganizationInput
   customCategories?: Prisma.CourseCategoryUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1338,32 +1026,21 @@ export type OrganizationUpdateWithoutInvitesInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUpdateManyWithoutOrganizationNestedInput
   customCategories?: Prisma.CourseCategoryUpdateManyWithoutOrganizationNestedInput
@@ -1377,32 +1054,21 @@ export type OrganizationUncheckedUpdateWithoutInvitesInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUncheckedUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUncheckedUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUncheckedUpdateManyWithoutOrganizationNestedInput
   customCategories?: Prisma.CourseCategoryUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1416,32 +1082,21 @@ export type OrganizationCreateWithoutCustomCategoriesInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceCreateNestedManyWithoutOrganizationInput
@@ -1455,32 +1110,21 @@ export type OrganizationUncheckedCreateWithoutCustomCategoriesInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityUncheckedCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteUncheckedCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionUncheckedCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1510,32 +1154,21 @@ export type OrganizationUpdateWithoutCustomCategoriesInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUpdateManyWithoutOrganizationNestedInput
@@ -1549,32 +1182,21 @@ export type OrganizationUncheckedUpdateWithoutCustomCategoriesInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUncheckedUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUncheckedUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUncheckedUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1588,32 +1210,21 @@ export type OrganizationCreateWithoutCourseAssignmentsInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceCreateNestedManyWithoutOrganizationInput
@@ -1627,32 +1238,21 @@ export type OrganizationUncheckedCreateWithoutCourseAssignmentsInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityUncheckedCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteUncheckedCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionUncheckedCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1682,32 +1282,21 @@ export type OrganizationUpdateWithoutCourseAssignmentsInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUpdateManyWithoutOrganizationNestedInput
@@ -1721,32 +1310,21 @@ export type OrganizationUncheckedUpdateWithoutCourseAssignmentsInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUncheckedUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUncheckedUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUncheckedUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1760,32 +1338,21 @@ export type OrganizationCreateWithoutOfferingsInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceCreateNestedManyWithoutOrganizationInput
@@ -1799,32 +1366,21 @@ export type OrganizationUncheckedCreateWithoutOfferingsInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityUncheckedCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteUncheckedCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionUncheckedCreateNestedOneWithoutOrganizationInput
   invoices?: Prisma.InvoiceUncheckedCreateNestedManyWithoutOrganizationInput
@@ -1854,32 +1410,21 @@ export type OrganizationUpdateWithoutOfferingsInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUpdateManyWithoutOrganizationNestedInput
@@ -1893,29 +1438,145 @@ export type OrganizationUncheckedUpdateWithoutOfferingsInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUncheckedUpdateManyWithoutOrganizationNestedInput
+  invites?: Prisma.InviteUncheckedUpdateManyWithoutOrganizationNestedInput
+  subscription?: Prisma.SubscriptionUncheckedUpdateOneWithoutOrganizationNestedInput
+  invoices?: Prisma.InvoiceUncheckedUpdateManyWithoutOrganizationNestedInput
+  customCategories?: Prisma.CourseCategoryUncheckedUpdateManyWithoutOrganizationNestedInput
+  courseAssignments?: Prisma.CourseAssignmentUncheckedUpdateManyWithoutOrganizationNestedInput
+}
+
+export type OrganizationCreateWithoutFacilitiesInput = {
+  id?: string
+  name: string
+  slug: string
+  dba?: string | null
+  ein?: string | null
+  primaryContact?: string | null
+  primaryEmail?: string | null
+  isHipaaCompliant?: boolean
+  hasAuditorAccess?: boolean
+  primaryBusinessType?: string | null
+  additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
+  joinCode?: string | null
+  joinCodeExpiresAt?: Date | string | null
+  stripeCustomerId?: string | null
+  inactivityTimeoutMinutes?: number
+  requireMfa?: boolean
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
+  invites?: Prisma.InviteCreateNestedManyWithoutOrganizationInput
+  subscription?: Prisma.SubscriptionCreateNestedOneWithoutOrganizationInput
+  invoices?: Prisma.InvoiceCreateNestedManyWithoutOrganizationInput
+  customCategories?: Prisma.CourseCategoryCreateNestedManyWithoutOrganizationInput
+  offerings?: Prisma.OrgCourseOfferingCreateNestedManyWithoutOrganizationInput
+  courseAssignments?: Prisma.CourseAssignmentCreateNestedManyWithoutOrganizationInput
+}
+
+export type OrganizationUncheckedCreateWithoutFacilitiesInput = {
+  id?: string
+  name: string
+  slug: string
+  dba?: string | null
+  ein?: string | null
+  primaryContact?: string | null
+  primaryEmail?: string | null
+  isHipaaCompliant?: boolean
+  hasAuditorAccess?: boolean
+  primaryBusinessType?: string | null
+  additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
+  joinCode?: string | null
+  joinCodeExpiresAt?: Date | string | null
+  stripeCustomerId?: string | null
+  inactivityTimeoutMinutes?: number
+  requireMfa?: boolean
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
+  invites?: Prisma.InviteUncheckedCreateNestedManyWithoutOrganizationInput
+  subscription?: Prisma.SubscriptionUncheckedCreateNestedOneWithoutOrganizationInput
+  invoices?: Prisma.InvoiceUncheckedCreateNestedManyWithoutOrganizationInput
+  customCategories?: Prisma.CourseCategoryUncheckedCreateNestedManyWithoutOrganizationInput
+  offerings?: Prisma.OrgCourseOfferingUncheckedCreateNestedManyWithoutOrganizationInput
+  courseAssignments?: Prisma.CourseAssignmentUncheckedCreateNestedManyWithoutOrganizationInput
+}
+
+export type OrganizationCreateOrConnectWithoutFacilitiesInput = {
+  where: Prisma.OrganizationWhereUniqueInput
+  create: Prisma.XOR<Prisma.OrganizationCreateWithoutFacilitiesInput, Prisma.OrganizationUncheckedCreateWithoutFacilitiesInput>
+}
+
+export type OrganizationUpsertWithoutFacilitiesInput = {
+  update: Prisma.XOR<Prisma.OrganizationUpdateWithoutFacilitiesInput, Prisma.OrganizationUncheckedUpdateWithoutFacilitiesInput>
+  create: Prisma.XOR<Prisma.OrganizationCreateWithoutFacilitiesInput, Prisma.OrganizationUncheckedCreateWithoutFacilitiesInput>
+  where?: Prisma.OrganizationWhereInput
+}
+
+export type OrganizationUpdateToOneWithWhereWithoutFacilitiesInput = {
+  where?: Prisma.OrganizationWhereInput
+  data: Prisma.XOR<Prisma.OrganizationUpdateWithoutFacilitiesInput, Prisma.OrganizationUncheckedUpdateWithoutFacilitiesInput>
+}
+
+export type OrganizationUpdateWithoutFacilitiesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  slug?: Prisma.StringFieldUpdateOperationsInput | string
+  dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
+  joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
+  requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
+  invites?: Prisma.InviteUpdateManyWithoutOrganizationNestedInput
+  subscription?: Prisma.SubscriptionUpdateOneWithoutOrganizationNestedInput
+  invoices?: Prisma.InvoiceUpdateManyWithoutOrganizationNestedInput
+  customCategories?: Prisma.CourseCategoryUpdateManyWithoutOrganizationNestedInput
+  offerings?: Prisma.OrgCourseOfferingUpdateManyWithoutOrganizationNestedInput
+  courseAssignments?: Prisma.CourseAssignmentUpdateManyWithoutOrganizationNestedInput
+}
+
+export type OrganizationUncheckedUpdateWithoutFacilitiesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  slug?: Prisma.StringFieldUpdateOperationsInput | string
+  dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
+  joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
+  requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -1923,6 +1584,7 @@ export type OrganizationUncheckedUpdateWithoutOfferingsInput = {
   subscription?: Prisma.SubscriptionUncheckedUpdateOneWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUncheckedUpdateManyWithoutOrganizationNestedInput
   customCategories?: Prisma.CourseCategoryUncheckedUpdateManyWithoutOrganizationNestedInput
+  offerings?: Prisma.OrgCourseOfferingUncheckedUpdateManyWithoutOrganizationNestedInput
   courseAssignments?: Prisma.CourseAssignmentUncheckedUpdateManyWithoutOrganizationNestedInput
 }
 
@@ -1932,32 +1594,21 @@ export type OrganizationCreateWithoutSubscriptionInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteCreateNestedManyWithoutOrganizationInput
   invoices?: Prisma.InvoiceCreateNestedManyWithoutOrganizationInput
   customCategories?: Prisma.CourseCategoryCreateNestedManyWithoutOrganizationInput
@@ -1971,32 +1622,21 @@ export type OrganizationUncheckedCreateWithoutSubscriptionInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityUncheckedCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteUncheckedCreateNestedManyWithoutOrganizationInput
   invoices?: Prisma.InvoiceUncheckedCreateNestedManyWithoutOrganizationInput
   customCategories?: Prisma.CourseCategoryUncheckedCreateNestedManyWithoutOrganizationInput
@@ -2026,32 +1666,21 @@ export type OrganizationUpdateWithoutSubscriptionInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUpdateManyWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUpdateManyWithoutOrganizationNestedInput
   customCategories?: Prisma.CourseCategoryUpdateManyWithoutOrganizationNestedInput
@@ -2065,32 +1694,21 @@ export type OrganizationUncheckedUpdateWithoutSubscriptionInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUncheckedUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUncheckedUpdateManyWithoutOrganizationNestedInput
   invoices?: Prisma.InvoiceUncheckedUpdateManyWithoutOrganizationNestedInput
   customCategories?: Prisma.CourseCategoryUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -2104,32 +1722,21 @@ export type OrganizationCreateWithoutInvoicesInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionCreateNestedOneWithoutOrganizationInput
   customCategories?: Prisma.CourseCategoryCreateNestedManyWithoutOrganizationInput
@@ -2143,32 +1750,21 @@ export type OrganizationUncheckedCreateWithoutInvoicesInput = {
   slug: string
   dba?: string | null
   ein?: string | null
-  staffCount?: string | null
   primaryContact?: string | null
   primaryEmail?: string | null
-  phone?: string | null
-  address?: string | null
-  city?: string | null
-  country?: string | null
-  state?: string | null
-  zipCode?: string | null
-  licenseNumber?: string | null
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: string | null
   additionalBusinessTypes?: Prisma.OrganizationCreateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationCreateprogramServicesInput | string[]
   joinCode?: string | null
   joinCodeExpiresAt?: Date | string | null
   stripeCustomerId?: string | null
   inactivityTimeoutMinutes?: number
   requireMfa?: boolean
-  complianceDocumentUrl?: string | null
-  complianceDocumentName?: string | null
-  timezone?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   users?: Prisma.UserUncheckedCreateNestedManyWithoutOrganizationInput
+  facilities?: Prisma.FacilityUncheckedCreateNestedManyWithoutOrganizationInput
   invites?: Prisma.InviteUncheckedCreateNestedManyWithoutOrganizationInput
   subscription?: Prisma.SubscriptionUncheckedCreateNestedOneWithoutOrganizationInput
   customCategories?: Prisma.CourseCategoryUncheckedCreateNestedManyWithoutOrganizationInput
@@ -2198,32 +1794,21 @@ export type OrganizationUpdateWithoutInvoicesInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUpdateOneWithoutOrganizationNestedInput
   customCategories?: Prisma.CourseCategoryUpdateManyWithoutOrganizationNestedInput
@@ -2237,32 +1822,21 @@ export type OrganizationUncheckedUpdateWithoutInvoicesInput = {
   slug?: Prisma.StringFieldUpdateOperationsInput | string
   dba?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ein?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  staffCount?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryContact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   primaryEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  country?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  licenseNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isHipaaCompliant?: Prisma.BoolFieldUpdateOperationsInput | boolean
   hasAuditorAccess?: Prisma.BoolFieldUpdateOperationsInput | boolean
   primaryBusinessType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   additionalBusinessTypes?: Prisma.OrganizationUpdateadditionalBusinessTypesInput | string[]
-  programServices?: Prisma.OrganizationUpdateprogramServicesInput | string[]
   joinCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   joinCodeExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   inactivityTimeoutMinutes?: Prisma.IntFieldUpdateOperationsInput | number
   requireMfa?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  complianceDocumentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  complianceDocumentName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  timezone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   users?: Prisma.UserUncheckedUpdateManyWithoutOrganizationNestedInput
+  facilities?: Prisma.FacilityUncheckedUpdateManyWithoutOrganizationNestedInput
   invites?: Prisma.InviteUncheckedUpdateManyWithoutOrganizationNestedInput
   subscription?: Prisma.SubscriptionUncheckedUpdateOneWithoutOrganizationNestedInput
   customCategories?: Prisma.CourseCategoryUncheckedUpdateManyWithoutOrganizationNestedInput
@@ -2277,6 +1851,7 @@ export type OrganizationUncheckedUpdateWithoutInvoicesInput = {
 
 export type OrganizationCountOutputType = {
   users: number
+  facilities: number
   invites: number
   invoices: number
   customCategories: number
@@ -2286,6 +1861,7 @@ export type OrganizationCountOutputType = {
 
 export type OrganizationCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   users?: boolean | OrganizationCountOutputTypeCountUsersArgs
+  facilities?: boolean | OrganizationCountOutputTypeCountFacilitiesArgs
   invites?: boolean | OrganizationCountOutputTypeCountInvitesArgs
   invoices?: boolean | OrganizationCountOutputTypeCountInvoicesArgs
   customCategories?: boolean | OrganizationCountOutputTypeCountCustomCategoriesArgs
@@ -2308,6 +1884,13 @@ export type OrganizationCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types
  */
 export type OrganizationCountOutputTypeCountUsersArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   where?: Prisma.UserWhereInput
+}
+
+/**
+ * OrganizationCountOutputType without action
+ */
+export type OrganizationCountOutputTypeCountFacilitiesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.FacilityWhereInput
 }
 
 /**
@@ -2352,32 +1935,21 @@ export type OrganizationSelect<ExtArgs extends runtime.Types.Extensions.Internal
   slug?: boolean
   dba?: boolean
   ein?: boolean
-  staffCount?: boolean
   primaryContact?: boolean
   primaryEmail?: boolean
-  phone?: boolean
-  address?: boolean
-  city?: boolean
-  country?: boolean
-  state?: boolean
-  zipCode?: boolean
-  licenseNumber?: boolean
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: boolean
   additionalBusinessTypes?: boolean
-  programServices?: boolean
   joinCode?: boolean
   joinCodeExpiresAt?: boolean
   stripeCustomerId?: boolean
   inactivityTimeoutMinutes?: boolean
   requireMfa?: boolean
-  complianceDocumentUrl?: boolean
-  complianceDocumentName?: boolean
-  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   users?: boolean | Prisma.Organization$usersArgs<ExtArgs>
+  facilities?: boolean | Prisma.Organization$facilitiesArgs<ExtArgs>
   invites?: boolean | Prisma.Organization$invitesArgs<ExtArgs>
   subscription?: boolean | Prisma.Organization$subscriptionArgs<ExtArgs>
   invoices?: boolean | Prisma.Organization$invoicesArgs<ExtArgs>
@@ -2393,29 +1965,17 @@ export type OrganizationSelectCreateManyAndReturn<ExtArgs extends runtime.Types.
   slug?: boolean
   dba?: boolean
   ein?: boolean
-  staffCount?: boolean
   primaryContact?: boolean
   primaryEmail?: boolean
-  phone?: boolean
-  address?: boolean
-  city?: boolean
-  country?: boolean
-  state?: boolean
-  zipCode?: boolean
-  licenseNumber?: boolean
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: boolean
   additionalBusinessTypes?: boolean
-  programServices?: boolean
   joinCode?: boolean
   joinCodeExpiresAt?: boolean
   stripeCustomerId?: boolean
   inactivityTimeoutMinutes?: boolean
   requireMfa?: boolean
-  complianceDocumentUrl?: boolean
-  complianceDocumentName?: boolean
-  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["organization"]>
@@ -2426,29 +1986,17 @@ export type OrganizationSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.
   slug?: boolean
   dba?: boolean
   ein?: boolean
-  staffCount?: boolean
   primaryContact?: boolean
   primaryEmail?: boolean
-  phone?: boolean
-  address?: boolean
-  city?: boolean
-  country?: boolean
-  state?: boolean
-  zipCode?: boolean
-  licenseNumber?: boolean
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: boolean
   additionalBusinessTypes?: boolean
-  programServices?: boolean
   joinCode?: boolean
   joinCodeExpiresAt?: boolean
   stripeCustomerId?: boolean
   inactivityTimeoutMinutes?: boolean
   requireMfa?: boolean
-  complianceDocumentUrl?: boolean
-  complianceDocumentName?: boolean
-  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["organization"]>
@@ -2459,36 +2007,25 @@ export type OrganizationSelectScalar = {
   slug?: boolean
   dba?: boolean
   ein?: boolean
-  staffCount?: boolean
   primaryContact?: boolean
   primaryEmail?: boolean
-  phone?: boolean
-  address?: boolean
-  city?: boolean
-  country?: boolean
-  state?: boolean
-  zipCode?: boolean
-  licenseNumber?: boolean
   isHipaaCompliant?: boolean
   hasAuditorAccess?: boolean
   primaryBusinessType?: boolean
   additionalBusinessTypes?: boolean
-  programServices?: boolean
   joinCode?: boolean
   joinCodeExpiresAt?: boolean
   stripeCustomerId?: boolean
   inactivityTimeoutMinutes?: boolean
   requireMfa?: boolean
-  complianceDocumentUrl?: boolean
-  complianceDocumentName?: boolean
-  timezone?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type OrganizationOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "slug" | "dba" | "ein" | "staffCount" | "primaryContact" | "primaryEmail" | "phone" | "address" | "city" | "country" | "state" | "zipCode" | "licenseNumber" | "isHipaaCompliant" | "hasAuditorAccess" | "primaryBusinessType" | "additionalBusinessTypes" | "programServices" | "joinCode" | "joinCodeExpiresAt" | "stripeCustomerId" | "inactivityTimeoutMinutes" | "requireMfa" | "complianceDocumentUrl" | "complianceDocumentName" | "timezone" | "createdAt" | "updatedAt", ExtArgs["result"]["organization"]>
+export type OrganizationOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "slug" | "dba" | "ein" | "primaryContact" | "primaryEmail" | "isHipaaCompliant" | "hasAuditorAccess" | "primaryBusinessType" | "additionalBusinessTypes" | "joinCode" | "joinCodeExpiresAt" | "stripeCustomerId" | "inactivityTimeoutMinutes" | "requireMfa" | "createdAt" | "updatedAt", ExtArgs["result"]["organization"]>
 export type OrganizationInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   users?: boolean | Prisma.Organization$usersArgs<ExtArgs>
+  facilities?: boolean | Prisma.Organization$facilitiesArgs<ExtArgs>
   invites?: boolean | Prisma.Organization$invitesArgs<ExtArgs>
   subscription?: boolean | Prisma.Organization$subscriptionArgs<ExtArgs>
   invoices?: boolean | Prisma.Organization$invoicesArgs<ExtArgs>
@@ -2504,6 +2041,7 @@ export type $OrganizationPayload<ExtArgs extends runtime.Types.Extensions.Intern
   name: "Organization"
   objects: {
     users: Prisma.$UserPayload<ExtArgs>[]
+    facilities: Prisma.$FacilityPayload<ExtArgs>[]
     invites: Prisma.$InvitePayload<ExtArgs>[]
     subscription: Prisma.$SubscriptionPayload<ExtArgs> | null
     invoices: Prisma.$InvoicePayload<ExtArgs>[]
@@ -2517,29 +2055,17 @@ export type $OrganizationPayload<ExtArgs extends runtime.Types.Extensions.Intern
     slug: string
     dba: string | null
     ein: string | null
-    staffCount: string | null
     primaryContact: string | null
     primaryEmail: string | null
-    phone: string | null
-    address: string | null
-    city: string | null
-    country: string | null
-    state: string | null
-    zipCode: string | null
-    licenseNumber: string | null
     isHipaaCompliant: boolean
     hasAuditorAccess: boolean
     primaryBusinessType: string | null
     additionalBusinessTypes: string[]
-    programServices: string[]
     joinCode: string | null
     joinCodeExpiresAt: Date | null
     stripeCustomerId: string | null
     inactivityTimeoutMinutes: number
     requireMfa: boolean
-    complianceDocumentUrl: string | null
-    complianceDocumentName: string | null
-    timezone: string | null
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["organization"]>
@@ -2937,6 +2463,7 @@ readonly fields: OrganizationFieldRefs;
 export interface Prisma__OrganizationClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
   users<T extends Prisma.Organization$usersArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Organization$usersArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  facilities<T extends Prisma.Organization$facilitiesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Organization$facilitiesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$FacilityPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   invites<T extends Prisma.Organization$invitesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Organization$invitesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$InvitePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   subscription<T extends Prisma.Organization$subscriptionArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Organization$subscriptionArgs<ExtArgs>>): Prisma.Prisma__SubscriptionClient<runtime.Types.Result.GetResult<Prisma.$SubscriptionPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   invoices<T extends Prisma.Organization$invoicesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Organization$invoicesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$InvoicePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
@@ -2977,29 +2504,17 @@ export interface OrganizationFieldRefs {
   readonly slug: Prisma.FieldRef<"Organization", 'String'>
   readonly dba: Prisma.FieldRef<"Organization", 'String'>
   readonly ein: Prisma.FieldRef<"Organization", 'String'>
-  readonly staffCount: Prisma.FieldRef<"Organization", 'String'>
   readonly primaryContact: Prisma.FieldRef<"Organization", 'String'>
   readonly primaryEmail: Prisma.FieldRef<"Organization", 'String'>
-  readonly phone: Prisma.FieldRef<"Organization", 'String'>
-  readonly address: Prisma.FieldRef<"Organization", 'String'>
-  readonly city: Prisma.FieldRef<"Organization", 'String'>
-  readonly country: Prisma.FieldRef<"Organization", 'String'>
-  readonly state: Prisma.FieldRef<"Organization", 'String'>
-  readonly zipCode: Prisma.FieldRef<"Organization", 'String'>
-  readonly licenseNumber: Prisma.FieldRef<"Organization", 'String'>
   readonly isHipaaCompliant: Prisma.FieldRef<"Organization", 'Boolean'>
   readonly hasAuditorAccess: Prisma.FieldRef<"Organization", 'Boolean'>
   readonly primaryBusinessType: Prisma.FieldRef<"Organization", 'String'>
   readonly additionalBusinessTypes: Prisma.FieldRef<"Organization", 'String[]'>
-  readonly programServices: Prisma.FieldRef<"Organization", 'String[]'>
   readonly joinCode: Prisma.FieldRef<"Organization", 'String'>
   readonly joinCodeExpiresAt: Prisma.FieldRef<"Organization", 'DateTime'>
   readonly stripeCustomerId: Prisma.FieldRef<"Organization", 'String'>
   readonly inactivityTimeoutMinutes: Prisma.FieldRef<"Organization", 'Int'>
   readonly requireMfa: Prisma.FieldRef<"Organization", 'Boolean'>
-  readonly complianceDocumentUrl: Prisma.FieldRef<"Organization", 'String'>
-  readonly complianceDocumentName: Prisma.FieldRef<"Organization", 'String'>
-  readonly timezone: Prisma.FieldRef<"Organization", 'String'>
   readonly createdAt: Prisma.FieldRef<"Organization", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Organization", 'DateTime'>
 }
@@ -3416,6 +2931,30 @@ export type Organization$usersArgs<ExtArgs extends runtime.Types.Extensions.Inte
   take?: number
   skip?: number
   distinct?: Prisma.UserScalarFieldEnum | Prisma.UserScalarFieldEnum[]
+}
+
+/**
+ * Organization.facilities
+ */
+export type Organization$facilitiesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Facility
+   */
+  select?: Prisma.FacilitySelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Facility
+   */
+  omit?: Prisma.FacilityOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.FacilityInclude<ExtArgs> | null
+  where?: Prisma.FacilityWhereInput
+  orderBy?: Prisma.FacilityOrderByWithRelationInput | Prisma.FacilityOrderByWithRelationInput[]
+  cursor?: Prisma.FacilityWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.FacilityScalarFieldEnum | Prisma.FacilityScalarFieldEnum[]
 }
 
 /**

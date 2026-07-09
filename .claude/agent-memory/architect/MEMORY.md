@@ -1,1 +1,3 @@
 - [Video Upload Fix (GCS Resumable)](project_video_upload_fix.md) — 2026-06-27 plan to fix 524 timeout on video uploads; direct-to-GCS resumable signed URL flow
+- [RBAC Rollout](project_rbac_rollout.md) — 2026-06-30 six-role enum migration, auth rework, authorize helper, backfill script
+- [Sidebar Nav + Learn Mode](project_sidebar_nav_learn_mode.md) — 2026-07-09 Figma sidebar redesign + session-bridge Manage/Learn switcher for managers on `/worker/*`

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
       select: { role: true, organizationId: true },
     });
 
-    if (!user || user.role !== 'admin') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -34,7 +35,6 @@ export async function POST(request: NextRequest) {
       select: { stripeCustomerId: true, name: true, primaryEmail: true },
     });
 
-    // If the org doesn't have a Stripe customer yet, create one first
     let customerId = organization?.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -49,7 +49,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Read return URL from the request body (defaults to billing page)
     let returnUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/dashboard/billing?tab=payment-method`;
     try {
       const body = (await request.json()) as { returnUrl?: string };

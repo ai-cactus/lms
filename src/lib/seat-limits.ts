@@ -87,11 +87,17 @@ export async function getSeatUsage(
     return { staffMax: null, planName: planConfig?.name ?? null, current: 0 };
   }
 
+  // D2: every role EXCEPT `owner` consumes a plan seat.
   const [workerCount, pendingInviteCount] = await Promise.all([
-    client.user.count({ where: { organizationId, role: 'worker' } }),
+    client.user.count({ where: { organizationId, role: { not: 'owner' } } }),
     includePendingInvites
       ? client.invite.count({
-          where: { organizationId, status: 'pending', expiresAt: { gt: new Date() } },
+          where: {
+            organizationId,
+            role: { not: 'owner' },
+            status: 'pending',
+            expiresAt: { gt: new Date() },
+          },
         })
       : Promise.resolve(0),
   ]);

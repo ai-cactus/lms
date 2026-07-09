@@ -8,9 +8,6 @@ import { deriveTimezoneFromState, US_STATE_TO_TZ } from './us-state-timezone';
 import { DEFAULT_TZ } from './time';
 
 describe('deriveTimezoneFromState', () => {
-  // -------------------------------------------------------------------------
-  // Known state codes
-  // -------------------------------------------------------------------------
   it('resolves NY to America/New_York', () => {
     expect(deriveTimezoneFromState('NY')).toBe('America/New_York');
   });
@@ -35,9 +32,6 @@ describe('deriveTimezoneFromState', () => {
     expect(deriveTimezoneFromState('DC')).toBe('America/New_York');
   });
 
-  // -------------------------------------------------------------------------
-  // Case / whitespace tolerance
-  // -------------------------------------------------------------------------
   it('is case-insensitive: "ny" resolves to America/New_York', () => {
     expect(deriveTimezoneFromState('ny')).toBe('America/New_York');
   });
@@ -54,9 +48,6 @@ describe('deriveTimezoneFromState', () => {
     expect(deriveTimezoneFromState(' hi ')).toBe('Pacific/Honolulu');
   });
 
-  // -------------------------------------------------------------------------
-  // Unknown / empty inputs → DEFAULT_TZ fallback
-  // -------------------------------------------------------------------------
   it('returns DEFAULT_TZ for an unknown state code', () => {
     expect(deriveTimezoneFromState('XX')).toBe(DEFAULT_TZ);
   });
@@ -77,9 +68,6 @@ describe('deriveTimezoneFromState', () => {
     expect(deriveTimezoneFromState('   ')).toBe(DEFAULT_TZ);
   });
 
-  // -------------------------------------------------------------------------
-  // Map completeness: all 51 entries are valid IANA zones
-  // -------------------------------------------------------------------------
   it('US_STATE_TO_TZ covers 51 entries (50 states + DC)', () => {
     expect(Object.keys(US_STATE_TO_TZ).length).toBe(51);
   });
