@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, Trash2, Upload, Download, FileSpreadsheet } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui';
 import {
@@ -314,10 +314,10 @@ export default function InviteStaffModal({
               <DialogTitle className="text-lg font-semibold text-foreground">
                 Invite New Staffs
               </DialogTitle>
-              <p className="text-sm text-text-secondary">
+              <DialogDescription className="text-sm text-text-secondary">
                 Add the emails of people to invite, or upload a CSV. We&apos;ll pull out the
                 contacts so you can assign roles.
-              </p>
+              </DialogDescription>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -433,9 +433,9 @@ export default function InviteStaffModal({
                   Assign roles
                 </DialogTitle>
               </div>
-              <p className="pl-7 text-sm text-text-secondary">
+              <DialogDescription className="pl-7 text-sm text-text-secondary">
                 {`${contacts.length} contact${contacts.length !== 1 ? 's' : ''} found. Assign a role to each — they'll be invited by email.`}
-              </p>
+              </DialogDescription>
             </div>
 
             <div className="flex items-center justify-between gap-3 rounded-lg bg-background-secondary px-3 py-2.5">
@@ -463,7 +463,7 @@ export default function InviteStaffModal({
                     )}
                   </div>
                   <Select
-                    value={contact.role || undefined}
+                    value={contact.role}
                     onValueChange={(value) => setContactRole(contact.email, value as Role)}
                   >
                     <SelectTrigger className="w-[170px] shrink-0">
@@ -518,10 +518,10 @@ export default function InviteStaffModal({
               <DialogTitle className="text-lg font-semibold text-foreground">
                 Invite sent
               </DialogTitle>
-              <p className="text-sm text-text-secondary">
+              <DialogDescription className="text-sm text-text-secondary">
                 {`${invitedCount} ${invitedCount === 1 ? 'person has' : 'people have'} been invited.`}{' '}
                 They&apos;ll get an email to join and start their assigned training.
-              </p>
+              </DialogDescription>
             </div>
             <Button variant="default" type="button" className="w-full" onClick={handleClose}>
               Done
