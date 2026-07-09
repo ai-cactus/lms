@@ -9,13 +9,19 @@
  *     blank here.
  *   - Step3: a primary business type + at least one additional business type
  *     (via the "Additional Business Type" popover-checkbox list) are required.
- *   - Step4 "Invite your managers": a single manager row (email + role) is
- *     filled in; submitting creates a pending `Invite` row with that role.
- *   - Step5: "Skip for now" still calls completeOnboarding (workerEmails: []),
- *     completing the organization/facility creation without any worker invites.
+ *   - Step4 "Invite your managers": renders exactly ONE empty row on load. A
+ *     single manager row (email + role) is filled in; submitting creates a
+ *     pending `Invite` row with that role.
+ *   - Step5 "Invite your Workers/Staffs": renders exactly ONE empty row on
+ *     load, using the same per-row email + role interface as step4 (the eight
+ *     WORKER_ROLES). A row with an email but no role blocks submit with a
+ *     'Select a role' error and does not advance. Filling email + role and
+ *     submitting creates a pending `Invite` row with that worker role.
+ *     "Skip for now" still calls completeOnboarding with no worker invites,
+ *     completing the organization/facility creation regardless.
  *   - After completion: an Organization + Facility row exist for the legal
  *     name entered, the founding user is linked as 'owner' with a facilityId,
- *     and exactly one pending Invite exists (the step4 manager row).
+ *     and the expected pending Invite row(s) exist.
  *
  * Notes on selectors: none of the onboarding step pages set `data-testid`.
  * Every dropdown is a Radix/shadcn `Select`, and the shared `Field` wrapper's
@@ -120,7 +126,7 @@ async function login(page: import('@playwright/test').Page, email: string, passw
 }
 
 test.describe('Onboarding wizard — 5-step happy path', () => {
-  test('owner completes step1..step5 (manager invite + worker skip) and lands on /onboarding/complete', async ({
+  test('owner completes step1..step5 (manager invite + worker invite) and lands on /onboarding/complete', async ({
     page,
   }) => {
     // 5 sequential page transitions against a dev server, each potentially
@@ -130,6 +136,7 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
     const seeded = await seedUnboardedOwner();
     const orgName = `Onb Wizard Co ${crypto.randomBytes(4).toString('hex')}`;
     const managerEmail = `mgr-${crypto.randomBytes(4).toString('hex')}@onb-e2e.invalid`;
+    const workerEmail = `worker-${crypto.randomBytes(4).toString('hex')}@onb-e2e.invalid`;
 
     try {
       await login(page, seeded.email, seeded.password);
@@ -180,7 +187,9 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.waitForURL('**/onboarding/step4**', { timeout: 25000 });
 
       // ── Step 4 — Invite your managers ────────────────────────────────────────
-      // Fill the first (of 3 default empty) rows: email + role.
+      // Renders exactly one empty row on load (was three rows pre-redesign).
+      await expect(page.getByPlaceholder("Enter manager's email")).toHaveCount(1);
+
       await page.getByPlaceholder("Enter manager's email").first().fill(managerEmail);
       await page.getByRole('combobox').first().click();
       // Step-4 options render display name + description in one accessible
@@ -190,8 +199,16 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.getByRole('button', { name: /^next$/i }).click();
       await page.waitForURL('**/onboarding/step5**', { timeout: 25000 });
 
-      // ── Step 5 — Skip worker invites ─────────────────────────────────────────
-      await page.getByRole('button', { name: /skip for now/i }).click();
+      // ── Step 5 — Invite your Workers/Staffs ──────────────────────────────────
+      // Rebuilt from the old TagInput UI onto the same per-row email + role
+      // interface as step4; renders exactly one empty row on load.
+      await expect(page.getByPlaceholder("Enter worker's email")).toHaveCount(1);
+
+      await page.getByPlaceholder("Enter worker's email").first().fill(workerEmail);
+      await page.getByRole('combobox').first().click();
+      await page.getByRole('option', { name: /^nurse$/i }).click();
+
+      await page.getByRole('button', { name: /^next$/i }).click();
 
       // completeOnboarding runs, then redirects to /onboarding/complete.
       await page.waitForURL('**/onboarding/complete**', { timeout: 30000 });
@@ -201,13 +218,14 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
     }
   });
 
-  test('completed onboarding creates the Organization/Facility/owner-link/manager-invite DB rows', async ({
+  test('completed onboarding creates the Organization/Facility/owner-link/invite DB rows with the selected roles', async ({
     page,
   }) => {
     test.setTimeout(120_000);
     const seeded = await seedUnboardedOwner();
     const orgName = `Onb DB Assert Co ${crypto.randomBytes(4).toString('hex')}`;
     const managerEmail = `mgr-db-${crypto.randomBytes(4).toString('hex')}@onb-e2e.invalid`;
+    const workerEmail = `worker-db-${crypto.randomBytes(4).toString('hex')}@onb-e2e.invalid`;
 
     try {
       await login(page, seeded.email, seeded.password);
@@ -245,7 +263,10 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.getByRole('button', { name: /^next$/i }).click();
       await page.waitForURL('**/onboarding/step5**', { timeout: 25000 });
 
-      await page.getByRole('button', { name: /skip for now/i }).click();
+      await page.getByPlaceholder("Enter worker's email").first().fill(workerEmail);
+      await page.getByRole('combobox').first().click();
+      await page.getByRole('option', { name: /^nurse$/i }).click();
+      await page.getByRole('button', { name: /^next$/i }).click();
       await page.waitForURL('**/onboarding/complete**', { timeout: 30000 });
 
       const client = new Client({ connectionString: DB_URL });
@@ -275,20 +296,123 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
         });
 
         const inviteRes = await client.query(
-          `SELECT email, role, status FROM invites WHERE organization_id = $1`,
+          `SELECT email, role, status FROM invites WHERE organization_id = $1 ORDER BY email`,
           [orgId],
         );
-        expect(inviteRes.rows).toHaveLength(1);
-        expect(inviteRes.rows[0]).toMatchObject({
-          email: managerEmail,
-          role: 'clinical_director',
-          status: 'pending',
-        });
+        expect(inviteRes.rows).toHaveLength(2);
+        expect(inviteRes.rows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              email: managerEmail,
+              role: 'clinical_director',
+              status: 'pending',
+            }),
+            expect.objectContaining({
+              email: workerEmail,
+              role: 'nurse',
+              status: 'pending',
+            }),
+          ]),
+        );
       } finally {
         await client.end();
       }
     } finally {
       await cleanup(seeded, orgName);
+    }
+  });
+
+  test('step5 skip-for-now still completes onboarding without creating any worker invite', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedUnboardedOwner();
+    const orgName = `Onb Skip Worker Co ${crypto.randomBytes(4).toString('hex')}`;
+
+    try {
+      await login(page, seeded.email, seeded.password);
+      await page.goto('/onboarding/step1');
+      await page.waitForLoadState('networkidle');
+
+      await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(orgName);
+      await page.getByPlaceholder('Enter business name (if applicable)').fill('Skip Worker DBA');
+      await page.getByPlaceholder("Enter the full name of the main contact").fill('Jane Founder');
+      await page
+        .getByPlaceholder('Enter the email address of the main contact')
+        .fill(seeded.email);
+      await page.getByRole('combobox').first().click();
+      await page.getByRole('option', { name: '1-10' }).click();
+      await page.locator('input[type="tel"]').fill('5551110000');
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step2**', { timeout: 25000 });
+
+      await page.getByRole('combobox').click();
+      await page.getByRole('option', { name: /^yes$/i }).click();
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step3**', { timeout: 25000 });
+
+      await page.getByRole('combobox').click();
+      await page.getByRole('option', { name: 'Clinic' }).click();
+      await page.getByRole('button', { name: 'Select an option' }).click();
+      await page.getByRole('checkbox', { name: /school-.*campus-based program/i }).click();
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step4**', { timeout: 25000 });
+
+      // Skip step4 too — this test only cares about the step5 skip path.
+      await page.getByRole('button', { name: /skip for now/i }).click();
+      await page.waitForURL('**/onboarding/step5**', { timeout: 25000 });
+
+      await page.getByRole('button', { name: /skip for now/i }).click();
+      await page.waitForURL('**/onboarding/complete**', { timeout: 30000 });
+
+      const client = new Client({ connectionString: DB_URL });
+      await client.connect();
+      try {
+        const orgRes = await client.query(`SELECT id FROM organizations WHERE name = $1`, [
+          orgName,
+        ]);
+        expect(orgRes.rows).toHaveLength(1);
+        const orgId = orgRes.rows[0].id as string;
+
+        const inviteRes = await client.query(
+          `SELECT id FROM invites WHERE organization_id = $1`,
+          [orgId],
+        );
+        expect(inviteRes.rows).toHaveLength(0);
+      } finally {
+        await client.end();
+      }
+    } finally {
+      await cleanup(seeded, orgName);
+    }
+  });
+
+  test('step5 blocks submission when a row has an email but no role selected', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const seeded = await seedUnboardedOwner();
+
+    try {
+      await login(page, seeded.email, seeded.password);
+      // step5 renders standalone (no prior-step data required to display the
+      // form), so navigate straight there to keep this validation-only test fast.
+      await page.goto('/onboarding/step5');
+      await page.waitForLoadState('networkidle');
+
+      await page
+        .getByPlaceholder("Enter worker's email")
+        .first()
+        .fill(`no-role-${crypto.randomBytes(4).toString('hex')}@onb-e2e.invalid`);
+
+      await page.getByRole('button', { name: /^next$/i }).click();
+
+      await expect(page.getByText(/select a role/i)).toBeVisible();
+      // Blocked — never navigates away from step5.
+      await expect(page).toHaveURL(/\/onboarding\/step5/);
+    } finally {
+      await cleanup(seeded, `__no-org-created-by-${seeded.email}__`);
     }
   });
 });

@@ -319,3 +319,8 @@ export function extractManagerInvitesFromRows(
 export function buildManagerCsvTemplate(): string {
   return `${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}\nmanager1@example.com,hr\nmanager2@example.com,finance\n`;
 }
+
+/** Worker CSV template: `email,role` header with sample worker rows. */
+export function buildWorkerCsvTemplate(): string {
+  return `${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}\nworker1@example.com,nurse\nworker2@example.com,therapist_clinician\nworker3@example.com,case_manager\n`;
+}

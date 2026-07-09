@@ -5,7 +5,11 @@ import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 import { sendInviteEmail } from '@/lib/email';
 import type { UserRole } from '@/generated/prisma/enums';
-import { DEFAULT_SELF_SERVE_WORKER_ROLE, MANAGER_INVITE_ROLES } from '@/lib/rbac/role-utils';
+import {
+  DEFAULT_SELF_SERVE_WORKER_ROLE,
+  MANAGER_INVITE_ROLES,
+  WORKER_ROLES,
+} from '@/lib/rbac/role-utils';
 import { logger } from '@/lib/logger';
 import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 
@@ -52,7 +56,13 @@ export interface OnboardingManagerInvite {
 export interface OnboardingStep4 {
   managerInvites?: OnboardingManagerInvite[];
 }
+export interface OnboardingWorkerInvite {
+  email: string;
+  role: string;
+}
 export interface OnboardingStep5 {
+  workerInvites?: OnboardingWorkerInvite[];
+  /** Legacy shape from a mid-onboarding client — emails without a role. */
   workerEmails?: string[];
 }
 
@@ -71,7 +81,7 @@ export async function completeOnboarding(data: OnboardingData) {
     hasStep2: !!data.step2,
     hasStep3: !!data.step3,
     managerInviteCount: data.step4?.managerInvites?.length ?? 0,
-    workerEmailCount: data.step5?.workerEmails?.length ?? 0,
+    workerInviteCount: data.step5?.workerInvites?.length ?? data.step5?.workerEmails?.length ?? 0,
     documentCount: data.step2?.documents?.length ?? 0,
   });
 
@@ -234,8 +244,23 @@ export async function completeOnboarding(data: OnboardingData) {
         }
       }
 
-      // Process Step 5 Invites (Workers)
-      if (Array.isArray(step5?.workerEmails)) {
+      // Process Step 5 Invites (Workers) — never trust the client's role.
+      // Only the eight worker-category roles are accepted; anything else
+      // (a manager role, owner, or garbage) is skipped and logged.
+      if (Array.isArray(step5?.workerInvites)) {
+        for (const invite of step5.workerInvites) {
+          if (!invite?.email) continue;
+          if (!(WORKER_ROLES as readonly string[]).includes(invite.role)) {
+            logger.warn({
+              msg: '[completeOnboarding] Skipping worker invite with disallowed role',
+              role: invite.role,
+            });
+            continue;
+          }
+          await queueInvite(invite.email, invite.role as UserRole);
+        }
+      } else if (Array.isArray(step5?.workerEmails)) {
+        // Legacy shape from a mid-onboarding client — no role, use the default.
         for (const email of step5.workerEmails) {
           if (email) {
             await queueInvite(email, DEFAULT_SELF_SERVE_WORKER_ROLE);

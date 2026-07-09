@@ -9,11 +9,22 @@ import {
   buildStaffCsvTemplate,
   extractManagerInvitesFromRows,
   buildManagerCsvTemplate,
+  buildWorkerCsvTemplate,
   STAFF_CSV_EMAIL_HEADER,
   MANAGER_CSV_ROLE_HEADER,
 } from './staff-csv';
 
 const MANAGER_ROLES = new Set(['supervisor', 'hr', 'clinical_director', 'finance']);
+const WORKER_ROLES = new Set([
+  'psychiatrist_prescriber',
+  'nurse',
+  'therapist_clinician',
+  'case_manager',
+  'behavioral_health_technician',
+  'peer_support_specialist',
+  'front_desk_admin',
+  'facilities_support',
+]);
 
 describe('extractStaffEmailsFromRows — header detection & valid rows', () => {
   it('skips an `email` header row and imports the valid emails below it', () => {
@@ -311,5 +322,34 @@ describe('buildManagerCsvTemplate', () => {
   it('starts with the expected email,role header', () => {
     const [header] = buildManagerCsvTemplate().split('\n');
     expect(header).toBe(`${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}`);
+  });
+});
+
+describe('buildWorkerCsvTemplate', () => {
+  it('starts with the expected email,role header', () => {
+    const [header] = buildWorkerCsvTemplate().split('\n');
+    expect(header).toBe(`${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}`);
+  });
+
+  it('round-trips through extractManagerInvitesFromRows with every sample role recognised', () => {
+    const rows = buildWorkerCsvTemplate()
+      .trim()
+      .split('\n')
+      .map((line) => line.split(','));
+
+    const result = extractManagerInvitesFromRows(rows, { validRoles: WORKER_ROLES });
+
+    expect(result.invites).toHaveLength(3);
+    expect(result.invalidEmailCount).toBe(0);
+    expect(result.duplicateCount).toBe(0);
+    for (const invite of result.invites) {
+      expect(invite.role).not.toBe('');
+      expect(WORKER_ROLES.has(invite.role)).toBe(true);
+    }
+    expect(result.invites.map((i) => i.email)).toEqual([
+      'worker1@example.com',
+      'worker2@example.com',
+      'worker3@example.com',
+    ]);
   });
 });

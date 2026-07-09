@@ -15,5 +15,6 @@
 - [Quiz attempt route tests (F-031)](quiz-attempt-route-tests.md) — start/save/submit append-history tx-mock pattern, boundary-score generation, flagged allowedAttempts null inconsistency
 - [getDashboardData test patterns](get-dashboard-data-test-patterns.md) — dual groupBy branch-by-args mocking, "failed" status quirk in coverage, totalStaff vs totalOrgStaff, F-028 perf guard
 - [WSL2 Playwright browser install](wsl2-playwright-browser-install.md) — ubuntu26.04 unsupported by Playwright; use PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64
-- [E2E local AUTH_URL env trap (RESOLVED)](e2e-local-auth-url-env-trap.md) — local runs need AUTH_URL exported too, not just NEXTAUTH_URL, or logins redirect to a dead origin
+- [E2E local AUTH_URL env trap (RESOLVED, now stale)](e2e-local-auth-url-env-trap.md) — historical; .env no longer sets AUTH_URL, full local e2e run passes without the workaround
 - [Status Tracker rename + seed fixture](status-tracker-rename-e2e-seed-fixture.md) — new seeded overdue enrollment (Olivia Overdue); email-substring collision gotcha; WSL2 dev-server cold-start flake pattern
+- [E2E webServer dev-lock conflict](e2e-webserver-dev-lock-conflict.md) — a stray `:3000` `next dev` blocks Playwright's :3005 webServer from starting at all; kill it first, restart after

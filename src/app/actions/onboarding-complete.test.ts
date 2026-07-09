@@ -155,7 +155,21 @@ describe('completeOnboarding — Organization/Facility split', () => {
     expect(txMock.facility.create).not.toHaveBeenCalled();
   });
 
-  it('creates step5 worker invites with role "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE)', async () => {
+  it('creates step5 worker invites with the per-row worker role selected in the UI', async () => {
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step5: { workerInvites: [{ email: 'worker@acme.com', role: 'nurse' }] },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.invite.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ email: 'worker@acme.com', role: 'nurse' }),
+      }),
+    );
+  });
+
+  it('creates legacy step5 workerEmails with role "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE)', async () => {
     const result = await completeOnboarding({
       ...BASE_DATA,
       step5: { workerEmails: ['worker@acme.com'] },
@@ -173,7 +187,7 @@ describe('completeOnboarding — Organization/Facility split', () => {
     const result = await completeOnboarding({
       ...BASE_DATA,
       step4: { managerInvites: [] },
-      step5: { workerEmails: [] },
+      step5: { workerInvites: [] },
     });
 
     expect(result.success).toBe(true);
@@ -274,6 +288,121 @@ describe('completeOnboarding — step4 manager invite role validation (privilege
 
     expect(result.success).toBe(true);
     expect(txMock.invite.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('completeOnboarding — step5 worker invite role validation (privilege escalation)', () => {
+  it.each(['nurse', 'therapist_clinician', 'case_manager', 'front_desk_admin'])(
+    'creates an invite for the worker-category role %s',
+    async (role) => {
+      const result = await completeOnboarding({
+        ...BASE_DATA,
+        step5: { workerInvites: [{ email: 'worker@acme.com', role }] },
+      });
+
+      expect(result.success).toBe(true);
+      expect(txMock.invite.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ email: 'worker@acme.com', role }),
+        }),
+      );
+    },
+  );
+
+  it('skips a worker invite requesting a manager-category role (e.g. "hr"), logs a warning', async () => {
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step5: { workerInvites: [{ email: 'sneaky-mgr@acme.com', role: 'hr' }] },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.invite.create).not.toHaveBeenCalled();
+    expect(mockLoggerWarn).toHaveBeenCalledWith(expect.objectContaining({ role: 'hr' }));
+  });
+
+  it('skips a worker invite requesting "owner"', async () => {
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step5: { workerInvites: [{ email: 'wannabe-owner@acme.com', role: 'owner' }] },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.invite.create).not.toHaveBeenCalled();
+  });
+
+  it('skips a worker invite requesting a garbage/unrecognized role string', async () => {
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step5: { workerInvites: [{ email: 'garbage@acme.com', role: 'super-admin-hacker' }] },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.invite.create).not.toHaveBeenCalled();
+  });
+
+  it('skips a worker invite row with a blank email without erroring', async () => {
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step5: { workerInvites: [{ email: '', role: 'nurse' }] },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.invite.create).not.toHaveBeenCalled();
+  });
+
+  it('prefers workerInvites over legacy workerEmails when both are present', async () => {
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step5: {
+        workerInvites: [{ email: 'new-shape@acme.com', role: 'nurse' }],
+        workerEmails: ['legacy@acme.com'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.invite.create).toHaveBeenCalledTimes(1);
+    const createdEmails = txMock.invite.create.mock.calls.map(
+      (call) => (call[0] as { data: { email: string } }).data.email,
+    );
+    expect(createdEmails).toEqual(['new-shape@acme.com']);
+  });
+
+  it('an empty workerInvites array short-circuits the legacy workerEmails fallback entirely', async () => {
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step5: {
+        workerInvites: [],
+        workerEmails: ['should-be-ignored@acme.com'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.invite.create).not.toHaveBeenCalled();
+  });
+
+  it('processes a mixed batch: valid worker rows are invited, disallowed rows are skipped', async () => {
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step5: {
+        workerInvites: [
+          { email: 'good-nurse@acme.com', role: 'nurse' },
+          { email: 'bad-owner@acme.com', role: 'owner' },
+          { email: 'bad-manager@acme.com', role: 'hr' },
+          { email: 'good-case-manager@acme.com', role: 'case_manager' },
+        ],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.invite.create).toHaveBeenCalledTimes(2);
+    const createdEmails = txMock.invite.create.mock.calls.map(
+      (call) => (call[0] as { data: { email: string } }).data.email,
+    );
+    expect(createdEmails).toEqual(
+      expect.arrayContaining(['good-nurse@acme.com', 'good-case-manager@acme.com']),
+    );
+    expect(createdEmails).not.toContain('bad-owner@acme.com');
+    expect(createdEmails).not.toContain('bad-manager@acme.com');
   });
 });
 

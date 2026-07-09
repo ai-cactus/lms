@@ -71,7 +71,7 @@ export default function OnboardingStep4() {
     clearErrors,
     formState: { errors },
   } = useForm<Step4FormData>({
-    defaultValues: { invites: [{ ...EMPTY_ROW }, { ...EMPTY_ROW }, { ...EMPTY_ROW }] },
+    defaultValues: { invites: [{ ...EMPTY_ROW }] },
   });
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'invites' });
   const [isModalOpen, setIsModalOpen] = useState(false);
