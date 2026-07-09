@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import NotificationPanel from '@/components/notifications/NotificationPanel';
 import { useNotifications } from '@/components/notifications/useNotifications';
+import { clearSiblingSessionCookie } from '@/app/actions/session-bridge';
 import { Bell, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
 
 interface HeaderProps {
@@ -66,6 +67,13 @@ export default function Header({ fullName, onMenuClick }: HeaderProps) {
   };
 
   const handleConfirmLogout = async () => {
+    // Also drop a bridged learner (worker) session so logging out of Manage mode
+    // fully signs the user out. Best-effort — never block the real signOut.
+    try {
+      await clearSiblingSessionCookie('admin');
+    } catch {
+      // Swallow — the primary signOut below is what matters.
+    }
     await signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/login` });
   };
 

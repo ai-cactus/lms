@@ -21,6 +21,13 @@ interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
   allowedRoles: readonly Role[];
   basePath: string; // "/api/auth" | "/api/auth-worker"
+  // Roles allowed to KEEP an existing session on this instance during JWT
+  // re-validation, as opposed to `allowedRoles` which gates who may LOG IN.
+  // Defaults to `allowedRoles`. The worker instance widens this to ALL_ROLES so
+  // an admin who bridges into learner mode (see actions/session-bridge.ts) keeps
+  // a valid worker-cookie session without being able to log in via the worker
+  // login form.
+  sessionAllowedRoles?: readonly Role[];
 }
 
 // Record the user's most-recent sign-in time. Fire-and-forget and fully
@@ -34,6 +41,7 @@ function recordLoginTimestamp(userId: string, instance: string) {
 
 export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
   const { cookiePrefix, allowedRoles, basePath } = instanceConfig;
+  const sessionAllowedRoles = instanceConfig.sessionAllowedRoles ?? allowedRoles;
   const useSecureCookies = process.env.NODE_ENV === 'production';
 
   // Fail fast at startup — prevents silent session failures in production.
@@ -543,7 +551,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           }
 
           if (!freshUser) return null; // User was deleted — invalidate
-          if (!allowedRoles.includes(freshUser.role as Role)) return null; // Role changed — invalidate
+          if (!sessionAllowedRoles.includes(freshUser.role as Role)) return null; // Role no longer permitted on this instance — invalidate
 
           // F-059: a completed password reset bumps `sessionVersion`, logging out
           // every other existing session. On sign-in `token.sessionVersion` is

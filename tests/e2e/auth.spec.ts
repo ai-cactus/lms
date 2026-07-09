@@ -4,6 +4,13 @@ test.describe('Authentication Flows', () => {
   test('ENG-001: Microsoft OAuth Sign Up callbackUrl points to /dashboard (signup is owner-only, no role selection)', async ({
     page,
   }) => {
+    // The Microsoft provider is only registered when AUTH_MICROSOFT_ENTRA_ID_ID
+    // is set (CI provides dummy values). Without it the signup page renders no
+    // Microsoft button and the POST this test intercepts can never fire.
+    test.skip(
+      !process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
+      'AUTH_MICROSOFT_ENTRA_ID_ID not set — Microsoft provider not registered',
+    );
     await page.goto('/signup');
 
     // NextAuth v5's client `signIn('microsoft-entra-id', …)` POSTs to the
@@ -19,7 +26,9 @@ test.describe('Authentication Flows', () => {
 
     // Self-serve signup was simplified to owner-only — there is no role-selection
     // step anymore, so Microsoft signup callbackUrl now goes straight to /dashboard.
-    const postData = request.postData();
+    // The callbackUrl travels URL-encoded in the POST body (%2Fdashboard), so
+    // decode before asserting on the path.
+    const postData = decodeURIComponent(request.postData() ?? '');
     expect(postData).toContain('/dashboard');
     expect(postData).not.toContain('role-selection');
   });

@@ -14,5 +14,6 @@
 - [RBAC Join-Token Critical Bug](rbac-join-token-critical-bug.md) — RESOLVED 2026-07-06: /join/[token] now awaits params + findUnique-by-token; re-verified live under adversarial multi-invite setup
 - [RBAC Role Grant Matrix](rbac-role-grant-matrix.md) — confirmed six-role grant matrix, worker/manager routing, billing-scope-by-role (UI-hidden fix confirmed), self-signup-needs-onboarding-wizard gotcha, join-by-code layout bug (fixed)
 - [Local Dev Env Access](local-dev-env-access.md) — localhost:3000 app, lms-dev-db Postgres (snake_case columns), MailHog, password-reset-for-unknown-password pattern, stale-session signup gotcha
-- [Local Dev Env Setup](local-dev-env-setup.md) — Redis/Stripe-webhook/Vertex-AI gotchas on localhost:3000; how to simulate a signed Stripe webhook; diagnosed Vertex AI IAM/network failures (2026-07-02)
+- [Local Dev Env Setup](local-dev-env-setup.md) — Redis/Stripe-webhook/Vertex-AI/MailHog gotchas on localhost:3000; how to simulate a signed Stripe webhook; MailHog must be started manually or signup/invite fail closed
 - [Watch-Through Gate Testing](watch-through-gate-testing.md) — how to seed a real playable video lesson without AI/video-catalog, and the seek-block test matrix that rigorously proves the gate is not bypassable
+- [LMS v2 Signup/Onboarding/Settings Flow](lms-v2-signup-onboarding-settings-flow.md) — route map for owner-only signup, 5-step onboarding wizard, where invites live, Settings tabs, and two minor UI bugs found 2026-07-09

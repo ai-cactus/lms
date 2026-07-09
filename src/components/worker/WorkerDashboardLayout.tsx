@@ -3,20 +3,27 @@
 import React, { useState, useEffect } from 'react';
 import { Logo } from '@/components/ui';
 import WorkerHeader from '@/components/worker/WorkerHeader';
+import SidebarModeSwitcher from '@/components/dashboard/SidebarModeSwitcher';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BookOpen, Award } from 'lucide-react';
+import { Home, BookOpen, Award, HelpCircle } from 'lucide-react';
 
 interface WorkerDashboardLayoutProps {
   children: React.ReactNode;
   fullName: string;
+  role?: string;
 }
 
 const navItemBase =
   'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-[#718096] transition-colors hover:bg-[#f7fafc] hover:text-[#1a202c]';
 const navItemActive = 'bg-[#edf2f7] text-[#1a202c] font-semibold';
 
-export default function WorkerDashboardLayout({ children, fullName }: WorkerDashboardLayoutProps) {
+export default function WorkerDashboardLayout({
+  children,
+  fullName,
+  role,
+}: WorkerDashboardLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -58,6 +65,12 @@ export default function WorkerDashboardLayout({ children, fullName }: WorkerDash
           <Logo size="sm" />
         </div>
 
+        {isAdminRole(role) && (
+          <div className="mb-8">
+            <SidebarModeSwitcher mode="learn" />
+          </div>
+        )}
+
         <nav className="flex flex-col gap-8">
           <div className="flex flex-col gap-2">
             <h4 className="mb-3 pl-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#a0aec0]">
@@ -86,6 +99,20 @@ export default function WorkerDashboardLayout({ children, fullName }: WorkerDash
             >
               <Award className="size-5" />
               <span>Certificates</span>
+            </Link>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <h4 className="mb-3 pl-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#a0aec0]">
+              HELP
+            </h4>
+
+            <Link
+              href="/worker/help"
+              className={`${navItemBase} ${pathname.startsWith('/worker/help') ? navItemActive : ''}`}
+            >
+              <HelpCircle className="size-5" />
+              <span>Help Center</span>
             </Link>
           </div>
         </nav>

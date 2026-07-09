@@ -6,6 +6,7 @@ import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
 import { Logo } from '@/components/ui';
 import Header from '@/components/dashboard/Header';
+import SidebarModeSwitcher from '@/components/dashboard/SidebarModeSwitcher';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -16,8 +17,9 @@ import {
   ClipboardCheck,
   CreditCard,
   ChevronDown,
-  ShieldAlert,
+  Gauge,
   Settings,
+  HelpCircle,
 } from 'lucide-react';
 
 interface DashboardLayoutClientProps {
@@ -114,6 +116,12 @@ export default function DashboardLayoutClient({
           <Logo size="sm" />
         </div>
 
+        {isAdminRole(role) && (
+          <div className="mb-8">
+            <SidebarModeSwitcher mode="manage" />
+          </div>
+        )}
+
         <nav className="flex flex-col gap-8">
           <div className="flex flex-col gap-2">
             <h4 className={navSectionLabelCls}>MAIN MENU</h4>
@@ -141,6 +149,16 @@ export default function DashboardLayoutClient({
               <BookOpen className="size-5" />
               <span>Courses</span>
             </Link>
+
+            {isAdminRole(role) && (
+              <Link
+                href="/dashboard/status-tracker"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/status-tracker') ? navItemActive : ''}`}
+              >
+                <Gauge className="size-5" />
+                <span>Status Tracker</span>
+              </Link>
+            )}
           </div>
 
           {/* PERFORMANCE Section — admin only */}
@@ -163,19 +181,12 @@ export default function DashboardLayoutClient({
                 <ClipboardCheck className="size-5" />
                 <span>Audit Reports</span>
               </Link>
-
-              <Link
-                href="/dashboard/status-tracker"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/status-tracker') ? navItemActive : ''}`}
-              >
-                <ShieldAlert className="size-5" />
-                <span>Status Tracker</span>
-              </Link>
             </div>
           )}
 
-          {/* SETTINGS Section — Settings is owner-only; Billing needs billing access */}
-          {(isOwner || canAccessBilling) && (
+          {/* SETTINGS Section — admin-only; Settings is owner-only, Billing needs
+              billing access, Help Center is available to every admin. */}
+          {isAdminRole(role) && (
             <div className="flex flex-col gap-2">
               <h4 className={navSectionLabelCls}>SETTINGS</h4>
 
@@ -198,6 +209,14 @@ export default function DashboardLayoutClient({
                   <span>Billing</span>
                 </Link>
               )}
+
+              <Link
+                href="/dashboard/help"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/help') ? navItemActive : ''}`}
+              >
+                <HelpCircle className="size-5" />
+                <span>Help Center</span>
+              </Link>
             </div>
           )}
         </nav>

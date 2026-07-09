@@ -87,6 +87,11 @@ function uid(prefix: string): string {
 async function login(page: import('@playwright/test').Page, email: string, password: string) {
   const ip = `10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
   await page.setExtraHTTPHeaders({ 'x-forwarded-for': ip });
+  // Pre-dismiss the "create your first course" empty-state modal — its overlay
+  // sits above the sidebar and would intercept clicks on the Settings nav link.
+  await page.addInitScript(() => {
+    window.localStorage.setItem('modal_dismissed_dashboardEmptyState', 'forever');
+  });
   await page.goto('/login');
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', password);

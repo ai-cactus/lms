@@ -3,17 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 // @ts-ignore - NextAuth does not reliably export decode type in this scope
 import { decode, JWT } from 'next-auth/jwt';
 import { logger, maskEmail } from '@/lib/logger';
-import { ADMIN_ROLES, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { ADMIN_ROLES, ALL_ROLES } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 
 // All route rules live in one config object — easy to audit and extend.
 // `allowedRoles` is a set: after the RBAC migration the admin portal is shared by
-// every admin-tier role (owner/supervisor/hr/clinical_director/finance), while the
-// worker portal is `worker` only.
+// every admin-tier role (owner/supervisor/hr/clinical_director/finance). The
+// worker portal accepts every role at the proxy so an admin bridged into learner
+// mode (see actions/session-bridge.ts) can reach /worker on their worker cookie;
+// the worker LOGIN form still gates on WORKER_ROLES.
 const ROUTE_CONFIG = {
   worker: {
     cookiePrefix: 'worker',
-    allowedRoles: WORKER_ROLES,
+    allowedRoles: ALL_ROLES,
     loginPath: '/login',
     // All paths that belong to the worker context
     paths: ['/worker', '/onboarding-worker', '/api/auth-worker'],
