@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, Trash2, Upload, Download, FileSpreadsheet } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui';
 import {
@@ -311,7 +311,9 @@ export default function InviteStaffModal({
         {step === 'input' && (
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-semibold text-foreground">Invite New Staffs</h2>
+              <DialogTitle className="text-lg font-semibold text-foreground">
+                Invite New Staffs
+              </DialogTitle>
               <p className="text-sm text-text-secondary">
                 Add the emails of people to invite, or upload a CSV. We&apos;ll pull out the
                 contacts so you can assign roles.
@@ -427,7 +429,9 @@ export default function InviteStaffModal({
                 >
                   <ChevronLeft className="size-5" aria-hidden="true" />
                 </button>
-                <h2 className="text-lg font-semibold text-foreground">Assign roles</h2>
+                <DialogTitle className="text-lg font-semibold text-foreground">
+                  Assign roles
+                </DialogTitle>
               </div>
               <p className="pl-7 text-sm text-text-secondary">
                 {`${contacts.length} contact${contacts.length !== 1 ? 's' : ''} found. Assign a role to each — they'll be invited by email.`}
@@ -511,9 +515,11 @@ export default function InviteStaffModal({
               </div>
             </div>
             <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-semibold text-foreground">Invite sent</h2>
+              <DialogTitle className="text-lg font-semibold text-foreground">
+                Invite sent
+              </DialogTitle>
               <p className="text-sm text-text-secondary">
-                {invitedCount} person{invitedCount !== 1 ? 's have' : ' has'} been invited.
+                {`${invitedCount} ${invitedCount === 1 ? 'person has' : 'people have'} been invited.`}{' '}
                 They&apos;ll get an email to join and start their assigned training.
               </p>
             </div>
