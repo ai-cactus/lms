@@ -9,7 +9,7 @@ import {
   getEffectiveMonthlyPrice,
   canSelectPlan,
 } from '@/lib/billing-plans';
-import { Star, Check, Play } from 'lucide-react';
+import { Star, Check, Play, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
@@ -24,6 +24,9 @@ interface Props {
   currentPlan: string | null;
   pausedAt?: string | null;
   pauseEndsAt?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  billingCycle?: string | null;
+  currentPeriodEnd?: string | null;
   onChangeTab: (tab: Tab) => void;
 }
 
@@ -184,11 +187,19 @@ export default function SubscriptionTab({
   currentPlan,
   pausedAt = null,
   pauseEndsAt = null,
+  cancelAtPeriodEnd = false,
+  billingCycle = null,
+  currentPeriodEnd = null,
   onChangeTab,
 }: Props) {
   const router = useRouter();
   const pauseState = getPauseState({ status: null, pausedAt, pauseEndsAt });
   const isPaused = pauseState !== 'none';
+  const isCancelScheduled = Boolean(cancelAtPeriodEnd);
+  const cancelDateLabel = currentPeriodEnd ? formatLongDate(currentPeriodEnd) : null;
+  const billingCycleLabel = billingCycle
+    ? billingCycle.charAt(0).toUpperCase() + billingCycle.slice(1)
+    : null;
   const [cycle, setCycle] = useState<BillingCycle>('yearly');
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -204,6 +215,8 @@ export default function SubscriptionTab({
 
   const [resuming, setResuming] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [reactivating, setReactivating] = useState(false);
+  const [reactivateError, setReactivateError] = useState<string | null>(null);
   const [enterpriseCaptchaToken, setEnterpriseCaptchaToken] = useState<string>();
 
   // ── Checkout ───────────────────────────────────────────────────────────────
@@ -338,6 +351,24 @@ export default function SubscriptionTab({
       setResumeError(err instanceof Error ? err.message : 'Unexpected error');
     } finally {
       setResuming(false);
+    }
+  }, [onChangeTab, router]);
+
+  // ── Reactivate subscription (clear scheduled cancellation) ─────────────────
+
+  const handleReactivateSubscription = useCallback(async () => {
+    setReactivating(true);
+    setReactivateError(null);
+    try {
+      const res = await fetch('/api/billing/subscription/reactivate', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to reactivate subscription');
+      router.refresh();
+      onChangeTab('overview');
+    } catch (err) {
+      setReactivateError(err instanceof Error ? err.message : 'Unexpected error');
+    } finally {
+      setReactivating(false);
     }
   }, [onChangeTab, router]);
 
@@ -505,6 +536,13 @@ export default function SubscriptionTab({
                     ? `All your data is safely stored. Paused until ${formatLongDate(pauseEndsAt)}.`
                     : 'All your data is safely stored until you continue your plan.'}
               </p>
+              {isCancelScheduled && (
+                <p className="mt-2 text-[13px] text-warning">
+                  {cancelDateLabel
+                    ? `Your subscription is scheduled to cancel on ${cancelDateLabel}.`
+                    : 'Your subscription is scheduled to cancel at the end of the billing period.'}
+                </p>
+              )}
               {resumeError && (
                 <p className="mt-2 text-[13px] text-error" role="alert">
                   {resumeError}
@@ -512,9 +550,11 @@ export default function SubscriptionTab({
               )}
             </div>
             <div className="flex gap-3">
-              <Button variant="outline" onClick={() => router.push('/dashboard/billing/cancel')}>
-                Cancel Subscription
-              </Button>
+              {!isCancelScheduled && (
+                <Button variant="outline" onClick={() => router.push('/dashboard/billing/cancel')}>
+                  Cancel Subscription
+                </Button>
+              )}
               <Button
                 loading={resuming}
                 disabled={resuming}
@@ -528,15 +568,50 @@ export default function SubscriptionTab({
         </div>
       )}
 
-      {currentPlan && !isPaused && (
+      {currentPlan && !isPaused && isCancelScheduled && (
+        <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">
+                Your subscription is scheduled to cancel
+              </h3>
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-[13px] text-warning">
+                <AlertTriangle size={18} aria-hidden="true" />
+                {cancelDateLabel
+                  ? `Cancels on ${cancelDateLabel}`
+                  : 'Cancels at the end of the billing period'}
+              </div>
+              <p className="mt-3 text-sm text-text-secondary">
+                You keep full access until then. Resume your subscription to keep it renewing
+                automatically.
+              </p>
+              {reactivateError && (
+                <p className="mt-2 text-[13px] text-error" role="alert">
+                  {reactivateError}
+                </p>
+              )}
+            </div>
+            <Button
+              loading={reactivating}
+              disabled={reactivating}
+              onClick={() => void handleReactivateSubscription()}
+            >
+              <Play className="size-4" aria-hidden="true" />
+              Resume subscription
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {currentPlan && !isPaused && !isCancelScheduled && (
         <>
           <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-semibold text-foreground">
-                  Your {BILLING_PLANS.find((p) => p.key === currentPlan)?.name} -{' '}
-                  {cycle.charAt(0).toUpperCase() + cycle.slice(1)} subscription renews
-                  automatically...
+                  Your {BILLING_PLANS.find((p) => p.key === currentPlan)?.name}
+                  {billingCycleLabel ? ` - ${billingCycleLabel}` : ''} subscription renews
+                  automatically{cancelDateLabel ? ` on ${cancelDateLabel}` : ''}
                 </h3>
                 <p className="text-sm text-text-secondary">
                   If you don&apos;t want to renew, you can pause or cancel your subscription.

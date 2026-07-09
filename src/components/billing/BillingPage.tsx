@@ -28,6 +28,12 @@ interface BillingPageProps {
   pausedAt?: string | null;
   /** ISO timestamp when the pause window ends, or null. */
   pauseEndsAt?: string | null;
+  /** Whether the subscription is scheduled to cancel at period end. */
+  cancelAtPeriodEnd?: boolean;
+  /** The subscription's billing cycle (e.g. 'monthly'), or null. */
+  billingCycle?: string | null;
+  /** ISO timestamp when the current billing period ends, or null. */
+  currentPeriodEnd?: string | null;
   initialTab?: Tab;
 }
 
@@ -36,6 +42,9 @@ export default function BillingPage({
   currentPlan,
   pausedAt = null,
   pauseEndsAt = null,
+  cancelAtPeriodEnd = false,
+  billingCycle = null,
+  currentPeriodEnd = null,
   initialTab = 'overview',
 }: BillingPageProps) {
   const searchParams = useSearchParams();
@@ -87,6 +96,9 @@ export default function BillingPage({
           currentPlan={currentPlan}
           pausedAt={pausedAt}
           pauseEndsAt={pauseEndsAt}
+          cancelAtPeriodEnd={cancelAtPeriodEnd}
+          billingCycle={billingCycle}
+          currentPeriodEnd={currentPeriodEnd}
           onChangeTab={handleTabChange}
         />
       )}
