@@ -27,6 +27,7 @@ export default async function CancelSubscriptionPage() {
               plan: true,
               status: true,
               currentPeriodEnd: true,
+              cancelAtPeriodEnd: true,
               pausedAt: true,
               pauseEndsAt: true,
             },
@@ -43,8 +44,9 @@ export default async function CancelSubscriptionPage() {
   const sub = user.organization?.subscription;
 
   // Cancelling requires a subscription that Stripe still considers billable
-  // (paused subscriptions keep a status of `active`).
-  if (!sub || (sub.status !== 'active' && sub.status !== 'trialing')) {
+  // (paused subscriptions keep a status of `active`). Already-scheduled
+  // cancellations have nothing left to cancel, so send them back to billing.
+  if (!sub || (sub.status !== 'active' && sub.status !== 'trialing') || sub.cancelAtPeriodEnd) {
     redirect('/dashboard/billing');
   }
 

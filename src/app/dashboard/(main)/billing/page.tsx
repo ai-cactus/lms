@@ -60,7 +60,15 @@ export default async function BillingPageRoute() {
         select: {
           facilities: { select: { staffCount: true }, take: 1 },
           subscription: {
-            select: { plan: true, status: true, pausedAt: true, pauseEndsAt: true },
+            select: {
+              plan: true,
+              status: true,
+              pausedAt: true,
+              pauseEndsAt: true,
+              cancelAtPeriodEnd: true,
+              billingCycle: true,
+              currentPeriodEnd: true,
+            },
           },
         },
       })
@@ -83,6 +91,9 @@ export default async function BillingPageRoute() {
       currentPlan={activePlan}
       pausedAt={sub?.pausedAt ? sub.pausedAt.toISOString() : null}
       pauseEndsAt={sub?.pauseEndsAt ? sub.pauseEndsAt.toISOString() : null}
+      cancelAtPeriodEnd={sub?.cancelAtPeriodEnd ?? false}
+      billingCycle={sub?.billingCycle ?? null}
+      currentPeriodEnd={sub?.currentPeriodEnd?.toISOString() ?? null}
     />
   );
 }
