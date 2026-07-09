@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
@@ -30,7 +31,7 @@ export async function POST() {
       select: { role: true, organizationId: true },
     });
 
-    if (!user || user.role !== 'admin') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
