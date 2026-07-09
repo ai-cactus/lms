@@ -20,7 +20,7 @@
  *   - Orphan supervisors (no org): logged, left as supervisor.
  *   - Dry-run: all DB writes are suppressed; promoted counter still increments.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // ── Algorithm replica ─────────────────────────────────────────────────────────
 //
