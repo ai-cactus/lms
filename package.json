@@ -12,7 +12,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
     "test": "vitest run",
-    "script": "f() { if [ $# -lt 2 ]; then echo 'Usage: npm run script <env-file> <script-file> [-- args]' >&2; exit 1; fi; e=$1; s=$2; shift 2; if [ ! -f \"$e\" ]; then echo \"env file not found: $e\" >&2; exit 1; fi; set -a; . \"./$e\"; set +a; exec tsx \"scripts/${s#scripts/}\" \"$@\"; }; f",
+    "script": "f() { if [ $# -lt 2 ]; then echo 'Usage: npm run script <env-file|staging|production> <script-file> [-- args]' >&2; exit 1; fi; e=$1; s=\"scripts/${2#scripts/}\"; shift 2; case \"$e\" in staging|production) exec docker compose -f \"docker-compose.$e.yml\" exec app npx tsx \"$s\" \"$@\";; *) if [ ! -f \"$e\" ]; then echo \"env file not found: $e\" >&2; exit 1; fi; set -a; . \"./$e\"; set +a; exec tsx \"$s\" \"$@\";; esac; }; f",
     "prepare": "husky",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
