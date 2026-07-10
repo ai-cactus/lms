@@ -15,14 +15,6 @@ import { PrismaClient } from '@/generated/prisma/client';
 const poolMax = Number(process.env.DATABASE_POOL_MAX) || 10;
 
 function createPrismaClient(): PrismaClient {
-  // Fail fast with a clear message — without this, pg silently falls back to
-  // localhost:5432 and surfaces as a confusing ECONNREFUSED on first query.
-  if (!process.env.DATABASE_URL) {
-    throw new Error(
-      'DATABASE_URL is not set. For scripts, pass an env file that defines it, e.g. `npm run script .env.local <script>`.',
-    );
-  }
-
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL,
     // Pool sizing.
