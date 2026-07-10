@@ -68,35 +68,40 @@ npx prisma generate
 npx prisma db push
 
 # (Optional) Seed the database with sample courses
-npm run script .env.local seed-courses.ts
+set -a && source .env && source .env.local && set +a
+npx tsx scripts/seed-courses.ts
 ```
 
 ### 🧰 Running scripts
 
 Standalone scripts in `scripts/` are TypeScript, run with `tsx`, and read
-`process.env` directly (no dotenv). Run any of them with `npm run script`,
-passing the env file for the environment you're targeting and the script name:
+`process.env` directly (no dotenv).
+
+**On the staging/production server**, run them with `npm run script` — it
+execs the script inside the deployed app container
+(`docker exec lms-<env>-app npx tsx scripts/<script-file>`), whose environment
+is already loaded from the server's `.env.staging` / `.env.production`:
 
 ```bash
-npm run script <env-file|staging|production> <script-file> [-- args]
+npm run script <staging|production> <script-file> [-- args]
 
-npm run script .env.local test-db.ts                       # local: sources the env file, runs tsx
-npm run script -- .env.local backfill-roles.ts --dry-run   # extra flags need the --
-npm run script staging backfill-roles.ts                   # on the staging server
-npm run script production backfill-roles.ts                # on the production server
+npm run script staging backfill-roles.ts
+npm run script -- staging backfill-roles.ts --dry-run   # extra flags need the --
 ```
 
-With an env file as the first argument, its variables are exported into the
-script's environment and the script runs on the host. With `staging` or
-`production`, the script runs **inside the app container** via
-`docker compose -f docker-compose.<env>.yml exec app npx tsx …` — required on
-those servers because the database hostname (`db`) only resolves inside the
-compose network, and the container's environment is already loaded from the
-server's `.env.staging` / `.env.production`. Note the container runs the
-deployed image, so scripts execute at the deployed version, and env-file edits
-on the server need `docker compose up -d app` to take effect.
+This must run on the target server — the database hostname (`db`) only
+resolves inside that server's compose network. The container runs the deployed
+image, so scripts execute at the deployed version.
 
-Double-check which environment you passed before running a destructive script.
+**Locally**, export an env file into your shell and call tsx directly:
+
+```bash
+set -a && source .env && source .env.local && set +a
+npx tsx scripts/<script>.ts
+```
+
+Double-check which environment you're pointing at before running a
+destructive script.
 
 ---
 
