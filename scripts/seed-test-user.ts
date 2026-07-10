@@ -2,8 +2,8 @@
  * seed-test-user.ts — seeds a test organisation with one admin + three workers
  * and a sample document, for local/e2e use.
  *
- * Usage (pass the env file of the target environment):
- *   npm run script .env.local seed-test-user.ts
+ * Usage (local: export an env file first; on a server: npm run script <staging|production> <file>):
+ *   npx tsx scripts/seed-test-user.ts
  */
 import { prisma } from '@/db/index';
 import { UserRole } from '@/generated/prisma/enums';

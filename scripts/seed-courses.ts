@@ -2,8 +2,8 @@
  * seed-courses.ts — seeds sample courses, quizzes, staff, and enrollments for
  * local/demo use, under the organisation's founding admin (the `owner`).
  *
- * Usage (pass the env file of the target environment):
- *   npm run script .env.local seed-courses.ts
+ * Usage (local: export an env file first; on a server: npm run script <staging|production> <file>):
+ *   npx tsx scripts/seed-courses.ts
  */
 import { prisma } from '@/db/index';
 import { Prisma } from '@/generated/prisma/client';

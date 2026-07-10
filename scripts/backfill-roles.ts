@@ -16,9 +16,9 @@
  *
  * Safe to re-run. Run AFTER the migration has been applied, never before.
  *
- * Usage (pass the env file of the target environment):
- *   npm run script .env.local backfill-roles.ts            # apply changes
- *   npm run script -- .env.local backfill-roles.ts --dry-run  # report only, write nothing
+ * Usage (local: export an env file first; on a server: npm run script <staging|production> <file>):
+ *   npx tsx scripts/backfill-roles.ts            # apply changes
+ *   npx tsx scripts/backfill-roles.ts --dry-run  # report only, write nothing
  */
 import { prisma } from '@/db/index';
 

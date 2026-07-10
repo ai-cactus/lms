@@ -1,8 +1,8 @@
 /**
  * Diagnostic: test MinIO connectivity and attempt to download the active manual.
  *
- * Run (pass the env file of the target environment):
- *   npm run script .env.local diagnose-rag.ts
+ * Run (local: export an env file first; on a server: npm run script <staging|production> <file>):
+ *   npx tsx scripts/diagnose-rag.ts
  */
 import { Client as MinioClient } from 'minio';
 import { prisma } from '@/db/index';
