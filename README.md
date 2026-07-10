@@ -78,26 +78,25 @@ Standalone scripts in `scripts/` are TypeScript, run with `tsx`, and read
 passing the env file for the environment you're targeting and the script name:
 
 ```bash
-npm run script <env-file> <script-file> [-- args]
+npm run script <env-file|staging|production> <script-file> [-- args]
 
-npm run script .env.local test-db.ts
-npm run script .env.staging seed-courses.ts
-npm run script .env.production delete-workers.ts
+npm run script .env.local test-db.ts                       # local: sources the env file, runs tsx
 npm run script -- .env.local backfill-roles.ts --dry-run   # extra flags need the --
+npm run script staging backfill-roles.ts                   # on the staging server
+npm run script production backfill-roles.ts                # on the production server
 ```
 
-The env file is exported into the script's environment before it runs.
-`.env.staging` / `.env.production` are gitignored — create them locally with
-that environment's `DATABASE_URL`, credentials, etc. Double-check which env
-file you passed before running a destructive script.
+With an env file as the first argument, its variables are exported into the
+script's environment and the script runs on the host. With `staging` or
+`production`, the script runs **inside the app container** via
+`docker compose -f docker-compose.<env>.yml exec app npx tsx …` — required on
+those servers because the database hostname (`db`) only resolves inside the
+compose network, and the container's environment is already loaded from the
+server's `.env.staging` / `.env.production`. Note the container runs the
+deployed image, so scripts execute at the deployed version, and env-file edits
+on the server need `docker compose up -d app` to take effect.
 
-Alternatively, export an env file into your shell once per session and call
-tsx directly:
-
-```bash
-set -a && source .env.local && set +a   # replace with the env file of choice
-npx tsx scripts/<script>.ts
-```
+Double-check which environment you passed before running a destructive script.
 
 ---
 
