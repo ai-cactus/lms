@@ -1,55 +1,34 @@
-#!/usr/bin/env node
 /**
  * Directly test the indexStandardManual pipeline against the active manual.
- * Run with:  node --require tsconfig-paths/register scripts/test-indexer.mjs
- * Or simply: npx tsx scripts/test-indexer.mjs
+ *
+ * Run (pass the env file of the target environment):
+ *   npm run script .env.local test-indexer.ts
  */
+import { Client as MinioClient } from 'minio';
+import pdfParse from 'pdf-parse';
+import { prisma } from '@/db/index';
 
-import { createRequire } from 'module';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
-
-const require = createRequire(import.meta.url);
-
-// Load .env
-try {
-  const lines = readFileSync(resolve(process.cwd(), '.env'), 'utf8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
-    if (!process.env[key]) process.env[key] = val;
-  }
-  console.log('✓ .env loaded');
-} catch {
-  console.warn('⚠ Could not load .env');
+interface EmbedContentResponse {
+  embedding?: { values?: number[] };
+  error?: unknown;
 }
 
-const Minio = require('minio');
-const pdfParse = require('pdf-parse');
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
-
-const client = new Minio.Client({
-  endPoint:  process.env.MINIO_ENDPOINT  ?? 'localhost',
-  port:      parseInt(process.env.MINIO_PORT ?? '9005', 10),
-  useSSL:    process.env.MINIO_USE_SSL  === 'true',
+const client = new MinioClient({
+  endPoint: process.env.MINIO_ENDPOINT ?? 'localhost',
+  port: parseInt(process.env.MINIO_PORT ?? '9005', 10),
+  useSSL: process.env.MINIO_USE_SSL === 'true',
   accessKey: process.env.MINIO_ACCESS_KEY ?? 'lms_minio_dev',
   secretKey: process.env.MINIO_SECRET_KEY ?? 'lms_minio_secret_dev',
 });
 
-async function downloadBuffer(storagePath) {
+async function downloadBuffer(storagePath: string): Promise<Buffer> {
   const match = storagePath.match(/^minio:\/\/([^/]+)\/(.+)$/);
   if (!match) throw new Error(`Cannot parse: ${storagePath}`);
   const [, bucket, key] = match;
   const stream = await client.getObject(bucket, key);
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    stream.on('data', c => chunks.push(c));
+  return new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on('data', (c: Buffer) => chunks.push(c));
     stream.on('end', () => resolve(Buffer.concat(chunks)));
     stream.on('error', reject);
   });
@@ -60,7 +39,10 @@ async function run() {
     where: { isActive: true },
     orderBy: { createdAt: 'desc' },
   });
-  if (!manual) { console.error('No active manual in DB'); return; }
+  if (!manual) {
+    console.error('No active manual in DB');
+    return;
+  }
   console.log(`\nTesting against: ${manual.filename} (${manual.id})`);
   console.log(`storagePath: ${manual.storagePath}`);
 
@@ -76,8 +58,9 @@ async function run() {
     console.log(`  Pages: ${pdfData.numpages}`);
     console.log(`  First 200 chars: ${JSON.stringify(pdfData.text?.slice(0, 200))}`);
   } catch (err) {
-    console.error(`✗ pdf-parse FAILED: [${err.name}] ${err.message}`);
-    console.error(err.stack);
+    const e = err instanceof Error ? err : new Error(String(err));
+    console.error(`✗ pdf-parse FAILED: [${e.name}] ${e.message}`);
+    console.error(e.stack);
     return;
   }
 
@@ -86,11 +69,16 @@ async function run() {
   const VERTEX_EMBEDDING_MODEL = process.env.VERTEX_EMBEDDING_MODEL || 'text-embedding-004';
   const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
 
-  console.log(`  GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY ? GOOGLE_AI_API_KEY.slice(0,6)+'****' : 'NOT SET'}`);
+  console.log(
+    `  GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY ? GOOGLE_AI_API_KEY.slice(0, 6) + '****' : 'NOT SET'}`,
+  );
   console.log(`  GOOGLE_PROJECT_ID: ${GOOGLE_VERTEX_PROJECT ?? 'NOT SET'}`);
 
   const testChunk = (pdfData.text || '').slice(0, 300).trim();
-  if (!testChunk) { console.log('  ⚠ No text to embed'); return; }
+  if (!testChunk) {
+    console.log('  ⚠ No text to embed');
+    return;
+  }
 
   // Try Gemini REST API (what ai-client.ts likely uses)
   if (GOOGLE_AI_API_KEY) {
@@ -102,15 +90,15 @@ async function run() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: `models/${model}`, content: { parts: [{ text: testChunk }] } }),
       });
-      const body = await res.json();
+      const responseBody = (await res.json()) as EmbedContentResponse;
       if (!res.ok) {
-        console.error(`  ✗ Embedding API error ${res.status}:`, JSON.stringify(body));
+        console.error(`  ✗ Embedding API error ${res.status}:`, JSON.stringify(responseBody));
       } else {
-        const dim = body.embedding?.values?.length ?? 0;
+        const dim = responseBody.embedding?.values?.length ?? 0;
         console.log(`  ✓ Embedding OK — ${dim} dimensions`);
       }
     } catch (err) {
-      console.error(`  ✗ Fetch failed: ${err.message}`);
+      console.error(`  ✗ Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   } else {
     console.log('  ⚠ No GOOGLE_AI_API_KEY — skipping embedding test');
@@ -120,7 +108,7 @@ async function run() {
   console.log('\n─── Test complete ──────────────────────────────────\n');
 }
 
-run().catch(err => {
+run().catch((err) => {
   console.error('Fatal:', err);
   process.exit(1);
 });

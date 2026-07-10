@@ -68,7 +68,35 @@ npx prisma generate
 npx prisma db push
 
 # (Optional) Seed the database with sample courses
-node scripts/seed-courses.js
+npm run script .env.local seed-courses.ts
+```
+
+### 🧰 Running scripts
+
+Standalone scripts in `scripts/` are TypeScript, run with `tsx`, and read
+`process.env` directly (no dotenv). Run any of them with `npm run script`,
+passing the env file for the environment you're targeting and the script name:
+
+```bash
+npm run script <env-file> <script-file> [-- args]
+
+npm run script .env.local test-db.ts
+npm run script .env.staging seed-courses.ts
+npm run script .env.production delete-workers.ts
+npm run script -- .env.local backfill-roles.ts --dry-run   # extra flags need the --
+```
+
+The env file is exported into the script's environment before it runs.
+`.env.staging` / `.env.production` are gitignored — create them locally with
+that environment's `DATABASE_URL`, credentials, etc. Double-check which env
+file you passed before running a destructive script.
+
+Alternatively, export an env file into your shell once per session and call
+tsx directly:
+
+```bash
+set -a && source .env.local && set +a   # replace with the env file of choice
+npx tsx scripts/<script>.ts
 ```
 
 ---

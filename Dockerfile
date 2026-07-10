@@ -48,7 +48,7 @@ RUN npm run build
 FROM node:20-slim AS runner
 
 # ffmpeg: required by the video-transcode worker to normalize uploaded course
-# videos to a web-safe, faststart MP4 (scripts/transcode-worker.mjs).
+# videos to a web-safe, faststart MP4 (scripts/transcode-worker.ts, run via tsx).
 RUN apt-get update && apt-get install -y --no-install-recommends openssl curl poppler-utils ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
@@ -70,6 +70,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
+
+# The queue workers run scripts/{transcode,index}-worker.ts via `node --import tsx`
+# at runtime. tsx needs the generated Prisma client, the shared db/index singleton,
+# and tsconfig.json (for `@/` path resolution). db/index.ts imports only
+# @/generated/prisma/client + @prisma/adapter-pg, so src/ is NOT required here.
+COPY --from=builder --chown=nextjs:nodejs /app/generated ./generated
+COPY --from=builder --chown=nextjs:nodejs /app/db ./db
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 
 # Prisma schema + migrations are required for `prisma migrate deploy` at startup.
 # prisma.config.ts (repo root, NOT inside prisma/) now holds datasource.url — it

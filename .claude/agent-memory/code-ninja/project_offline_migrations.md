@@ -5,7 +5,9 @@ metadata:
   type: project
 ---
 
-The Prisma dev database (`DATABASE_URL` → `localhost:5433`, schema `public`, db `lms`) is frequently **unreachable from the agent environment** (`P1001`).
+The Prisma dev database (`DATABASE_URL` → `localhost:5433`, schema `public`, db `lms`) is frequently **unreachable from the agent environment** (`P1001` / `ECONNREFUSED`).
+
+**If Docker is available**, you can bring up a real local pgvector Postgres on 5433 instead of scaffolding offline: `docker compose -f docker-compose.dev.yml up -d db` (service `db` = `pgvector/pgvector:pg16`, maps `5433:5432`, needs `POSTGRES_*` from `.env` — `source env` first; container name `lms-dev-db`, readiness via `docker exec lms-dev-db pg_isready -U postgres`). Verified it starts in ~1s with the migrated schema intact on its persisted volume. Use this when a task needs a live DB (smoke tests, `migrate dev`, seeding).
 
 **Why:** the DB runs outside the agent sandbox, so `prisma migrate dev` — and even `prisma migrate dev --create-only` — fail because both need a live connection (shadow DB for diffing).
 

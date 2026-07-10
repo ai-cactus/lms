@@ -1,16 +1,13 @@
 /**
- * Unit tests for the backfill-roles.js algorithm.
+ * Unit tests for the backfill-roles.ts algorithm.
  *
- * The script cannot be imported directly in this test runner because:
- *   1. It uses CJS `require('@prisma/client')` without a driver adapter.
- *   2. Prisma 7.8 requires an adapter (PrismaPg) — `new PrismaClient()` without
- *      one throws PrismaClientConstructorValidationError at startup.
- *   3. The script auto-executes `main()` at module load, which would attempt a
- *      real DB connection.
+ * The script cannot be imported directly in this test runner because it
+ * auto-executes `main()` at module load, which would build the shared Prisma
+ * client and attempt a real DB connection.
  *
  * Instead, the algorithm is replicated here as a pure async function and tested
  * with a mock Prisma object. This is the same "replicated-algorithm" strategy
- * used for transcode-worker.mjs.
+ * used for transcode-worker.ts.
  *
  * Invariants:
  *   - Idempotent: org with an existing owner is skipped entirely.
@@ -24,7 +21,7 @@ import { describe, it, expect } from 'vitest';
 
 // ── Algorithm replica ─────────────────────────────────────────────────────────
 //
-// Mirrors the logic of scripts/backfill-roles.js so we can inject a mock
+// Mirrors the logic of scripts/backfill-roles.ts so we can inject a mock
 // Prisma client and assert against the resulting operations.
 
 interface BackfillResult {

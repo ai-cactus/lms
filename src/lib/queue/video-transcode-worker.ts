@@ -2,9 +2,9 @@
  * BullMQ Worker: Course Video Transcoder
  *
  * Consumes jobs from the video-transcode-queue. For each job it spawns
- * scripts/transcode-worker.mjs as a CHILD PROCESS so the CPU-heavy ffmpeg
- * encode runs in its own process, isolated from the Next.js server (mirrors
- * the manual-indexer-worker pattern).
+ * scripts/transcode-worker.ts (via `node --import tsx`) as a CHILD PROCESS so
+ * the CPU-heavy ffmpeg encode runs in its own process, isolated from the
+ * Next.js server (mirrors the manual-indexer-worker pattern).
  *
  * Worker lifecycle:
  *   - Singleton per process, stored on globalThis to survive hot-reloads.
@@ -24,17 +24,20 @@ declare global {
   var __videoTranscodeWorker: Worker | undefined;
 }
 
-const WORKER_SCRIPT = join(process.cwd(), 'scripts', 'transcode-worker.mjs');
+const WORKER_SCRIPT = join(process.cwd(), 'scripts', 'transcode-worker.ts');
 
 /**
- * Spawns scripts/transcode-worker.mjs and resolves when it exits 0.
- * stdout lines are JSON log objects re-emitted via the server logger.
+ * Spawns scripts/transcode-worker.ts (via `node --import tsx`) and resolves
+ * when it exits 0. stdout lines are JSON log objects re-emitted via the server
+ * logger.
  */
 function runTranscodeProcess(data: VideoTranscodeJobData): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
       [
+        '--import',
+        'tsx',
         WORKER_SCRIPT,
         `--target-type=${data.targetType}`,
         `--target-id=${data.targetId}`,
