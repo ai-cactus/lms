@@ -1,4 +1,4 @@
-import { prisma } from './prisma';
+import { prisma } from '@/db/index';
 
 async function main() {
   try {

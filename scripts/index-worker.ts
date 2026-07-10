@@ -2,13 +2,13 @@
 /**
  * Standalone PDF indexer process.
  *
- * Spawned by manual-indexer-worker.ts as a child process so the heavy
- * embedding work runs in its own V8 heap, completely isolated from the
- * Next.js server. If this process OOMs, it fails this job only; it never
+ * Spawned by manual-indexer-worker.ts as a child process (via `node --import tsx`)
+ * so the heavy embedding work runs in its own V8 heap, completely isolated from
+ * the Next.js server. If this process OOMs, it fails this job only; it never
  * takes down the server.
  *
  * Usage:
- *   node --max-old-space-size=3000 --expose-gc scripts/index-worker.mjs \
+ *   node --max-old-space-size=3000 --expose-gc --import tsx scripts/index-worker.ts \
  *     --manual-id=<uuid> --storage-path=minio://bucket/key
  *
  * Exit codes:
@@ -16,40 +16,31 @@
  *   1  fatal error (job should be retried by BullMQ)
  */
 
-import { createRequire } from 'module';
-import { readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { writeFileSync, unlinkSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { Client as MinioClient } from 'minio';
+import { GoogleAuth } from 'google-auth-library';
+import { prisma } from '@/db/index';
 
-const require    = createRequire(import.meta.url);
-const execFileP  = promisify(execFile);
+const execFileP = promisify(execFile);
 
-// ── Load .env ─────────────────────────────────────────────────────────────────
-try {
-  const lines = readFileSync(new URL('../.env', import.meta.url), 'utf8').split('\n');
-  for (const line of lines) {
-    const t = line.trim();
-    if (!t || t.startsWith('#')) continue;
-    const eq = t.indexOf('=');
-    if (eq < 0) continue;
-    const k = t.slice(0, eq).trim();
-    const v = t.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
-    if (!process.env[k]) process.env[k] = v;
-  }
-} catch { /* .env not present — rely on environment */ }
+interface EmbeddingResponse {
+  predictions: Array<{ embeddings: { values: number[] } }>;
+}
 
 // ── Parse argv ────────────────────────────────────────────────────────────────
-const args = {};
+const args: Record<string, string> = {};
 for (const arg of process.argv.slice(2)) {
   const [k, ...rest] = arg.replace(/^--/, '').split('=');
   args[k] = rest.join('=');
 }
 
-const manualId    = args['manual-id'];
+const manualId = args['manual-id'];
 const storagePath = args['storage-path'];
 
 if (!manualId || !storagePath) {
@@ -58,45 +49,51 @@ if (!manualId || !storagePath) {
 }
 
 // ── Dependencies ──────────────────────────────────────────────────────────────
-const Minio             = require('minio');
-const { PrismaClient }  = require('@prisma/client');
-const { GoogleAuth }    = require('google-auth-library');
+const auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
 
-const prisma = new PrismaClient();
-const auth   = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
-
-const MINIO = new Minio.Client({
-  endPoint:  process.env.MINIO_ENDPOINT  ?? 'localhost',
-  port:      parseInt(process.env.MINIO_PORT ?? '9005', 10),
-  useSSL:    process.env.MINIO_USE_SSL === 'true',
+const MINIO = new MinioClient({
+  endPoint: process.env.MINIO_ENDPOINT ?? 'localhost',
+  port: parseInt(process.env.MINIO_PORT ?? '9005', 10),
+  useSSL: process.env.MINIO_USE_SSL === 'true',
   accessKey: process.env.MINIO_ACCESS_KEY ?? '',
   secretKey: process.env.MINIO_SECRET_KEY ?? '',
 });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CHUNK_SIZE       = 1500;
-const CHUNK_OVERLAP    = 200;
-const MIN_CHUNK_LEN    = 50;
+const CHUNK_SIZE = 1500;
+const CHUNK_OVERLAP = 200;
+const MIN_CHUNK_LEN = 50;
 const EMBED_BATCH_SIZE = 40;
-const LOG_INTERVAL     = 3;
+const LOG_INTERVAL = 3;
 
 const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
-const LOCATION   = process.env.GOOGLE_LOCATION   || 'us-central1';
-const MODEL      = 'text-embedding-004';
-const EMBED_URL  = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict`;
+const LOCATION = process.env.GOOGLE_LOCATION || 'us-central1';
+const MODEL = 'text-embedding-004';
+const EMBED_URL = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict`;
 
 // ── GC helper ─────────────────────────────────────────────────────────────────
 function maybeGc() {
-  try { if (typeof globalThis.gc === 'function') globalThis.gc(); } catch {}
+  try {
+    const g = (globalThis as { gc?: () => void }).gc;
+    if (typeof g === 'function') g();
+  } catch {
+    /* --expose-gc not enabled */
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function log(level, msg, extra = {}) {
-  process.stdout.write(JSON.stringify({ level, time: new Date().toISOString(), msg, ...extra }) + '\n');
+function log(level: string, msg: string, extra: Record<string, unknown> = {}) {
+  process.stdout.write(
+    JSON.stringify({ level, time: new Date().toISOString(), msg, ...extra }) + '\n',
+  );
 }
 
-function chunkText(text) {
-  const chunks = [];
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function chunkText(text: string): string[] {
+  const chunks: string[] = [];
   let start = 0;
   const len = text.length;
 
@@ -118,7 +115,8 @@ function chunkText(text) {
     }
 
     // charCodeAt-based trim on parent string
-    let ts = start, te = end;
+    let ts = start,
+      te = end;
     while (ts < te && text.charCodeAt(ts) <= 32) ts++;
     while (te > ts && text.charCodeAt(te - 1) <= 32) te--;
 
@@ -130,8 +128,8 @@ function chunkText(text) {
   return chunks;
 }
 
-async function extractText(buf) {
-  const id     = randomUUID();
+async function extractText(buf: Buffer): Promise<string> {
+  const id = randomUUID();
   const tmpPdf = join(tmpdir(), `iw-${id}.pdf`);
   const tmpTxt = join(tmpdir(), `iw-${id}.txt`);
   try {
@@ -139,30 +137,40 @@ async function extractText(buf) {
     await execFileP('pdftotext', ['-enc', 'UTF-8', '-nopgbrk', tmpPdf, tmpTxt]);
     return await readFile(tmpTxt, 'utf8');
   } finally {
-    try { unlinkSync(tmpPdf); } catch {}
-    try { unlinkSync(tmpTxt); } catch {}
+    try {
+      unlinkSync(tmpPdf);
+    } catch {
+      /* ignore */
+    }
+    try {
+      unlinkSync(tmpTxt);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
-async function batchEmbed(texts) {
+async function batchEmbed(texts: string[]): Promise<number[][]> {
   const token = await auth.getAccessToken();
   const res = await fetch(EMBED_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
-      instances: texts.map(t => ({ task_type: 'RETRIEVAL_DOCUMENT', title: '', content: t })),
+      instances: texts.map((t) => ({ task_type: 'RETRIEVAL_DOCUMENT', title: '', content: t })),
     }),
   });
   if (!res.ok) throw new Error(`Embed API ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-  return json.predictions.map(p => p.embeddings.values);
+  const json = (await res.json()) as EmbeddingResponse;
+  return json.predictions.map((p) => p.embeddings.values);
 }
 
 // ── Heap logger ───────────────────────────────────────────────────────────────
-function H(label) {
+function H(label: string) {
   const m = process.memoryUsage();
-  const mb = v => Math.round(v / 1024 / 1024);
-  process.stdout.write(`[HEAP] ${label}: used=${mb(m.heapUsed)} total=${mb(m.heapTotal)} rss=${mb(m.rss)} MB\n`);
+  const mb = (v: number) => Math.round(v / 1024 / 1024);
+  process.stdout.write(
+    `[HEAP] ${label}: used=${mb(m.heapUsed)} total=${mb(m.heapTotal)} rss=${mb(m.rss)} MB\n`,
+  );
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -174,11 +182,11 @@ async function main() {
   const match = storagePath.match(/^minio:\/\/([^/]+)\/(.+)$/);
   if (!match) throw new Error(`Unsupported storagePath: ${storagePath}`);
 
-  const chunks = [];
+  const chunks: Buffer[] = [];
   const stream = await MINIO.getObject(match[1], match[2]);
-  await new Promise((res, rej) => {
-    stream.on('data', d => chunks.push(d));
-    stream.on('end', res);
+  await new Promise<void>((res, rej) => {
+    stream.on('data', (d: Buffer) => chunks.push(d));
+    stream.on('end', () => res());
     stream.on('error', rej);
   });
   const buf = Buffer.concat(chunks);
@@ -195,14 +203,17 @@ async function main() {
 
   // 3. Chunk — poll heap every second to observe when it grows
   const chunkPollId = setInterval(() => H('chunk-poll'), 1000);
-  const allChunks   = chunkText(fullText);
+  const allChunks = chunkText(fullText);
   clearInterval(chunkPollId);
   const totalChunks = allChunks.length;
   H('after-chunk');
   maybeGc();
   H('after-chunk-gc');
   log('info', '[index-worker] Chunked', { totalChunks });
-  if (totalChunks === 0) { log('warn', '[index-worker] No chunks — aborting'); return; }
+  if (totalChunks === 0) {
+    log('warn', '[index-worker] No chunks — aborting');
+    return;
+  }
 
   // 4. Clear existing
   await prisma.manualChunk.deleteMany({ where: { manualId } });
@@ -210,52 +221,67 @@ async function main() {
 
   // 5. Embed + write
   const totalBatches = Math.ceil(totalChunks / EMBED_BATCH_SIZE);
-  let processed = 0, failed = 0;
+  let processed = 0,
+    failed = 0;
 
   for (let b = 0; b < totalBatches; b++) {
-    const bStart     = b * EMBED_BATCH_SIZE;
+    const bStart = b * EMBED_BATCH_SIZE;
     const batchTexts = allChunks.slice(bStart, Math.min(bStart + EMBED_BATCH_SIZE, totalChunks));
 
-    H(`batch-${b+1}-start`);
-    let embeddings;
+    H(`batch-${b + 1}-start`);
+    let embeddings: (number[] | null)[];
     try {
       embeddings = await batchEmbed(batchTexts);
-      H(`batch-${b+1}-embed-done`);
+      H(`batch-${b + 1}-embed-done`);
     } catch (batchErr) {
       failed += batchTexts.length;
-      log('error', '[index-worker] Batch embed failed', { batch: b + 1, err: batchErr.message });
+      log('error', '[index-worker] Batch embed failed', { batch: b + 1, err: errMsg(batchErr) });
       continue;
     }
 
     for (let i = 0; i < batchTexts.length; i++) {
-      const embStr = `[${embeddings[i].join(',')}]`;
+      const vec = embeddings[i];
+      if (!vec) continue;
+      const embStr = `[${vec.join(',')}]`;
       embeddings[i] = null;
       try {
         await prisma.$executeRawUnsafe(
           `INSERT INTO "ManualChunk" (id,"manualId","chunkIndex","pageNumber",content,embedding,"createdAt")
            VALUES ($1,$2,$3,NULL,$4,$5::vector,NOW())`,
-          randomUUID(), manualId, bStart + i, batchTexts[i], embStr,
+          randomUUID(),
+          manualId,
+          bStart + i,
+          batchTexts[i],
+          embStr,
         );
         processed++;
-        if (i === 0 || i === 49 || i === 99) H(`batch-${b+1}-insert-${i}`);
+        if (i === 0 || i === 49 || i === 99) H(`batch-${b + 1}-insert-${i}`);
       } catch (dbErr) {
         failed++;
-        log('error', '[index-worker] DB insert failed', { chunkIndex: bStart + i, err: dbErr.message });
+        log('error', '[index-worker] DB insert failed', {
+          chunkIndex: bStart + i,
+          err: errMsg(dbErr),
+        });
       }
     }
 
     maybeGc();
-    H(`batch-${b+1}-after-gc`);
+    H(`batch-${b + 1}-after-gc`);
 
     if ((b + 1) % LOG_INTERVAL === 0 || b === totalBatches - 1) {
-      log('info', '[index-worker] Progress', { batch: `${b+1}/${totalBatches}`, processed, failed, totalChunks });
+      log('info', '[index-worker] Progress', {
+        batch: `${b + 1}/${totalBatches}`,
+        processed,
+        failed,
+        totalChunks,
+      });
     }
   }
 
   // 6. Finalise
   await prisma.standardManual.update({
     where: { id: manualId },
-    data:  { processedAt: new Date(), chunkCount: processed },
+    data: { processedAt: new Date(), chunkCount: processed },
   });
 
   if (processed > 0) {
@@ -266,7 +292,8 @@ async function main() {
   await prisma.$disconnect();
 }
 
-main().catch(err => {
-  console.error('[index-worker] Fatal:', err.name, err.message);
+main().catch((err) => {
+  const e = err instanceof Error ? err : new Error(String(err));
+  console.error('[index-worker] Fatal:', e.name, e.message);
   process.exit(1);
 });

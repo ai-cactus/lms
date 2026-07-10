@@ -1,16 +1,45 @@
-import { prisma } from './prisma';
-import bcrypt from 'bcryptjs'
+/*
+ * seed-courses.ts — seeds sample courses, quizzes, staff, and enrollments for
+ * local/demo use, under the organisation's founding admin (the `owner`).
+ *
+ * Usage (pass the env file of the target environment):
+ *   npm run script .env.local seed-courses.ts
+ */
+import { prisma } from '@/db/index';
+import { Prisma } from '@/generated/prisma/client';
+import { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
+import bcrypt from 'bcryptjs';
+
+interface QuizOption {
+  id: string;
+  text: string;
+}
+
+interface QuizQuestion {
+  text: string;
+  options: QuizOption[];
+  correctAnswer: string;
+}
+
+interface EnrollmentPattern {
+  staffIndex: number;
+  courseIndices: number[];
+  status: EnrollmentStatus;
+  scoreRange: [number, number] | null;
+}
 
 async function main() {
   console.log('Starting improved seed with quiz data...');
 
+  // Legacy `admin` role was retired by the RBAC rollout; the founding/primary
+  // admin of an org is now the `owner`. Seed courses under that user.
   const admin = await prisma.user.findFirst({
-    where: { role: 'admin' },
+    where: { role: UserRole.owner },
     include: { profile: true },
   });
 
   if (!admin) {
-    console.log('No admin user found! Please sign up via the app first.');
+    console.log('No owner user found! Please sign up via the app first.');
     return;
   }
 
@@ -48,7 +77,7 @@ async function main() {
   ];
 
   const hashedPassword = await bcrypt.hash('TestPassword123!', 10);
-  const staffUsers = [];
+  const staffUsers: { id: string }[] = [];
 
   for (const s of staffData) {
     console.log(`Creating staff: ${s.firstName} ${s.lastName}`);
@@ -56,7 +85,7 @@ async function main() {
       data: {
         email: s.email,
         password: hashedPassword,
-        role: 'therapist_clinician',
+        role: UserRole.therapist_clinician,
         profile: {
           create: {
             email: s.email,
@@ -70,7 +99,7 @@ async function main() {
     staffUsers.push(user);
   }
 
-  const quizQuestions = {
+  const quizQuestions: Record<string, QuizQuestion[]> = {
     'HIPAA Privacy Training': [
       {
         text: 'What does HIPAA stand for?',
@@ -330,7 +359,7 @@ async function main() {
     include: { lessons: { include: { quiz: { include: { questions: true } } } } },
   });
 
-  const courseMap = new Map(existingCourses.map((c) => [c.title, c]));
+  const courseMap = new Map(existingCourses.map((c) => [c.title, c] as const));
 
   const coursesToCreate = coursesData.filter((c) => !courseMap.has(c.title));
 
@@ -360,7 +389,7 @@ async function main() {
                         create: questions.map((q, idx) => ({
                           text: q.text,
                           type: 'multiple_choice',
-                          options: q.options,
+                          options: q.options as unknown as Prisma.InputJsonValue,
                           correctAnswer: q.correctAnswer,
                           order: idx + 1,
                         })),
@@ -373,7 +402,7 @@ async function main() {
           },
           include: { lessons: { include: { quiz: { include: { questions: true } } } } },
         });
-      })
+      }),
     );
 
     createdCourses.forEach((c) => courseMap.set(c.title, c));
@@ -382,9 +411,13 @@ async function main() {
   }
 
   // Reconstruct the courses array in the original order for the enrollment steps
-  const courses = coursesData.map((c) => courseMap.get(c.title));
+  const courses = coursesData.map((c) => {
+    const found = courseMap.get(c.title);
+    if (!found) throw new Error(`Course not found after seeding: ${c.title}`);
+    return found;
+  });
 
-  const enrollmentPatterns = [
+  const enrollmentPatterns: EnrollmentPattern[] = [
     // Sarah: High performer - completes all with high scores
     { staffIndex: 0, courseIndices: [0, 1, 2, 3, 4], status: 'completed', scoreRange: [85, 98] },
     // Michael: Completed 3, in progress 2
@@ -446,8 +479,8 @@ async function main() {
         },
       });
 
-      if (pattern.status === 'completed' && course.lessons[0]?.quiz) {
-        const quiz = course.lessons[0].quiz;
+      const quiz = course.lessons[0]?.quiz;
+      if (pattern.status === 'completed' && quiz && score != null) {
         const questions = quiz.questions;
 
         // Generate answers based on target score
@@ -473,7 +506,7 @@ async function main() {
             answers: answers,
             score: score,
             timeTaken: Math.floor(Math.random() * 20 + 10) * 60, // 10-30 minutes in seconds
-            completedAt: enrollment.completedAt,
+            completedAt: enrollment.completedAt ?? new Date(),
           },
         });
       }

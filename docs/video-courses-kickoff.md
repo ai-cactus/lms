@@ -8,7 +8,7 @@ Two-phase plan, agreed with the user. Branch: continue on `feature/auth-ui-migra
 
 ## Phase 1 — Finish the course/creation UI migration (do FIRST, clean base)
 
-Migrate the remaining **course-related** pages to Tailwind + shadcn (presentation-only, preserve all functionality), following `ui-migration-pattern.md` (§3a tables + `RowActionsMenu` kebab; collapse-don't-scroll responsive tables; verify each via a temp preview route + `node scripts/shot.mjs`). Remaining:
+Migrate the remaining **course-related** pages to Tailwind + shadcn (presentation-only, preserve all functionality), following `ui-migration-pattern.md` (§3a tables + `RowActionsMenu` kebab; collapse-don't-scroll responsive tables; verify each via a temp preview route + `npx tsx scripts/shot.ts`). Remaining:
 - `(wizard)/courses/create` — the multi-step course-creation wizard + its step components (largest; `components/dashboard/training/*` and `components/courses/*`).
 - `courses/queue`, `courses/[id]/mapping`.
 - `(main)/training`, `training/courses/[id]` (+ `/preview`, `/results/[enrollmentId]`).
@@ -50,5 +50,5 @@ Already done in the dashboard slice: shell, home, Courses list, Documents list, 
 - **Pluggable-hosting interface** shape (so Mux/Cloudflare/embed drop in later).
 
 ## How to resume verification/build
-- Dev server `npm run dev` (port 3005). Auth-gated dashboard pages: verify via a temporary unprotected preview route (e.g. `src/app/xpreview/page.tsx` rendering the client component inside `DashboardLayoutClient` with mock props) + `node scripts/shot.mjs /xpreview`, then delete it.
+- Dev server `npm run dev` (port 3005). Auth-gated dashboard pages: verify via a temporary unprotected preview route (e.g. `src/app/xpreview/page.tsx` rendering the client component inside `DashboardLayoutClient` with mock props) + `npx tsx scripts/shot.ts /xpreview`, then delete it.
 - Gates: `npm run lint && npx tsc --noEmit && npm test`; production build `npm run build`.

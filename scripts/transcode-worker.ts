@@ -2,8 +2,8 @@
 /**
  * Standalone course-video transcoder.
  *
- * Spawned by video-transcode-worker.ts as a child process so the CPU-heavy
- * ffmpeg encode is isolated from the Next.js server.
+ * Spawned by video-transcode-worker.ts as a child process (via `node --import tsx`)
+ * so the CPU-heavy ffmpeg encode is isolated from the Next.js server.
  *
  * It downloads the source (raw) video from storage, re-encodes it to a
  * web-safe, universally-playable MP4 — H.264 High / 8-bit yuv420p video + AAC
@@ -17,7 +17,7 @@
  * container with correct timestamps that plays everywhere, including mobile.
  *
  * Usage:
- *   node scripts/transcode-worker.mjs \
+ *   node --import tsx scripts/transcode-worker.ts \
  *     --target-type=lesson|course-preview \
  *     --target-id=<uuid> \
  *     --storage-uri=minio://bucket/key
@@ -25,36 +25,20 @@
  * Exit codes: 0 success · 1 fatal (BullMQ retries)
  */
 
-import { createRequire } from 'module';
-import { readFileSync } from 'fs';
 import { stat, unlink } from 'fs/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { Client as MinioClient } from 'minio';
+import { Storage } from '@google-cloud/storage';
+import { prisma } from '@/db/index';
 
-const require = createRequire(import.meta.url);
 const execFileP = promisify(execFile);
 
-// ── Load .env (same approach as index-worker.mjs) ────────────────────────────
-try {
-  const lines = readFileSync(new URL('../.env', import.meta.url), 'utf8').split('\n');
-  for (const line of lines) {
-    const t = line.trim();
-    if (!t || t.startsWith('#')) continue;
-    const eq = t.indexOf('=');
-    if (eq < 0) continue;
-    const k = t.slice(0, eq).trim();
-    const v = t.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
-    if (!process.env[k]) process.env[k] = v;
-  }
-} catch {
-  /* rely on environment */
-}
-
 // ── Args ─────────────────────────────────────────────────────────────────────
-const args = {};
+const args: Record<string, string> = {};
 for (const arg of process.argv.slice(2)) {
   const [k, ...rest] = arg.replace(/^--/, '').split('=');
   args[k] = rest.join('=');
@@ -68,21 +52,14 @@ if (!['lesson', 'course-preview'].includes(targetType) || !targetId || !storageU
   process.exit(1);
 }
 
-const log = (level, msg, extra = {}) =>
+const log = (level: string, msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ level, msg, ...extra }));
 
-// ── Dependencies ─────────────────────────────────────────────────────────────
-const Minio = require('minio');
-const { PrismaPg } = require('@prisma/adapter-pg');
-const { PrismaClient } = require('@prisma/client');
-// Prisma 7 connects via a driver adapter (no query-engine binary). Mirror db/index.ts.
-const prismaAdapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter: prismaAdapter });
-
-let minioClient = null;
-function getMinio() {
+// ── Storage clients ──────────────────────────────────────────────────────────
+let minioClient: MinioClient | null = null;
+function getMinio(): MinioClient {
   if (!minioClient) {
-    minioClient = new Minio.Client({
+    minioClient = new MinioClient({
       endPoint: process.env.MINIO_ENDPOINT ?? 'localhost',
       port: parseInt(process.env.MINIO_PORT ?? '9000', 10),
       useSSL: process.env.MINIO_USE_SSL === 'true',
@@ -93,33 +70,33 @@ function getMinio() {
   return minioClient;
 }
 
-let gcsStorage = null;
-function getGcs() {
+let gcsStorage: Storage | null = null;
+function getGcs(): Storage {
   if (!gcsStorage) {
-    const { Storage } = require('@google-cloud/storage');
     const rawKey = process.env.GCS_KEY_BASE64;
     if (rawKey) {
-      // Mirrors GCSProvider in src/lib/storage/gcs-provider.ts (worker is plain
-      // .mjs and can't import the TS module). NEVER log rawKey or decoded fields.
-      let parsed;
+      // Mirrors GCSProvider in src/lib/storage/gcs-provider.ts.
+      // NEVER log rawKey or decoded fields.
+      let parsed: unknown;
       try {
         parsed = JSON.parse(Buffer.from(rawKey, 'base64').toString('utf8'));
       } catch {
         log('error', '[transcode-worker] GCS_KEY_BASE64 is malformed (decode/parse failed)', {});
         throw new Error('GCS_KEY_BASE64 is malformed');
       }
+      const key = parsed as { client_email?: unknown; private_key?: unknown };
       if (
-        typeof parsed?.client_email !== 'string' ||
-        !parsed.client_email ||
-        typeof parsed?.private_key !== 'string' ||
-        !parsed.private_key
+        typeof key.client_email !== 'string' ||
+        !key.client_email ||
+        typeof key.private_key !== 'string' ||
+        !key.private_key
       ) {
         log('error', '[transcode-worker] GCS_KEY_BASE64 is missing client_email or private_key', {});
         throw new Error('GCS_KEY_BASE64 is missing required service-account fields');
       }
       gcsStorage = new Storage({
         projectId: process.env.GOOGLE_PROJECT_ID,
-        credentials: { client_email: parsed.client_email, private_key: parsed.private_key },
+        credentials: { client_email: key.client_email, private_key: key.private_key },
       });
     } else {
       // Local dev: resolve via ADC (gcloud login / GOOGLE_APPLICATION_CREDENTIALS).
@@ -129,13 +106,19 @@ function getGcs() {
   return gcsStorage;
 }
 
-function parseUri(uri) {
+interface ParsedUri {
+  scheme: string;
+  bucket: string;
+  key: string;
+}
+
+function parseUri(uri: string): ParsedUri {
   const m = uri.match(/^(minio|gcs):\/\/([^/]+)\/(.+)$/);
   if (!m) throw new Error(`Unsupported storage URI: ${uri}`);
   return { scheme: m[1], bucket: m[2], key: m[3] };
 }
 
-async function downloadTo(uri, destPath) {
+async function downloadTo(uri: string, destPath: string): Promise<void> {
   const { scheme, bucket, key } = parseUri(uri);
   if (scheme === 'minio') {
     await getMinio().fGetObject(bucket, key, destPath);
@@ -144,7 +127,12 @@ async function downloadTo(uri, destPath) {
   }
 }
 
-async function uploadFrom(srcPath, scheme, bucket, key) {
+async function uploadFrom(
+  srcPath: string,
+  scheme: string,
+  bucket: string,
+  key: string,
+): Promise<string> {
   if (scheme === 'minio') {
     await getMinio().fPutObject(bucket, key, srcPath, { 'Content-Type': 'video/mp4' });
   } else {
@@ -155,12 +143,15 @@ async function uploadFrom(srcPath, scheme, bucket, key) {
   return `${scheme}://${bucket}/${key}`;
 }
 
-async function probeDurationSeconds(filePath) {
+async function probeDurationSeconds(filePath: string): Promise<number | null> {
   try {
     const { stdout } = await execFileP('ffprobe', [
-      '-v', 'error',
-      '-show_entries', 'format=duration',
-      '-of', 'default=noprint_wrappers=1:nokey=1',
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'default=noprint_wrappers=1:nokey=1',
       filePath,
     ]);
     const d = parseFloat(stdout.trim());
@@ -170,7 +161,7 @@ async function probeDurationSeconds(filePath) {
   }
 }
 
-async function safeUnlink(p) {
+async function safeUnlink(p: string): Promise<void> {
   try {
     await unlink(p);
   } catch {
@@ -198,18 +189,30 @@ async function main() {
       'ffmpeg',
       [
         '-y',
-        '-i', inputPath,
-        '-map', '0:v:0',
-        '-map', '0:a:0?',
-        '-c:v', 'libx264',
-        '-profile:v', 'high',
-        '-pix_fmt', 'yuv420p',
-        '-preset', 'veryfast',
-        '-crf', '20',
-        '-c:a', 'aac',
-        '-b:a', '128k',
-        '-ac', '2',
-        '-movflags', '+faststart',
+        '-i',
+        inputPath,
+        '-map',
+        '0:v:0',
+        '-map',
+        '0:a:0?',
+        '-c:v',
+        'libx264',
+        '-profile:v',
+        'high',
+        '-pix_fmt',
+        'yuv420p',
+        '-preset',
+        'veryfast',
+        '-crf',
+        '20',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '128k',
+        '-ac',
+        '2',
+        '-movflags',
+        '+faststart',
         outputPath,
       ],
       { maxBuffer: 1024 * 1024 * 32 },
@@ -261,6 +264,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  log('error', '[transcode-worker] Fatal', { err: err?.message ?? String(err) });
+  log('error', '[transcode-worker] Fatal', {
+    err: err instanceof Error ? err.message : String(err),
+  });
   process.exit(1);
 });

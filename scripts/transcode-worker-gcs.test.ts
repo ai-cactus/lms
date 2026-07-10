@@ -2,13 +2,10 @@
  * Regression tests for Bug 2: the transcode-worker's getGcs() credential-decode logic.
  *
  * WHY the worker is not imported directly:
- *   scripts/transcode-worker.mjs calls `main()` at module level. Importing it would
- *   run `main()`, which would fail in the test environment (no real FFmpeg/storage).
- *   A child_process approach is also not viable in the current state because the worker's
- *   module-level `new PrismaClient()` call crashes with PrismaClientInitializationError in
- *   Prisma 7.8's WASM-based CJS client before main() is ever invoked — so the child
- *   process never reaches getGcs() at all.
- *   (That crash is a separate product bug — see the orchestrator's notes.)
+ *   scripts/transcode-worker.ts calls `main()` at module level. Importing it would
+ *   run `main()`, which would fail in the test environment (no real FFmpeg/storage)
+ *   and would eagerly construct the shared Prisma client. Neither is desirable in a
+ *   focused unit test, so the credential logic is exercised via a replica below.
  *
  * APPROACH — replicated algorithm:
  *   The worker's getGcs() comment explicitly states it "Mirrors GCSProvider in
@@ -33,7 +30,7 @@ type StorageCtor = new (...args: unknown[]) => unknown;
 // ── Replicated algorithm ──────────────────────────────────────────────────────
 //
 // Verbatim copy of the credential-handling block inside getGcs() in
-// scripts/transcode-worker.mjs. Update this function IN LOCKSTEP with the worker
+// scripts/transcode-worker.ts. Update this function IN LOCKSTEP with the worker
 // whenever the worker's getGcs() logic changes.
 
 function replicatedGetGcs(rawKey: string | undefined, StorageCtorArg: StorageCtor): unknown {

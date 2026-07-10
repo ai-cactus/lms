@@ -1,4 +1,4 @@
-import { prisma } from './prisma';
+import { prisma } from '@/db/index';
 
 async function main() {
   console.log('Starting auditor access synchronization...');
@@ -8,10 +8,10 @@ async function main() {
     where: {
       hasAuditorAccess: false,
       subscription: {
-        status: { in: ['active', 'trialing'] }
-      }
+        status: { in: ['active', 'trialing'] },
+      },
     },
-    select: { id: true, name: true }
+    select: { id: true, name: true },
   });
 
   console.log(`Found ${toGrant.length} organizations to grant access to.`);
@@ -20,7 +20,7 @@ async function main() {
     console.log(`Granting access to: ${org.name} (${org.id})`);
     await prisma.organization.update({
       where: { id: org.id },
-      data: { hasAuditorAccess: true }
+      data: { hasAuditorAccess: true },
     });
   }
 
@@ -30,10 +30,10 @@ async function main() {
       hasAuditorAccess: true,
       OR: [
         { subscription: null },
-        { subscription: { status: { notIn: ['active', 'trialing'] } } }
-      ]
+        { subscription: { status: { notIn: ['active', 'trialing'] } } },
+      ],
     },
-    select: { id: true, name: true }
+    select: { id: true, name: true },
   });
 
   console.log(`Found ${toRevoke.length} organizations to revoke access from.`);
@@ -42,7 +42,7 @@ async function main() {
     console.log(`Revoking access from: ${org.name} (${org.id})`);
     await prisma.organization.update({
       where: { id: org.id },
-      data: { hasAuditorAccess: false }
+      data: { hasAuditorAccess: false },
     });
   }
 
@@ -51,12 +51,18 @@ async function main() {
   if (toGrant.length === 0) {
     console.log('\n--- Debug Info: All Organizations ---');
     const allOrgs = await prisma.organization.findMany({
-      include: { subscription: true },
-      select: { id: true, name: true, hasAuditorAccess: true, subscription: { select: { status: true } } }
+      select: {
+        id: true,
+        name: true,
+        hasAuditorAccess: true,
+        subscription: { select: { status: true } },
+      },
     });
     console.log(JSON.stringify(allOrgs, null, 2));
     console.log('--------------------------------------');
-    console.log('TIP: If you see "subscription": null, it means the Stripe webhook never successfully saved the subscription to your database.');
+    console.log(
+      'TIP: If you see "subscription": null, it means the Stripe webhook never successfully saved the subscription to your database.',
+    );
   }
 }
 

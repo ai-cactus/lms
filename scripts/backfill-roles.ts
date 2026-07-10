@@ -1,5 +1,5 @@
 /*
- * backfill-roles.js — one-time, idempotent owner promotion for the RBAC rollout.
+ * backfill-roles.ts — one-time, idempotent owner promotion for the RBAC rollout.
  *
  * Context: the `rbac_roles` migration maps every legacy `admin` to `supervisor`.
  * This script then promotes the FOUNDER of each organisation (the earliest
@@ -16,28 +16,17 @@
  *
  * Safe to re-run. Run AFTER the migration has been applied, never before.
  *
- * Usage:
- *   node scripts/backfill-roles.js            # apply changes
- *   node scripts/backfill-roles.js --dry-run  # report only, write nothing
- *
- * This is a standalone Node CJS migration script (not part of the app bundle and
- * not linted with src/), so it uses console output and @prisma/client directly.
+ * Usage (pass the env file of the target environment):
+ *   npm run script .env.local backfill-roles.ts            # apply changes
+ *   npm run script -- .env.local backfill-roles.ts --dry-run  # report only, write nothing
  */
-/* eslint-disable no-console */
-const path = require('path');
-// Load DATABASE_URL for a standalone node run (app/Next loads env itself).
-require('dotenv').config({ path: path.join(__dirname, '..', '.env.local') });
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-const { PrismaPg } = require('@prisma/adapter-pg');
-const { PrismaClient } = require('@prisma/client');
+import { prisma } from '@/db/index';
 
-// Prisma 7.8 (client engine) requires a driver adapter — mirror src/db/index.ts.
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 const DRY_RUN = process.argv.includes('--dry-run');
 
-// Inline email mask — this script cannot import the TS logger.
-const mask = (e) => (e ? e.replace(/(.{2}).+(@.+)/, '$1***$2') : 'unknown');
+// Inline email mask — this standalone script does not import the app logger.
+const mask = (e: string | null | undefined): string =>
+  e ? e.replace(/(.{2}).+(@.+)/, '$1***$2') : 'unknown';
 
 async function main() {
   console.log(`[backfill-roles] Starting${DRY_RUN ? ' (DRY RUN — no writes)' : ''}...`);
@@ -68,7 +57,9 @@ async function main() {
     distinct: ['organizationId'],
     select: { organizationId: true },
   });
-  const orgIds = orgRows.map((r) => r.organizationId).filter(Boolean);
+  const orgIds = orgRows
+    .map((r) => r.organizationId)
+    .filter((id): id is string => id !== null);
   counters.orgsWithSuperAdmin = orgIds.length;
 
   for (const organizationId of orgIds) {

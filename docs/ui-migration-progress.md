@@ -93,7 +93,7 @@ Biggest slice: ~16 page routes + ~50 components. Sub-order:
 - **2026-06-11** Primary CTAs are **gated on form-completeness** (grey until required fields filled, purple when ready); loading keeps brand colour.
 
 ## How to resume / verify
-- Dev server: `npm run dev` (port 3005). Screenshot any route at 3 breakpoints: `node scripts/shot.mjs <route>`.
+- Dev server: `npm run dev` (port 3005). Screenshot any route at 3 breakpoints: `npx tsx scripts/shot.ts <route>`.
 - Gates before handing a page off: `npm run lint && npx tsc --noEmit && npm test`; production build `npm run build`.
 - Per-page procedure + gotchas: `docs/ui-migration-pattern.md`.
 - Figma: file key `cySAabdYLDKzwbs88owBHn` (THERAPTLY); token in `.env` (`FIGMA_ACCESS_TOKEN`). Ask the user for the specific frame/node link when a layout is unclear.
