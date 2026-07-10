@@ -1,8 +1,8 @@
 /**
  * Test a single embedding call using the exact same path as the worker.
  *
- * Run (pass the env file of the target environment):
- *   npm run script .env.local test-embedding.ts
+ * Run (local: export an env file first; on a server: npm run script <staging|production> <file>):
+ *   npx tsx scripts/test-embedding.ts
  */
 import { GoogleAuth } from 'google-auth-library';
 

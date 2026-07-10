@@ -1,8 +1,8 @@
 /**
  * Tests the exact Prisma $executeRaw vector update used by the indexer.
  *
- * Run (pass the env file of the target environment):
- *   npm run script .env.local test-vector-upsert.ts
+ * Run (local: export an env file first; on a server: npm run script <staging|production> <file>):
+ *   npx tsx scripts/test-vector-upsert.ts
  */
 import { prisma } from '@/db/index';
 

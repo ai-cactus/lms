@@ -1,8 +1,8 @@
 /**
  * Directly test the indexStandardManual pipeline against the active manual.
  *
- * Run (pass the env file of the target environment):
- *   npm run script .env.local test-indexer.ts
+ * Run (local: export an env file first; on a server: npm run script <staging|production> <file>):
+ *   npx tsx scripts/test-indexer.ts
  */
 import { Client as MinioClient } from 'minio';
 import pdfParse from 'pdf-parse';

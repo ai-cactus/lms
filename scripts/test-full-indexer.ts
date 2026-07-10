@@ -2,8 +2,8 @@
  * End-to-end test of the full indexing pipeline using pdftotext + batch embeddings.
  * Mirrors the exact code path the BullMQ worker takes.
  *
- * Run (pass the env file of the target environment):
- *   npm run script .env.local test-full-indexer.ts
+ * Run (local: export an env file first; on a server: npm run script <staging|production> <file>):
+ *   npx tsx scripts/test-full-indexer.ts
  *
  * Tests the first 3 batches only (300 chunks) to validate correctness quickly.
  * Set TEST_ALL=1 to run the full indexing.
