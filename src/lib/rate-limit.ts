@@ -13,13 +13,21 @@ import { logger } from '@/lib/logger';
 const fallbackCache = new Map<string, number[]>();
 
 /**
- * E2E-only rate-limit bypass. Double-guarded: only active when NOT in production
- * AND the explicit opt-in flag is set, so it can never disable rate limiting in
- * a real deployment. Used so the Playwright suite can exercise auth flows
- * repeatedly without tripping the login/signup limiters.
+ * E2E-only rate-limit bypass. Double-guarded: only active when the explicit
+ * opt-in flag is set AND the app is not a real deployment, so it can never
+ * disable rate limiting in production. Used so the Playwright suite can
+ * exercise auth flows repeatedly without tripping the login/signup limiters.
+ *
+ * "Not a real deployment" means either a non-production NODE_ENV (next dev)
+ * or a production build served at http://localhost (the CI e2e server runs
+ * `next start`, which forces NODE_ENV=production; real deployments are never
+ * origin http://localhost).
  */
+const appOrigin = process.env.AUTH_URL || process.env.NEXTAUTH_URL || process.env.APP_URL || '';
+const isLocalhostOrigin = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(appOrigin);
 const e2eBypassRateLimit =
-  process.env.NODE_ENV !== 'production' && process.env.E2E_TEST_BYPASS_RATE_LIMIT === 'true';
+  (process.env.NODE_ENV !== 'production' || isLocalhostOrigin) &&
+  process.env.E2E_TEST_BYPASS_RATE_LIMIT === 'true';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
