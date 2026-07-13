@@ -24,7 +24,13 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev -- -p 3005',
+    // CI serves the production build (`next build` runs as a prior workflow
+    // step): `next dev`'s lazy route compilation has intermittently failed to
+    // register interleaved route-group routes (e.g. /dashboard/(wizard)/
+    // training/courses/[id]/assign 404'd for a whole run), and `next start`
+    // resolves the full route manifest ahead of time. Local runs keep the dev
+    // server for fast iteration.
+    command: process.env.CI ? 'npm run start -- -p 3005' : 'npm run dev -- -p 3005',
     url: 'http://localhost:3005',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
