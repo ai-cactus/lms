@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { Mail, Trash2, PlusCircle, FileSpreadsheet, Download } from 'lucide-react';
@@ -65,6 +65,25 @@ export default function OnboardingStep5() {
   const [submitError, setSubmitError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // Block reaching the final step without step-1 org data: without it the submit
+  // dead-ends on a "Missing Organization Data (Step 1)" error. Corrupt/unparseable
+  // localStorage is treated as missing and sent back to step 1 to re-enter it.
+  useEffect(() => {
+    const raw = localStorage.getItem('onboarding_data');
+    let missingStep1 = true;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        missingStep1 = !parsed.step1;
+      } catch {
+        missingStep1 = true;
+      }
+    }
+    if (missingStep1) {
+      router.replace('/onboarding/step1');
+    }
+  }, [router]);
+
   const collectValidInvites = (rows: WorkerInviteRow[]): OnboardingWorkerInvite[] => {
     const seen = new Set<string>();
     const result: OnboardingWorkerInvite[] = [];
@@ -100,6 +119,12 @@ export default function OnboardingStep5() {
       const result = await completeOnboarding(allData as unknown as OnboardingData);
 
       if (!result.success) {
+        // State lost mid-flight (after the mount guard passed) — recover by
+        // sending the user back to re-enter step-1 org data instead of dead-ending.
+        if (result.code === 'MISSING_STEP1') {
+          router.replace('/onboarding/step1');
+          return;
+        }
         setSubmitError(result.error || 'Failed to complete onboarding');
         setIsLoading(false);
         return;
