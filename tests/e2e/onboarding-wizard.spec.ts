@@ -396,10 +396,21 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
 
     try {
       await login(page, seeded.email, seeded.password);
-      // step5 renders standalone (no prior-step data required to display the
-      // form), so navigate straight there to keep this validation-only test fast.
+      // step5's mount guard (THER-017) redirects to step1 unless localStorage
+      // already carries step1 data — seed it here so this test can still
+      // exercise step5's own role-required validation in isolation, without
+      // walking the full step1..4 wizard.
+      await page.goto('/dashboard');
+      await page.evaluate(() => {
+        localStorage.setItem(
+          'onboarding_data',
+          JSON.stringify({ step1: { legalName: 'No Role Validation Co' } }),
+        );
+      });
       await page.goto('/onboarding/step5');
       await page.waitForLoadState('networkidle');
+      // The mount guard must NOT fire when step1 data is present.
+      await expect(page).toHaveURL(/\/onboarding\/step5/);
 
       await page
         .getByPlaceholder("Enter worker's email")
@@ -411,6 +422,45 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await expect(page.getByText(/select a role/i)).toBeVisible();
       // Blocked — never navigates away from step5.
       await expect(page).toHaveURL(/\/onboarding\/step5/);
+    } finally {
+      await cleanup(seeded, `__no-org-created-by-${seeded.email}__`);
+    }
+  });
+
+  // ── THER-017: onboarding silent dead-end ────────────────────────────────────
+
+  test('THER-017 regression: visiting step5 directly with no step1 data redirects to step1 instead of dead-ending', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const seeded = await seedUnboardedOwner();
+
+    try {
+      await login(page, seeded.email, seeded.password);
+      // Establish the app origin, then explicitly clear localStorage — mirrors
+      // a user who lost their in-progress step1..4 state (new tab, cleared
+      // storage, etc.) and jumps/returns straight to the final step.
+      await page.goto('/dashboard');
+      await page.evaluate(() => localStorage.clear());
+
+      await page.goto('/onboarding/step5');
+
+      await page.waitForURL('**/onboarding/step1**', { timeout: 15000 });
+      // Never silently stuck on step5, and no organization was created from
+      // the incomplete/absent step1 data.
+      await expect(page).not.toHaveURL(/\/onboarding\/step5/);
+
+      const client = new Client({ connectionString: DB_URL });
+      await client.connect();
+      try {
+        const res = await client.query(
+          `SELECT organization_id FROM users WHERE id = $1`,
+          [seeded.userId],
+        );
+        expect(res.rows[0]?.organization_id).toBeNull();
+      } finally {
+        await client.end();
+      }
     } finally {
       await cleanup(seeded, `__no-org-created-by-${seeded.email}__`);
     }

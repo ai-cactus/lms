@@ -162,37 +162,47 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
   // Capture plaintext codes BEFORE hashing — these are shown to the user once only
   const recoveryCodes = generateRecoveryCodes();
 
+  // Hash the SAME codes we will return to the user, OUTSIDE the transaction:
+  // bcrypt work over 10 codes exceeds the interactive-transaction timeout on
+  // CPU-throttled hosts and would roll the whole enable back (P2028).
+  const hashedCodes = await Promise.all(recoveryCodes.map((c) => hashRecoveryCode(c)));
+
   // Mark factor as verified and enable MFA
-  await prisma.$transaction(async (tx) => {
-    await tx.mfaFactor.update({
-      where: { id: factor.id },
-      data: { verified: true },
-    });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.mfaFactor.update({
+        where: { id: factor.id },
+        data: { verified: true },
+      });
 
-    await tx.user.update({
-      where: { id: session.user.id },
-      data: {
-        mfaEnabled: true,
-        // Keep mfaVerifiedAt for backward compat (legacy sessions may still read it)
-        mfaVerifiedAt: new Date(),
-      },
-    });
+      await tx.user.update({
+        where: { id: session.user.id },
+        data: {
+          mfaEnabled: true,
+          // Keep mfaVerifiedAt for backward compat (legacy sessions may still read it)
+          mfaVerifiedAt: new Date(),
+        },
+      });
 
-    // Remove any old recovery codes
-    await tx.mfaRecoveryCode.deleteMany({
-      where: { userId: session.user.id },
-    });
+      // Remove any old recovery codes
+      await tx.mfaRecoveryCode.deleteMany({
+        where: { userId: session.user.id },
+      });
 
-    // Hash and store the SAME codes we will return to the user
-    const hashedCodes = await Promise.all(recoveryCodes.map((c) => hashRecoveryCode(c)));
-
-    await tx.mfaRecoveryCode.createMany({
-      data: hashedCodes.map((codeHash) => ({
-        userId: session.user.id!,
-        codeHash,
-      })),
+      await tx.mfaRecoveryCode.createMany({
+        data: hashedCodes.map((codeHash) => ({
+          userId: session.user.id!,
+          codeHash,
+        })),
+      });
     });
-  });
+  } catch (err) {
+    logger.error({ msg: '[auth] MFA enable transaction failed', err, userId: session.user.id });
+    return {
+      success: false,
+      error: 'Could not enable two-factor authentication. Please try again.',
+    };
+  }
 
   // Mark the current session as MFA-verified via Redis (per-session state).
   // This prevents the middleware from redirecting the user to /verify-2fa
@@ -315,16 +325,27 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
 
   const recoveryCodes = generateRecoveryCodes();
 
-  await prisma.$transaction(async (tx) => {
-    await tx.mfaRecoveryCode.deleteMany({ where: { userId: session.user.id } });
-    const hashedCodes = await Promise.all(recoveryCodes.map((c) => hashRecoveryCode(c)));
-    await tx.mfaRecoveryCode.createMany({
-      data: hashedCodes.map((codeHash) => ({
-        userId: session.user.id!,
-        codeHash,
-      })),
+  // Hash outside the transaction — bcrypt over 10 codes would exceed the
+  // interactive-transaction timeout and roll back on CPU-throttled hosts (P2028).
+  const hashedCodes = await Promise.all(recoveryCodes.map((c) => hashRecoveryCode(c)));
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.mfaRecoveryCode.deleteMany({ where: { userId: session.user.id } });
+      await tx.mfaRecoveryCode.createMany({
+        data: hashedCodes.map((codeHash) => ({
+          userId: session.user.id!,
+          codeHash,
+        })),
+      });
     });
-  });
+  } catch (err) {
+    logger.error({ msg: '[auth] Recovery code regeneration failed', err, userId: session.user.id });
+    return {
+      success: false,
+      error: 'Could not regenerate recovery codes. Please try again.',
+    };
+  }
 
   logger.info({ msg: 'Recovery codes regenerated', userId: session.user.id });
 
