@@ -508,11 +508,11 @@ describe('assignCourseToStaffMember() — permission gate, org scope, delegation
     });
 
     const result = await assignCourseToStaffMember('course-1', 'staff-1', {
-      renewalCycle: 'ANNUAL',
+      renewalCycle: 'annual',
     });
 
     expect(mockEnrollUsers).toHaveBeenCalledWith('course-1', [{ email: 'target@acme.com' }], {
-      renewalCycle: 'ANNUAL',
+      renewalCycle: 'annual',
     });
     expect(result).toEqual({
       success: ['target@acme.com'],
