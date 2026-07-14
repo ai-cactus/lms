@@ -19,3 +19,4 @@
 - [Status Tracker rename + seed fixture](status-tracker-rename-e2e-seed-fixture.md) — new seeded overdue enrollment (Olivia Overdue); email-substring collision gotcha; WSL2 dev-server cold-start flake pattern
 - [E2E webServer dev-lock conflict](e2e-webserver-dev-lock-conflict.md) — a stray `:3000` `next dev` blocks Playwright's :3005 webServer from starting at all; kill it first, restart after
 - [Stripe invoice period test patterns](stripe-invoice-period-test-patterns.md) — full InvoiceLineItem fixture typing, `?? default` nullish trap, audit() needs no mock, regression-pin idiom
+- [RBAC sidebar module gating tests](rbac-sidebar-module-gating-tests.md) — exhaustive per-role canAccessModule/nav coverage pattern (4 files); e2e infra down again 2026-07-14 (Docker daemon unreachable, disk <10G)
