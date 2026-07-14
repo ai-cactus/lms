@@ -10,8 +10,11 @@ import {
   extractManagerInvitesFromRows,
   buildManagerCsvTemplate,
   buildWorkerCsvTemplate,
+  buildStaffInviteCsvTemplate,
+  summariseSkippedCsvRows,
   STAFF_CSV_EMAIL_HEADER,
   MANAGER_CSV_ROLE_HEADER,
+  type ManagerCsvSkippedRow,
 } from './staff-csv';
 
 const MANAGER_ROLES = new Set(['supervisor', 'hr', 'clinical_director', 'finance']);
@@ -251,9 +254,9 @@ describe('extractManagerInvitesFromRows — missing/bad role values', () => {
     );
 
     expect(result.invites).toEqual([
-      { email: 'alice@example.com', role: '' },
-      { email: 'bob@example.com', role: '' },
-      { email: 'carol@example.com', role: '' },
+      { email: 'alice@example.com', role: '', roleRejected: true },
+      { email: 'bob@example.com', role: '', roleRejected: true },
+      { email: 'carol@example.com', role: '', roleRejected: true },
     ]);
   });
 
@@ -301,6 +304,7 @@ describe('extractManagerInvitesFromRows — invalid emails, duplicates, blank ro
 
     expect(result).toEqual({
       invites: [],
+      skipped: [],
       invalidEmailCount: 0,
       duplicateCount: 0,
       truncated: false,
@@ -322,6 +326,175 @@ describe('buildManagerCsvTemplate', () => {
   it('starts with the expected email,role header', () => {
     const [header] = buildManagerCsvTemplate().split('\n');
     expect(header).toBe(`${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}`);
+  });
+});
+
+describe('extractManagerInvitesFromRows — mixed valid/missing/invalid file (QA ISSUE 1 regression)', () => {
+  it('reports 1-based row numbers and the correct reason for each skipped row', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'], // row 1 (header)
+        ['good1@example.com', 'hr'], // row 2 — valid
+        ['', 'nurse'], // row 3 — missing email
+        ['not-an-email', 'nurse'], // row 4 — invalid email
+        ['good2@example.com', 'finance'], // row 5 — valid
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toEqual([
+      { email: 'good1@example.com', role: 'hr' },
+      { email: 'good2@example.com', role: 'finance' },
+    ]);
+    expect(result.skipped).toEqual([
+      { row: 3, reason: 'missing_email' },
+      { row: 4, reason: 'invalid_email', email: 'not-an-email' },
+    ]);
+  });
+
+  it('surfaces a missing-email row even when the row has other content (e.g. `,nurse`)', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['', 'nurse'],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.skipped).toEqual([{ row: 2, reason: 'missing_email' }]);
+    expect(result.invites).toEqual([]);
+  });
+
+  it('does NOT surface a fully-blank row as skipped', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['good@example.com', 'hr'],
+        ['', ''],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.skipped).toEqual([]);
+    expect(result.invites).toHaveLength(1);
+  });
+
+  it('reports a duplicate email as skipped with reason "duplicate"', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['dup@example.com', 'hr'],
+        ['dup@example.com', 'finance'],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.skipped).toEqual([{ row: 3, reason: 'duplicate', email: 'dup@example.com' }]);
+    expect(result.invites).toEqual([{ email: 'dup@example.com', role: 'hr' }]);
+  });
+});
+
+describe('extractManagerInvitesFromRows — roleRejected flag', () => {
+  it('sets roleRejected: true when the role is unrecognised or outside the caller scope', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['alice@example.com', 'supervisor'],
+      ],
+      { validRoles: new Set(['hr', 'finance']) }, // caller (e.g. HR) may not grant supervisor
+    );
+
+    expect(result.invites).toEqual([{ email: 'alice@example.com', role: '', roleRejected: true }]);
+  });
+
+  it('does NOT set roleRejected for a blank role cell — the row is simply role-less', () => {
+    const result = extractManagerInvitesFromRows(
+      [
+        ['email', 'role'],
+        ['alice@example.com', ''],
+      ],
+      { validRoles: MANAGER_ROLES },
+    );
+
+    expect(result.invites).toEqual([{ email: 'alice@example.com', role: '' }]);
+    expect(result.invites[0].roleRejected).toBeUndefined();
+  });
+});
+
+describe('summariseSkippedCsvRows', () => {
+  it('returns an empty string when nothing was skipped', () => {
+    expect(summariseSkippedCsvRows([])).toBe('');
+  });
+
+  it('formats a single skipped row (singular "row")', () => {
+    const skipped: ManagerCsvSkippedRow[] = [{ row: 3, reason: 'missing_email' }];
+    expect(summariseSkippedCsvRows(skipped)).toBe('1 row skipped: row 3 (missing email)');
+  });
+
+  it('formats a mix of reasons with the offending email quoted, pluralising "rows"', () => {
+    const skipped: ManagerCsvSkippedRow[] = [
+      { row: 3, reason: 'missing_email' },
+      { row: 5, reason: 'invalid_email', email: 'not-an-email' },
+    ];
+    expect(summariseSkippedCsvRows(skipped)).toBe(
+      "2 rows skipped: row 3 (missing email), row 5 (invalid email 'not-an-email')",
+    );
+  });
+
+  it('formats a duplicate-email skip reason with the email quoted', () => {
+    const skipped: ManagerCsvSkippedRow[] = [
+      { row: 4, reason: 'duplicate', email: 'dup@example.com' },
+    ];
+    expect(summariseSkippedCsvRows(skipped)).toBe(
+      "1 row skipped: row 4 (duplicate email 'dup@example.com')",
+    );
+  });
+
+  it('caps the listed rows at maxListed (default 8) and appends "…and N more"', () => {
+    const skipped: ManagerCsvSkippedRow[] = Array.from({ length: 11 }, (_, i) => ({
+      row: i + 2,
+      reason: 'missing_email' as const,
+    }));
+
+    const result = summariseSkippedCsvRows(skipped);
+
+    expect(result.startsWith('11 rows skipped: ')).toBe(true);
+    expect(result).toContain('…and 3 more');
+    // Exactly 8 individual rows listed before the "…and N more" suffix.
+    expect(result.match(/row \d+ \(missing email\)/g)).toHaveLength(8);
+  });
+
+  it('respects a custom maxListed override', () => {
+    const skipped: ManagerCsvSkippedRow[] = Array.from({ length: 4 }, (_, i) => ({
+      row: i + 2,
+      reason: 'missing_email' as const,
+    }));
+
+    const result = summariseSkippedCsvRows(skipped, 2);
+
+    expect(result).toContain('…and 2 more');
+    expect(result.match(/row \d+ \(missing email\)/g)).toHaveLength(2);
+  });
+});
+
+describe('buildStaffInviteCsvTemplate', () => {
+  it('starts with the expected email,role header', () => {
+    const [header] = buildStaffInviteCsvTemplate().split('\n');
+    expect(header).toBe(`${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}`);
+  });
+
+  it('round-trips through extractManagerInvitesFromRows with every sample role recognised', () => {
+    const rows = buildStaffInviteCsvTemplate()
+      .trim()
+      .split('\n')
+      .map((line) => line.split(','));
+
+    const result = extractManagerInvitesFromRows(rows, {
+      validRoles: new Set([...MANAGER_ROLES, ...WORKER_ROLES]),
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.invites.every((inv) => inv.role !== '')).toBe(true);
   });
 });
 

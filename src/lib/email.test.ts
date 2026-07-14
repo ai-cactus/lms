@@ -89,3 +89,53 @@ describe('email delivery tracking (F-021)', () => {
     expect(result).toEqual(expect.objectContaining({ success: true }));
   });
 });
+
+/**
+ * QA ISSUE 5 regression: sendInviteEmail() previously interpolated the raw DB
+ * role slug straight into the email body ("...join their team as a
+ * behavioral_health_technician.", "...as a hr." — also a grammar miss). It now
+ * converts the slug to the same human-readable label the in-app UI uses via
+ * getRoleDisplayName(), and phrases it as "as: <Label>" to sidestep the a/an
+ * article problem across role names.
+ */
+describe('sendInviteEmail — role label rendering (QA ISSUE 5)', () => {
+  it('renders a multi-word role slug as its human-readable label, not the raw slug', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-3' });
+
+    await sendInviteEmail(
+      'user@test.com',
+      'https://app/invite',
+      'Acme',
+      'behavioral_health_technician',
+    );
+
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).not.toContain('behavioral_health_technician');
+    expect(html).toContain('Behavioral Health Technician');
+  });
+
+  it('renders the "as: <Label>" phrasing rather than the old "as a <role>" grammar', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-4' });
+
+    await sendInviteEmail('user@test.com', 'https://app/invite', 'Acme', 'hr');
+
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).toContain('as: <strong>HR</strong>');
+    expect(html).not.toContain('as a <strong>hr</strong>');
+  });
+
+  it('falls back to the raw value for an unrecognised role slug rather than throwing', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-5' });
+
+    const result = await sendInviteEmail(
+      'user@test.com',
+      'https://app/invite',
+      'Acme',
+      'some_future_role',
+    );
+
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).toContain('some_future_role');
+  });
+});

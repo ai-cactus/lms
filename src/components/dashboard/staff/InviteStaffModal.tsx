@@ -17,12 +17,13 @@ import {
 import { createInvites } from '@/app/actions/invite';
 import {
   readStaffSpreadsheetRows,
-  extractStaffEmailsFromRows,
-  buildStaffCsvTemplate,
+  extractManagerInvitesFromRows,
+  buildStaffInviteCsvTemplate,
+  summariseSkippedCsvRows,
 } from '@/lib/staff-csv';
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
-import { groupRolesForSelect } from '@/lib/rbac/role-utils';
+import { groupRolesForSelect, GRANTABLE_ROLES } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 
 interface InviteStaffModalProps {
@@ -91,6 +92,12 @@ export default function InviteStaffModal({
 }: InviteStaffModalProps) {
   const router = useRouter();
   const roleGroups = useMemo(() => groupRolesForSelect(inviterRole), [inviterRole]);
+  // Roles this inviter may actually grant — used to scope CSV role pre-fill so an
+  // ungrantable role in the file is never silently applied (left for manual pick).
+  const grantableRoleSet = useMemo(
+    () => new Set<string>(GRANTABLE_ROLES[inviterRole] ?? []),
+    [inviterRole],
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isLimitedPlan = remainingSeats !== null;
@@ -106,6 +113,7 @@ export default function InviteStaffModal({
   const [csvContacts, setCsvContacts] = useState<Contact[]>([]);
   const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [csvParsing, setCsvParsing] = useState(false);
+  const [csvWarning, setCsvWarning] = useState<string | null>(null);
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -121,7 +129,9 @@ export default function InviteStaffModal({
       if (!map.has(email)) map.set(email, { email, role: '' });
     }
     for (const contact of csvContacts) {
-      if (!map.has(contact.email)) map.set(contact.email, { ...contact, role: '' });
+      // Preserve the role pre-filled from the CSV so the admin isn't forced to
+      // re-pick roles the file already specified.
+      if (!map.has(contact.email)) map.set(contact.email, { ...contact });
     }
     return [...map.values()];
   }, [textParsed.valid, csvContacts]);
@@ -132,6 +142,7 @@ export default function InviteStaffModal({
     setCsvContacts([]);
     setCsvFileName(null);
     setCsvParsing(false);
+    setCsvWarning(null);
     setContacts([]);
     setIsLoading(false);
     setMessage(null);
@@ -145,7 +156,7 @@ export default function InviteStaffModal({
 
   // ── Step 1 — CSV import ──────────────────────────────────────────────────────
   const downloadTemplate = () => {
-    const blob = new Blob([buildStaffCsvTemplate()], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([buildStaffInviteCsvTemplate()], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -159,22 +170,47 @@ export default function InviteStaffModal({
   const handleCsvFile = async (file: File) => {
     setCsvParsing(true);
     setMessage(null);
+    setCsvWarning(null);
     try {
       const rows = await readStaffSpreadsheetRows(file);
-      const result = extractStaffEmailsFromRows(rows, { knownEmails });
+      const result = extractManagerInvitesFromRows(rows, { validRoles: grantableRoleSet });
 
-      if (result.validEmails.length === 0) {
+      // Rows already a member / pending invite are flagged best-effort here so the
+      // admin doesn't re-send; the server action stays the source of truth.
+      const importable = result.invites.filter((inv) => !knownEmails.has(inv.email));
+      const alreadyKnownCount = result.invites.length - importable.length;
+
+      if (importable.length === 0) {
+        const skipSummary = summariseSkippedCsvRows(result.skipped);
         setMessage({
           type: 'error',
-          text: 'No new email rows found in the file. Check the format or download the template.',
+          text: skipSummary
+            ? `No new contacts to import. ${skipSummary}.`
+            : 'No new email rows found in the file. Check the format or download the template.',
         });
         setCsvContacts([]);
         setCsvFileName(null);
         return;
       }
 
-      setCsvContacts(result.validEmails.map((email) => ({ email, role: '' })));
+      setCsvContacts(
+        importable.map((inv) => ({ email: inv.email, role: (inv.role || '') as Role | '' })),
+      );
       setCsvFileName(file.name);
+
+      const warnings: string[] = [];
+      const skipSummary = summariseSkippedCsvRows(result.skipped);
+      if (skipSummary) warnings.push(skipSummary);
+      if (alreadyKnownCount > 0) {
+        warnings.push(`${alreadyKnownCount} already a member or invited and skipped`);
+      }
+      const roleRejectedCount = importable.filter((inv) => inv.roleRejected).length;
+      if (roleRejectedCount > 0) {
+        warnings.push(
+          `${roleRejectedCount} row${roleRejectedCount === 1 ? '' : 's'} had a role you can't assign — pick one below`,
+        );
+      }
+      setCsvWarning(warnings.length > 0 ? `${warnings.join('. ')}.` : null);
     } catch (err) {
       logger.error({ msg: '[staff] CSV bulk-import parse failed', err });
       setMessage({
@@ -195,6 +231,7 @@ export default function InviteStaffModal({
   const clearCsv = () => {
     setCsvContacts([]);
     setCsvFileName(null);
+    setCsvWarning(null);
     setMessage(null);
   };
 
@@ -394,6 +431,11 @@ export default function InviteStaffModal({
               onChange={onFileInputChange}
             />
 
+            {csvWarning && (
+              <Alert variant="warning" title="Some rows need attention">
+                {csvWarning}
+              </Alert>
+            )}
             {message && (
               <Alert variant={message.type === 'success' ? 'success' : 'error'}>
                 {message.text}
@@ -483,6 +525,11 @@ export default function InviteStaffModal({
               ))}
             </div>
 
+            {csvWarning && (
+              <Alert variant="warning" title="Some rows need attention">
+                {csvWarning}
+              </Alert>
+            )}
             {message && (
               <Alert variant={message.type === 'success' ? 'success' : 'error'}>
                 {message.text}
