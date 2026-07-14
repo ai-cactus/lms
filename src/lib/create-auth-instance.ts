@@ -3,7 +3,9 @@ import Credentials from 'next-auth/providers/credentials';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
+import { siblingCookieNames } from '@/lib/auth/session-cookies';
 import { logger, maskEmail } from '@/lib/logger';
 import { isSessionMfaVerified } from '@/lib/session-mfa';
 import {
@@ -179,6 +181,24 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               organizationId: user.organizationId ?? undefined,
               ...clientCtx,
               metadata: { reason: 'role_mismatch', instance: cookiePrefix, email: maskedEmail },
+            });
+            return null;
+          }
+
+          // ISSUE 2: a non-owner admin-tier account with no org has been removed
+          // from its organization (owner is the only legitimately org-less admin
+          // role, mid-onboarding). Deny login before verifying the password.
+          if (cookiePrefix === 'admin' && user.role !== 'owner' && !user.organizationId) {
+            logger.warn({
+              msg: 'Auth login failed: removed from organization',
+              instance: cookiePrefix,
+            });
+            await audit({
+              action: 'auth.login.failure',
+              actorId: user.id,
+              actorRole: user.role,
+              ...clientCtx,
+              metadata: { reason: 'removed_from_org', instance: cookiePrefix, email: maskedEmail },
             });
             return null;
           }
@@ -415,6 +435,18 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 targetId: pendingInvite.id,
                 metadata: { provider: 'microsoft-entra-id', email: maskEmail(user.email!) },
               });
+            } else if (
+              cookiePrefix === 'admin' &&
+              dbUser.role !== 'owner' &&
+              !dbUser.organizationId
+            ) {
+              // ISSUE 2: a non-owner admin-tier account with no org has been
+              // removed from its organization — deny the OAuth login.
+              logger.warn({
+                msg: 'OAuth: removed non-owner admin denied',
+                email: maskEmail(user.email!),
+              });
+              return `${config.pages?.signIn}?error=AccessRevoked`;
             }
           }
 
@@ -484,6 +516,29 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             }
           }
         }
+
+        // ISSUE 4: a successful login on this instance must drop any lingering
+        // session cookie from the sibling instance, so the two portals never
+        // hold two live sessions for different accounts at once.
+        try {
+          const cookieStore = await cookies();
+          for (const name of siblingCookieNames(cookiePrefix)) {
+            if (cookieStore.has(name)) {
+              cookieStore.delete(name);
+              logger.info({
+                msg: '[Auth] Cleared sibling session cookie on login',
+                instance: cookiePrefix,
+              });
+            }
+          }
+        } catch (err) {
+          logger.warn({
+            msg: '[Auth] Failed to clear sibling session cookie on login',
+            instance: cookiePrefix,
+            err,
+          });
+        }
+
         return true;
       },
 
@@ -568,6 +623,18 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             return null;
           }
           token.sessionVersion = freshUser.sessionVersion;
+
+          // Defense-in-depth: a non-owner admin-tier account with no org can only be
+          // in this state after staff removal (owner is the only legitimately
+          // org-less admin role, mid-onboarding). Catches it even if a future removal
+          // path forgets to bump sessionVersion.
+          if (cookiePrefix === 'admin' && freshUser.role !== 'owner' && !freshUser.organizationId) {
+            logger.warn({
+              msg: '[Auth] Removed non-owner admin session detected, invalidating',
+              instance: cookiePrefix,
+            });
+            return null;
+          }
 
           token.role = freshUser.role as Role;
           token.organizationId = freshUser.organizationId;
