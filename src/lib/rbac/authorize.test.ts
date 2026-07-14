@@ -114,10 +114,10 @@ describe('authorize() — authenticated but permission denied (403)', () => {
     expect(mockLoggerWarn).toHaveBeenCalledTimes(1);
   });
 
-  it('returns ok:false when finance requests facility.read', async () => {
+  it('returns ok:false when finance requests facility.edit', async () => {
     mockAuth.mockResolvedValue(makeSession('finance'));
 
-    const result = await authorize('facility.read');
+    const result = await authorize('facility.edit');
 
     expect(result.ok).toBe(false);
     expect(mockApiError).toHaveBeenCalledWith('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS');

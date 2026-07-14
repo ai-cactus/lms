@@ -167,4 +167,18 @@ describe('DashboardPage — Status Tracker data wiring', () => {
     expect(mockRedirect).toHaveBeenCalledWith('/worker');
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
   });
+
+  it('skips the status-tracker fetch and widget for finance (no roster-wide assignment visibility)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'finance-1', role: 'finance' } });
+    prismaMock.user.findUnique.mockResolvedValue({
+      organizationId: 'org-42',
+      organization: { subscription: null },
+    });
+
+    const element = await DashboardPage();
+    render(element);
+
+    expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('status-tracker-overview')).not.toBeInTheDocument();
+  });
 });

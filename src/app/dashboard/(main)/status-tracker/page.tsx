@@ -4,7 +4,9 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import type { Role } from '@/types/next-auth';
 import StatusTrackerTableClient, {
   type StatusTrackerRowView,
 } from '@/components/dashboard/status-tracker/StatusTrackerTableClient';
@@ -29,8 +31,9 @@ export default async function StatusTrackerPage() {
     select: { role: true, organizationId: true },
   });
 
-  // Only admin users may access this page.
-  if (!user || !isAdminRole(user.role)) {
+  // Roster-wide assignment visibility gates this page (finance is excluded from
+  // worker training metrics even though it is an admin-tier role).
+  if (!user || !can(dbRoleToRoleKey(user.role as Role), 'assignment.read')) {
     redirect('/dashboard');
   }
 

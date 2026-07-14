@@ -378,7 +378,7 @@ export default function InviteStaffModal({
                 <button
                   type="button"
                   onClick={downloadTemplate}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary transition-colors hover:text-foreground"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary transition-colors hover:text-foreground cursor-pointer"
                 >
                   <Download className="size-4" aria-hidden="true" />
                   Download sample .csv template
