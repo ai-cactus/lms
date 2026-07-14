@@ -257,7 +257,7 @@ export default function OnboardingStep5() {
           <button
             type="button"
             onClick={() => append({ ...EMPTY_ROW })}
-            className="flex items-center gap-1.5 text-sm font-semibold text-primary"
+            className="flex items-center gap-1.5 text-sm font-semibold text-primary cursor-pointer"
           >
             <PlusCircle className="size-4" aria-hidden="true" />
             Add team member
@@ -268,7 +268,7 @@ export default function OnboardingStep5() {
               setCsvError('');
               setIsModalOpen(true);
             }}
-            className="flex items-center gap-1.5 text-sm font-semibold text-primary"
+            className="flex items-center gap-1.5 text-sm font-semibold text-primary cursor-pointer"
           >
             <FileSpreadsheet className="size-4" aria-hidden="true" />
             Import with .csv file instead
