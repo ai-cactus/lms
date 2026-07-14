@@ -25,6 +25,9 @@ import {
   getAssignableManagers,
   setStaffManager,
 } from '@/app/actions/staff';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 import { getAdminWorkerCertificates } from '@/app/actions/certificate';
 import CertificateCardList from '../training/CertificateCardList';
 import {
@@ -94,10 +97,22 @@ interface StaffProfileClientProps {
       allowedAttempts?: number;
     }[];
   };
+  viewerRole: Role;
+  viewerUserId: string;
 }
 
-export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
+export default function StaffProfileClient({
+  staff,
+  viewerRole,
+  viewerUserId,
+}: StaffProfileClientProps) {
   const { user, stats, enrollments } = staff;
+
+  // Roster-management affordances hinge on the viewer's role: view-only roles
+  // (Finance, Clinical Director) can read a profile but see no mutating controls.
+  // The server actions enforce the same gates — this only hides dead-end UI.
+  const canEdit = can(dbRoleToRoleKey(viewerRole), 'user.edit');
+  const canDelete = can(dbRoleToRoleKey(viewerRole), 'user.delete');
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -260,7 +275,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               <Select
                 value={managerId}
                 onValueChange={handleManagerChange}
-                disabled={loadingManagers || savingManager}
+                disabled={loadingManagers || savingManager || !canEdit}
               >
                 <SelectTrigger
                   id="staff-manager-select"
@@ -280,6 +295,11 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                   ))}
                 </SelectContent>
               </Select>
+              {!canEdit && (
+                <p className="text-xs text-text-secondary">
+                  View only — you can&apos;t change this staff member&apos;s manager.
+                </p>
+              )}
               {managerMessage && (
                 <Alert
                   variant={managerMessage.type === 'success' ? 'success' : 'error'}
@@ -293,17 +313,21 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         </div>
 
         <div className="flex flex-wrap items-start gap-3">
-          <Button variant="outline" onClick={() => setIsEditModalOpen(true)}>
-            Edit Profile
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setShowRemoveModal(true)}
-            className="border-red-600 text-red-600 hover:bg-red-50 hover:text-red-700"
-          >
-            Remove Staff
-          </Button>
-          <Button onClick={() => setIsAssignModalOpen(true)}>Assign Course</Button>
+          {canEdit && (
+            <Button variant="outline" onClick={() => setIsEditModalOpen(true)}>
+              Edit Profile
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="outline"
+              onClick={() => setShowRemoveModal(true)}
+              className="border-red-600 text-red-600 hover:bg-red-50 hover:text-red-700"
+            >
+              Remove Staff
+            </Button>
+          )}
+          {canEdit && <Button onClick={() => setIsAssignModalOpen(true)}>Assign Course</Button>}
         </div>
       </div>
 
@@ -550,6 +574,8 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
       <EditStaffModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
+        viewerRole={viewerRole}
+        viewerUserId={viewerUserId}
         staff={{
           id: user.id,
           name: user.name,
@@ -562,7 +588,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
       <AssignUserCourseModal
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
-        userEmail={user.email}
+        staffUserId={user.id}
         userName={user.name}
         enrolledCourseIds={enrollments.map((e) => e.courseId)}
         onSuccess={() => {

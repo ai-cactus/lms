@@ -1,15 +1,35 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole, ADMIN_ROLES } from '@/lib/rbac/role-utils';
+import {
+  isAdminRole,
+  ADMIN_ROLES,
+  dbRoleToRoleKey,
+  canChangeRole,
+  type RoleChangeDenyReason,
+} from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
 import type { UserRole } from '@/generated/prisma/enums';
+import { enrollUsers, type AssignmentSettingsInput } from '@/app/actions/enrollment';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
+
+// Caller-facing copy for each role-change denial. `target_not_reachable` and
+// `role_not_grantable` are only reachable when an owner is involved (owner is in
+// no grant list), so both reuse the established owner-immutability message.
+const ROLE_CHANGE_DENIED_MESSAGES: Record<RoleChangeDenyReason, string> = {
+  actor_not_permitted: "Only an Owner or Supervisor can change a staff member's role.",
+  self_change: 'You cannot change your own role.',
+  target_not_reachable:
+    'The Owner role cannot be changed here. It is set only when an organization is created.',
+  role_not_grantable:
+    'The Owner role cannot be assigned. It is set only when an organization is created.',
+};
 
 export async function getStaffDetails(userId: string) {
   const session = await auth();
@@ -139,7 +159,11 @@ export async function updateStaffDetails(
   },
 ) {
   const session = await auth();
-  if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
+  if (
+    !session?.user?.id ||
+    !session.user.organizationId ||
+    !can(dbRoleToRoleKey(session.user.role), 'user.edit')
+  ) {
     return { success: false, error: 'Unauthorized' };
   }
 
@@ -152,21 +176,60 @@ export async function updateStaffDetails(
     return { success: false, error: 'Forbidden' };
   }
 
-  // `owner` is established only at organisation creation (one owner per org) and
-  // can never be granted here. Promoting a non-owner to owner is rejected; an
-  // existing owner keeping their role (e.g. during a name/job-title edit) is fine.
-  if (data.role === 'owner' && target.role !== 'owner') {
-    return {
-      success: false,
-      error: 'The Owner role cannot be assigned. It is set only when an organization is created.',
-    };
+  // A role change is a privileged, narrower operation than a name/job-title edit:
+  // only an Owner/Supervisor may re-role a reachable target, never themselves,
+  // and never to/from owner. Unchanged role (e.g. a plain profile edit) skips it.
+  const roleChanged = data.role !== target.role;
+  if (roleChanged) {
+    const decision = canChangeRole(
+      session.user.role,
+      session.user.id,
+      userId,
+      target.role,
+      data.role,
+    );
+    if (!decision.allowed) {
+      logger.warn({
+        msg: '[staff] Role change denied',
+        actorId: session.user.id,
+        targetUserId: userId,
+        reason: decision.reason,
+      });
+      return { success: false, error: ROLE_CHANGE_DENIED_MESSAGES[decision.reason!] };
+    }
   }
 
   try {
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { role: data.role },
+      // Bump sessionVersion on a role change so the target's live sessions are
+      // invalidated on their next JWT decode — their new permission ceiling
+      // takes effect immediately (F-059 kill-switch precedent).
+      data: {
+        role: data.role,
+        ...(roleChanged ? { sessionVersion: { increment: 1 } } : {}),
+      },
     });
+
+    if (roleChanged) {
+      await audit({
+        action: 'staff.role.change',
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        organizationId: session.user.organizationId,
+        targetType: 'user',
+        targetId: userId,
+        metadata: { fromRole: target.role, toRole: data.role },
+        ...getClientContext(await headers()),
+      });
+      logger.info({
+        msg: '[staff] Role changed',
+        actorId: session.user.id,
+        targetUserId: userId,
+        fromRole: target.role,
+        toRole: data.role,
+      });
+    }
 
     await prisma.profile.upsert({
       where: { id: userId },
@@ -240,7 +303,11 @@ export async function setStaffManager(
   managerId: string | null,
 ): Promise<{ success: boolean; error?: string }> {
   const session = await auth();
-  if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
+  if (
+    !session?.user?.id ||
+    !session.user.organizationId ||
+    !can(dbRoleToRoleKey(session.user.role), 'user.edit')
+  ) {
     return { success: false, error: 'Unauthorized' };
   }
 
@@ -297,6 +364,47 @@ export async function setStaffManager(
     logger.error({ msg: '[staff] Failed to set manager', err: error, staffId });
     return { success: false, error: 'Failed to update manager' };
   }
+}
+
+/**
+ * Assigns a course to a single staff member from their profile. This path is
+ * gated on `user.edit` (roster management) — deliberately distinct from the
+ * Courses-module assignment, which is gated on enrollment rights. Finance and
+ * Clinical Director therefore cannot assign from a staff profile even though a
+ * Clinical Director retains course-assignment rights elsewhere. Resolves the
+ * target's email and delegates to the unchanged `enrollUsers`, which owns the
+ * enrollment/invite/notification mechanics.
+ */
+export async function assignCourseToStaffMember(
+  courseId: string,
+  staffUserId: string,
+  assignmentSettings?: AssignmentSettingsInput,
+): Promise<{
+  success: string[];
+  alreadyEnrolled: string[];
+  newInvited: string[];
+  failed: string[];
+  error?: string;
+}> {
+  const session = await auth();
+  if (
+    !session?.user?.id ||
+    !session.user.organizationId ||
+    !can(dbRoleToRoleKey(session.user.role), 'user.edit')
+  ) {
+    return { success: [], alreadyEnrolled: [], newInvited: [], failed: [], error: 'Unauthorized' };
+  }
+
+  // Tenant isolation: only assign to a staff member within the caller's own org.
+  const target = await prisma.user.findUnique({
+    where: { id: staffUserId },
+    select: { organizationId: true, email: true },
+  });
+  if (!target || target.organizationId !== session.user.organizationId) {
+    return { success: [], alreadyEnrolled: [], newInvited: [], failed: [], error: 'Forbidden' };
+  }
+
+  return enrollUsers(courseId, [{ email: target.email }], assignmentSettings);
 }
 
 export async function getEnrollmentQuizResult(enrollmentId: string) {
@@ -439,7 +547,7 @@ export async function removeStaff(userId: string) {
       },
     });
 
-    if (!admin || !isAdminRole(admin.role) || !admin.organization) {
+    if (!admin || !can(dbRoleToRoleKey(admin.role), 'user.delete') || !admin.organization) {
       throw new Error('Insufficient permissions or organization not found');
     }
 
@@ -462,10 +570,12 @@ export async function removeStaff(userId: string) {
 
     const staffName = staffUser.profile?.fullName || staffUser.email;
 
-    // Disconnect the user from the organization
+    // Disconnect the user from the organization. Bump sessionVersion in the
+    // same write so any live session is invalidated on its next JWT decode
+    // (F-059 kill-switch), locking the removed user out immediately.
     await prisma.user.update({
       where: { id: userId },
-      data: { organizationId: null },
+      data: { organizationId: null, sessionVersion: { increment: 1 } },
     });
 
     // F-001: record the sensitive mutation on the authorized, successful path.
@@ -517,7 +627,7 @@ export async function revokeInvite(inviteId: string) {
     select: { role: true, organizationId: true },
   });
 
-  if (!admin || !isAdminRole(admin.role)) {
+  if (!admin || !can(dbRoleToRoleKey(admin.role), 'invite.delete')) {
     throw new Error('Insufficient permissions');
   }
 
@@ -559,7 +669,7 @@ export async function resendInvite(
       select: { role: true, organizationId: true },
     });
 
-    if (!admin || !isAdminRole(admin.role) || !admin.organizationId) {
+    if (!admin || !can(dbRoleToRoleKey(admin.role), 'invite.edit') || !admin.organizationId) {
       throw new Error('Insufficient permissions');
     }
 

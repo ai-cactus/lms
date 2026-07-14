@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { RowActionsMenu } from '@/components/ui';
+import { RowActionsMenu, type RowAction } from '@/components/ui';
 import {
   Table,
   TableBody,
@@ -80,9 +80,14 @@ export default function StaffListClient({
   pendingInviteCount,
   inviterRole,
 }: StaffListClientProps) {
-  // Only roles that actually hold `invite.create` may see the invite affordance;
-  // the server still enforces this, this just hides the dead-end UI (e.g. finance).
-  const canInvite = can(dbRoleToRoleKey(inviterRole), 'invite.create');
+  // Only roles that actually hold the relevant permission see each affordance;
+  // the server still enforces these, this just hides the dead-end UI (e.g. finance
+  // and clinical_director, who are view-only over the staff roster).
+  const inviterRoleKey = dbRoleToRoleKey(inviterRole);
+  const canInvite = can(inviterRoleKey, 'invite.create');
+  const canRemoveStaff = can(inviterRoleKey, 'user.delete');
+  const canEditInvite = can(inviterRoleKey, 'invite.edit');
+  const canDeleteInvite = can(inviterRoleKey, 'invite.delete');
 
   // Total seats consumed = active workers + pending invites
   const totalUsed = currentWorkerCount + pendingInviteCount;
@@ -360,60 +365,75 @@ export default function StaffListClient({
                     )}
                   </TableCell>
 
-                  {/* Kebab action cell — always visible */}
+                  {/* Kebab action cell — actions are permission-gated; view-only
+                      roles (finance, clinical_director) see no mutating actions. */}
                   <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
-                    <RowActionsMenu
-                      actions={
-                        user.isPending
-                          ? [
-                              {
-                                label:
-                                  resendingInviteId === user.id ? 'Resending…' : 'Resend Invite',
-                                icon: <Send className="size-4" />,
-                                disabled: resendingInviteId === user.id,
-                                onSelect: () => handleResendInvite(user.id),
-                              },
-                              {
-                                label: 'Copy invite link',
-                                icon: <Copy className="size-4" />,
-                                disabled: !user.token,
-                                onSelect: () => handleCopyInviteLink(user),
-                              },
-                              {
-                                label: 'Revoke Invite',
-                                icon: <XCircle className="size-4" />,
-                                variant: 'destructive',
-                                separatorBefore: true,
-                                onSelect: () => setRevokeTarget({ id: user.id, email: user.email }),
-                              },
-                            ]
-                          : [
-                              {
-                                label: 'View Profile',
-                                icon: <Eye className="size-4" />,
-                                onSelect: () => router.push(`/dashboard/staff/${user.id}`),
-                              },
-                              {
-                                label: exportingUserId === user.id ? 'Exporting…' : 'Export PDF',
-                                icon: <FileText className="size-4" />,
-                                disabled: exportingUserId === user.id,
-                                onSelect: () => handleExportPdf(user.id),
-                              },
-                              {
-                                label: 'Remove Staff',
-                                icon: <UserMinus className="size-4" />,
-                                variant: 'destructive',
-                                separatorBefore: true,
-                                onSelect: () =>
-                                  setRemoveTarget({
-                                    id: user.id,
-                                    name: user.name,
-                                    email: user.email,
-                                  }),
-                              },
-                            ]
-                      }
-                    />
+                    {(() => {
+                      const actions: RowAction[] = user.isPending
+                        ? [
+                            ...(canEditInvite
+                              ? [
+                                  {
+                                    label:
+                                      resendingInviteId === user.id
+                                        ? 'Resending…'
+                                        : 'Resend Invite',
+                                    icon: <Send className="size-4" />,
+                                    disabled: resendingInviteId === user.id,
+                                    onSelect: () => handleResendInvite(user.id),
+                                  },
+                                  {
+                                    label: 'Copy invite link',
+                                    icon: <Copy className="size-4" />,
+                                    disabled: !user.token,
+                                    onSelect: () => handleCopyInviteLink(user),
+                                  },
+                                ]
+                              : []),
+                            ...(canDeleteInvite
+                              ? [
+                                  {
+                                    label: 'Revoke Invite',
+                                    icon: <XCircle className="size-4" />,
+                                    variant: 'destructive' as const,
+                                    separatorBefore: canEditInvite,
+                                    onSelect: () =>
+                                      setRevokeTarget({ id: user.id, email: user.email }),
+                                  },
+                                ]
+                              : []),
+                          ]
+                        : [
+                            {
+                              label: 'View Profile',
+                              icon: <Eye className="size-4" />,
+                              onSelect: () => router.push(`/dashboard/staff/${user.id}`),
+                            },
+                            {
+                              label: exportingUserId === user.id ? 'Exporting…' : 'Export PDF',
+                              icon: <FileText className="size-4" />,
+                              disabled: exportingUserId === user.id,
+                              onSelect: () => handleExportPdf(user.id),
+                            },
+                            ...(canRemoveStaff
+                              ? [
+                                  {
+                                    label: 'Remove Staff',
+                                    icon: <UserMinus className="size-4" />,
+                                    variant: 'destructive' as const,
+                                    separatorBefore: true,
+                                    onSelect: () =>
+                                      setRemoveTarget({
+                                        id: user.id,
+                                        name: user.name,
+                                        email: user.email,
+                                      }),
+                                  },
+                                ]
+                              : []),
+                          ];
+                      return actions.length > 0 ? <RowActionsMenu actions={actions} /> : null;
+                    })()}
                   </TableCell>
                 </TableRow>
               ))

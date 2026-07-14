@@ -203,6 +203,7 @@ export const roles = {
       'user.create',
       'user.read',
       'user.edit',
+      'user.delete',
       'invite.create',
       'invite.read',
       'invite.edit',
