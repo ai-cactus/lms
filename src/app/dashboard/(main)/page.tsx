@@ -11,7 +11,9 @@ import AvailableCoursesTable from '@/components/dashboard/courses/AvailableCours
 import StatusTrackerOverview from '@/components/dashboard/status-tracker/StatusTrackerOverview';
 import { listAvailableVideoCourses } from '@/app/actions/offering';
 import { hasActiveBilling } from '@/lib/billing';
-import { isWorkerRole } from '@/lib/rbac/role-utils';
+import { isWorkerRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import type { Role } from '@/types/next-auth';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
 import { BookOpen, Users, Activity } from 'lucide-react';
@@ -43,11 +45,14 @@ export default async function DashboardPage() {
 
   const hasBilling = hasActiveBilling(user?.organization?.subscription);
 
-  // Status Tracker overview (admin-only page; workers are already redirected).
-  // Fetched after the user lookup since it needs the resolved organizationId.
-  const statusTracker = user?.organizationId
-    ? await getStatusTrackerSummaryForOrg(user.organizationId)
-    : { overdueCount: 0, hardEscalationCount: 0, rows: [] };
+  // Status Tracker overview — gated on roster-wide assignment visibility so
+  // finance (an admin-tier role) never sees worker-training metrics. Fetched
+  // after the user lookup since it needs the resolved organizationId.
+  const canSeeStatusTracker = can(dbRoleToRoleKey(role as Role), 'assignment.read');
+  const statusTracker =
+    canSeeStatusTracker && user?.organizationId
+      ? await getStatusTrackerSummaryForOrg(user.organizationId)
+      : { overdueCount: 0, hardEscalationCount: 0, rows: [] };
 
   // Serialize Date across the server/client boundary (same pattern as the full page).
   const statusTrackerRows = statusTracker.rows.map((row) => ({
@@ -111,12 +116,14 @@ export default async function DashboardPage() {
       {/* Available Video Courses (global catalog to offer from) */}
       <AvailableCoursesTable courses={availableVideoCourses} />
 
-      <StatusTrackerOverview
-        overdueCount={statusTracker.overdueCount}
-        hardEscalationCount={statusTracker.hardEscalationCount}
-        hardThresholdDays={HARD_THRESHOLD_DAYS}
-        rows={statusTrackerRows}
-      />
+      {canSeeStatusTracker && (
+        <StatusTrackerOverview
+          overdueCount={statusTracker.overdueCount}
+          hardEscalationCount={statusTracker.hardEscalationCount}
+          hardThresholdDays={HARD_THRESHOLD_DAYS}
+          rows={statusTrackerRows}
+        />
+      )}
 
       <DashboardEmptyState totalCourses={totalCourses} />
     </div>

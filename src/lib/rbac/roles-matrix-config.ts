@@ -46,16 +46,24 @@ const perm =
 
 export const MATRIX_ROWS: MatrixRow[] = [
   // ── NAVIGATION ──────────────────────────────────────────────────────────────
-  // Admin dashboard access — every manager holds `user.read`, no worker does.
-  { section: 'NAVIGATION', label: 'Dashboard', check: perm('user.read') },
+  // Every role — managers AND workers — gets a dashboard; the content differs by
+  // role but visibility is universal (product decision overriding the design
+  // mock's Student "—").
+  { section: 'NAVIGATION', label: 'Dashboard', check: () => true },
   { section: 'NAVIGATION', label: 'Documents', check: perm('document.read') },
   { section: 'NAVIGATION', label: 'Courses', check: perm('course.read') },
+  // The Status Tracker lists staff-wide training-assignment deadlines (design:
+  // admin-usertype only; Finance is blocked from worker metrics), so it keys off
+  // roster-wide assignment visibility — owner/supervisor/hr/clinical_director only.
+  { section: 'NAVIGATION', label: 'Status Tracker', check: perm('assignment.read') },
   // Staff roster section — gated by the same roster-read permission.
   { section: 'NAVIGATION', label: 'Staff Management', check: perm('user.read') },
   { section: 'NAVIGATION', label: 'Billing', check: perm('billing.read') },
   // Settings has no dedicated permission in the registry; it is owner-only by
   // product decision (only the org owner may manage facility + team access).
   { section: 'NAVIGATION', label: 'Settings', check: (roleKey) => roleKey === 'owner' },
+  // Help is available to every authenticated user.
+  { section: 'NAVIGATION', label: 'Help Center', check: () => true },
 
   // ── ACTIONS & DATA ──────────────────────────────────────────────────────────
   { section: 'ACTIONS & DATA', label: 'Manage staff roster', check: perm('user.edit') },
@@ -86,3 +94,14 @@ export const MATRIX_ROWS: MatrixRow[] = [
     check: perm('facility.create'),
   },
 ];
+
+/**
+ * Sidebar module-visibility helper: resolves a NAVIGATION row by its label and
+ * returns its live registry check for the given role. Unknown labels deny
+ * (least privilege) rather than defaulting to visible.
+ */
+export function canAccessModule(roleKey: RoleKey, label: string): boolean {
+  const row = MATRIX_ROWS.find((r) => r.section === 'NAVIGATION' && r.label === label);
+  if (!row) return false;
+  return row.check(roleKey);
+}

@@ -406,6 +406,27 @@ describe('completeOnboarding — step5 worker invite role validation (privilege 
   });
 });
 
+describe('completeOnboarding — THER-017 regression (missing step1)', () => {
+  it('resolves { success:false, code:"MISSING_STEP1" } when step1 is absent, without touching the DB', async () => {
+    const { step1: _step1, ...withoutStep1 } = BASE_DATA;
+    void _step1;
+
+    const result = await completeOnboarding(withoutStep1 as unknown as OnboardingData);
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Missing Organization Data (Step 1)',
+      code: 'MISSING_STEP1',
+    });
+    // The missing-step1 check must short-circuit before any read/write —
+    // this is what lets step5's mount guard safely redirect to step1 instead
+    // of dead-ending on a raw error with half-committed side effects.
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(txMock.organization.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('completeOnboarding — step2 compliance documents', () => {
   const DOCS_DATA: OnboardingData = {
     ...BASE_DATA,

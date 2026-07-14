@@ -70,7 +70,6 @@ interface ProfileFormProps {
   organizationData?: OrganizationData | null;
   facilityData?: FacilityData | null;
   canReadFacility?: boolean;
-  canEditFacility?: boolean;
 }
 
 type TabKey = 'profile' | 'organization' | 'facility' | 'password' | '2fa';
@@ -80,7 +79,6 @@ export default function ProfileForm({
   organizationData,
   facilityData,
   canReadFacility = false,
-  canEditFacility = false,
 }: ProfileFormProps) {
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'profile', label: 'EDIT PROFILE' },
@@ -400,7 +398,7 @@ export default function ProfileForm({
         )}
 
         {activeTab === 'facility' && canReadFacility && (
-          <FacilityForm initialData={facilityData || null} canEdit={canEditFacility} />
+          <FacilityForm initialData={facilityData || null} />
         )}
 
         {activeTab === 'password' && <ChangePasswordTab authProvider={initialData.authProvider} />}

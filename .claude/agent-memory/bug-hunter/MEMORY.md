@@ -9,7 +9,8 @@
 - [Org/Facility split test patterns](org-facility-split-test-patterns.md) — DEFAULT_TZ-matches-fixture regression trap, facility.staffCount billing gotcha, clearAllMocks doesn't reset mockResolvedValue, Radix Select untested in this repo
 - [RBAC 8-worker-role split test patterns](rbac-8-worker-role-split.md) — dbRoleToRoleKey/can() throws (not 403) on unrecognized role; GRANTABLE_ROLES default is an admin role not worker; e2e specs seed via raw enum INSERT
 - [join/[token] critical fix + RBAC UI gates regression suite](join-invite-critical-fix-regression.md) — findUnique single-lookup fix, permissions.ts can() no longer throws, invite.create/billing.read role facts, 4 new test files
-- [Signup owner-only + e2e env notes](signup-owner-only-e2e-env.md) — MailHog wired to real SMTP in dev (e2e can submit real signup form), auth.spec.ts Microsoft/logout tests are pre-existing env failures
+- [Signup owner-only + e2e env notes](signup-owner-only-e2e-env.md) — MailHog wired to real SMTP in dev when present (e2e can submit real signup form); confirmed sandboxes without the container fail AC-3 closed, not a regression
+- [MFA e2e enrollment patterns](mfa-e2e-enrollment-patterns.md) — /mfa/verify?challenge vs /verify-2fa are two separate flows; org-less admin blocked by OrganizationActivationModal not proxy.ts; single mfa_factors row race on OTP resend
 - [Onboarding wizard/invite/settings phase tests](onboarding-invite-settings-phase-tests.md) — Radix Select id-clone doesn't reach trigger DOM (getByLabel fails), Docker/Postgres can hang under disk pressure, new test files list
 - [audit-fx regression patterns](audit-fx-regression-patterns.md) — F-009/F-010 org isolation, F-039 score fallback, F-048/F-038 leak fixes; revert-and-confirm verification technique
 - [Quiz attempt route tests (F-031)](quiz-attempt-route-tests.md) — start/save/submit append-history tx-mock pattern, boundary-score generation, flagged allowedAttempts null inconsistency
@@ -19,3 +20,5 @@
 - [Status Tracker rename + seed fixture](status-tracker-rename-e2e-seed-fixture.md) — new seeded overdue enrollment (Olivia Overdue); email-substring collision gotcha; WSL2 dev-server cold-start flake pattern
 - [E2E webServer dev-lock conflict](e2e-webserver-dev-lock-conflict.md) — a stray `:3000` `next dev` blocks Playwright's :3005 webServer from starting at all; kill it first, restart after
 - [Stripe invoice period test patterns](stripe-invoice-period-test-patterns.md) — full InvoiceLineItem fixture typing, `?? default` nullish trap, audit() needs no mock, regression-pin idiom
+- [RBAC sidebar module gating tests](rbac-sidebar-module-gating-tests.md) — exhaustive per-role canAccessModule/nav coverage pattern (4 files); e2e infra down again 2026-07-14 (Docker daemon unreachable, disk <10G)
+- [rbac-facility-tab.spec.ts read-only update](rbac-facility-tab-readonly-update.md) — all roles now see facility tab (read-only, no save); default Playwright parallel workers exhaust local Postgres connections, use --workers=1

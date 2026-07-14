@@ -1,4 +1,3 @@
-import React from 'react';
 import ProfileForm from '@/components/dashboard/ProfileForm';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
@@ -28,7 +27,6 @@ export default async function ProfilePage() {
   const role = (user?.role || 'worker') as Role;
   const roleKey = dbRoleToRoleKey(role);
   const canReadFacility = can(roleKey, 'facility.read');
-  const canEditFacility = can(roleKey, 'facility.edit');
 
   logger.info({ msg: 'ProfilePage Session:', data: session?.user?.id });
   logger.info({ msg: 'ProfilePage Profile:', data: profile });
@@ -101,7 +99,6 @@ export default async function ProfilePage() {
       organizationData={organizationData}
       facilityData={facilityData}
       canReadFacility={canReadFacility}
-      canEditFacility={canEditFacility}
     />
   );
 }

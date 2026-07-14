@@ -1,10 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Building2 } from 'lucide-react';
-import { updateFacility, uploadComplianceDocument } from '@/app/actions/organization';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -14,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PhoneInput, Alert } from '@/components/ui';
+import { PhoneInput } from '@/components/ui';
 
 interface FacilityData {
   id: string;
@@ -35,7 +32,6 @@ interface FacilityData {
 
 interface FacilityFormProps {
   initialData: FacilityData | null;
-  canEdit: boolean;
 }
 
 // Options mirror those used during onboarding (see OrganizationForm).
@@ -115,184 +111,33 @@ const PROGRAM_SERVICES = [
 const labelClass = 'mb-2 block text-sm font-medium text-foreground';
 const optionalClass = 'text-text-tertiary font-normal';
 
-/** Labeled shadcn select matching the legacy Select API used across these forms */
-function FormSelect({
+/** Read-only shadcn select that displays the selected option's label. */
+function ReadOnlySelect({
   value,
-  onValueChange,
   options,
   placeholder,
-  disabled,
-  error,
 }: {
   value: string;
-  onValueChange: (value: string) => void;
   options: { label: string; value: string }[];
   placeholder?: string;
-  disabled?: boolean;
-  error?: string;
 }) {
   return (
-    <>
-      <Select value={value || undefined} onValueChange={onValueChange} disabled={disabled}>
-        <SelectTrigger className="w-full" aria-invalid={!!error}>
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>
-              {opt.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {error && <p className="mt-1 text-sm text-error">{error}</p>}
-    </>
+    <Select value={value || undefined} disabled>
+      <SelectTrigger className="w-full">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
-const emptyFacility: FacilityData = {
-  id: '',
-  name: '',
-  staffCount: '',
-  phone: '',
-  address: '',
-  country: '',
-  state: '',
-  zipCode: '',
-  city: '',
-  licenseNumber: '',
-  programServices: [],
-};
-
-export default function FacilityForm({ initialData, canEdit }: FacilityFormProps) {
-  const [formData, setFormData] = useState<FacilityData>(initialData || emptyFacility);
-  const [baseData, setBaseData] = useState<FacilityData | null>(
-    initialData ? { ...initialData, programServices: initialData.programServices || [] } : null,
-  );
-  const [isLoading, setIsLoading] = useState(false);
-  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    if (initialData) {
-      const formatted = { ...initialData, programServices: initialData.programServices || [] };
-      setFormData(formatted);
-      setBaseData(formatted);
-    }
-  }, [initialData]);
-
-  const isDirty =
-    !baseData ||
-    formData.staffCount !== baseData.staffCount ||
-    formData.phone !== baseData.phone ||
-    formData.address !== baseData.address ||
-    formData.country !== baseData.country ||
-    formData.state !== baseData.state ||
-    formData.zipCode !== baseData.zipCode ||
-    formData.city !== baseData.city ||
-    formData.licenseNumber !== baseData.licenseNumber ||
-    JSON.stringify(formData.programServices || []) !==
-      JSON.stringify(baseData.programServices || []) ||
-    formData.complianceDocumentUrl !== baseData.complianceDocumentUrl;
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleProgramServiceToggle = (serviceId: string) => {
-    setFormData((prev) => {
-      const current = prev.programServices || [];
-      return current.includes(serviceId)
-        ? { ...prev, programServices: current.filter((s) => s !== serviceId) }
-        : { ...prev, programServices: [...current, serviceId] };
-    });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canEdit) return;
-
-    setIsLoading(true);
-    setMessage(null);
-
-    try {
-      const result = await updateFacility({
-        staffCount: formData.staffCount || undefined,
-        phone: formData.phone || undefined,
-        address: formData.address || undefined,
-        city: formData.city || undefined,
-        country: formData.country || undefined,
-        state: formData.state || undefined,
-        zipCode: formData.zipCode || undefined,
-        licenseNumber: formData.licenseNumber || undefined,
-        programServices: formData.programServices || [],
-      });
-
-      if (result.success) {
-        setMessage({ type: 'success', text: 'Facility updated successfully' });
-        setBaseData({ ...formData });
-        router.refresh();
-      } else {
-        setMessage({ type: 'error', text: result.error || 'Failed to update' });
-      }
-    } catch {
-      setMessage({ type: 'error', text: 'An error occurred' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploadingDocument(true);
-    const data = new FormData();
-    data.append('file', file);
-
-    try {
-      const result = await uploadComplianceDocument(data);
-      if (result.success && result.url) {
-        setFormData((prev) => ({
-          ...prev,
-          complianceDocumentUrl: result.url,
-          complianceDocumentName: result.filename,
-        }));
-        setBaseData((prev) =>
-          prev
-            ? {
-                ...prev,
-                complianceDocumentUrl: result.url,
-                complianceDocumentName: result.filename,
-              }
-            : prev,
-        );
-        setMessage({ type: 'success', text: 'Document uploaded successfully' });
-        router.refresh();
-      } else {
-        setMessage({ type: 'error', text: result.error || 'Failed to upload document' });
-      }
-    } catch {
-      setMessage({ type: 'error', text: 'Upload failed' });
-    } finally {
-      setIsUploadingDocument(false);
-      e.target.value = '';
-    }
-  };
-
-  const handleDiscard = () => {
-    if (baseData) {
-      setFormData({ ...baseData, programServices: baseData.programServices || [] });
-    }
-    setMessage(null);
-  };
-
+export default function FacilityForm({ initialData }: FacilityFormProps) {
   if (!initialData) {
     return (
       <div className="flex min-h-[400px] items-center justify-center p-6">
@@ -309,8 +154,10 @@ export default function FacilityForm({ initialData, canEdit }: FacilityFormProps
     );
   }
 
+  const programServices = initialData.programServices || [];
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-10 p-6 md:p-10">
+    <div className="flex flex-col gap-10 p-6 md:p-10">
       {/* Section 1: Facility Information */}
       <div className="flex flex-col gap-6">
         <div className="flex items-center gap-2 text-base font-semibold text-foreground">
@@ -323,24 +170,20 @@ export default function FacilityForm({ initialData, canEdit }: FacilityFormProps
             <label className={labelClass}>
               Number of Staff <span className={optionalClass}>(optional)</span>
             </label>
-            <FormSelect
-              value={formData.staffCount || ''}
-              onValueChange={(value) => handleSelectChange('staffCount', value)}
+            <ReadOnlySelect
+              value={initialData.staffCount || ''}
               options={STAFF_COUNT_OPTIONS}
               placeholder="Select an option"
-              disabled={!canEdit}
             />
           </div>
           <div>
             <label className={labelClass}>
               Country <span className={optionalClass}>(optional)</span>
             </label>
-            <FormSelect
-              value={formData.country || ''}
-              onValueChange={(value) => handleSelectChange('country', value)}
+            <ReadOnlySelect
+              value={initialData.country || ''}
               options={COUNTRY_OPTIONS}
               placeholder="Select an option"
-              disabled={!canEdit}
             />
           </div>
         </div>
@@ -351,12 +194,10 @@ export default function FacilityForm({ initialData, canEdit }: FacilityFormProps
               Phone Number <span className={optionalClass}>(optional)</span>
             </label>
             <PhoneInput
-              value={formData.phone || ''}
-              onChange={
-                canEdit ? (val) => setFormData((prev) => ({ ...prev, phone: val })) : undefined
-              }
+              value={initialData.phone || ''}
               placeholder="(XXX)-XXX-XXXX"
               allowedCountries={['US']}
+              disabled
             />
           </div>
           <div>
@@ -365,10 +206,10 @@ export default function FacilityForm({ initialData, canEdit }: FacilityFormProps
             </label>
             <Input
               name="zipCode"
-              value={formData.zipCode || ''}
-              onChange={handleChange}
+              value={initialData.zipCode || ''}
               placeholder="e.g. 27601"
-              disabled={!canEdit}
+              disabled
+              readOnly
             />
           </div>
         </div>
@@ -379,10 +220,10 @@ export default function FacilityForm({ initialData, canEdit }: FacilityFormProps
           </label>
           <Input
             name="address"
-            value={formData.address || ''}
-            onChange={handleChange}
+            value={initialData.address || ''}
             placeholder="Enter facility street address"
-            disabled={!canEdit}
+            disabled
+            readOnly
           />
         </div>
 
@@ -393,22 +234,20 @@ export default function FacilityForm({ initialData, canEdit }: FacilityFormProps
             </label>
             <Input
               name="city"
-              value={formData.city || ''}
-              onChange={handleChange}
+              value={initialData.city || ''}
               placeholder="Enter city"
-              disabled={!canEdit}
+              disabled
+              readOnly
             />
           </div>
           <div>
             <label className={labelClass}>
               State <span className={optionalClass}>(optional)</span>
             </label>
-            <FormSelect
-              value={formData.state || ''}
-              onValueChange={(value) => handleSelectChange('state', value)}
+            <ReadOnlySelect
+              value={initialData.state || ''}
               options={STATE_OPTIONS}
               placeholder="Select an option"
-              disabled={!canEdit}
             />
           </div>
         </div>
@@ -427,55 +266,37 @@ export default function FacilityForm({ initialData, canEdit }: FacilityFormProps
           </label>
           <Input
             name="licenseNumber"
-            value={formData.licenseNumber || ''}
-            onChange={handleChange}
+            value={initialData.licenseNumber || ''}
             placeholder="Enter your official license number"
-            disabled={!canEdit}
+            disabled
+            readOnly
           />
         </div>
 
-        <div>
-          <label className={labelClass}>
-            Upload your compliance certifications <span className={optionalClass}>(optional)</span>
-          </label>
-          <div className="flex flex-col gap-2">
-            {formData.complianceDocumentName ? (
-              <div className="mb-2 flex items-center gap-4">
-                <span className="text-sm font-medium text-foreground">
-                  {formData.complianceDocumentName}
-                </span>
-                {formData.complianceDocumentUrl && (
-                  <a
-                    href={formData.complianceDocumentDisplayUrl || formData.complianceDocumentUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-primary underline"
-                  >
-                    View
-                  </a>
-                )}
-              </div>
-            ) : null}
+        {initialData.complianceDocumentName && (
+          <div>
+            <label className={labelClass}>
+              Compliance certifications <span className={optionalClass}>(optional)</span>
+            </label>
             <div className="flex items-center gap-4">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={() => document.getElementById('facility-compliance-upload')?.click()}
-                disabled={!canEdit || isUploadingDocument}
-                loading={isUploadingDocument}
-              >
-                {formData.complianceDocumentUrl ? 'Replace Document' : 'Upload Document'}
-              </Button>
-              <input
-                id="facility-compliance-upload"
-                type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                className="hidden"
-                onChange={handleDocumentUpload}
-              />
+              <span className="text-sm font-medium text-foreground">
+                {initialData.complianceDocumentName}
+              </span>
+              {initialData.complianceDocumentUrl && (
+                <a
+                  href={
+                    initialData.complianceDocumentDisplayUrl || initialData.complianceDocumentUrl
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-primary underline"
+                >
+                  View
+                </a>
+              )}
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Section 3: Facility Services */}
@@ -492,11 +313,8 @@ export default function FacilityForm({ initialData, canEdit }: FacilityFormProps
               <div key={service.id} className="flex items-center gap-2">
                 <Checkbox
                   id={`facility-program-${service.id}`}
-                  checked={(formData.programServices || []).includes(service.id)}
-                  onCheckedChange={() => {
-                    if (canEdit) handleProgramServiceToggle(service.id);
-                  }}
-                  disabled={!canEdit}
+                  checked={programServices.includes(service.id)}
+                  disabled
                 />
                 <label
                   htmlFor={`facility-program-${service.id}`}
@@ -509,21 +327,6 @@ export default function FacilityForm({ initialData, canEdit }: FacilityFormProps
           </div>
         </div>
       </div>
-
-      {message && (
-        <Alert variant={message.type === 'success' ? 'success' : 'error'}>{message.text}</Alert>
-      )}
-
-      {canEdit && isDirty && (
-        <div className="flex justify-end gap-4">
-          <Button variant="outline" type="button" onClick={handleDiscard}>
-            Discard
-          </Button>
-          <Button type="submit" loading={isLoading}>
-            Save Changes
-          </Button>
-        </div>
-      )}
-    </form>
+    </div>
   );
 }

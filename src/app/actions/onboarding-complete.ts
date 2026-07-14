@@ -74,7 +74,11 @@ export interface OnboardingData {
   step5?: OnboardingStep5;
 }
 
-export async function completeOnboarding(data: OnboardingData) {
+export type CompleteOnboardingResult =
+  | { success: true; organizationId: string }
+  | { success: false; error: string; code?: 'MISSING_STEP1' };
+
+export async function completeOnboarding(data: OnboardingData): Promise<CompleteOnboardingResult> {
   // Log shape only — the payload carries raw emails (PII) and must not be logged wholesale.
   logger.info({
     msg: '[completeOnboarding] Starting',
@@ -94,7 +98,7 @@ export async function completeOnboarding(data: OnboardingData) {
   const { step1, step2, step3, step4, step5 } = data;
 
   if (!step1) {
-    return { success: false, error: 'Missing Organization Data (Step 1)' };
+    return { success: false, error: 'Missing Organization Data (Step 1)', code: 'MISSING_STEP1' };
   }
 
   // One organisation per user — a user already in an org cannot create another.

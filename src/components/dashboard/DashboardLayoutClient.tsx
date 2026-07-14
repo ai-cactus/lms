@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
+import { canAccessModule } from '@/lib/rbac/roles-matrix-config';
 import type { Role } from '@/types/next-auth';
 import { Logo } from '@/components/ui';
 import Header from '@/components/dashboard/Header';
@@ -39,11 +40,24 @@ export default function DashboardLayoutClient({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isProfilePage = pathname === '/dashboard/profile';
 
-  // Billing is reserved for roles that actually hold `billing.read` (owner,
-  // finance) — supervisor and other admins must not see the nav entry.
-  const canAccessBilling = role ? can(dbRoleToRoleKey(role as Role), 'billing.read') : false;
-  // Settings is owner-only (facility + team-access management).
-  const isOwner = role === 'owner';
+  // Sidebar module visibility is driven by the RBAC registry via the Settings →
+  // Roles matrix, so nav and matrix can never drift apart.
+  const roleKey = role ? dbRoleToRoleKey(role as Role) : undefined;
+
+  const canSeeDashboard = roleKey ? canAccessModule(roleKey, 'Dashboard') : false;
+  const canSeeDocuments = roleKey ? canAccessModule(roleKey, 'Documents') : false;
+  const canSeeCourses = roleKey ? canAccessModule(roleKey, 'Courses') : false;
+  const canSeeStatusTracker = roleKey ? canAccessModule(roleKey, 'Status Tracker') : false;
+  const canSeeStaffManagement = roleKey ? canAccessModule(roleKey, 'Staff Management') : false;
+  // Audit Reports is intentionally NOT a matrix row (the design's Settings matrix
+  // omits it), so gate it directly on the auditor-pack read permission.
+  const canSeeAuditReports = can(roleKey, 'auditPack.read');
+  const canSeeSettings = roleKey ? canAccessModule(roleKey, 'Settings') : false;
+  const canSeeBilling = roleKey ? canAccessModule(roleKey, 'Billing') : false;
+  const canSeeHelpCenter = roleKey ? canAccessModule(roleKey, 'Help Center') : false;
+
+  const showPerformanceSection = canSeeStaffManagement || canSeeAuditReports;
+  const showSettingsSection = canSeeSettings || canSeeBilling || canSeeHelpCenter;
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync sidebar state with navigation
@@ -126,31 +140,37 @@ export default function DashboardLayoutClient({
           <div className="flex flex-col gap-2">
             <h4 className={navSectionLabelCls}>MAIN MENU</h4>
 
-            <Link
-              href="/dashboard"
-              className={`${navItemBase} ${pathname === '/dashboard' ? navItemActive : ''}`}
-            >
-              <Home className="size-5" />
-              <span>Dashboard</span>
-            </Link>
+            {canSeeDashboard && (
+              <Link
+                href="/dashboard"
+                className={`${navItemBase} ${pathname === '/dashboard' ? navItemActive : ''}`}
+              >
+                <Home className="size-5" />
+                <span>Dashboard</span>
+              </Link>
+            )}
 
-            <Link
-              href="/dashboard/documents"
-              className={`${navItemBase} ${pathname.startsWith('/dashboard/documents') ? navItemActive : ''}`}
-            >
-              <FileText className="size-5" />
-              <span>Documents</span>
-            </Link>
+            {canSeeDocuments && (
+              <Link
+                href="/dashboard/documents"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/documents') ? navItemActive : ''}`}
+              >
+                <FileText className="size-5" />
+                <span>Documents</span>
+              </Link>
+            )}
 
-            <Link
-              href="/dashboard/courses"
-              className={`${navItemBase} ${pathname.startsWith('/dashboard/courses') ? navItemActive : ''}`}
-            >
-              <BookOpen className="size-5" />
-              <span>Courses</span>
-            </Link>
+            {canSeeCourses && (
+              <Link
+                href="/dashboard/courses"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/courses') ? navItemActive : ''}`}
+              >
+                <BookOpen className="size-5" />
+                <span>Courses</span>
+              </Link>
+            )}
 
-            {isAdminRole(role) && (
+            {canSeeStatusTracker && (
               <Link
                 href="/dashboard/status-tracker"
                 className={`${navItemBase} ${pathname.startsWith('/dashboard/status-tracker') ? navItemActive : ''}`}
@@ -161,36 +181,37 @@ export default function DashboardLayoutClient({
             )}
           </div>
 
-          {/* PERFORMANCE Section — admin only */}
-          {isAdminRole(role) && (
+          {showPerformanceSection && (
             <div className="flex flex-col gap-2">
               <h4 className={navSectionLabelCls}>PERFORMANCE</h4>
 
-              <Link
-                href="/dashboard/staff"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/staff') ? navItemActive : ''}`}
-              >
-                <Users className="size-5" />
-                <span>Staff Management</span>
-              </Link>
+              {canSeeStaffManagement && (
+                <Link
+                  href="/dashboard/staff"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/staff') ? navItemActive : ''}`}
+                >
+                  <Users className="size-5" />
+                  <span>Staff Management</span>
+                </Link>
+              )}
 
-              <Link
-                href="/dashboard/audit-reports"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/audit-reports') ? navItemActive : ''}`}
-              >
-                <ClipboardCheck className="size-5" />
-                <span>Audit Reports</span>
-              </Link>
+              {canSeeAuditReports && (
+                <Link
+                  href="/dashboard/audit-reports"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/audit-reports') ? navItemActive : ''}`}
+                >
+                  <ClipboardCheck className="size-5" />
+                  <span>Audit Reports</span>
+                </Link>
+              )}
             </div>
           )}
 
-          {/* SETTINGS Section — admin-only; Settings is owner-only, Billing needs
-              billing access, Help Center is available to every admin. */}
-          {isAdminRole(role) && (
+          {showSettingsSection && (
             <div className="flex flex-col gap-2">
               <h4 className={navSectionLabelCls}>SETTINGS</h4>
 
-              {isOwner && (
+              {canSeeSettings && (
                 <Link
                   href="/dashboard/settings"
                   className={`${navItemBase} ${pathname.startsWith('/dashboard/settings') ? navItemActive : ''}`}
@@ -200,7 +221,7 @@ export default function DashboardLayoutClient({
                 </Link>
               )}
 
-              {canAccessBilling && (
+              {canSeeBilling && (
                 <Link
                   href="/dashboard/billing"
                   className={`${navItemBase} ${pathname.startsWith('/dashboard/billing') ? navItemActive : ''}`}
@@ -210,13 +231,15 @@ export default function DashboardLayoutClient({
                 </Link>
               )}
 
-              <Link
-                href="/dashboard/help"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/help') ? navItemActive : ''}`}
-              >
-                <HelpCircle className="size-5" />
-                <span>Help Center</span>
-              </Link>
+              {canSeeHelpCenter && (
+                <Link
+                  href="/dashboard/help"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/help') ? navItemActive : ''}`}
+                >
+                  <HelpCircle className="size-5" />
+                  <span>Help Center</span>
+                </Link>
+              )}
             </div>
           )}
         </nav>

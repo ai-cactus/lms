@@ -40,6 +40,11 @@ const host = process.env.SMTP_HOST || 'smtp.zoho.com';
 const port = parseInt(process.env.SMTP_PORT || '465', 10);
 const secure = port === 465;
 const isDevelopment = process.env.NODE_ENV === 'development';
+// Loopback SMTP sinks (MailHog in CI e2e / local dev) advertise neither AUTH nor
+// STARTTLS — enforcing them there fails every send. Real deployments always point
+// at a remote SMTP host, so hardening stays on for any non-loopback host.
+const isLoopbackSmtpSink = ['localhost', '127.0.0.1', '::1'].includes(host);
+const skipSmtpHardening = isDevelopment || isLoopbackSmtpSink;
 
 if (!user || !pass) {
   logger.warn({ msg: 'SMTP credentials not found in environment variables' });
@@ -49,11 +54,11 @@ const transporter = nodemailer.createTransport({
   host,
   port,
   secure,
-  requireTLS: isDevelopment ? undefined : !secure, // Force STARTTLS on port 587 — prevents plaintext fallback
+  requireTLS: skipSmtpHardening ? undefined : !secure, // Force STARTTLS on port 587 — prevents plaintext fallback
   connectionTimeout: 10_000, // 10 s — fail fast instead of hanging
   greetingTimeout: 8_000, // 8 s — max time to wait for server greeting
   socketTimeout: 10_000, // 10 s — idle socket timeout per send
-  auth: isDevelopment
+  auth: skipSmtpHardening
     ? undefined
     : {
         user,
