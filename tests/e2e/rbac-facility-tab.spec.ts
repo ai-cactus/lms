@@ -1,21 +1,23 @@
 /**
- * E2E spec: "Your Facility" tab — permission-gated visibility and persistence.
+ * E2E spec: "Your Facility" tab — permission-gated visibility, read-only content.
  *
  * Acceptance criteria:
  *   - Owner sees the "Your Facility" tab on /dashboard/profile.
  *   - Supervisor sees the "Your Facility" tab on /dashboard/profile.
- *   - HR does NOT see the "Your Facility" tab (no facility.read permission).
- *   - Worker does NOT see the "Your Facility" tab.
- *   - Editing a facility field as owner persists the value (API call returns 200).
- *   - The "Organization" tab remains intact and saves org-only fields independently.
+ *   - HR sees the "Your Facility" tab (every manager role has facility.read —
+ *     see src/lib/rbac/permissions.ts and permissions.test.ts:140).
+ *   - The facility tab's fields (e.g. phone) are disabled/read-only for every
+ *     role, and there is no Save/submit control for the facility form —
+ *     editing moved to the owner-only Settings page (see settings-page.spec.ts).
  *
  * Pre-conditions:
  *   - App is running on http://localhost:3005.
  *   - DATABASE_URL reachable for direct DB seeding.
  *
- * Note: facility.edit is gated on the RBAC permission, so only owner and supervisor
- * can reach the tab and submit edits. The UI shows the tab conditionally based on
- * can(roleKey, 'facility.read').
+ * Note: the tab visibility is gated purely on can(roleKey, 'facility.read')
+ * (src/app/dashboard/(main)/profile/page.tsx:29); FacilityForm itself
+ * (src/components/dashboard/FacilityForm.tsx) renders every field disabled
+ * regardless of role, with no save flow.
  */
 
 import { test, expect } from '@playwright/test';
@@ -151,14 +153,13 @@ test.describe('"Your Facility" tab — visibility per role', () => {
     }
   });
 
-  test('hr does NOT see the "Your Facility" tab', async ({ page }) => {
+  test('hr sees the "Your Facility" tab (hr has facility.read)', async ({ page }) => {
     const email = uid('hr');
     const seeded = await seedWithRole('hr', email, 'Hr!Pass99x');
     try {
       await loginAndGoToProfile(page, email, 'Hr!Pass99x');
-      // The "Your Facility" tab must be absent for HR — ProfileForm renders tabs as <button> elements
-      await expect(page.getByRole('button', { name: /your facility/i })).not.toBeVisible({
-        timeout: 5000,
+      await expect(page.getByRole('button', { name: /your facility/i })).toBeVisible({
+        timeout: 10000,
       });
     } finally {
       await cleanup(seeded);
@@ -174,17 +175,12 @@ test.describe('"Your Facility" tab — visibility per role', () => {
   // reach the page would be redundant with that routing guard.
 });
 
-test.describe('"Your Facility" tab — owner can edit and persist a facility field', () => {
-  test('owner can update facility phone and the change is persisted via the API', async ({
+test.describe('"Your Facility" tab — read-only content', () => {
+  test('owner sees the facility tab rendered read-only with no save control', async ({
     page,
   }) => {
-    const email = uid('owner-edit');
+    const email = uid('owner-readonly');
     const seeded = await seedWithRole('owner', email, 'Owne!r99xP');
-    // Use a 10-digit US number unique to this run. PhoneInput formats digits-only
-    // input as "+1 (NXX)-XXX-XXXX" and passes that formatted string to onChange.
-    const suffix = (Math.floor(Math.random() * 9000) + 1000).toString(); // 1000-9999
-    const testDigits = `555012${suffix}`; // exactly 10 digits: (555)-012-XXXX
-    const expectedPhone = `+1 (555)-012-${suffix}`;
     try {
       await loginAndGoToProfile(page, email, 'Owne!r99xP');
 
@@ -195,32 +191,12 @@ test.describe('"Your Facility" tab — owner can edit and persist a facility fie
       // PhoneInput renders <input type="tel"> — there is no htmlFor/id link so
       // getByLabel() won't find it. Target by type instead.
       const phoneInput = page.locator('input[type="tel"]').first();
-      // Triple-click selects all existing text, then pressSequentially fires onChange
-      // for each character so PhoneInput's digit formatter processes the full sequence.
-      await phoneInput.click({ clickCount: 3 });
-      await phoneInput.pressSequentially(testDigits, { delay: 30 });
+      await expect(phoneInput).toBeVisible();
+      await expect(phoneInput).toBeDisabled();
 
-      // Listen for the updateFacility server action to fire and get a 200
-      const responsePromise = page.waitForResponse(
-        (resp) => resp.url().includes('/dashboard/profile') && resp.status() === 200,
-        { timeout: 10000 },
-      );
-
-      // Submit (locate a Save button within the facility tab context)
-      await page.getByRole('button', { name: /save/i }).last().click();
-      await responsePromise;
-
-      // Verify the value persisted in the DB — PhoneInput stores the formatted "+1 (NXX)-XXX-XXXX"
-      const client = new Client({ connectionString: DB_URL });
-      await client.connect();
-      try {
-        const res = await client.query(`SELECT phone FROM facilities WHERE id = $1`, [
-          seeded.facilityId,
-        ]);
-        expect(res.rows[0]?.phone).toBe(expectedPhone);
-      } finally {
-        await client.end();
-      }
+      // Editing moved to the owner-only Settings page — the profile facility
+      // tab has no Save/submit control of its own.
+      await expect(page.getByRole('button', { name: /save/i })).toHaveCount(0);
     } finally {
       await cleanup(seeded);
     }
