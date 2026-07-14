@@ -4,12 +4,14 @@
  * Key invariants validated:
  *   - supervisor has everything EXCEPT billing.*
  *   - owner has everything INCLUDING billing.*
- *   - facility.* held only by owner + supervisor
- *   - finance has billing.* but not facility.*
- *   - hr has invite.create but not facility.* or billing.*
+ *   - facility.create/edit/delete held only by owner + supervisor; facility.read
+ *     is readable by every role (everyone can view their facility)
+ *   - finance has billing.* and facility.read but not facility.create/edit/delete
+ *   - hr has invite.create + facility.read but not facility.edit or billing.*
  *   - every worker-category role shares one identical permission ceiling:
  *     course.read, enrollment.read/edit, assessment.create/read,
- *     certificate.read, notification.read/edit/delete — nothing else
+ *     certificate.read, organization.read, facility.read,
+ *     notification.read/edit/delete — nothing else
  *   - every role object carries a valid `category` ('manager' | 'worker')
  *     matching its actual scope
  */
@@ -36,6 +38,8 @@ const WORKER_PERMISSION_CEILING = [
   'assessment.create',
   'assessment.read',
   'certificate.read',
+  'organization.read',
+  'facility.read',
   'notification.read',
   'notification.edit',
   'notification.delete',
@@ -124,6 +128,7 @@ describe('can() — hr (regression guard: exact permission set)', () => {
     'category.read',
     'document.read',
     'organization.read',
+    'facility.read',
     'auditPack.create',
     'auditPack.read',
     'notification.create',
@@ -132,8 +137,8 @@ describe('can() — hr (regression guard: exact permission set)', () => {
     'notification.delete',
   ] as const;
 
-  it('hr is denied facility.read', () => {
-    expect(can('hr', 'facility.read')).toBe(false);
+  it('hr has facility.read', () => {
+    expect(can('hr', 'facility.read')).toBe(true);
   });
   it('hr is denied facility.edit', () => {
     expect(can('hr', 'facility.edit')).toBe(false);
@@ -165,6 +170,7 @@ describe('can() — finance (regression guard: exact permission set)', () => {
     'billing.edit',
     'billing.delete',
     'organization.read',
+    'facility.read',
     'user.read',
     'course.read',
     'enrollment.read',
@@ -185,8 +191,8 @@ describe('can() — finance (regression guard: exact permission set)', () => {
   it('finance is denied facility.edit', () => {
     expect(can('finance', 'facility.edit')).toBe(false);
   });
-  it('finance is denied facility.read', () => {
-    expect(can('finance', 'facility.read')).toBe(false);
+  it('finance has facility.read', () => {
+    expect(can('finance', 'facility.read')).toBe(true);
   });
   it('finance is denied invite.create', () => {
     expect(can('finance', 'invite.create')).toBe(false);
@@ -231,6 +237,7 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
     'certificate.read',
     'user.read',
     'organization.read',
+    'facility.read',
     'auditPack.create',
     'auditPack.read',
     'notification.create',
@@ -248,8 +255,8 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
   it('clinicalDirector is denied billing.read', () => {
     expect(can('clinicalDirector', 'billing.read')).toBe(false);
   });
-  it('clinicalDirector is denied facility.read', () => {
-    expect(can('clinicalDirector', 'facility.read')).toBe(false);
+  it('clinicalDirector has facility.read', () => {
+    expect(can('clinicalDirector', 'facility.read')).toBe(true);
   });
   it('clinicalDirector is denied invite.create', () => {
     expect(can('clinicalDirector', 'invite.create')).toBe(false);
@@ -266,8 +273,14 @@ describe('can() — every worker-category role shares the identical permission c
   it.each(WORKER_ROLE_KEYS)('%s is denied billing.read', (role) => {
     expect(can(role, 'billing.read')).toBe(false);
   });
-  it.each(WORKER_ROLE_KEYS)('%s is denied facility.read', (role) => {
-    expect(can(role, 'facility.read')).toBe(false);
+  it.each(WORKER_ROLE_KEYS)('%s has facility.read', (role) => {
+    expect(can(role, 'facility.read')).toBe(true);
+  });
+  it.each(WORKER_ROLE_KEYS)('%s has organization.read', (role) => {
+    expect(can(role, 'organization.read')).toBe(true);
+  });
+  it.each(WORKER_ROLE_KEYS)('%s is denied facility.edit', (role) => {
+    expect(can(role, 'facility.edit')).toBe(false);
   });
   it.each(WORKER_ROLE_KEYS)('%s is denied invite.create', (role) => {
     expect(can(role, 'invite.create')).toBe(false);
@@ -304,10 +317,29 @@ describe('can() — every worker-category role shares the identical permission c
   });
 });
 
-describe('facility.* permissions are held only by owner and supervisor', () => {
+describe('organization.read + facility.read — granted to every one of the 13 roles', () => {
+  // Regression guard for the change that gave hr/clinicalDirector/finance
+  // facility.read and gave workerPermissions organization.read + facility.read:
+  // every role, manager or worker, must hold both.
+  it.each([...MANAGER_ROLE_KEYS, ...WORKER_ROLE_KEYS])('%s has organization.read', (role) => {
+    expect(can(role, 'organization.read')).toBe(true);
+  });
+  it.each([...MANAGER_ROLE_KEYS, ...WORKER_ROLE_KEYS])('%s has facility.read', (role) => {
+    expect(can(role, 'facility.read')).toBe(true);
+  });
+});
+
+describe('facility.* permissions — full CRUD is owner/supervisor-only; read is universal', () => {
   const facilityActions = ['create', 'read', 'edit', 'delete'] as const;
+  const facilityWriteActions = ['create', 'edit', 'delete'] as const;
   const rolesWithFacility = ['owner', 'supervisor'] as const;
-  const rolesWithoutFacility = ['hr', 'clinicalDirector', 'finance', ...WORKER_ROLE_KEYS] as const;
+  // Every non-owner/supervisor role can read its facility but never mutate it.
+  const rolesWithReadOnlyFacility = [
+    'hr',
+    'clinicalDirector',
+    'finance',
+    ...WORKER_ROLE_KEYS,
+  ] as const;
 
   it.each(rolesWithFacility)('%s has all facility.* permissions', (role) => {
     for (const action of facilityActions) {
@@ -315,13 +347,17 @@ describe('facility.* permissions are held only by owner and supervisor', () => {
     }
   });
 
-  it.each(rolesWithoutFacility)('%s has NO facility.* permissions', (role) => {
-    for (const action of facilityActions) {
-      expect(can(role, `facility.${action}`), `${role} should NOT have facility.${action}`).toBe(
-        false,
-      );
-    }
-  });
+  it.each(rolesWithReadOnlyFacility)(
+    '%s has facility.read but no facility write actions',
+    (role) => {
+      expect(can(role, 'facility.read'), `${role} should have facility.read`).toBe(true);
+      for (const action of facilityWriteActions) {
+        expect(can(role, `facility.${action}`), `${role} should NOT have facility.${action}`).toBe(
+          false,
+        );
+      }
+    },
+  );
 });
 
 describe('can() — regression: unknown/stale role keys deny instead of throwing', () => {

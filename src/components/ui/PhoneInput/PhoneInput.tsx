@@ -95,6 +95,7 @@ interface PhoneInputProps {
   defaultCountry?: string;
   /** Restrict the country selector to only these country codes (e.g. ['US']). */
   allowedCountries?: string[];
+  disabled?: boolean;
 }
 
 export default function PhoneInput({
@@ -104,6 +105,7 @@ export default function PhoneInput({
   error,
   defaultCountry = 'US',
   allowedCountries,
+  disabled = false,
 }: PhoneInputProps) {
   const visibleCountries = allowedCountries
     ? countries.filter((c) => allowedCountries.includes(c.code))
@@ -232,13 +234,14 @@ export default function PhoneInput({
           'flex h-14 w-full items-center rounded-[10px] border bg-background transition-colors',
           'focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50',
           error ? 'border-destructive focus-within:ring-destructive/20' : 'border-input',
+          disabled && 'pointer-events-none bg-secondary opacity-60',
         )}
       >
         <button
           type="button"
           className="flex h-full items-center gap-1.5 rounded-l-[10px] px-3 text-text-secondary transition-colors hover:bg-background-secondary disabled:cursor-default disabled:hover:bg-transparent"
           onClick={() => !isSingleCountry && setIsOpen(!isOpen)}
-          disabled={isSingleCountry}
+          disabled={isSingleCountry || disabled}
         >
           <span className="text-xl leading-none">{selectedCountry.flag}</span>
           <ChevronDown
@@ -253,6 +256,7 @@ export default function PhoneInput({
           type="tel"
           className="h-full flex-1 border-none bg-transparent px-4 text-base text-foreground outline-none placeholder:text-muted-foreground"
           value={phoneNumber}
+          disabled={disabled}
           onChange={handlePhoneChange}
           onFocus={() => {
             if (selectedCountry.code === 'US' && (!phoneNumber || phoneNumber === '+1')) {

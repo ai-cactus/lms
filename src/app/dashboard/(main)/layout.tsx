@@ -1,5 +1,7 @@
 import React from 'react';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { isAdminRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import type { Role } from '@/types/next-auth';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
@@ -48,11 +50,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const subscription = user?.organization?.subscription;
   const pauseState = isAdminRole(role) ? getPauseState(subscription) : 'none';
 
-  // Surface a site-wide status-tracker banner to admins when training is overdue
-  // by the hard-escalation threshold. Only queried for admins so non-admin loads
-  // are unaffected.
+  // Surface a site-wide status-tracker banner when training is overdue by the
+  // hard-escalation threshold. Gated on roster-wide assignment visibility so
+  // finance (an admin-tier role) never sees worker-training metrics; only queried
+  // for eligible roles so other loads are unaffected.
+  const canSeeStatusTracker = can(dbRoleToRoleKey(role as Role), 'assignment.read');
   const hardEscalationCount =
-    isAdminRole(role) && organizationId
+    canSeeStatusTracker && organizationId
       ? (await getStatusTrackerSummaryForOrg(organizationId)).hardEscalationCount
       : 0;
 
@@ -73,7 +77,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               }
             />
           )}
-          {isAdminRole(role) && (
+          {canSeeStatusTracker && (
             <StatusTrackerAlertBanner hardEscalationCount={hardEscalationCount} />
           )}
           {children}
