@@ -1,6 +1,8 @@
 import nodemailer, { type SendMailOptions } from 'nodemailer';
 import prisma from './prisma';
 import { logger, maskEmail } from './logger';
+import { getRoleDisplayName } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 
 /**
  * Escape a string for safe interpolation into HTML email bodies.
@@ -136,10 +138,14 @@ export async function sendInviteEmail(
   role: string,
 ) {
   const appName = 'Theraptly';
+  // `role` is a DB role slug (e.g. `behavioral_health_technician`). Render the
+  // same human-readable label the in-app UI uses, and phrase it as "as: <Label>"
+  // to sidestep the a/an article problem across role names.
+  const roleLabel = getRoleDisplayName(role as Role);
   const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #4C6EF5;">You've been invited!</h2>
-            <p><strong>${escapeHtml(orgName)}</strong> has invited you to join their team as a <strong>${escapeHtml(role)}</strong>.</p>
+            <p><strong>${escapeHtml(orgName)}</strong> has invited you to join their team as: <strong>${escapeHtml(roleLabel)}</strong>.</p>
             <p>Click the link below to accept the invitation and set up your account:</p>
             <a href="${inviteLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 16px;">Accept Invitation</a>
             <p style="margin-top: 24px; font-size: 12px; color: #718096;">Link expires in 7 days.</p>

@@ -112,6 +112,7 @@ describe('can() — hr (regression guard: exact permission set)', () => {
     'user.create',
     'user.read',
     'user.edit',
+    'user.delete',
     'invite.create',
     'invite.read',
     'invite.edit',

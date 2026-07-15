@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma';
 import { logger, maskEmail } from '@/lib/logger';
 import { audit } from '@/lib/audit';
 import { isAdminRole } from '@/lib/rbac/role-utils';
+import { expireSiblingSessionCookies } from '@/lib/auth/session-cookies';
 
 // Same secret resolution and cookie/salt convention the worker auth instance and
 // the proxy use (AUTH_SECRET first, then NEXTAUTH_SECRET). Keeping this in lockstep
@@ -149,10 +150,12 @@ export async function enterLearnMode(): Promise<void> {
  */
 export async function clearSiblingSessionCookie(current: 'admin' | 'worker'): Promise<void> {
   try {
-    const sibling = current === 'admin' ? 'worker' : 'admin';
     const cookieStore = await cookies();
-    cookieStore.delete(`__Secure-${sibling}.session-token`);
-    cookieStore.delete(`${sibling}.session-token`);
+    // Emit an expired `set()` (not a bare delete) so the `__Secure-` prefixed
+    // cookie is dropped WITH the `Secure` attribute the prefix requires —
+    // otherwise the browser rejects the deletion under https. See
+    // session-cookies.ts.
+    expireSiblingSessionCookies(cookieStore, current);
   } catch (err) {
     logger.warn({ msg: '[auth] Failed to clear sibling session cookie', current, err });
   }

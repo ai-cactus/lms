@@ -227,7 +227,6 @@ export default function WorkerOnboardingPage() {
           fill
           className="object-cover"
           priority
-          quality={100}
         />
 
         <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-black/80 to-transparent p-16 text-white">

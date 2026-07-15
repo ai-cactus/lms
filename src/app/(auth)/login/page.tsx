@@ -152,6 +152,12 @@ function LoginForm() {
         </Alert>
       )}
 
+      {oauthError === 'AccessRevoked' && (
+        <Alert variant="error" className="w-full" title="Access Removed">
+          Your access to this organization has been removed. Please contact your administrator.
+        </Alert>
+      )}
+
       {inactiveReason === 'inactive' && (
         <Alert variant="warning" className="w-full" title="Session Expired">
           You were logged out due to inactivity. Please log in again.
