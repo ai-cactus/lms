@@ -317,7 +317,10 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
       // exercised the same way; a stray, un-redirected soft landing on /worker
       // is a client-navigation nuance, not the behavior this test guards.
       await page.waitForURL(/\/(worker|onboarding-worker)/, { timeout: 20000 });
-      await page.goto('/worker');
+      // domcontentloaded: the assertion is the redirect URL, and waiting for
+      // 'load' can hang on the page's background-image optimization when a
+      // redirect aborts the first /_next/image request under `next start`.
+      await page.goto('/worker', { waitUntil: 'domcontentloaded' });
       await page.waitForURL('**/onboarding-worker**', { timeout: 20000 });
       expect(page.url()).toContain('/onboarding-worker');
     } finally {
