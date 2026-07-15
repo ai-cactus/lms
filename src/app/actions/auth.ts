@@ -14,7 +14,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 import { logger, maskEmail } from '@/lib/logger';
 import { createMfaChallenge } from '@/lib/mfa-challenge';
-import { isWorkerRole } from '@/lib/rbac/role-utils';
+import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
 import { verifyCaptcha } from '@/lib/captcha';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
@@ -64,7 +64,7 @@ export async function authenticate(
     const lookupUser = email
       ? await prisma.user.findUnique({
           where: { email },
-          select: { role: true, mfaEnabled: true, id: true },
+          select: { role: true, mfaEnabled: true, id: true, organizationId: true },
         })
       : null;
 
@@ -89,6 +89,16 @@ export async function authenticate(
       }
 
       return { error: 'Invalid credentials.' };
+    }
+
+    // A non-owner admin-tier account with no org has been removed from its
+    // organization — surface an actionable message instead of routing to a
+    // signIn that authorize() would reject as generic invalid credentials.
+    if (isAdminRole(lookupUser.role) && lookupUser.role !== 'owner' && !lookupUser.organizationId) {
+      return {
+        error:
+          'Your access to this organization has been removed. Please contact your administrator.',
+      };
     }
 
     if (isWorkerRole(lookupUser.role)) {

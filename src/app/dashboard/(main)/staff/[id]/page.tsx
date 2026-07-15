@@ -1,6 +1,7 @@
 import React from 'react';
 import { getStaffDetails } from '@/app/actions/staff';
 import StaffProfileClient from '@/components/dashboard/staff/StaffProfileClient';
+import { auth } from '@/auth';
 import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -11,11 +12,17 @@ interface PageProps {
 
 export default async function StaffProfilePage({ params }: PageProps) {
   const { id } = await params;
-  const staff = await getStaffDetails(id);
+  const [session, staff] = await Promise.all([auth(), getStaffDetails(id)]);
 
-  if (!staff) {
+  if (!session?.user?.id || !staff) {
     notFound();
   }
 
-  return <StaffProfileClient staff={staff} />;
+  return (
+    <StaffProfileClient
+      staff={staff}
+      viewerRole={session.user.role}
+      viewerUserId={session.user.id}
+    />
+  );
 }

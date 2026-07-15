@@ -10,3 +10,4 @@
 - [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db (most-specific first) or value-imports of generated Prisma fail in tests.
 - [Email delivery tracking](project_email_delivery_tracking.md) — EmailMessage has two disjoint recording paths (dispatch vs sendMailTracked); reminder senders bypass sendMailTracked to avoid double-record.
 - [E2E seed infra](project_e2e_seed_infra.md) — prisma/seed.ts (tsx, self-contained client), E2E rate-limit bypass, role-based login landings, quiz shape; assignRetake locked-only bug.
+- [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — cookies().delete omits Secure so __Secure- deletions fail in prod (next dev masks it); onboarding-worker image deadlock; CI e2e = next start.

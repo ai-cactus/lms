@@ -323,6 +323,98 @@ describe('authenticate — missing user hint (THER-015 #1)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// QA ISSUE 2: authenticate() — removed (org-less non-owner admin) short-circuit
+// ---------------------------------------------------------------------------
+
+describe('authenticate — removed staff member (QA ISSUE 2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubHeadersIp();
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 9, resetInSeconds: 900 });
+  });
+
+  it('returns the specific "access has been removed" error for a non-owner admin with no organization', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      role: 'hr',
+      mfaEnabled: false,
+      organizationId: null,
+    });
+
+    const result = await authenticate(undefined, makeLoginFormData('removed-hr@example.com'));
+
+    expect(result).toEqual({
+      error:
+        'Your access to this organization has been removed. Please contact your administrator.',
+    });
+  });
+
+  it('never calls signIn (admin or worker) for a removed staff member', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      role: 'finance',
+      mfaEnabled: false,
+      organizationId: null,
+    });
+    const { signIn } = await import('@/auth');
+    const { signIn: signInWorker } = await import('@/auth.worker');
+
+    await authenticate(undefined, makeLoginFormData('removed-finance@example.com'));
+
+    expect(signIn).not.toHaveBeenCalled();
+    expect(signInWorker).not.toHaveBeenCalled();
+  });
+
+  it('does NOT short-circuit an org-less OWNER (owner is the only legitimate org-less admin state)', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      role: 'owner',
+      mfaEnabled: false,
+      organizationId: null,
+    });
+
+    const result = await authenticate(undefined, makeLoginFormData('owner@example.com'));
+
+    expect(result).not.toEqual({
+      error:
+        'Your access to this organization has been removed. Please contact your administrator.',
+    });
+  });
+
+  it('does NOT apply the removed-staff check to a worker-tier account with no organization', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      role: 'nurse',
+      mfaEnabled: false,
+      organizationId: null,
+    });
+
+    const result = await authenticate(undefined, makeLoginFormData('org-less-worker@example.com'));
+
+    expect(result).not.toEqual({
+      error:
+        'Your access to this organization has been removed. Please contact your administrator.',
+    });
+  });
+
+  it('does not apply the removed-staff check to an admin who still has an organization', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      role: 'hr',
+      mfaEnabled: false,
+      organizationId: 'org-1',
+    });
+
+    const result = await authenticate(undefined, makeLoginFormData('active-hr@example.com'));
+
+    expect(result).not.toEqual({
+      error:
+        'Your access to this organization has been removed. Please contact your administrator.',
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // F-057: forceResetPassword(currentPassword, newPassword) — email now derived
 // from the authenticated session instead of being passed in by the caller.
 // ---------------------------------------------------------------------------

@@ -23,7 +23,9 @@ import {
   readStaffSpreadsheetRows,
   extractManagerInvitesFromRows,
   buildWorkerCsvTemplate,
+  summariseSkippedCsvRows,
 } from '@/lib/staff-csv';
+import { Alert } from '@/components/ui';
 import { logger } from '@/lib/logger';
 
 interface WorkerInviteRow {
@@ -62,6 +64,7 @@ export default function OnboardingStep5() {
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'invites' });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [csvError, setCsvError] = useState('');
+  const [csvWarning, setCsvWarning] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -165,15 +168,30 @@ export default function OnboardingStep5() {
     setCsvError('');
     try {
       const rows = await readStaffSpreadsheetRows(files[0]);
-      const { invites } = extractManagerInvitesFromRows(rows, {
+      const { invites, skipped } = extractManagerInvitesFromRows(rows, {
         validRoles: new Set(WORKER_ROLES as readonly string[]),
       });
+      const skipSummary = summariseSkippedCsvRows(skipped);
       if (invites.length === 0) {
-        setCsvError('No valid emails found in the file. Please check the file format.');
+        setCsvError(
+          skipSummary
+            ? `No valid emails to import. ${skipSummary}.`
+            : 'No valid emails found in the file. Please check the file format.',
+        );
         return;
       }
       const current = getValues('invites').filter((r) => r.email.trim());
-      replace([...current, ...invites]);
+      replace([...current, ...invites.map(({ email, role }) => ({ email, role }))]);
+
+      const warnings: string[] = [];
+      if (skipSummary) warnings.push(skipSummary);
+      const roleRejectedCount = invites.filter((inv) => inv.roleRejected).length;
+      if (roleRejectedCount > 0) {
+        warnings.push(
+          `${roleRejectedCount} row${roleRejectedCount === 1 ? '' : 's'} had an unrecognised role — please select one below`,
+        );
+      }
+      setCsvWarning(warnings.length > 0 ? `${warnings.join('. ')}.` : '');
       setIsModalOpen(false);
     } catch (err) {
       logger.error({ msg: '[onboarding] Worker CSV parse failed', err });
@@ -307,6 +325,12 @@ export default function OnboardingStep5() {
             Download sample .csv template
           </button>
         </div>
+
+        {csvWarning && (
+          <Alert variant="warning" title="Some rows need attention">
+            {csvWarning}
+          </Alert>
+        )}
 
         {submitError && <p className="text-sm text-error">{submitError}</p>}
 

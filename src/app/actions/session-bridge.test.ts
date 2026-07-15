@@ -185,18 +185,44 @@ describe('enterLearnMode — happy path', () => {
 });
 
 describe('clearSiblingSessionCookie', () => {
-  it('deletes both cookie-name variants for the worker instance when logging out of admin', async () => {
+  // Deletion is emitted as an expired `set(..., '')` rather than a bare
+  // `delete()` so the `__Secure-` prefixed name carries the `Secure` attribute
+  // the prefix requires — a bare delete omits it and the browser rejects the
+  // deletion under https. See src/lib/auth/session-cookies.ts.
+  const expiredWith = (secure: boolean) =>
+    expect.objectContaining({
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure,
+      maxAge: 0,
+      expires: new Date(0),
+    });
+
+  it('expires both cookie-name variants for the worker instance when logging out of admin', async () => {
     await clearSiblingSessionCookie('admin');
 
-    expect(mockCookieStore.delete).toHaveBeenCalledWith('__Secure-worker.session-token');
-    expect(mockCookieStore.delete).toHaveBeenCalledWith('worker.session-token');
+    expect(mockCookieStore.set).toHaveBeenCalledWith(
+      '__Secure-worker.session-token',
+      '',
+      expiredWith(true),
+    );
+    expect(mockCookieStore.set).toHaveBeenCalledWith(
+      'worker.session-token',
+      '',
+      expiredWith(false),
+    );
   });
 
-  it('deletes both cookie-name variants for the admin instance when logging out of worker', async () => {
+  it('expires both cookie-name variants for the admin instance when logging out of worker', async () => {
     await clearSiblingSessionCookie('worker');
 
-    expect(mockCookieStore.delete).toHaveBeenCalledWith('__Secure-admin.session-token');
-    expect(mockCookieStore.delete).toHaveBeenCalledWith('admin.session-token');
+    expect(mockCookieStore.set).toHaveBeenCalledWith(
+      '__Secure-admin.session-token',
+      '',
+      expiredWith(true),
+    );
+    expect(mockCookieStore.set).toHaveBeenCalledWith('admin.session-token', '', expiredWith(false));
   });
 
   it('never throws even when cookies() rejects', async () => {

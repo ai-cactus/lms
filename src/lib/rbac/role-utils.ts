@@ -119,6 +119,61 @@ export const GRANTABLE_ROLES: Record<Role, readonly Role[]> = {
   facilities_support: [],
 };
 
+/**
+ * Roles permitted to change another staff member's role in place. Deliberately
+ * narrower than the invite-grant matrix: only an organisation Owner or a
+ * facility Supervisor may re-role an existing account (HR can invite/edit staff
+ * but not re-role them). Owner is intentionally excluded from every
+ * {@link GRANTABLE_ROLES} list, so promoting to — or changing — an owner is
+ * rejected by {@link canChangeRole} without any special-case here.
+ */
+export const ROLE_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'supervisor'];
+
+/** Why {@link canChangeRole} denied a role change (maps to caller-facing copy). */
+export type RoleChangeDenyReason =
+  | 'actor_not_permitted'
+  | 'self_change'
+  | 'target_not_reachable'
+  | 'role_not_grantable';
+
+export interface RoleChangeDecision {
+  allowed: boolean;
+  reason?: RoleChangeDenyReason;
+}
+
+/**
+ * Pure guard for an in-place staff role change. Evaluated in order:
+ *   1. actor not an Owner/Supervisor        → `actor_not_permitted`
+ *   2. actor is the target (self re-role)   → `self_change`
+ *   3. target's CURRENT role not grantable  → `target_not_reachable`
+ *      (e.g. an owner — owner is in no grant list)
+ *   4. requested NEW role not grantable     → `role_not_grantable`
+ *      (e.g. owner, or supervisor for an HR actor)
+ * No I/O — the caller owns the DB writes, session-kill and audit.
+ */
+export function canChangeRole(
+  actorRole: Role,
+  actorId: string,
+  targetId: string,
+  targetCurrentRole: Role,
+  newRole: Role,
+): RoleChangeDecision {
+  if (!ROLE_CHANGE_ACTOR_ROLES.includes(actorRole)) {
+    return { allowed: false, reason: 'actor_not_permitted' };
+  }
+  if (targetId === actorId) {
+    return { allowed: false, reason: 'self_change' };
+  }
+  const grantable = GRANTABLE_ROLES[actorRole] ?? [];
+  if (!grantable.includes(targetCurrentRole)) {
+    return { allowed: false, reason: 'target_not_reachable' };
+  }
+  if (!grantable.includes(newRole)) {
+    return { allowed: false, reason: 'role_not_grantable' };
+  }
+  return { allowed: true };
+}
+
 // Accept `unknown`/loosely-typed role values so callers holding a `string`,
 // `UserRole` or `Role` can use them uniformly without casts at every call site.
 /** True when the value is any administrative (non-worker) role. */

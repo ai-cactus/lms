@@ -16,6 +16,8 @@ import {
   DEFAULT_SELF_SERVE_WORKER_ROLE,
   isAdminRole,
   isWorkerRole,
+  canChangeRole,
+  ROLE_CHANGE_ACTOR_ROLES,
 } from './role-utils';
 import type { Role } from '@/types/next-auth';
 
@@ -237,6 +239,116 @@ describe('isAdminRole', () => {
     expect(isAdminRole('worker')).toBe(false));
   it('returns false for the retired admin role string', () =>
     expect(isAdminRole('admin')).toBe(false));
+});
+
+/**
+ * canChangeRole — in-place staff role change guard (RBAC matrix realignment,
+ * Change 2). Deliberately narrower than the invite-grant matrix: only an
+ * Owner or facility Supervisor may re-role an existing account. Evaluated in
+ * order: actor_not_permitted → self_change → target_not_reachable →
+ * role_not_grantable. No I/O — pure function, no mocking required.
+ */
+describe('canChangeRole', () => {
+  describe('actor_not_permitted — actor is not Owner/Supervisor', () => {
+    it('denies an hr actor (hr may edit/invite staff but not re-role them)', () => {
+      const result = canChangeRole('hr', 'hr-1', 'target-1', 'nurse', 'supervisor');
+      expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
+    });
+
+    it('denies a clinical_director actor', () => {
+      const result = canChangeRole(
+        'clinical_director',
+        'cd-1',
+        'target-1',
+        'nurse',
+        'therapist_clinician',
+      );
+      expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
+    });
+
+    it('denies a finance actor', () => {
+      const result = canChangeRole('finance', 'fin-1', 'target-1', 'nurse', 'hr');
+      expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
+    });
+
+    it('denies a worker-role actor (nurse)', () => {
+      const result = canChangeRole('nurse', 'n-1', 'target-1', 'nurse', 'hr');
+      expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
+    });
+
+    it('checks actor permission BEFORE self-change — an unpermitted actor changing themselves still gets actor_not_permitted', () => {
+      const result = canChangeRole('hr', 'same-1', 'same-1', 'hr', 'nurse');
+      expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
+    });
+  });
+
+  describe('self_change — actor targets their own account', () => {
+    it('denies an owner attempting to change their own role', () => {
+      const result = canChangeRole('owner', 'owner-1', 'owner-1', 'owner', 'supervisor');
+      expect(result).toEqual({ allowed: false, reason: 'self_change' });
+    });
+
+    it('denies a supervisor attempting to change their own role', () => {
+      const result = canChangeRole('supervisor', 'sup-1', 'sup-1', 'supervisor', 'hr');
+      expect(result).toEqual({ allowed: false, reason: 'self_change' });
+    });
+  });
+
+  describe('target_not_reachable — target current role is not in the actor grant list', () => {
+    it('denies an owner attempting to change another owner (owner is in no grant list)', () => {
+      const result = canChangeRole('owner', 'owner-1', 'owner-2', 'owner', 'supervisor');
+      expect(result).toEqual({ allowed: false, reason: 'target_not_reachable' });
+    });
+
+    it('denies a supervisor attempting to change an owner', () => {
+      const result = canChangeRole('supervisor', 'sup-1', 'owner-1', 'owner', 'hr');
+      expect(result).toEqual({ allowed: false, reason: 'target_not_reachable' });
+    });
+  });
+
+  describe('role_not_grantable — requested new role is not in the actor grant list', () => {
+    it('denies an owner attempting to promote a reachable target to owner', () => {
+      const result = canChangeRole('owner', 'owner-1', 'target-1', 'nurse', 'owner');
+      expect(result).toEqual({ allowed: false, reason: 'role_not_grantable' });
+    });
+
+    it('denies a supervisor attempting to promote a reachable target to owner', () => {
+      const result = canChangeRole('supervisor', 'sup-1', 'target-1', 'hr', 'owner');
+      expect(result).toEqual({ allowed: false, reason: 'role_not_grantable' });
+    });
+  });
+
+  describe('allowed paths', () => {
+    it('owner may change any reachable target to any grantable role', () => {
+      const result = canChangeRole('owner', 'owner-1', 'target-1', 'hr', 'nurse');
+      expect(result).toEqual({ allowed: true });
+    });
+
+    it('owner may promote a worker to supervisor', () => {
+      const result = canChangeRole('owner', 'owner-1', 'target-1', 'nurse', 'supervisor');
+      expect(result).toEqual({ allowed: true });
+    });
+
+    it('supervisor may change another supervisor (same trust boundary as invite)', () => {
+      const result = canChangeRole('supervisor', 'sup-1', 'sup-2', 'supervisor', 'hr');
+      expect(result).toEqual({ allowed: true });
+    });
+
+    it('supervisor may promote a worker to hr', () => {
+      const result = canChangeRole('supervisor', 'sup-1', 'target-1', 'nurse', 'hr');
+      expect(result).toEqual({ allowed: true });
+    });
+  });
+
+  describe('ROLE_CHANGE_ACTOR_ROLES', () => {
+    it('contains exactly owner and supervisor', () => {
+      expect([...ROLE_CHANGE_ACTOR_ROLES].sort()).toEqual(['owner', 'supervisor']);
+    });
+
+    it('does not include hr, despite hr holding broad invite-grant rights', () => {
+      expect(ROLE_CHANGE_ACTOR_ROLES).not.toContain('hr');
+    });
+  });
 });
 
 describe('isWorkerRole', () => {

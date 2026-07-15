@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
 import { getCourses } from '@/app/actions/course';
-import { enrollUsers } from '@/app/actions/enrollment';
+import { assignCourseToStaffMember } from '@/app/actions/staff';
 import {
   Dialog,
   DialogContent,
@@ -26,7 +25,7 @@ import { logger } from '@/lib/logger';
 interface AssignUserCourseModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userEmail: string;
+  staffUserId: string;
   userName: string;
   enrolledCourseIds: string[];
   onSuccess?: () => void;
@@ -35,21 +34,20 @@ interface AssignUserCourseModalProps {
 export default function AssignUserCourseModal({
   isOpen,
   onClose,
-  userEmail,
+  staffUserId,
   userName,
   enrolledCourseIds,
   onSuccess,
 }: AssignUserCourseModalProps) {
   const [courses, setCourses] = useState<{ id: string; title: string }[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
-  const [emails, setEmails] = useState<string[]>([]);
-  const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [result, setResult] = useState<{
     success: string[];
     alreadyEnrolled: string[];
     failed: string[];
+    error?: string;
   } | null>(null);
 
   const fetchCourses = React.useCallback(async () => {
@@ -71,62 +69,25 @@ export default function AssignUserCourseModal({
       fetchCourses();
       setResult(null);
       setSelectedCourseId('');
-      if (userEmail) {
-        setEmails([userEmail]);
-      } else {
-        setEmails([]);
-      }
-      setInputValue('');
     }
-  }, [isOpen, userEmail, fetchCourses]);
-
-  const isValidEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (['Enter', ' ', ','].includes(e.key)) {
-      e.preventDefault();
-      const val = inputValue.trim();
-      if (val && isValidEmail(val)) {
-        if (!emails.includes(val)) {
-          setEmails([...emails, val]);
-        }
-        setInputValue('');
-      }
-    } else if (e.key === 'Backspace' && !inputValue && emails.length > 0) {
-      setEmails(emails.slice(0, -1));
-    }
-  };
-
-  const removeEmail = (emailToRemove: string) => {
-    setEmails(emails.filter((email) => email !== emailToRemove));
-  };
+  }, [isOpen, fetchCourses]);
 
   const handleAssign = async () => {
     if (!selectedCourseId) return;
-
-    const finalEmails = [...emails];
-    const currentVal = inputValue.trim();
-    if (currentVal && isValidEmail(currentVal) && !finalEmails.includes(currentVal)) {
-      finalEmails.push(currentVal);
-      setEmails(finalEmails);
-      setInputValue('');
-    }
-
-    if (finalEmails.length === 0) return;
 
     setIsLoading(true);
     setResult(null);
 
     try {
-      const res = await enrollUsers(
-        selectedCourseId,
-        finalEmails.map((email) => ({ email })),
-      );
-      setResult(res);
+      const res = await assignCourseToStaffMember(selectedCourseId, staffUserId);
+      setResult({
+        success: res.success,
+        alreadyEnrolled: res.alreadyEnrolled,
+        failed: res.failed,
+        error: res.error,
+      });
 
-      // If completely successful or already enrolled, close after a delay
+      // Close after a short delay only when the assignment actually landed.
       if (res.success.length > 0 || res.alreadyEnrolled.length > 0) {
         if (onSuccess) onSuccess();
         setTimeout(() => {
@@ -135,7 +96,7 @@ export default function AssignUserCourseModal({
       }
     } catch (error) {
       logger.error({ msg: 'Failed to assign course:', err: error });
-      setResult({ success: [], alreadyEnrolled: [], failed: finalEmails });
+      setResult({ success: [], alreadyEnrolled: [], failed: [staffUserId] });
     } finally {
       setIsLoading(false);
     }
@@ -155,47 +116,6 @@ export default function AssignUserCourseModal({
         </DialogHeader>
 
         <div className="mb-6 flex flex-col gap-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-text-secondary">
-              Email Addresses
-            </label>
-            <div
-              className="flex min-h-11 cursor-text flex-wrap items-center gap-2 rounded-md border-2 border-border bg-background p-2 transition-colors focus-within:border-primary"
-              onClick={() => document.getElementById('assign-email-chip-input')?.focus()}
-            >
-              {emails.map((email) => (
-                <div
-                  key={email}
-                  className="flex items-center rounded-2xl bg-primary/10 px-3 py-1 text-sm font-medium text-primary"
-                >
-                  {email}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeEmail(email);
-                    }}
-                    className="ml-1.5 flex items-center text-primary"
-                  >
-                    <X className="size-3.5" aria-hidden="true" />
-                  </button>
-                </div>
-              ))}
-              <input
-                id="assign-email-chip-input"
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={emails.length === 0 ? 'Enter emails...' : ''}
-                className="min-w-[120px] flex-1 border-none bg-transparent text-sm text-foreground outline-none"
-              />
-            </div>
-            <p className="mt-1 text-xs text-text-tertiary">
-              Press Space, Enter or Comma to add an email.
-            </p>
-          </div>
-
           <Select
             value={selectedCourseId}
             onValueChange={(value) => setSelectedCourseId(value)}
@@ -224,13 +144,16 @@ export default function AssignUserCourseModal({
 
         {result && (
           <div className="mb-4 flex flex-col gap-2">
+            {result.error && <Alert variant="error">{result.error}</Alert>}
             {result.success.length > 0 && (
               <Alert variant="success">Successfully assigned course</Alert>
             )}
             {result.alreadyEnrolled?.length > 0 && (
               <Alert variant="warning">User is already enrolled in this course</Alert>
             )}
-            {result.failed?.length > 0 && <Alert variant="error">Failed to assign course</Alert>}
+            {!result.error && result.failed?.length > 0 && (
+              <Alert variant="error">Failed to assign course</Alert>
+            )}
           </div>
         )}
 
@@ -238,12 +161,7 @@ export default function AssignUserCourseModal({
           <Button
             className="w-full"
             onClick={handleAssign}
-            disabled={
-              !selectedCourseId ||
-              isLoading ||
-              isFetching ||
-              (emails.length === 0 && !inputValue.trim())
-            }
+            disabled={!selectedCourseId || isLoading || isFetching}
             loading={isLoading}
           >
             {isLoading ? 'Assigning...' : 'Assign Course'}

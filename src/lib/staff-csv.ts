@@ -200,19 +200,40 @@ export function buildStaffCsvTemplate(): string {
 /** Header label the manager template uses and the manager parser detects. */
 export const MANAGER_CSV_ROLE_HEADER = 'role';
 
+/** Why a data row was dropped from a manager/worker CSV import. */
+export type ManagerCsvSkipReason = 'missing_email' | 'invalid_email' | 'duplicate';
+
+export interface ManagerCsvSkippedRow {
+  /** 1-based position of the row in the parsed sheet (header row included). */
+  row: number;
+  reason: ManagerCsvSkipReason;
+  /** The offending email cell, when the row had one (invalid/duplicate). */
+  email?: string;
+}
+
 export interface ManagerCsvInvite {
   /** Lowercased, valid email. */
   email: string;
   /**
-   * Matched manager role value (e.g. `hr`), or `''` when the row's role cell is
+   * Matched role value (e.g. `hr`), or `''` when the row's role cell is
    * blank/unrecognised — the UI prompts the admin to pick one in that case.
    */
   role: string;
+  /**
+   * True when the row's `role` cell named a value that could NOT be applied
+   * (unrecognised, or outside the caller's `validRoles` set — e.g. an inviter
+   * trying to grant a role above their scope). The email is still importable;
+   * the role is left blank for the admin to choose in the UI, never silently
+   * granted.
+   */
+  roleRejected?: boolean;
 }
 
 export interface ManagerCsvParseResult {
   /** Unique importable invites in file order (valid email, best-effort role). */
   invites: ManagerCsvInvite[];
+  /** Rows dropped from the import, in file order, each with a per-row reason. */
+  skipped: ManagerCsvSkippedRow[];
   invalidEmailCount: number;
   duplicateCount: number;
   /** True when the file exceeded {@link MAX_STAFF_CSV_ROWS} and was truncated. */
@@ -279,6 +300,7 @@ export function extractManagerInvitesFromRows(
   }
 
   const invites: ManagerCsvInvite[] = [];
+  const skipped: ManagerCsvSkippedRow[] = [];
   const seen = new Set<string>();
   let invalidEmailCount = 0;
   let duplicateCount = 0;
@@ -286,33 +308,71 @@ export function extractManagerInvitesFromRows(
 
   for (let i = dataStartIndex; i < rows.length; i++) {
     const row = rows[i];
-    const rawEmail = Array.isArray(row) ? cellToString(row[emailCol]) : '';
-    if (rawEmail === '') continue;
+    // Fully-blank rows are ignored entirely — never surfaced as a skipped row.
+    if (!Array.isArray(row) || !row.some((cell) => cellToString(cell) !== '')) continue;
 
-    if (invites.length + invalidEmailCount + duplicateCount >= maxRows) {
+    if (invites.length + skipped.length >= maxRows) {
       truncated = true;
       break;
     }
 
-    const lower = rawEmail.toLowerCase();
+    const rowNumber = i + 1;
+    const rawEmail = cellToString(row[emailCol]);
+
+    // Row has content elsewhere (e.g. a role) but no email — surface it.
+    if (rawEmail === '') {
+      skipped.push({ row: rowNumber, reason: 'missing_email' });
+      continue;
+    }
     if (!EMAIL_REGEX.test(rawEmail)) {
       invalidEmailCount++;
+      skipped.push({ row: rowNumber, reason: 'invalid_email', email: rawEmail });
       continue;
     }
+
+    const lower = rawEmail.toLowerCase();
     if (seen.has(lower)) {
       duplicateCount++;
+      skipped.push({ row: rowNumber, reason: 'duplicate', email: lower });
       continue;
     }
 
-    const rawRole = Array.isArray(row) ? cellToString(row[roleCol]) : '';
-    const token = normaliseRoleToken(rawRole);
-    const role = validRoles.has(token) ? token : '';
+    const token = normaliseRoleToken(cellToString(row[roleCol]));
+    const roleRejected = token !== '' && !validRoles.has(token);
+    const role = roleRejected ? '' : token;
 
     seen.add(lower);
-    invites.push({ email: lower, role });
+    invites.push(roleRejected ? { email: lower, role, roleRejected } : { email: lower, role });
   }
 
-  return { invites, invalidEmailCount, duplicateCount, truncated };
+  return { invites, skipped, invalidEmailCount, duplicateCount, truncated };
+}
+
+/**
+ * One-line, human-readable summary of the rows a CSV import dropped, e.g.
+ * `"2 rows skipped: row 3 (missing email), row 5 (invalid email 'not-an-email')"`.
+ * Returns `''` when nothing was skipped. Long lists are capped so the message
+ * stays readable, with a trailing "…and N more". Shared by every CSV-import
+ * surface so the wording never diverges between paths.
+ */
+export function summariseSkippedCsvRows(skipped: ManagerCsvSkippedRow[], maxListed = 8): string {
+  if (skipped.length === 0) return '';
+
+  const describe = (s: ManagerCsvSkippedRow): string => {
+    switch (s.reason) {
+      case 'missing_email':
+        return `row ${s.row} (missing email)`;
+      case 'invalid_email':
+        return `row ${s.row} (invalid email${s.email ? ` '${s.email}'` : ''})`;
+      case 'duplicate':
+        return `row ${s.row} (duplicate email${s.email ? ` '${s.email}'` : ''})`;
+    }
+  };
+
+  const listed = skipped.slice(0, maxListed).map(describe);
+  const remainder = skipped.length - listed.length;
+  const detail = remainder > 0 ? `${listed.join(', ')}, …and ${remainder} more` : listed.join(', ');
+  return `${skipped.length} row${skipped.length === 1 ? '' : 's'} skipped: ${detail}`;
 }
 
 /** Manager CSV template: `email,role` header with sample rows. */
@@ -323,4 +383,9 @@ export function buildManagerCsvTemplate(): string {
 /** Worker CSV template: `email,role` header with sample worker rows. */
 export function buildWorkerCsvTemplate(): string {
   return `${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}\nworker1@example.com,nurse\nworker2@example.com,therapist_clinician\nworker3@example.com,case_manager\n`;
+}
+
+/** Staff-invite template: `email,role` header with sample manager + worker rows. */
+export function buildStaffInviteCsvTemplate(): string {
+  return `${STAFF_CSV_EMAIL_HEADER},${MANAGER_CSV_ROLE_HEADER}\nsupervisor1@example.com,supervisor\nnurse1@example.com,nurse\n`;
 }
