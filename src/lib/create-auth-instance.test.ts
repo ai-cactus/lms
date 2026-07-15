@@ -295,13 +295,26 @@ describe('sessionVersion kill-switch regression (F-059)', () => {
  * ISSUE 4 regression: a successful sign-in on one instance must clear the
  * sibling instance's session cookie(s), so two different accounts never hold
  * concurrently-live sessions in the same browser. This unit test pins the
- * LOGIC (which names get deleted, and only when actually present) — whether
- * the cookies() mutation actually attaches to the outgoing NextAuth response is
- * a runtime property verified separately by tests/e2e/rbac-dual-cookie-login.spec.ts.
+ * LOGIC (which names get expired). Deletion is emitted as an expired `set()`
+ * (not a bare `delete()`) so the `__Secure-` prefixed cookie carries the
+ * `Secure` attribute the prefix requires — a bare delete omits it and the
+ * browser rejects the deletion under https (see src/lib/auth/session-cookies.ts).
+ * Whether the cookies() mutation actually attaches to the outgoing NextAuth
+ * response is a runtime property verified separately by
+ * tests/e2e/rbac-dual-cookie-login.spec.ts.
  */
 describe('ISSUE 4 — signIn callback clears the sibling session cookie', () => {
-  it('deletes both sibling cookie-name variants when the worker cookie is present on an admin-instance login', async () => {
-    mockCookieStore.has.mockImplementation((name: string) => name.includes('worker'));
+  const expiredWith = (secure: boolean) =>
+    expect.objectContaining({
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure,
+      maxAge: 0,
+      expires: new Date(0),
+    });
+
+  it('expires both sibling cookie-name variants on an admin-instance login', async () => {
     const signIn = getSignIn(adminConfig);
 
     const result = await signIn({
@@ -310,12 +323,19 @@ describe('ISSUE 4 — signIn callback clears the sibling session cookie', () => 
     });
 
     expect(result).toBe(true);
-    expect(mockCookieStore.delete).toHaveBeenCalledWith('__Secure-worker.session-token');
-    expect(mockCookieStore.delete).toHaveBeenCalledWith('worker.session-token');
+    expect(mockCookieStore.set).toHaveBeenCalledWith(
+      '__Secure-worker.session-token',
+      '',
+      expiredWith(true),
+    );
+    expect(mockCookieStore.set).toHaveBeenCalledWith(
+      'worker.session-token',
+      '',
+      expiredWith(false),
+    );
   });
 
-  it('deletes both sibling cookie-name variants when the admin cookie is present on a worker-instance login', async () => {
-    mockCookieStore.has.mockImplementation((name: string) => name.includes('admin'));
+  it('expires both sibling cookie-name variants on a worker-instance login', async () => {
     const signIn = getSignIn(workerConfig);
 
     const result = await signIn({
@@ -324,12 +344,15 @@ describe('ISSUE 4 — signIn callback clears the sibling session cookie', () => 
     });
 
     expect(result).toBe(true);
-    expect(mockCookieStore.delete).toHaveBeenCalledWith('__Secure-admin.session-token');
-    expect(mockCookieStore.delete).toHaveBeenCalledWith('admin.session-token');
+    expect(mockCookieStore.set).toHaveBeenCalledWith(
+      '__Secure-admin.session-token',
+      '',
+      expiredWith(true),
+    );
+    expect(mockCookieStore.set).toHaveBeenCalledWith('admin.session-token', '', expiredWith(false));
   });
 
-  it('does not call delete when no sibling cookie is present, and still returns true', async () => {
-    mockCookieStore.has.mockReturnValue(false);
+  it('expires the sibling cookies unconditionally (idempotent no-op when absent) and still returns true', async () => {
     const signIn = getSignIn(adminConfig);
 
     const result = await signIn({
@@ -337,8 +360,15 @@ describe('ISSUE 4 — signIn callback clears the sibling session cookie', () => 
       account: { provider: 'credentials' },
     });
 
+    // Expiring an absent cookie is a harmless no-op Set-Cookie, so the callback
+    // no longer guards on presence — it always emits both sibling variants.
     expect(result).toBe(true);
-    expect(mockCookieStore.delete).not.toHaveBeenCalled();
+    expect(mockCookieStore.set).toHaveBeenCalledWith(
+      '__Secure-worker.session-token',
+      '',
+      expect.anything(),
+    );
+    expect(mockCookieStore.set).toHaveBeenCalledWith('worker.session-token', '', expect.anything());
   });
 
   it('never throws and still returns true when cookies() rejects', async () => {

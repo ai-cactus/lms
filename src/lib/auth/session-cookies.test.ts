@@ -8,8 +8,8 @@
  * and plain variants so cookie clearing works regardless of which one the
  * current environment (dev vs. production) actually set.
  */
-import { describe, it, expect } from 'vitest';
-import { siblingCookieNames } from './session-cookies';
+import { describe, it, expect, vi } from 'vitest';
+import { siblingCookieNames, expireSiblingSessionCookies } from './session-cookies';
 
 describe('siblingCookieNames', () => {
   it("returns the worker instance's cookie name pair when the current instance is admin", () => {
@@ -32,6 +32,36 @@ describe('siblingCookieNames', () => {
       expect(names).toHaveLength(2);
       expect(names[0]).toMatch(/^__Secure-/);
       expect(names[1]).not.toMatch(/^__Secure-/);
+    }
+  });
+});
+
+describe('expireSiblingSessionCookies', () => {
+  it('expires both sibling variants with a Secure attribute only on the __Secure- name', () => {
+    const set = vi.fn();
+    expireSiblingSessionCookies({ set }, 'worker');
+
+    // The `__Secure-` prefixed deletion MUST carry Secure or the browser rejects
+    // it under https; the plain variant must not require it.
+    expect(set).toHaveBeenCalledWith(
+      '__Secure-admin.session-token',
+      '',
+      expect.objectContaining({ path: '/', httpOnly: true, sameSite: 'lax', secure: true }),
+    );
+    expect(set).toHaveBeenCalledWith(
+      'admin.session-token',
+      '',
+      expect.objectContaining({ path: '/', httpOnly: true, sameSite: 'lax', secure: false }),
+    );
+  });
+
+  it('emits an expired cookie (empty value, epoch expiry, zero max-age)', () => {
+    const set = vi.fn();
+    expireSiblingSessionCookies({ set }, 'admin');
+
+    for (const call of set.mock.calls) {
+      expect(call[1]).toBe('');
+      expect(call[2]).toMatchObject({ maxAge: 0, expires: new Date(0) });
     }
   });
 });

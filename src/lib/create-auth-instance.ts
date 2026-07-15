@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
-import { siblingCookieNames } from '@/lib/auth/session-cookies';
+import { expireSiblingSessionCookies } from '@/lib/auth/session-cookies';
 import { logger, maskEmail } from '@/lib/logger';
 import { isSessionMfaVerified } from '@/lib/session-mfa';
 import {
@@ -519,18 +519,18 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
         // ISSUE 4: a successful login on this instance must drop any lingering
         // session cookie from the sibling instance, so the two portals never
-        // hold two live sessions for different accounts at once.
+        // hold two live sessions for different accounts at once. Deletion is
+        // emitted via expireSiblingSessionCookies() (not a bare cookies().delete)
+        // so the `__Secure-` prefixed cookie is expired WITH the `Secure`
+        // attribute — a bare delete omits it and the browser rejects the
+        // deletion under https (see session-cookies.ts).
         try {
           const cookieStore = await cookies();
-          for (const name of siblingCookieNames(cookiePrefix)) {
-            if (cookieStore.has(name)) {
-              cookieStore.delete(name);
-              logger.info({
-                msg: '[Auth] Cleared sibling session cookie on login',
-                instance: cookiePrefix,
-              });
-            }
-          }
+          expireSiblingSessionCookies(cookieStore, cookiePrefix);
+          logger.info({
+            msg: '[Auth] Cleared sibling session cookie on login',
+            instance: cookiePrefix,
+          });
         } catch (err) {
           logger.warn({
             msg: '[Auth] Failed to clear sibling session cookie on login',
