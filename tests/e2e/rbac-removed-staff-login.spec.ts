@@ -316,12 +316,20 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
       // Force a hard top-level navigation to /worker here so the redirect is
       // exercised the same way; a stray, un-redirected soft landing on /worker
       // is a client-navigation nuance, not the behavior this test guards.
-      await page.waitForURL(/\/(worker|onboarding-worker)/, { timeout: 20000 });
-      // domcontentloaded: the assertion is the redirect URL, and waiting for
-      // 'load' can hang on the page's background-image optimization when a
-      // redirect aborts the first /_next/image request under `next start`.
+      await page.waitForURL(/\/(worker|onboarding-worker)/, {
+        timeout: 20000,
+        waitUntil: 'domcontentloaded',
+      });
+      // domcontentloaded everywhere below: the assertion is the redirect URL,
+      // and the default 'load' state can hang on the page's background-image
+      // optimization when a redirect aborts the first /_next/image request
+      // under `next start` (CI). Confirmed via CI trace: the URL had already
+      // reached /onboarding-worker while "Wait for load state" timed out.
       await page.goto('/worker', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL('**/onboarding-worker**', { timeout: 20000 });
+      await page.waitForURL('**/onboarding-worker**', {
+        timeout: 20000,
+        waitUntil: 'domcontentloaded',
+      });
       expect(page.url()).toContain('/onboarding-worker');
     } finally {
       await cleanupUser(userId, null);
