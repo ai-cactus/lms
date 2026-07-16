@@ -12,3 +12,4 @@
 - [E2E local AUTH_URL env trap (RESOLVED)](e2e-local-auth-url-env-trap.md) — local runs need AUTH_URL exported too, not just NEXTAUTH_URL, or logins redirect to a dead origin
 - [Status Tracker rename + seed fixture](status-tracker-rename-e2e-seed-fixture.md) — new seeded overdue enrollment (Olivia Overdue); email-substring collision gotcha; WSL2 dev-server cold-start flake pattern
 - [Stripe invoice period test patterns](stripe-invoice-period-test-patterns.md) — full InvoiceLineItem fixture typing, `?? default` nullish trap, audit() needs no mock, regression-pin idiom
+- [Partners feature test patterns](partners-feature-test-patterns.md) — Docker-free local SMTP stub for e2e mail sends; getByRole('alert') collides with Next's route-announcer; public routes need no DB per proxy.ts
