@@ -1,0 +1,54 @@
+import { cn } from '@/lib/utils';
+
+// The Theraptly logomark is brand artwork (not a UI glyph), so it stays an inline
+// SVG component per the approved marketing-port exception in CLAUDE.md.
+export function LogoMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 37.8146 37.8146"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={cn('size-[34px] shrink-0 text-[#0003DB] sm:size-[38px]', className)}
+    >
+      <g clipPath="url(#theraptly-logo-clip)">
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M12.9652 0.47584C10.8321 0.47584 8.78638 1.30254 7.27806 2.77407L-0.000114519 9.87468V13.1249C-0.000114519 15.4212 1.0109 17.487 2.62233 18.922C1.0109 20.3569 -0.000114519 22.4228 -0.000114519 24.719V27.9692L7.27806 35.0699C8.78638 36.5414 10.8321 37.3681 12.9652 37.3681C15.3188 37.3681 17.4364 36.3818 18.9072 34.8096C20.378 36.3818 22.4955 37.3681 24.8492 37.3681C26.9823 37.3681 29.0279 36.5414 30.5363 35.0699L37.8144 27.9692V24.719C37.8144 22.4228 36.8035 20.3569 35.192 18.922C36.8035 17.487 37.8144 15.4212 37.8144 13.1249V9.87468L30.5363 2.77407C29.0279 1.30254 26.9823 0.47584 24.8492 0.47584C22.4955 0.47584 20.378 1.46219 18.9072 3.03432C17.4364 1.46219 15.3188 0.47584 12.9652 0.47584ZM24.3513 18.922C24.2607 18.8413 24.1717 18.7583 24.0845 18.6733L18.9072 13.6222L13.7298 18.6733C13.6426 18.7583 13.5537 18.8413 13.463 18.922C13.5537 19.0027 13.6426 19.0856 13.7298 19.1706L18.9072 24.2217L24.0845 19.1706C24.1717 19.0856 24.2607 19.0027 24.3513 18.922ZM21.008 27.9692V29.5215C21.008 31.5911 22.7278 33.269 24.8492 33.269C25.8679 33.269 26.8449 32.8741 27.5653 32.1714L33.6129 26.2713V24.719C33.6129 22.6494 31.8931 20.9715 29.7717 20.9715C28.7529 20.9715 27.7759 21.3663 27.0555 22.0691L21.008 27.9692ZM16.8064 27.9692L10.7588 22.0691C10.0384 21.3663 9.06143 20.9715 8.04268 20.9715C5.92126 20.9715 4.2015 22.6494 4.2015 24.719V26.2713L10.249 32.1714C10.9694 32.8741 11.9464 33.269 12.9652 33.269C15.0866 33.269 16.8064 31.5911 16.8064 29.5215V27.9692ZM16.8064 8.32247V9.87468L10.7588 15.7748C10.0384 16.4776 9.06143 16.8724 8.04268 16.8724C5.92126 16.8724 4.2015 15.1945 4.2015 13.1249V11.5727L10.249 5.67259C10.9694 4.9698 11.9464 4.57498 12.9652 4.57498C15.0866 4.57498 16.8064 6.25279 16.8064 8.32247ZM27.0555 15.7748L21.008 9.87468V8.32247C21.008 6.25279 22.7278 4.57498 24.8492 4.57498C25.8679 4.57498 26.8449 4.9698 27.5653 5.67259L33.6129 11.5727V13.1249C33.6129 15.1945 31.8931 16.8724 29.7717 16.8724C28.7529 16.8724 27.7759 16.4776 27.0555 15.7748Z"
+          fill="currentColor"
+        />
+      </g>
+      <defs>
+        <clipPath id="theraptly-logo-clip">
+          <rect width="37.8146" height="37.8146" fill="white" />
+        </clipPath>
+      </defs>
+    </svg>
+  );
+}
+
+type LogoProps = {
+  /** Classes for the "Theraptly" wordmark — set the color per context. */
+  wordmarkClassName?: string;
+  markClassName?: string;
+  className?: string;
+};
+
+export function Logo({ wordmarkClassName, markClassName, className }: LogoProps) {
+  return (
+    <span className={cn('flex items-center gap-[1.5px]', className)}>
+      <span className="flex items-center justify-center p-[6px] sm:p-[10px]">
+        <LogoMark className={markClassName} />
+      </span>
+      <span
+        className={cn(
+          'font-display text-[22px] font-extrabold leading-none sm:text-[26px]',
+          wordmarkClassName,
+        )}
+      >
+        Theraptly
+      </span>
+    </span>
+  );
+}

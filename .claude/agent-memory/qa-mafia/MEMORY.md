@@ -13,3 +13,5 @@
 - [Microsoft SSO Signup Flow](microsoft-sso-signup-flow.md) — tenant=common accepts personal accounts; KNOWN BUG: /signup/role-selection bounces authenticated OAuth users back to public /signup instead of dashboard
 - [Local Dev Env Setup](local-dev-env-setup.md) — Redis/Stripe-webhook/Vertex-AI gotchas on localhost:3000; how to simulate a signed Stripe webhook; diagnosed Vertex AI IAM/network failures (2026-07-02)
 - [Watch-Through Gate Testing](watch-through-gate-testing.md) — how to seed a real playable video lesson without AI/video-catalog, and the seek-block test matrix that rigorously proves the gate is not bypassable
+- [next dev/Turbopack CSS false positive](next-dev-turbopack-css-false-positive.md) — @theme inline utilities can be missing from served CSS under next dev only; always re-verify styling bugs against npm run build && npm run start before reporting
+- [Marketing/Partners Surface Patterns](marketing-partners-surface-patterns.md) — /, /partners need no DB/auth; safe local SMTP stub for partner-form success path; calculator slider verification; full-page screenshot + scroll-reveal-animation gotcha
