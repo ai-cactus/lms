@@ -1,48 +1,20 @@
+import Image from 'next/image';
+import Link from 'next/link';
+import Navbar from '@/components/marketing/Navbar';
+import { Cta } from '@/components/marketing/sections/Cta';
+import { Footer } from '@/components/marketing/Footer';
 import HowItWorks from './_components/HowItWorks';
 import InspectorsSection from './_components/InspectorsSection';
 import FeatureSection from './_components/FeatureSection';
-import Image from 'next/image';
-import Link from 'next/link';
 import FeatureAccordion from './_components/FeatureAccordion';
-import Footer from './_components/Footer';
 import ClientTypingEffect from './_components/ClientTypingEffect';
 
 export default function Home() {
   return (
     <>
+      <Navbar />
       <main className="flex min-h-screen flex-col overflow-x-hidden bg-background-secondary">
-        {/* Header section */}
-        <header className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-5 py-4 md:px-8 md:py-6">
-          <div className="flex-1">
-            <Image src="/images/logo.svg" alt="Theraptly Logo" width={140} height={32} priority />
-          </div>
-
-          <nav className="hidden flex-1 items-center justify-center gap-8 md:flex">
-            <Link
-              href="#features"
-              className="flex items-center gap-1 text-[15px] font-medium text-foreground transition-colors hover:text-primary"
-            >
-              Features
-            </Link>
-          </nav>
-
-          <div className="flex flex-none items-center justify-end gap-2 md:flex-1 md:gap-4">
-            <Link
-              href="/login"
-              className="rounded-[10px] border border-border bg-background px-4 py-2.5 text-[13px] font-medium text-foreground transition-all hover:border-text-tertiary hover:bg-background-secondary sm:px-5 sm:text-sm"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/request-demo"
-              className="hidden rounded-[10px] bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary/90 md:inline-block"
-            >
-              Request a Demo
-            </Link>
-          </div>
-        </header>
-
-        {/* Hero section */}
+        {/* Hero section (restored — original Figma-aligned design) */}
         <section className="mx-auto mb-3 mt-6 flex max-w-[960px] flex-col items-center px-6 text-center sm:mb-6 sm:mt-12">
           <div className="mb-8 inline-flex cursor-pointer flex-wrap items-center justify-start gap-3 rounded-full border border-border-light bg-background py-1.5 pl-1.5 pr-4 text-left text-[13px] font-medium text-text-secondary shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-transform hover:-translate-y-px hover:shadow-md">
             <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white">
@@ -80,7 +52,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Hero Images Showcase */}
+        {/* Hero Images Showcase (restored) */}
         <section className="relative mx-auto -mt-3 flex w-full max-w-[1600px] justify-center md:min-h-[600px] lg:min-h-[800px]">
           {/* Abstract 3D Fluid Background */}
           <div className="absolute top-0 hidden w-[120%] max-w-[1400px] -translate-y-[2%] md:block">
@@ -106,6 +78,7 @@ export default function Home() {
             />
           </div>
         </section>
+
         {/* Features Section */}
         <FeatureSection />
 
@@ -194,32 +167,8 @@ export default function Home() {
         {/* Feature Accordion Section */}
         <FeatureAccordion />
 
-        {/* CTA Section */}
-        <section className="relative flex w-full justify-center overflow-hidden bg-primary bg-[url('/images/cta-frame.png')] bg-cover bg-center bg-blend-multiply px-6 py-[70px] lg:py-[100px]">
-          <div className="relative z-10 flex w-full max-w-[1200px] items-center">
-            <div className="relative z-[2] max-w-[550px] text-white">
-              <h2 className="mb-6 text-[28px] font-bold leading-tight tracking-[-0.01em] sm:text-[32px] lg:text-5xl">
-                Work smarter, Stay Compliant with Theraptly
-              </h2>
-              <p className="mb-8 text-[17px] leading-relaxed text-white/90 sm:mb-10 sm:text-xl">
-                Start automating tasks today and give your team more time to focus on what matters.
-              </p>
-              <Link
-                href="/request-demo"
-                className="inline-flex w-full items-center justify-center rounded-full bg-white px-9 py-4 text-base font-semibold text-[#0b1a38] transition-all hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)] sm:w-auto"
-              >
-                Request a demo
-              </Link>
-            </div>
-            <Image
-              src="/images/Logomark.svg"
-              alt=""
-              width={700}
-              height={700}
-              className="pointer-events-none absolute right-[-50%] top-[40%] z-[1] h-auto w-[500px] -translate-y-full opacity-15 sm:right-[-25%] sm:w-[600px] sm:opacity-50 lg:right-[-5%]"
-            />
-          </div>
-        </section>
+        {/* Refreshed reference-blue closing CTA */}
+        <Cta />
       </main>
       <Footer />
     </>
