@@ -2,6 +2,7 @@
 
 import prisma from '@/lib/prisma';
 import { isAdminRole, DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
+import { hasActiveBilling } from '@/lib/billing';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -111,7 +112,11 @@ export async function enrollUsers(
   // Get organization info for new user creation and offering checks.
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    include: { organization: true },
+    include: {
+      organization: {
+        include: { subscription: { select: { status: true, pausedAt: true } } },
+      },
+    },
   });
 
   // Enrolling staff is an admin-only action. The session check above only
@@ -148,6 +153,18 @@ export async function enrollUsers(
   // are unaffected — they do not pass through this action.
   if (!isOwnCourse && course.isGlobal === true && course.status !== 'published') {
     throw new Error('Course not found');
+  }
+
+  // Billing gate (defense in depth): an org must have active billing to create
+  // new enrollments. Placed after auth/existence checks so we never leak course
+  // state, and before any assignment/enrollment writes.
+  if (!hasActiveBilling(currentUser?.organization?.subscription)) {
+    logger.warn({
+      msg: '[enrollment] Course assignment blocked — organization lacks active billing',
+      organizationId,
+      userId: session.user.id,
+    });
+    throw new Error('Your organization needs an active subscription to assign courses.');
   }
 
   // Create a CourseAssignment batch to hold this assignment's schedule /

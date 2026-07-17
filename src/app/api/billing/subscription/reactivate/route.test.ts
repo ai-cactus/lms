@@ -58,6 +58,8 @@ const CANCEL_SCHEDULED_SUB = {
   stripeSubscriptionId: 'sub_x',
   status: 'active',
   cancelAtPeriodEnd: true,
+  stripeScheduleId: null,
+  scheduledEffectiveAt: null,
 };
 
 beforeEach(() => {
@@ -66,6 +68,25 @@ beforeEach(() => {
   // (auth + MFA + admin role, read from session claims) passes by default.
   mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
+});
+
+describe('POST /api/billing/subscription/reactivate — scheduled-change guard', () => {
+  it('returns 409 and does not touch Stripe when a plan change is pending', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue({
+      ...CANCEL_SCHEDULED_SUB,
+      stripeScheduleId: 'sub_sched_1',
+      scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+    });
+
+    const res = await POST();
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toMatch(/pending plan change/i);
+    expect(body.error).toMatch(/cancel it first/i);
+    expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
+    expect(prismaMock.subscription.update).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/billing/subscription/reactivate', () => {

@@ -88,12 +88,19 @@ const globalVideoCourse = {
   status: 'published', // active course — required by the Task 3 status guard
 };
 
+// Defect B (Phase-4 billing gate): enrollUsers now requires active, unpaused
+// billing. Every fixture that reaches the billing check must carry a
+// subscription that satisfies hasActiveBilling(), or the gate throws before
+// the mocked `user.findUnique` queue is fully consumed — leaving a leftover
+// once-value that leaks into (and pollutes) the next test.
+const activeSubscription = { status: 'active', pausedAt: null };
+
 const adminUser = {
   id: ADMIN_ID,
   // After RBAC migration: 'admin' is retired; 'owner' is the new admin-role equivalent.
   role: 'owner',
   organizationId: ORG_ID,
-  organization: { id: ORG_ID, name: 'Acme Corp' },
+  organization: { id: ORG_ID, name: 'Acme Corp', subscription: activeSubscription },
 };
 
 const staffUser = {
@@ -385,5 +392,79 @@ describe('enrollUsers — CSV role mapping (entry.role "admin" → DB role "supe
     expect(prismaMock.user.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ role: 'front_desk_admin' }) }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Defect B — billing-gated course assignment (defense in depth).
+//
+// enrollUsers must reject with the billing message BEFORE any enrollment
+// write when the caller's org lacks active billing, and must otherwise
+// proceed exactly as before. The gate sits after the auth/course-existence
+// checks (course.findUnique) but before the CourseAssignment/enrollment
+// writes — see src/app/actions/enrollment.ts ~L158-168.
+// ---------------------------------------------------------------------------
+
+describe('enrollUsers — billing gate (Defect B)', () => {
+  const ownCourse = {
+    id: 'own-course-001',
+    title: 'My Training',
+    createdBy: ADMIN_ID,
+    isGlobal: false,
+    type: 'document',
+  };
+
+  function adminWithSubscription(subscription: unknown) {
+    return {
+      ...adminUser,
+      organization: { id: ORG_ID, name: 'Acme Corp', subscription },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAdminAuth.mockResolvedValue(adminSession);
+    mockWorkerAuth.mockResolvedValue(null);
+    prismaMock.course.findUnique.mockResolvedValue(ownCourse);
+    prismaMock.enrollment.findFirst.mockResolvedValue(null);
+    prismaMock.enrollment.create.mockResolvedValue({});
+    prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
+  });
+
+  it.each([
+    ['no subscription row at all', null],
+    ['a canceled subscription', { status: 'canceled', pausedAt: null }],
+    ['a past_due subscription', { status: 'past_due', pausedAt: null }],
+    [
+      'an active subscription that is currently paused',
+      { status: 'active', pausedAt: new Date('2026-01-01T00:00:00Z') },
+    ],
+    [
+      'a trialing subscription that is currently paused',
+      { status: 'trialing', pausedAt: new Date('2026-01-01T00:00:00Z') },
+    ],
+  ])('rejects with the billing message for %s, before any enrollment write', async (_desc, sub) => {
+    prismaMock.user.findUnique.mockResolvedValueOnce(adminWithSubscription(sub));
+
+    await expect(enrollUsers('own-course-001', [{ email: STAFF_EMAIL }])).rejects.toThrow(
+      'Your organization needs an active subscription to assign courses.',
+    );
+
+    expect(prismaMock.courseAssignment.create).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['active and unpaused', { status: 'active', pausedAt: null }],
+    ['trialing and unpaused', { status: 'trialing', pausedAt: null }],
+  ])('succeeds when the subscription is %s', async (_desc, sub) => {
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(adminWithSubscription(sub))
+      .mockResolvedValueOnce(staffUser);
+
+    const result = await enrollUsers('own-course-001', [{ email: STAFF_EMAIL }]);
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalled();
+    expect(result.success).toContain(STAFF_EMAIL);
   });
 });

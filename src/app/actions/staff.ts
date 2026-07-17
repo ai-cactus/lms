@@ -404,7 +404,20 @@ export async function assignCourseToStaffMember(
     return { success: [], alreadyEnrolled: [], newInvited: [], failed: [], error: 'Forbidden' };
   }
 
-  return enrollUsers(courseId, [{ email: target.email }], assignmentSettings);
+  // enrollUsers throws on the billing gate (and other hard failures). Normalize
+  // that into this action's return shape so the calling modal surfaces the
+  // specific message instead of falling back to a generic failed state.
+  try {
+    return await enrollUsers(courseId, [{ email: target.email }], assignmentSettings);
+  } catch (err) {
+    return {
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [staffUserId],
+      error: err instanceof Error ? err.message : 'Failed to assign course',
+    };
+  }
 }
 
 export async function getEnrollmentQuizResult(enrollmentId: string) {
