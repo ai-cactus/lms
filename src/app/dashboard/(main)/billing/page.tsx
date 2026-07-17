@@ -7,6 +7,8 @@ import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import BillingPage from '@/components/billing/BillingPage';
+import { BILLING_PLANS } from '@/lib/billing-plans';
+import { getPlanPrices } from '@/lib/billing-prices';
 import type { Role } from '@/types/next-auth';
 
 export const metadata = {
@@ -53,26 +55,33 @@ export default async function BillingPageRoute() {
     );
   }
 
-  // Fetch org staff count + active subscription plan for the UI
-  const organization = user.organizationId
-    ? await prisma.organization.findUnique({
-        where: { id: user.organizationId },
-        select: {
-          facilities: { select: { staffCount: true }, take: 1 },
-          subscription: {
-            select: {
-              plan: true,
-              status: true,
-              pausedAt: true,
-              pauseEndsAt: true,
-              cancelAtPeriodEnd: true,
-              billingCycle: true,
-              currentPeriodEnd: true,
+  // Fetch org staff count + active subscription plan for the UI, plus live
+  // Stripe plan prices — independent reads, so run them concurrently.
+  const [organization, planPrices] = await Promise.all([
+    user.organizationId
+      ? prisma.organization.findUnique({
+          where: { id: user.organizationId },
+          select: {
+            facilities: { select: { staffCount: true }, take: 1 },
+            subscription: {
+              select: {
+                plan: true,
+                status: true,
+                pausedAt: true,
+                pauseEndsAt: true,
+                cancelAtPeriodEnd: true,
+                billingCycle: true,
+                currentPeriodEnd: true,
+                stripeSubscriptionId: true,
+                scheduledPlan: true,
+                scheduledEffectiveAt: true,
+              },
             },
           },
-        },
-      })
-    : null;
+        })
+      : null,
+    getPlanPrices(),
+  ]);
 
   const sub = organization?.subscription;
   const staffCount = organization?.facilities[0]?.staffCount ?? null;
@@ -85,15 +94,31 @@ export default async function BillingPageRoute() {
       ? sub.plan // 'starter' | 'professional' | 'enterprise'
       : null;
 
+  // Whether the org has a live Stripe subscription that a plan change would swap
+  // in place (rather than opening a fresh Checkout). Mirrors the checkout route's
+  // `hasLiveSubscription` so the UI can warn before an immediate in-place swap.
+  const hasLiveSubscription = !!sub && sub.status !== 'canceled' && !!sub.stripeSubscriptionId;
+
+  // Resolve the pending scheduled change (if any) for the banner. Only surfaced
+  // when both the target plan and its effective date are known.
+  const scheduledPlanName =
+    sub?.scheduledPlan && sub.scheduledEffectiveAt
+      ? (BILLING_PLANS.find((p) => p.key === sub.scheduledPlan)?.name ?? null)
+      : null;
+
   return (
     <BillingPage
       staffCount={staffCount}
       currentPlan={activePlan}
+      planPrices={planPrices}
+      hasLiveSubscription={hasLiveSubscription}
       pausedAt={sub?.pausedAt ? sub.pausedAt.toISOString() : null}
       pauseEndsAt={sub?.pauseEndsAt ? sub.pauseEndsAt.toISOString() : null}
       cancelAtPeriodEnd={sub?.cancelAtPeriodEnd ?? false}
       billingCycle={sub?.billingCycle ?? null}
       currentPeriodEnd={sub?.currentPeriodEnd?.toISOString() ?? null}
+      scheduledPlanName={scheduledPlanName}
+      scheduledEffectiveAt={sub?.scheduledEffectiveAt?.toISOString() ?? null}
     />
   );
 }

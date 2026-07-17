@@ -46,6 +46,23 @@ export async function POST() {
       return NextResponse.json({ error: 'No active subscription found' }, { status: 404 });
     }
 
+    // A pending plan-change schedule wraps the subscription; mutating it while a
+    // schedule is active would conflict with the Schedule API, so require the
+    // scheduled change to be cancelled first.
+    if (subscription.stripeScheduleId) {
+      const when = subscription.scheduledEffectiveAt
+        ? new Date(subscription.scheduledEffectiveAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })
+        : 'the end of your billing period';
+      return NextResponse.json(
+        { error: `You have a pending plan change scheduled for ${when}. Cancel it first.` },
+        { status: 409 },
+      );
+    }
+
     if (!subscription.pausedAt) {
       return NextResponse.json({ error: 'Subscription is not paused.' }, { status: 409 });
     }

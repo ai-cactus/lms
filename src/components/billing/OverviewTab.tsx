@@ -134,6 +134,8 @@ function getActiveDiscountLabel(sub: Subscription): string | null {
 
 interface Props {
   onChangeTab: (tab: Tab) => void;
+  /** Bumped by a sibling tab's mutation to force a refetch of overview data. */
+  refreshKey?: number;
 }
 
 const cardClass = 'rounded-xl border border-border bg-background p-6';
@@ -141,7 +143,7 @@ const cardTitleClass = 'text-[11px] font-bold uppercase tracking-[0.6px] text-pr
 const planLinkClass =
   'inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-primary hover:underline';
 
-export default function OverviewTab({ onChangeTab }: Props) {
+export default function OverviewTab({ onChangeTab, refreshKey }: Props) {
   const router = useRouter();
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -169,7 +171,7 @@ export default function OverviewTab({ onChangeTab }: Props) {
 
   useEffect(() => {
     void fetchOverview();
-  }, [fetchOverview]);
+  }, [fetchOverview, refreshKey]);
 
   const handleResume = useCallback(async () => {
     setResuming(true);

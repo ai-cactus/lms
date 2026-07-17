@@ -229,7 +229,16 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const isPaused = !!sub.pause_collection;
   const existing = await prisma.subscription.findUnique({
     where: { organizationId: organization.id },
-    select: { pausedAt: true, pauseEndsAt: true, stripeSubscriptionId: true },
+    select: {
+      pausedAt: true,
+      pauseEndsAt: true,
+      stripeSubscriptionId: true,
+      scheduledPlan: true,
+      scheduledBillingCycle: true,
+      scheduledPriceId: true,
+      scheduledEffectiveAt: true,
+      stripeScheduleId: true,
+    },
   });
 
   // THER-010: protect the canonical subscription row from last-writer-wins
@@ -269,6 +278,28 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
       : null;
   const hasAuditorAccess = (sub.status === 'active' || sub.status === 'trialing') && !isPaused;
 
+  // Carry forward the local-only scheduled-change columns (Stripe never echoes
+  // them). When the schedule's future phase has transitioned — the live price
+  // now equals the scheduled price — clear them so the pending change resolves
+  // into the live plan. Otherwise preserve the pending change untouched.
+  const scheduleTransitioned =
+    !!existing?.scheduledPriceId && existing.scheduledPriceId === stripePriceId;
+  const scheduledFields = scheduleTransitioned
+    ? {
+        scheduledPlan: null,
+        scheduledBillingCycle: null,
+        scheduledPriceId: null,
+        scheduledEffectiveAt: null,
+        stripeScheduleId: null,
+      }
+    : {
+        scheduledPlan: existing?.scheduledPlan ?? null,
+        scheduledBillingCycle: existing?.scheduledBillingCycle ?? null,
+        scheduledPriceId: existing?.scheduledPriceId ?? null,
+        scheduledEffectiveAt: existing?.scheduledEffectiveAt ?? null,
+        stripeScheduleId: existing?.stripeScheduleId ?? null,
+      };
+
   // Upsert subscription record and grant/revoke auditor access atomically
   await Promise.all([
     prisma.subscription.upsert({
@@ -286,6 +317,7 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         pausedAt,
         pauseEndsAt,
         ...discountFields,
+        ...scheduledFields,
       },
       update: {
         stripeSubscriptionId: sub.id,
@@ -299,6 +331,7 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         pausedAt,
         pauseEndsAt,
         ...discountFields,
+        ...scheduledFields,
       },
     }),
     prisma.organization.update({

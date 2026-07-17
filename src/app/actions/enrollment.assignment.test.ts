@@ -73,7 +73,10 @@ beforeEach(() => {
       // After RBAC migration: 'admin' is retired; 'owner' is an admin role.
       role: 'owner',
       organizationId: 'org-1',
-      organization: { name: 'Org' },
+      // Defect B billing gate: enrollUsers now requires active, unpaused
+      // billing — without this the gate throws before reaching the
+      // assignment-batch logic under test here.
+      organization: { name: 'Org', subscription: { status: 'active', pausedAt: null } },
     })
     .mockResolvedValue({ id: 'worker-1', email: 'w@x.com', profile: { fullName: 'W' } });
   mockAssignmentCreate.mockResolvedValue({ id: 'assignment-1' });

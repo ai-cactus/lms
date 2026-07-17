@@ -532,6 +532,48 @@ describe('assignCourseToStaffMember() — permission gate, org scope, delegation
 
     expect(mockEnrollUsers).toHaveBeenCalledOnce();
   });
+
+  /**
+   * Defect B — enrollUsers throws when the org's billing gate blocks course
+   * assignment (see enrollment.test.ts's billing-gate matrix for the full
+   * active/paused/canceled coverage). assignCourseToStaffMember must catch
+   * that throw and normalize it into its own return shape — `failed:
+   * [staffUserId]` plus the caller-facing `error` message — rather than
+   * letting the error propagate and break the calling modal.
+   */
+  it('normalizes a billing-gate error thrown by enrollUsers into the failed/error return shape', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', email: 'target@acme.com' });
+    mockEnrollUsers.mockRejectedValue(
+      new Error('Your organization needs an active subscription to assign courses.'),
+    );
+
+    const result = await assignCourseToStaffMember('course-1', 'staff-1');
+
+    expect(result).toEqual({
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: ['staff-1'],
+      error: 'Your organization needs an active subscription to assign courses.',
+    });
+  });
+
+  it('normalizes a non-Error rejection from enrollUsers into a generic error message', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', email: 'target@acme.com' });
+    mockEnrollUsers.mockRejectedValue('unexpected non-error rejection');
+
+    const result = await assignCourseToStaffMember('course-1', 'staff-1');
+
+    expect(result).toEqual({
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: ['staff-1'],
+      error: 'Failed to assign course',
+    });
+  });
 });
 
 // ── revokeInvite() ───────────────────────────────────────────────────────────────

@@ -435,6 +435,164 @@ describe('POST /api/webhooks/stripe — discount persistence', () => {
   });
 });
 
+describe('POST /api/webhooks/stripe — scheduled-change carry-forward (Phase 4 / Issue 3)', () => {
+  /**
+   * `scheduled*` columns are local-only — Stripe never echoes them back on a
+   * subscription event — so every upsert must read the existing row and
+   * either preserve the pending change untouched, or clear it once the
+   * schedule's future phase has actually transitioned (detected by the live
+   * price now matching the previously-scheduled price).
+   */
+  const SCHEDULED_FIELDS = {
+    scheduledPlan: 'professional',
+    scheduledBillingCycle: 'yearly',
+    scheduledPriceId: 'price_pro_yearly',
+    scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+    stripeScheduleId: 'sub_sched_1',
+  };
+
+  it('preserves the pending scheduled* columns when the live price has NOT changed to the scheduled one', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue({
+      pausedAt: null,
+      pauseEndsAt: null,
+      stripeSubscriptionId: 'sub_current',
+      ...SCHEDULED_FIELDS,
+    });
+
+    // Live price is still the pre-change starter price — the schedule hasn't
+    // transitioned yet, so a routine renewal/update event must not clear it.
+    const incoming = stripeSubscription({
+      id: 'sub_current',
+      status: 'active',
+      items: {
+        data: [
+          {
+            price: { id: 'price_starter_monthly' },
+            current_period_start: 1700000000,
+            current_period_end: 1702592000,
+          },
+        ],
+      },
+    });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_preserve',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining(SCHEDULED_FIELDS),
+      }),
+    );
+  });
+
+  it('clears all scheduled* columns once the live price matches the previously-scheduled price (schedule transitioned)', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue({
+      pausedAt: null,
+      pauseEndsAt: null,
+      stripeSubscriptionId: 'sub_current',
+      ...SCHEDULED_FIELDS,
+    });
+
+    // The Subscription Schedule's phase 2 has taken over — the live price now
+    // equals what was scheduled.
+    const incoming = stripeSubscription({
+      id: 'sub_current',
+      status: 'active',
+      items: {
+        data: [
+          {
+            price: { id: 'price_pro_yearly' }, // matches SCHEDULED_FIELDS.scheduledPriceId
+            current_period_start: 1700000000,
+            current_period_end: 1702592000,
+          },
+        ],
+      },
+    });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_transition',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          scheduledPlan: null,
+          scheduledBillingCycle: null,
+          scheduledPriceId: null,
+          scheduledEffectiveAt: null,
+          stripeScheduleId: null,
+        }),
+      }),
+    );
+  });
+
+  it('has no scheduled* columns to preserve when there was never a pending change (all null passthrough)', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue({
+      pausedAt: null,
+      pauseEndsAt: null,
+      stripeSubscriptionId: 'sub_current',
+      scheduledPlan: null,
+      scheduledBillingCycle: null,
+      scheduledPriceId: null,
+      scheduledEffectiveAt: null,
+      stripeScheduleId: null,
+    });
+
+    const incoming = stripeSubscription({ id: 'sub_current', status: 'active' });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_no_schedule',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          scheduledPlan: null,
+          scheduledBillingCycle: null,
+          scheduledPriceId: null,
+          scheduledEffectiveAt: null,
+          stripeScheduleId: null,
+        }),
+      }),
+    );
+  });
+
+  it('creates a brand-new subscription row with all scheduled* columns null (no prior row to carry forward from)', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const incoming = stripeSubscription({ id: 'sub_brand_new_2', status: 'active' });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_brand_new_2',
+      type: 'customer.subscription.created',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          scheduledPlan: null,
+          scheduledBillingCycle: null,
+          scheduledPriceId: null,
+          scheduledEffectiveAt: null,
+          stripeScheduleId: null,
+        }),
+      }),
+    );
+  });
+});
+
 describe('POST /api/webhooks/stripe — invoice line-item period derivation', () => {
   it('invoice.paid persists the line-item-derived period (not the near-equal invoice-level fields) in BOTH create and update', async () => {
     const incoming = stripeInvoice();
