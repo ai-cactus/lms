@@ -715,6 +715,74 @@ export async function sendDemoRequestEmail(data: {
   }
 }
 
+export async function sendPartnerApplicationEmail(data: {
+  name: string;
+  email: string;
+  company?: string;
+  network?: string;
+  message?: string;
+}) {
+  const appName = 'Theraptly';
+  const to = process.env.PARTNER_INBOX || process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
+
+  if (!to) {
+    logger.error({
+      msg: '[partner] No PARTNER_INBOX or SMTP_USER configured to receive partner applications.',
+    });
+    return { success: false, error: 'Misconfigured email environment variables.' };
+  }
+
+  /** Renders a table row only when the value is non-empty. */
+  const row = (label: string, value: string) =>
+    value
+      ? `<tr><td style="padding: 8px 0; font-weight: 600; color: #4a5568; width: 35%; vertical-align: top;">${label}</td><td style="padding: 8px 0; color: #2d3748;">${value}</td></tr>`
+      : '';
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+      <div style="background: #4C6EF5; padding: 24px;">
+        <h2 style="color: #ffffff; margin: 0;">New Partner Application</h2>
+      </div>
+      <div style="padding: 32px 24px;">
+        <p style="color: #333; font-size: 16px; margin-top: 0;">
+          A new partner-program application has been submitted for <strong>${appName}</strong>:
+        </p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 24px;">
+          <tbody>
+            ${row('Name', escapeHtml(data.name))}
+            ${row('Email', `<a href="mailto:${encodeURIComponent(data.email)}" style="color: #4C6EF5;">${escapeHtml(data.email)}</a>`)}
+            ${row('Company', escapeHtml(data.company ?? ''))}
+            ${row('Facilities in network', escapeHtml(data.network ?? ''))}
+            ${row('Message', escapeHtml(data.message ?? ''))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  try {
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        replyTo: data.email,
+        subject: `New partner application — ${data.name}`,
+        html,
+      },
+      'partner_application',
+    );
+    logger.info({
+      msg: '[partner] Partner application email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({ msg: '[partner] Error sending partner application email', err: error });
+    return { success: false, error };
+  }
+}
+
 /** Resolve the server-side base URL using the same precedence as the other emails. */
 function reminderBaseUrl(): string {
   return (

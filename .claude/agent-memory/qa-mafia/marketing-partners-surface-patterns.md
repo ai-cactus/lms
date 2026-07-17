@@ -1,0 +1,22 @@
+---
+name: marketing-partners-surface-patterns
+description: How to QA the public (marketing) route group (/, /partners) — no DB/auth needed, safe local SMTP stub for the partner-application form's success path, and where the sections/calculator/form live
+metadata:
+  type: reference
+---
+
+**Route map:** `/` (landing, refreshed header/hero/footer + existing purple/Suisse middle sections `FeatureSection`/`InspectorsSection`/`HowItWorks`/`FeatureAccordion`) and `/partners` (8 sections: Hero, About Theraptly, How it Works, Earnings/calculator, Benefits, Founding Partner, FAQ, Apply CTA) both live under the `(marketing)` route group (`src/app/(marketing)/`), styled with a distinct reference-blue token set (`bg-surface #f6f5f3`, `text-ink`, `bg-brand #0003db`, `font-display`) scoped via `@theme inline` additions in `globals.css`, separate from the LMS app's own purple/Suisse tokens.
+
+**No DB/auth dependency — huge simplification for QA.** Neither the marketing layout, the landing page, `/partners`, nor `submitPartnerApplication` (`src/app/actions/partners.ts`) touch Prisma or `auth()` on their request paths. This means the whole journey (both stories) is testable with **zero DB/Redis/MailHog running** — confirmed by reading source first, then validating live with Docker fully unavailable in the sandbox. Only exception: the email helper's `recordEmailMessage` (an `EmailMessage` audit-log write inside `sendMailTracked`) touches Prisma, but its own try/catch swallows failures internally and never surfaces to the user — so even a fully-down DB doesn't block the form's success path.
+
+**Testing the partner-application form's real success path without a real inbox or Docker:** `.env` (not `.env.local`) has real Zoho SMTP creds (`SMTP_USER=admin@theraptly.com`) wired in — submitting for real would email the actual business inbox. Instead, stand up a minimal raw-TCP SMTP stub (no `smtpd`/`aiosmtpd` needed — Python 3.12+ removed `smtpd` and `aiosmtpd` isn't installed by default) and override `.env.local` for the duration of the run:
+```js
+// listens on 127.0.0.1:1025, answers EHLO/MAIL/RCPT/DATA/QUIT with bare 2xx/3xx codes
+```
+plus `.env.local`: `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `SMTP_USER=<fake>@theraptly.local`, `SMTP_PASSWORD=not-needed`, `PARTNER_INBOX=<fake>@theraptly.local`. Because `SMTP_HOST` is loopback, `isLoopbackSmtpSink` in `email.ts` skips AUTH/TLS hardening regardless of `NODE_ENV`, so the stub doesn't need to implement real auth. This reaches a **genuine** success (`sendMailTracked` → `transporter.sendMail` succeeds → server logs `[partner] Partner application email sent` / `Partner application submitted`), not just a client-side optimistic UI state — always cross-check the dev-server log for that line, don't trust the "Application received" panel alone. **Revert `.env.local` after the run** — this is a QA-only override.
+
+**Earnings calculator verification technique:** the sliders are native `input[type=range]`. `playwright-cli click <ref>` then `press End`/`Home` reliably jumps to max/min (dragging is flaky to script). Read the reactive total via `playwright-cli --raw eval "el => el.textContent" <total-ref>` rather than trusting a screenshot — confirms genuine DOM reactivity (e.g. facilities 10→50 moved the 5-year total from $45,000 → $225,000; years 5→1 at facilities=50 moved it to $30,000, consistent with the plan's 20%-Y1/5%-residual math).
+
+**Full-page screenshot gotcha — scroll-triggered reveal animations.** The marketing sections use a `Reveal`/`useInView` (IntersectionObserver-based) fade-up animation. `playwright-cli screenshot --full-page` on a freshly-loaded page can render most mid-page sections as **blank white gaps** even though the content is fully present and correctly styled (`opacity: 1` on inspection) — this is a screenshot-stitching artifact, not a rendering bug, because CDP's full-page capture doesn't dispatch the incremental scroll events IntersectionObserver depends on. Fix: scroll through the whole page in steps first (`window.scrollTo` in a loop with a short wait every ~400px, then back to top) before taking the full-page screenshot, or `scrollIntoView()` the specific element you want evidence for.
+
+See also [[next-dev-turbopack-css-false-positive]] for the related dev-server CSS gap found on this same page, and [[courses-billing-gate]] for why other course-creation flows in this app *do* need a paid plan (contrast: partners is fully public/ungated).

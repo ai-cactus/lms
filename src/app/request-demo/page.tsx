@@ -14,9 +14,9 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import DatePicker from '@/components/ui/DatePicker';
 import { submitDemoRequest } from '@/app/actions/demo';
-import FeatureSection from '@/app/_components/FeatureSection';
-import InspectorsSection from '@/app/_components/InspectorsSection';
-import Footer from '@/app/_components/Footer';
+import FeatureSection from '@/app/(marketing)/_components/FeatureSection';
+import InspectorsSection from '@/app/(marketing)/_components/InspectorsSection';
+import Footer from '@/app/(marketing)/_components/Footer';
 
 const formSchema = z.object({
   fullName: z.string().min(1, 'Full Name is required'),
