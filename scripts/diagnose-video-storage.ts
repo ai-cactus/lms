@@ -75,8 +75,11 @@ function sample<T>(items: T[], n = 10): T[] {
 
 async function main(): Promise<void> {
   // Dynamic imports AFTER loadEnv so the storage client and Prisma pick up env.
-  const { default: prisma } = await import('@/lib/prisma');
-  const { listFiles } = await import('@/lib/storage');
+  // Relative (not `@/…`) paths: tsx's tsconfig-paths resolution does not apply
+  // to dynamic import() specifiers in the deployed container. Mirrors the
+  // relative import in scripts/delete-video-courses.ts.
+  const { default: prisma } = await import('../src/lib/prisma');
+  const { listFiles } = await import('../src/lib/storage');
 
   const bucket = process.env.GCP_BUCKET_NAME ?? '(GCP_BUCKET_NAME unset)';
   console.log(`\nReconciling prefix "${SWEEP_PREFIX}" against the database.`);
