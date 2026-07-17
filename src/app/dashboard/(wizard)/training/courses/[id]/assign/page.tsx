@@ -3,6 +3,7 @@ import { isAdminRole } from '@/lib/rbac/role-utils';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
+import { hasActiveBilling } from '@/lib/billing';
 import AssignPublishClient from '@/components/dashboard/training/AssignPublishClient';
 
 export const dynamic = 'force-dynamic';
@@ -17,9 +18,23 @@ export default async function AssignCoursePage(props: PageProps) {
 
   const me = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { role: true, organizationId: true },
+    select: {
+      role: true,
+      organizationId: true,
+      organization: {
+        select: {
+          subscription: { select: { status: true, pausedAt: true } },
+        },
+      },
+    },
   });
   if (!me || !isAdminRole(me.role)) redirect('/dashboard');
+
+  // Block URL-bypass of the billing gate: assigning courses requires active
+  // billing. Redirect to the courses list where the gate UI is shown.
+  if (!hasActiveBilling(me.organization?.subscription)) {
+    redirect('/dashboard/courses');
+  }
 
   const { id } = await props.params;
 

@@ -2,6 +2,7 @@
 
 import prisma from '@/lib/prisma';
 import { isAdminRole, WORKER_ROLES, DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
+import { hasActiveBilling } from '@/lib/billing';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -648,11 +649,28 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   // 2. Get Current User's Org to ensure we only assign to own staff
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { organizationId: true },
+    select: {
+      organizationId: true,
+      organization: {
+        select: {
+          subscription: { select: { status: true, pausedAt: true } },
+        },
+      },
+    },
   });
 
   if (!currentUser?.organizationId) {
     throw new Error('You must belong to an organization to assign courses');
+  }
+
+  // Billing gate (defense in depth): assigning courses requires active billing.
+  if (!hasActiveBilling(currentUser?.organization?.subscription)) {
+    logger.warn({
+      msg: '[course] Course assignment blocked — organization lacks active billing',
+      organizationId: currentUser.organizationId,
+      userId: session.user.id,
+    });
+    throw new Error('Your organization needs an active subscription to assign courses.');
   }
 
   // 3. Find Users by Email (filtered by Org)
