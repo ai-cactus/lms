@@ -2,10 +2,13 @@
 /**
  * READ-ONLY diagnostic for the system-video storage prefix.
  *
- * SELF-CONTAINED: imports only `@prisma/client` and `@google-cloud/storage`
- * (both present in the deployed image), NOT any `@/…` or `../src/…` app module.
- * The production container is a standalone Next.js build with no `/app/src`, so
- * app-module imports cannot resolve there — this script deliberately avoids them.
+ * WHERE THIS RUNS: a FULL-SOURCE environment — a local checkout, or the staging
+ * container — because it uses the generated Prisma client (`@/generated/prisma`)
+ * + the `PrismaPg` driver adapter, mirroring db/index.ts. It CANNOT run in the
+ * standalone production container (that image ships no `/app/src` and no
+ * generated-client source). To reconcile PRODUCTION data from the standalone
+ * box, use the SQL + `gcloud storage ls` fallback documented in the runbook
+ * instead — it needs no app code.
  *
  * It reconciles what the database references against what actually exists in the
  * bucket — WITHOUT deleting anything:
@@ -28,7 +31,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@/generated/prisma/client';
 import { Storage } from '@google-cloud/storage';
 
 /** Minimal .env loader — fills process.env WITHOUT overwriting real env vars. */
@@ -92,7 +96,9 @@ function sample<T>(items: T[], n = 10): T[] {
 }
 
 async function main(): Promise<void> {
-  const prisma = new PrismaClient();
+  // Mirror db/index.ts: the generated client requires the PrismaPg driver adapter.
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+  const prisma = new PrismaClient({ adapter });
   try {
     const { storage, bucket } = makeGcs();
 
