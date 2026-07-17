@@ -2,36 +2,34 @@
 /**
  * READ-ONLY diagnostic for the system-video storage prefix.
  *
- * Reconciles what the database references against what actually exists in the
- * bucket — WITHOUT deleting anything — so we can see, concretely:
+ * SELF-CONTAINED: imports only `@prisma/client` and `@google-cloud/storage`
+ * (both present in the deployed image), NOT any `@/…` or `../src/…` app module.
+ * The production container is a standalone Next.js build with no `/app/src`, so
+ * app-module imports cannot resolve there — this script deliberately avoids them.
  *
- *   • MISSING   — a lesson/course/artifact row points at a `system/videos/`
- *                 object that no longer exists in storage. This is the current
- *                 damage: every course here fails to play. After re-uploading,
- *                 this list should be empty.
+ * It reconciles what the database references against what actually exists in the
+ * bucket — WITHOUT deleting anything:
  *
- *   • ORPHAN    — an object exists under `system/videos/` that nothing in the DB
- *                 references. This is exactly what the sweeper would delete.
- *                 A HEALTHY system has a small, explicable number here (raw
- *                 uploads superseded by a `normalized/` transcode, still inside
- *                 the grace window). A pathological state is `referenced === 0`
- *                 with many orphans — that is the "delete everything" footgun.
+ *   • MISSING  — a lesson/course/artifact row points at a `system/videos/`
+ *                object that no longer exists in storage. This is the damage:
+ *                every course here fails to play. After re-uploading it should
+ *                be empty.
+ *   • ORPHAN   — an object exists under `system/videos/` that nothing in the DB
+ *                references. This is what the sweeper would delete. A referenced
+ *                count of 0 while objects exist is the "delete everything" state.
+ *   • MATCHED  — referenced AND present. These are the videos that play.
  *
- *   • MATCHED   — referenced AND present. These are the videos that play.
+ * Usage (inside the container, env already present):
+ *   docker cp scripts/diagnose-video-storage.ts lms-production-app:/app/scripts/
+ *   docker exec -it lms-production-app npx tsx scripts/diagnose-video-storage.ts
  *
- * It mirrors the sweeper's own reconciliation (video-sweep-worker.ts) so its
- * output is directly comparable to what the sweeper would have decided.
- *
- * Usage (inside the container, with production env available):
- *   docker exec -it <container> npx tsx scripts/diagnose-video-storage.ts
- *   # or locally against a specific env file:
- *   npx tsx scripts/diagnose-video-storage.ts --env-file=.env.production
- *
- * It never mutates the database or storage. Safe to run anytime.
+ * Never mutates the database or storage. Safe to run anytime.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { PrismaClient } from '@prisma/client';
+import { Storage } from '@google-cloud/storage';
 
 /** Minimal .env loader — fills process.env WITHOUT overwriting real env vars. */
 function loadEnvFile(file: string): boolean {
@@ -52,7 +50,6 @@ function loadEnvFile(file: string): boolean {
   return true;
 }
 
-/** Load env BEFORE importing prisma/storage (both read env at module init). */
 function loadEnv(): void {
   const explicit = process.argv.find((a) => a.startsWith('--env-file='));
   const candidates = [
@@ -69,92 +66,109 @@ loadEnv();
 
 const SWEEP_PREFIX = 'system/videos/';
 
+/** Build a GCS client the same way src/lib/storage/gcs-provider.ts does. */
+function makeGcs(): { storage: Storage; bucket: string } {
+  const bucket = process.env.GCP_BUCKET_NAME;
+  if (!bucket) throw new Error('GCP_BUCKET_NAME is not set');
+
+  const rawKey = process.env.GCS_KEY_BASE64;
+  if (rawKey) {
+    const parsed = JSON.parse(Buffer.from(rawKey, 'base64').toString('utf8')) as {
+      client_email: string;
+      private_key: string;
+    };
+    const storage = new Storage({
+      projectId: process.env.GOOGLE_PROJECT_ID,
+      credentials: { client_email: parsed.client_email, private_key: parsed.private_key },
+    });
+    return { storage, bucket };
+  }
+  // Local dev: ADC.
+  return { storage: new Storage(), bucket };
+}
+
 function sample<T>(items: T[], n = 10): T[] {
   return items.slice(0, n);
 }
 
 async function main(): Promise<void> {
-  // Dynamic imports AFTER loadEnv so the storage client and Prisma pick up env.
-  // Relative (not `@/…`) paths: tsx's tsconfig-paths resolution does not apply
-  // to dynamic import() specifiers in the deployed container. Mirrors the
-  // relative import in scripts/delete-video-courses.ts.
-  const { default: prisma } = await import('../src/lib/prisma');
-  const { listFiles } = await import('../src/lib/storage');
+  const prisma = new PrismaClient();
+  try {
+    const { storage, bucket } = makeGcs();
 
-  const bucket = process.env.GCP_BUCKET_NAME ?? '(GCP_BUCKET_NAME unset)';
-  console.log(`\nReconciling prefix "${SWEEP_PREFIX}" against the database.`);
-  console.log(`GCP_BUCKET_NAME = ${bucket}\n`);
+    console.log(`\nReconciling prefix "${SWEEP_PREFIX}" against the database.`);
+    console.log(`GCP_BUCKET_NAME = ${bucket}\n`);
 
-  // 1. Everything the DB references (the exact three columns the sweeper trusts).
-  const [lessonVideos, previewVideos, artifacts] = await Promise.all([
-    prisma.lesson.findMany({
-      where: { videoStorageUri: { not: null } },
-      select: { videoStorageUri: true },
-    }),
-    prisma.course.findMany({
-      where: { previewVideoStorageUri: { not: null } },
-      select: { previewVideoStorageUri: true },
-    }),
-    prisma.courseArtifact.findMany({ select: { storageUri: true } }),
-  ]);
+    // 1. Everything the DB references (the exact three columns the sweeper trusts).
+    const [lessonVideos, previewVideos, artifacts] = await Promise.all([
+      prisma.lesson.findMany({
+        where: { videoStorageUri: { not: null } },
+        select: { videoStorageUri: true },
+      }),
+      prisma.course.findMany({
+        where: { previewVideoStorageUri: { not: null } },
+        select: { previewVideoStorageUri: true },
+      }),
+      prisma.courseArtifact.findMany({ select: { storageUri: true } }),
+    ]);
 
-  const referenced = new Set<string>();
-  for (const l of lessonVideos) if (l.videoStorageUri) referenced.add(l.videoStorageUri);
-  for (const c of previewVideos) if (c.previewVideoStorageUri) referenced.add(c.previewVideoStorageUri);
-  for (const a of artifacts) if (a.storageUri) referenced.add(a.storageUri);
+    const referenced = new Set<string>();
+    for (const l of lessonVideos) if (l.videoStorageUri) referenced.add(l.videoStorageUri);
+    for (const c of previewVideos)
+      if (c.previewVideoStorageUri) referenced.add(c.previewVideoStorageUri);
+    for (const a of artifacts) if (a.storageUri) referenced.add(a.storageUri);
 
-  // Only URIs that actually live under the swept prefix are relevant here.
-  const referencedInPrefix = [...referenced].filter((uri) => uri.includes(SWEEP_PREFIX));
+    const referencedInPrefix = [...referenced].filter((uri) => uri.includes(SWEEP_PREFIX));
 
-  // 2. Everything that actually exists in storage under the prefix.
-  const objects = await listFiles(SWEEP_PREFIX);
-  const present = new Set(objects.map((o) => o.storageUri));
+    // 2. Everything that actually exists in GCS under the prefix.
+    const [files] = await storage.bucket(bucket).getFiles({ prefix: SWEEP_PREFIX });
+    const present = new Set(files.map((f) => `gcs://${bucket}/${f.name}`));
 
-  // 3. Reconcile.
-  const missing = referencedInPrefix.filter((uri) => !present.has(uri));
-  const matched = referencedInPrefix.filter((uri) => present.has(uri));
-  const orphans = objects.map((o) => o.storageUri).filter((uri) => !referenced.has(uri));
+    // 3. Reconcile (only gcs:// referenced URIs can be checked against a GCS listing).
+    const gcsReferenced = referencedInPrefix.filter((uri) => uri.startsWith('gcs://'));
+    const missing = gcsReferenced.filter((uri) => !present.has(uri));
+    const matched = gcsReferenced.filter((uri) => present.has(uri));
+    const orphans = [...present].filter((uri) => !referenced.has(uri));
 
-  console.log('── Referenced-set health ──────────────────────────────────');
-  console.log(`  DB URIs under prefix:     ${referencedInPrefix.length}`);
-  console.log(`  ...present in storage:    ${matched.length}   (these play)`);
-  console.log(`  ...MISSING from storage:  ${missing.length}   (these are broken)`);
-  console.log('');
-  console.log('── Bucket vs DB ───────────────────────────────────────────');
-  console.log(`  Objects in storage:       ${objects.length}`);
-  console.log(`  ...ORPHAN (unreferenced): ${orphans.length}   (sweeper deletion candidates)`);
-  console.log('');
-
-  // The single most important guardrail signal: a referenced set that matches
-  // nothing while objects exist is the "delete everything" footgun.
-  if (objects.length > 0 && matched.length === 0) {
-    console.log('  ⚠  DANGER: objects exist but ZERO are referenced. A sweep in this');
-    console.log('     state would delete the entire prefix. Do NOT enable the sweeper.');
+    console.log('── Referenced-set health ──────────────────────────────────');
+    console.log(`  DB URIs under prefix:     ${referencedInPrefix.length}`);
+    console.log(`  ...present in storage:    ${matched.length}   (these play)`);
+    console.log(`  ...MISSING from storage:  ${missing.length}   (these are broken)`);
     console.log('');
-  }
-
-  if (missing.length > 0) {
-    console.log(`── ${missing.length} MISSING object(s) — DB points at storage that is gone ──`);
-    for (const uri of sample(missing)) console.log(`  ✗ ${uri}`);
-    if (missing.length > 10) console.log(`  … and ${missing.length - 10} more`);
+    console.log('── Bucket vs DB ───────────────────────────────────────────');
+    console.log(`  Objects in storage:       ${present.size}`);
+    console.log(`  ...ORPHAN (unreferenced): ${orphans.length}   (sweeper deletion candidates)`);
     console.log('');
-  }
 
-  if (orphans.length > 0) {
-    console.log(`── ${orphans.length} ORPHAN object(s) — present but unreferenced ──`);
-    for (const uri of sample(orphans)) console.log(`  • ${uri}`);
-    if (orphans.length > 10) console.log(`  … and ${orphans.length - 10} more`);
-    console.log('');
-  }
+    if (present.size > 0 && matched.length === 0) {
+      console.log('  ⚠  DANGER: objects exist but ZERO are referenced. A sweep in this');
+      console.log('     state would delete the entire prefix. Do NOT enable the sweeper.');
+      console.log('');
+    }
 
-  if (missing.length === 0 && objects.length > 0) {
-    console.log('✓ Every referenced video is present in storage. Playback should be healthy.\n');
-  }
+    if (missing.length > 0) {
+      console.log(`── ${missing.length} MISSING object(s) — DB points at storage that is gone ──`);
+      for (const uri of sample(missing)) console.log(`  ✗ ${uri}`);
+      if (missing.length > 10) console.log(`  … and ${missing.length - 10} more`);
+      console.log('');
+    }
 
-  await prisma.$disconnect();
+    if (orphans.length > 0) {
+      console.log(`── ${orphans.length} ORPHAN object(s) — present but unreferenced ──`);
+      for (const uri of sample(orphans)) console.log(`  • ${uri}`);
+      if (orphans.length > 10) console.log(`  … and ${orphans.length - 10} more`);
+      console.log('');
+    }
+
+    if (missing.length === 0 && present.size > 0) {
+      console.log('✓ Every referenced video is present in storage. Playback should be healthy.\n');
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-main().catch(async (err) => {
+main().catch((err) => {
   console.error('[diagnose-video-storage] Fatal:', err instanceof Error ? err.message : err);
   process.exit(1);
 });
