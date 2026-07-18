@@ -64,6 +64,27 @@ const ENROLLMENT_NEAR_DEADLINE_ID = '88888888-8888-4888-8888-888888888884';
 // resulting deadline is genuinely produced by the assign flow under test
 // rather than pre-seeded, and doesn't disturb the other enrollment fixtures.
 const ASSIGNABLE_WORKER_ID = '22222222-2222-4222-8222-222222222227';
+// Phase 3 QA fixtures — both start pre-positioned at progress:100 (lesson
+// content already "read"), status in_progress, zero quiz attempts, so their
+// specs can go straight to the quiz intro screen without re-deriving that
+// setup state in every test run.
+// A genuine job-specific worker sub-role (not the seeded roles above, which
+// all use front_desk_admin) — regression fixture for the isWorkerRole() fix:
+// the attestation gate used to check `role === 'worker'` literally, which no
+// real sub-role (including front_desk_admin) ever matches.
+const NURSE_ID = '22222222-2222-4222-8222-222222222228';
+const ENROLLMENT_NURSE_ID = '88888888-8888-4888-8888-888888888885';
+// A worker dedicated to the fail-x3/lockout e2e path, kept separate from
+// worker@test.com (already seeded pre-locked for the ENG-022 admin-retake
+// spec) so this spec can drive the lock from a fresh in_progress state.
+const LOCKOUT_WORKER_ID = '22222222-2222-4222-8222-222222222229';
+const ENROLLMENT_LOCKOUT_ID = '88888888-8888-4888-8888-888888888886';
+// A second, independent worker for the self-service "Retake Quiz" UI
+// journey, kept disjoint from lockoutWorker (which the API-driven
+// fail-x3/lockout spec drives to a locked state) so the two specs never
+// contend over the same enrollment's attempt history.
+const RETAKE_WORKER_ID = '22222222-2222-4222-8222-222222222230';
+const ENROLLMENT_RETAKE_ID = '88888888-8888-4888-8888-888888888887';
 
 // The correct answer is stored as the option TEXT (the worker learn/grading flow
 // compares by string equality, not by letter or index).
@@ -366,8 +387,107 @@ async function main(): Promise<void> {
   // so re-seeding always restores the pristine "not yet assigned" starting
   // state the spec assumes.
   await prisma.enrollment.deleteMany({ where: { userId: assignableWorker.id } });
+
+  const nurse = await prisma.user.upsert({
+    where: { email: 'nina.nurse@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'nurse',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: NURSE_ID,
+      email: 'nina.nurse@test.com',
+      password: workerPassword,
+      role: 'nurse',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: nurse.id },
+    update: { fullName: 'Nina Nurse', firstName: 'Nina', lastName: 'Nurse' },
+    create: {
+      id: nurse.id,
+      email: 'nina.nurse@test.com',
+      fullName: 'Nina Nurse',
+      firstName: 'Nina',
+      lastName: 'Nurse',
+    },
+  });
+
+  const lockoutWorker = await prisma.user.upsert({
+    where: { email: 'larry.lockout@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: LOCKOUT_WORKER_ID,
+      email: 'larry.lockout@test.com',
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: lockoutWorker.id },
+    update: { fullName: 'Larry Lockout', firstName: 'Larry', lastName: 'Lockout' },
+    create: {
+      id: lockoutWorker.id,
+      email: 'larry.lockout@test.com',
+      fullName: 'Larry Lockout',
+      firstName: 'Larry',
+      lastName: 'Lockout',
+    },
+  });
+
+  const retakeWorker = await prisma.user.upsert({
+    where: { email: 'rita.retake@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: RETAKE_WORKER_ID,
+      email: 'rita.retake@test.com',
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: retakeWorker.id },
+    update: { fullName: 'Rita Retake', firstName: 'Rita', lastName: 'Retake' },
+    create: {
+      id: retakeWorker.id,
+      email: 'rita.retake@test.com',
+      fullName: 'Rita Retake',
+      firstName: 'Rita',
+      lastName: 'Retake',
+    },
+  });
   log(
-    'users + profiles ready (admin, admin2, worker, sarah, overdueWorker, nearDeadlineWorker, assignableWorker)',
+    'users + profiles ready (admin, admin2, worker, sarah, overdueWorker, nearDeadlineWorker, assignableWorker, nurse, lockoutWorker, retakeWorker)',
   );
 
   // 3. Document + version owned by the admin (feeds the ENG-024 wizard picker).
@@ -505,7 +625,17 @@ async function main(): Promise<void> {
   // field back to its pristine value, so re-seeding always restores the exact
   // fixture state the specs assume — not just on a fresh database.
   await prisma.quizAttempt.deleteMany({
-    where: { enrollmentId: { in: [ENROLLMENT_SARAH_ID, ENROLLMENT_WORKER_ID] } },
+    where: {
+      enrollmentId: {
+        in: [
+          ENROLLMENT_SARAH_ID,
+          ENROLLMENT_WORKER_ID,
+          ENROLLMENT_NURSE_ID,
+          ENROLLMENT_LOCKOUT_ID,
+          ENROLLMENT_RETAKE_ID,
+        ],
+      },
+    },
   });
 
   // ENG-022 actually calls assignRetake(), which — on success — creates a NEW
@@ -629,8 +759,79 @@ async function main(): Promise<void> {
       dueAt: threeDaysFromNow,
     },
   });
+  // Nurse + lockout-worker enrollments: progress:100 (lesson content already
+  // "read") so their specs land straight on the quiz intro screen, in_progress
+  // with zero quiz attempts (reset above alongside sarah/worker).
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_NURSE_ID },
+    update: {
+      status: 'in_progress',
+      progress: 100,
+      score: null,
+      completedAt: null,
+      attestedAt: null,
+      attestationSignature: null,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+    },
+    create: {
+      id: ENROLLMENT_NURSE_ID,
+      userId: nurse.id,
+      courseId: COURSE_ID,
+      status: 'in_progress',
+      progress: 100,
+      startedAt: now,
+    },
+  });
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_LOCKOUT_ID },
+    update: {
+      status: 'in_progress',
+      progress: 100,
+      score: null,
+      completedAt: null,
+      attestedAt: null,
+      attestationSignature: null,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+    },
+    create: {
+      id: ENROLLMENT_LOCKOUT_ID,
+      userId: lockoutWorker.id,
+      courseId: COURSE_ID,
+      status: 'in_progress',
+      progress: 100,
+      startedAt: now,
+    },
+  });
+
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_RETAKE_ID },
+    update: {
+      status: 'in_progress',
+      progress: 100,
+      score: null,
+      completedAt: null,
+      attestedAt: null,
+      attestationSignature: null,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+    },
+    create: {
+      id: ENROLLMENT_RETAKE_ID,
+      userId: retakeWorker.id,
+      courseId: COURSE_ID,
+      status: 'in_progress',
+      progress: 100,
+      startedAt: now,
+    },
+  });
+
   log(
-    'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue, nearDeadlineWorker due in 3d; retakes + quiz attempts reset)',
+    'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue, nearDeadlineWorker due in 3d, nurse + lockoutWorker + retakeWorker at progress:100; retakes + quiz attempts reset)',
   );
 
   log('seed complete');

@@ -1255,11 +1255,8 @@ export async function retakeQuiz(enrollmentId: string) {
           lessons: {
             include: { quiz: true },
           },
+          quiz: true,
         },
-      },
-      quizAttempts: {
-        orderBy: { completedAt: 'desc' },
-        take: 1,
       },
     },
   });
@@ -1269,28 +1266,22 @@ export async function retakeQuiz(enrollmentId: string) {
     throw new Error('Enrollment not found or unauthorized');
   }
 
+  // Quiz lives on the last lesson (text courses) or on the course itself
+  // (video courses). Prefer the lesson quiz, fall back to the course quiz.
   const lastLesson = enrollment.course.lessons[enrollment.course.lessons.length - 1];
-  const quiz = lastLesson?.quiz;
-  const latestAttempt = enrollment.quizAttempts[0];
+  const quiz = lastLesson?.quiz ?? enrollment.course.quiz;
 
+  // Enforce the attempt limit against COMPLETED attempts (timeTaken !== null),
+  // consistent with the append-history model in the quiz start/submit routes.
+  // A null/0 allowedAttempts means unlimited. The fresh draft is appended by
+  // /api/quiz/[id]/start; retake must not mutate historical attempts.
   if (quiz && quiz.allowedAttempts) {
-    const attemptsUsed = latestAttempt?.attemptCount || 0;
-    if (attemptsUsed >= quiz.allowedAttempts) {
+    const completedCount = await prisma.quizAttempt.count({
+      where: { enrollmentId, quizId: quiz.id, timeTaken: { not: null } },
+    });
+    if (completedCount >= quiz.allowedAttempts) {
       throw new Error('No attempts remaining');
     }
-  }
-
-  // Reset the quiz attempt so the start endpoint allows a new attempt
-  if (latestAttempt) {
-    await prisma.quizAttempt.update({
-      where: { id: latestAttempt.id },
-      data: {
-        timeTaken: null,
-        answers: [],
-        score: 0,
-        completedAt: new Date(),
-      },
-    });
   }
 
   await prisma.enrollment.update({
