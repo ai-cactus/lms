@@ -50,6 +50,41 @@ const ENROLLMENT_WORKER_ID = '88888888-8888-4888-8888-888888888882';
 const OVERDUE_WORKER_ID = '22222222-2222-4222-8222-222222222224';
 const ENROLLMENT_OVERDUE_ID = '88888888-8888-4888-8888-888888888883';
 const SUBSCRIPTION_ID = '99999999-9999-4999-8999-999999999991';
+// Second org admin — Phase 2 Document Hub full-parity e2e coverage (two admins
+// in one org see/manage each other's documents) needs a distinct admin
+// account, not just the single seeded owner.
+const ADMIN2_ID = '22222222-2222-4222-8222-222222222225';
+// A worker whose deadline falls inside the At Risk (next 7 days) window, for
+// the status-tracker nearDeadline section's e2e coverage. Kept separate from
+// the always-≥7-days-overdue fixture above.
+const NEAR_DEADLINE_WORKER_ID = '22222222-2222-4222-8222-222222222226';
+const ENROLLMENT_NEAR_DEADLINE_ID = '88888888-8888-4888-8888-888888888884';
+// A worker with NO enrollment in the seeded course yet — the assign-page e2e
+// coverage (Issue #2/#5/#4 flows) assigns THIS worker live via the UI, so the
+// resulting deadline is genuinely produced by the assign flow under test
+// rather than pre-seeded, and doesn't disturb the other enrollment fixtures.
+const ASSIGNABLE_WORKER_ID = '22222222-2222-4222-8222-222222222227';
+// Phase 3 QA fixtures — both start pre-positioned at progress:100 (lesson
+// content already "read"), status in_progress, zero quiz attempts, so their
+// specs can go straight to the quiz intro screen without re-deriving that
+// setup state in every test run.
+// A genuine job-specific worker sub-role (not the seeded roles above, which
+// all use front_desk_admin) — regression fixture for the isWorkerRole() fix:
+// the attestation gate used to check `role === 'worker'` literally, which no
+// real sub-role (including front_desk_admin) ever matches.
+const NURSE_ID = '22222222-2222-4222-8222-222222222228';
+const ENROLLMENT_NURSE_ID = '88888888-8888-4888-8888-888888888885';
+// A worker dedicated to the fail-x3/lockout e2e path, kept separate from
+// worker@test.com (already seeded pre-locked for the ENG-022 admin-retake
+// spec) so this spec can drive the lock from a fresh in_progress state.
+const LOCKOUT_WORKER_ID = '22222222-2222-4222-8222-222222222229';
+const ENROLLMENT_LOCKOUT_ID = '88888888-8888-4888-8888-888888888886';
+// A second, independent worker for the self-service "Retake Quiz" UI
+// journey, kept disjoint from lockoutWorker (which the API-driven
+// fail-x3/lockout spec drives to a locked state) so the two specs never
+// contend over the same enrollment's attempt history.
+const RETAKE_WORKER_ID = '22222222-2222-4222-8222-222222222230';
+const ENROLLMENT_RETAKE_ID = '88888888-8888-4888-8888-888888888887';
 
 // The correct answer is stored as the option TEXT (the worker learn/grading flow
 // compares by string equality, not by letter or index).
@@ -250,7 +285,210 @@ async function main(): Promise<void> {
       lastName: 'Overdue',
     },
   });
-  log('users + profiles ready (admin, worker, sarah, overdueWorker)');
+  const admin2 = await prisma.user.upsert({
+    where: { email: 'admin2@test.com' },
+    update: {
+      password: adminPassword,
+      role: 'supervisor',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: ADMIN2_ID,
+      email: 'admin2@test.com',
+      password: adminPassword,
+      role: 'supervisor',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: admin2.id },
+    update: { fullName: 'Alex Second', firstName: 'Alex', lastName: 'Second' },
+    create: {
+      id: admin2.id,
+      email: 'admin2@test.com',
+      fullName: 'Alex Second',
+      firstName: 'Alex',
+      lastName: 'Second',
+    },
+  });
+
+  const nearDeadlineWorker = await prisma.user.upsert({
+    where: { email: 'nadia.nearing@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: NEAR_DEADLINE_WORKER_ID,
+      email: 'nadia.nearing@test.com',
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: nearDeadlineWorker.id },
+    update: { fullName: 'Nadia Nearing', firstName: 'Nadia', lastName: 'Nearing' },
+    create: {
+      id: nearDeadlineWorker.id,
+      email: 'nadia.nearing@test.com',
+      fullName: 'Nadia Nearing',
+      firstName: 'Nadia',
+      lastName: 'Nearing',
+    },
+  });
+  const assignableWorker = await prisma.user.upsert({
+    where: { email: 'walt.assignable@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: ASSIGNABLE_WORKER_ID,
+      email: 'walt.assignable@test.com',
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: assignableWorker.id },
+    update: { fullName: 'Walt Assignable', firstName: 'Walt', lastName: 'Assignable' },
+    create: {
+      id: assignableWorker.id,
+      email: 'walt.assignable@test.com',
+      fullName: 'Walt Assignable',
+      firstName: 'Walt',
+      lastName: 'Assignable',
+    },
+  });
+  // Idempotency: the assign-page e2e spec enrolls this worker live via the UI
+  // on every run — remove any enrollment/assignment it created on a prior run
+  // so re-seeding always restores the pristine "not yet assigned" starting
+  // state the spec assumes.
+  await prisma.enrollment.deleteMany({ where: { userId: assignableWorker.id } });
+
+  const nurse = await prisma.user.upsert({
+    where: { email: 'nina.nurse@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'nurse',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: NURSE_ID,
+      email: 'nina.nurse@test.com',
+      password: workerPassword,
+      role: 'nurse',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: nurse.id },
+    update: { fullName: 'Nina Nurse', firstName: 'Nina', lastName: 'Nurse' },
+    create: {
+      id: nurse.id,
+      email: 'nina.nurse@test.com',
+      fullName: 'Nina Nurse',
+      firstName: 'Nina',
+      lastName: 'Nurse',
+    },
+  });
+
+  const lockoutWorker = await prisma.user.upsert({
+    where: { email: 'larry.lockout@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: LOCKOUT_WORKER_ID,
+      email: 'larry.lockout@test.com',
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: lockoutWorker.id },
+    update: { fullName: 'Larry Lockout', firstName: 'Larry', lastName: 'Lockout' },
+    create: {
+      id: lockoutWorker.id,
+      email: 'larry.lockout@test.com',
+      fullName: 'Larry Lockout',
+      firstName: 'Larry',
+      lastName: 'Lockout',
+    },
+  });
+
+  const retakeWorker = await prisma.user.upsert({
+    where: { email: 'rita.retake@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: RETAKE_WORKER_ID,
+      email: 'rita.retake@test.com',
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: retakeWorker.id },
+    update: { fullName: 'Rita Retake', firstName: 'Rita', lastName: 'Retake' },
+    create: {
+      id: retakeWorker.id,
+      email: 'rita.retake@test.com',
+      fullName: 'Rita Retake',
+      firstName: 'Rita',
+      lastName: 'Retake',
+    },
+  });
+  log(
+    'users + profiles ready (admin, admin2, worker, sarah, overdueWorker, nearDeadlineWorker, assignableWorker, nurse, lockoutWorker, retakeWorker)',
+  );
 
   // 3. Document + version owned by the admin (feeds the ENG-024 wizard picker).
   await prisma.document.upsert({
@@ -277,7 +515,35 @@ async function main(): Promise<void> {
       content: 'Employees must report any suspected data breach to their supervisor immediately.',
     },
   });
-  log('document + version ready');
+  // Second document, owned by admin2 — Document Hub full-parity e2e coverage
+  // needs a document uploaded by a DIFFERENT org admin than the one logging in.
+  const DOC2_ID = '33333333-3333-4333-8333-333333333333';
+  const DOC2_VERSION_ID = '33333333-3333-4333-8333-333333333334';
+  await prisma.document.upsert({
+    where: { id: DOC2_ID },
+    update: { userId: admin2.id },
+    create: {
+      id: DOC2_ID,
+      userId: admin2.id,
+      filename: 'e2e-admin2-policy.pdf',
+      originalName: 'Admin2 Policy.pdf',
+      mimeType: 'application/pdf',
+      size: 12_288,
+    },
+  });
+  await prisma.documentVersion.upsert({
+    where: { id: DOC2_VERSION_ID },
+    update: {},
+    create: {
+      id: DOC2_VERSION_ID,
+      documentId: DOC2_ID,
+      version: 1,
+      storagePath: 'e2e/documents/e2e-admin2-policy.pdf',
+      hash: 'e2e-seed-doc-hash-0002',
+      content: 'This document was uploaded by the second seeded org admin.',
+    },
+  });
+  log('document + version ready (admin, admin2)');
 
   // 4. Published text course (created by the admin, isGlobal:false → appears in
   //    the admin course list via getCourses() without an OrgCourseOffering row),
@@ -359,7 +625,17 @@ async function main(): Promise<void> {
   // field back to its pristine value, so re-seeding always restores the exact
   // fixture state the specs assume — not just on a fresh database.
   await prisma.quizAttempt.deleteMany({
-    where: { enrollmentId: { in: [ENROLLMENT_SARAH_ID, ENROLLMENT_WORKER_ID] } },
+    where: {
+      enrollmentId: {
+        in: [
+          ENROLLMENT_SARAH_ID,
+          ENROLLMENT_WORKER_ID,
+          ENROLLMENT_NURSE_ID,
+          ENROLLMENT_LOCKOUT_ID,
+          ENROLLMENT_RETAKE_ID,
+        ],
+      },
+    },
   });
 
   // ENG-022 actually calls assignRetake(), which — on success — creates a NEW
@@ -374,6 +650,16 @@ async function main(): Promise<void> {
   await prisma.notification.deleteMany({
     where: { userId: { in: [worker.id, sarah.id] }, type: 'RETAKE_ASSIGNED' },
   });
+
+  // The Assign-page e2e specs (reminders.spec.ts) exercise enrollUsers/
+  // assignCourseToRole against this SAME seeded course, and both upsert a
+  // single (organizationId, courseId) CourseAssignment row. Without resetting
+  // it, a role-target run (targetRole set) or a due-date run from a PRIOR
+  // suite execution persists into the next run and changes which mode
+  // (people/role) the Assign page opens in by default — breaking specs that
+  // assume the pristine "not yet assigned" starting state. The cascade
+  // (schema onDelete) removes its AssignmentReminderStage rows too.
+  await prisma.courseAssignment.deleteMany({ where: { courseId: COURSE_ID } });
 
   const now = new Date();
   await prisma.enrollment.upsert({
@@ -445,8 +731,107 @@ async function main(): Promise<void> {
       dueAt: tenDaysAgo,
     },
   });
+  // Near-deadline enrollment for the status-tracker "At Risk — Next 7 Days"
+  // section: due in 3 days from seed time, so it always lands inside the fixed
+  // 7-day window regardless of when CI executes, and stays disjoint from the
+  // always-overdue fixture above.
+  const threeDaysFromNow = new Date(now);
+  threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_NEAR_DEADLINE_ID },
+    update: {
+      status: 'in_progress',
+      progress: 20,
+      score: null,
+      completedAt: null,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+      dueAt: threeDaysFromNow,
+    },
+    create: {
+      id: ENROLLMENT_NEAR_DEADLINE_ID,
+      userId: nearDeadlineWorker.id,
+      courseId: COURSE_ID,
+      status: 'in_progress',
+      progress: 20,
+      startedAt: now,
+      dueAt: threeDaysFromNow,
+    },
+  });
+  // Nurse + lockout-worker enrollments: progress:100 (lesson content already
+  // "read") so their specs land straight on the quiz intro screen, in_progress
+  // with zero quiz attempts (reset above alongside sarah/worker).
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_NURSE_ID },
+    update: {
+      status: 'in_progress',
+      progress: 100,
+      score: null,
+      completedAt: null,
+      attestedAt: null,
+      attestationSignature: null,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+    },
+    create: {
+      id: ENROLLMENT_NURSE_ID,
+      userId: nurse.id,
+      courseId: COURSE_ID,
+      status: 'in_progress',
+      progress: 100,
+      startedAt: now,
+    },
+  });
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_LOCKOUT_ID },
+    update: {
+      status: 'in_progress',
+      progress: 100,
+      score: null,
+      completedAt: null,
+      attestedAt: null,
+      attestationSignature: null,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+    },
+    create: {
+      id: ENROLLMENT_LOCKOUT_ID,
+      userId: lockoutWorker.id,
+      courseId: COURSE_ID,
+      status: 'in_progress',
+      progress: 100,
+      startedAt: now,
+    },
+  });
+
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_RETAKE_ID },
+    update: {
+      status: 'in_progress',
+      progress: 100,
+      score: null,
+      completedAt: null,
+      attestedAt: null,
+      attestationSignature: null,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+    },
+    create: {
+      id: ENROLLMENT_RETAKE_ID,
+      userId: retakeWorker.id,
+      courseId: COURSE_ID,
+      status: 'in_progress',
+      progress: 100,
+      startedAt: now,
+    },
+  });
+
   log(
-    'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue; retakes + quiz attempts reset)',
+    'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue, nearDeadlineWorker due in 3d, nurse + lockoutWorker + retakeWorker at progress:100; retakes + quiz attempts reset)',
   );
 
   log('seed complete');

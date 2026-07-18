@@ -11,3 +11,5 @@
 - [Email delivery tracking](project_email_delivery_tracking.md) — EmailMessage has two disjoint recording paths (dispatch vs sendMailTracked); reminder senders bypass sendMailTracked to avoid double-record.
 - [E2E seed infra](project_e2e_seed_infra.md) — prisma/seed.ts (tsx, self-contained client), E2E rate-limit bypass, role-based login landings, quiz shape; assignRetake locked-only bug.
 - [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — cookies().delete omits Secure so __Secure- deletions fail in prod (next dev masks it); onboarding-worker image deadlock; CI e2e = next start.
+- [Repro v4.6 AI pipeline locally](repro_v46_ai_pipeline_locally.md) — ADC unavailable in sandbox; drive gemini-flash-lite-latest via AI-Studio Express key in .env; model/token facts.
+- [Phase 2 batch-quiz truncation](phase2_batch_quiz_truncation.md) — Stage C 0-questions root cause = 16384 output cap truncation; hybrid single-call/chunk fix; keep meta.requestedQuestionCount = original.

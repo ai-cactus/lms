@@ -11,9 +11,19 @@ import { deleteFile } from '@/lib/storage';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
+
+// Spec: only .pdf and .docx are accepted. The upload modal enforces this
+// client-side; these mirror that server-side so a crafted request can't slip
+// an unsupported type past validation.
+const ALLOWED_DOCUMENT_EXTENSIONS = /\.(pdf|docx)$/i;
+const ALLOWED_DOCUMENT_MIME_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
 
 export async function uploadDocument(
   _prevState: { success?: boolean; error?: string; phiDetected?: boolean } | null,
@@ -29,6 +39,32 @@ export async function uploadDocument(
   const file = formData.get('file') as File;
   if (!file) {
     return { error: 'No file provided' };
+  }
+
+  // #11: the caller must attest the document is PHI-free. The modal checkbox only
+  // gates its submit button; this is the authoritative server-side gate. Fail
+  // fast before any file processing.
+  if (formData.get('phiAttested') !== 'true') {
+    logger.warn({ msg: '[doc] Upload rejected — PHI attestation missing', userId });
+    return {
+      error: 'You must confirm this document contains no PHI (Personal Health Information).',
+    };
+  }
+
+  // Server-side format guard: client validation is not a security boundary.
+  // The filename extension is authoritative (a spoofed MIME type must not admit
+  // a .doc as PDF); a declared MIME type, if present, must not contradict an
+  // allowed one. Both signals must agree — a missing MIME type is permitted.
+  const isAllowedType =
+    ALLOWED_DOCUMENT_EXTENSIONS.test(file.name) &&
+    (file.type === '' || ALLOWED_DOCUMENT_MIME_TYPES.includes(file.type));
+  if (!isAllowedType) {
+    logger.warn({
+      msg: '[doc] Upload rejected — unsupported file type',
+      userId,
+      mimeType: file.type,
+    });
+    return { error: 'Only PDF and DOCX files are allowed.' };
   }
 
   // F-017: reject oversized uploads BEFORE buffering the whole file into memory.
@@ -202,13 +238,19 @@ export async function uploadDocument(
 
 export async function getDocuments() {
   const session = await auth();
-  if (!session?.user?.id) {
+  // Org-scoped Document Hub: any org admin sees every document uploaded within
+  // their organization. isAdminRole is defense-in-depth (mirrors enrollUsers);
+  // the tenancy boundary is the uploader's organizationId.
+  if (!session?.user?.id || !session.user.organizationId || !isAdminRole(session.user.role)) {
     return [];
   }
 
   const docs = await prisma.document.findMany({
-    where: { userId: session.user.id },
+    where: { user: { organizationId: session.user.organizationId } },
     include: {
+      user: {
+        select: { email: true, profile: { select: { firstName: true, lastName: true } } },
+      },
       versions: {
         orderBy: { version: 'desc' },
         take: 1,
@@ -228,19 +270,25 @@ export async function deleteDocument(
   documentId: string,
 ): Promise<{ success?: boolean; error?: string }> {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || !session.user.organizationId) {
     return { error: 'Not authenticated' };
   }
+  if (!isAdminRole(session.user.role)) {
+    return { error: 'Document not found' };
+  }
 
-  // Verify ownership before any destructive operation
+  // Verify the document belongs to the caller's organization before any
+  // destructive operation. Any org admin may delete any org document; a
+  // cross-org document is reported as not found — never leak its existence.
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
     include: {
+      user: { select: { organizationId: true } },
       versions: { select: { id: true, storagePath: true } },
     },
   });
 
-  if (!doc || doc.userId !== session.user.id) {
+  if (!doc || doc.user.organizationId !== session.user.organizationId) {
     return { error: 'Document not found' };
   }
 
@@ -294,8 +342,11 @@ export async function renameDocument(
   newFilename: string,
 ): Promise<{ success?: boolean; error?: string }> {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || !session.user.organizationId) {
     return { error: 'Not authenticated' };
+  }
+  if (!isAdminRole(session.user.role)) {
+    return { error: 'Document not found' };
   }
 
   const trimmed = newFilename.trim();
@@ -306,12 +357,14 @@ export async function renameDocument(
     return { error: 'Filename is too long (max 255 characters).' };
   }
 
+  // Any org admin may rename any document in their organization; a cross-org
+  // document is reported as not found so its existence is never leaked.
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
-    select: { userId: true },
+    select: { user: { select: { organizationId: true } } },
   });
 
-  if (!doc || doc.userId !== session.user.id) {
+  if (!doc || doc.user.organizationId !== session.user.organizationId) {
     return { error: 'Document not found' };
   }
 

@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger';
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
+import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 
 // Helper to generate a cryptographically-random 6-digit code
 function generateCode() {
@@ -187,8 +188,14 @@ export async function joinOrganization(code: string) {
         organizationId: orgId,
         facilityId: facility?.id ?? null,
         role: DEFAULT_SELF_SERVE_WORKER_ROLE,
+        // Join date drives the deadline window for any role-target assignments.
+        roleAssignedAt: new Date(),
       },
     });
+
+    // Live auto-enroll: the worker just joined the org with a role — enroll them
+    // in any active role-target assignments for it. Never throws.
+    await enrollUserForRoleTargets(userId, orgId);
 
     // Create welcome notification for worker
     await createNotification({

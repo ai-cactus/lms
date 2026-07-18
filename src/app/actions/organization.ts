@@ -333,6 +333,7 @@ export async function createOrganization(data: OrganizationCreationData) {
           organizationId: org.id,
           facilityId: facility.id,
           role: 'owner',
+          roleAssignedAt: new Date(),
         },
       });
 

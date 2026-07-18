@@ -76,6 +76,16 @@ export interface StorageProvider {
   delete(storageUri: string): Promise<void>;
 
   /**
+   * Report whether the object identified by the storageUri still exists.
+   *
+   * Resolves `false` ONLY when the object is definitively absent (a 404 /
+   * NoSuchKey from the backend). Any other failure (network, auth, 5xx) must be
+   * thrown so callers can distinguish a genuinely-missing object from a
+   * transient error and avoid recording a false "missing".
+   */
+  objectExists(storageUri: string): Promise<boolean>;
+
+  /**
    * Download the object identified by the storageUri as a Buffer.
    * Used by background workers that need the raw bytes for processing.
    */

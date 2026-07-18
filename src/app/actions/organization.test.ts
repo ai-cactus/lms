@@ -189,7 +189,12 @@ describe('createOrganization', () => {
 
     expect(txMock.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
-      data: { organizationId: 'org-1', facilityId: 'facility-1', role: 'owner' },
+      data: {
+        organizationId: 'org-1',
+        facilityId: 'facility-1',
+        role: 'owner',
+        roleAssignedAt: expect.any(Date),
+      },
     });
   });
 

@@ -25,6 +25,23 @@ async function currentUserId(): Promise<string | null> {
   return a?.user?.id ?? w?.user?.id ?? null;
 }
 
+/**
+ * Persist an honest media status once storage confirms the object is gone, so
+ * the system panel and learner UI stop advertising a video that can't play.
+ * Idempotent: only the first encounter writes; DB failures are logged, never
+ * fatal to the response.
+ */
+async function markLessonMediaMissing(lessonId: string): Promise<void> {
+  try {
+    await prisma.lesson.updateMany({
+      where: { id: lessonId, mediaStatus: { not: 'failed' } },
+      data: { mediaStatus: 'failed' },
+    });
+  } catch (err) {
+    logger.error({ msg: '[video] failed to persist missing media status', err, lessonId });
+  }
+}
+
 // Headers worth forwarding from storage back to the browser so seeking,
 // buffering and content typing all work correctly.
 const PASSTHROUGH_HEADERS = [
@@ -83,6 +100,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
   }
 
   if (!upstream.ok && upstream.status !== 206) {
+    // A 404 is definitive: the object is gone from storage, so flip the lesson's
+    // status to stop the DB lying. Other statuses (5xx, 403, …) are transient
+    // or config-level — log them but never persist a false "missing".
+    if (upstream.status === 404) {
+      await markLessonMediaMissing(lessonId);
+      logger.error({
+        msg: '[video] storage object missing — marked media unavailable',
+        lessonId,
+        status: upstream.status,
+      });
+    } else {
+      logger.error({
+        msg: '[video] transient storage error fetching video',
+        lessonId,
+        status: upstream.status,
+      });
+    }
     return new Response('Failed to fetch video from storage', { status: upstream.status });
   }
 

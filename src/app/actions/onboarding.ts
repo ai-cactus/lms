@@ -88,6 +88,7 @@ export async function createOrganization(prevState: State, formData: FormData): 
           organizationId: org.id,
           facilityId: facility.id,
           role: 'owner',
+          roleAssignedAt: new Date(),
         },
       });
     });

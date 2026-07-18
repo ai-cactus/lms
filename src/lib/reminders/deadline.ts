@@ -49,3 +49,57 @@ export function computeDueAt(args: {
     args.assignmentWindowDays ?? args.orgWindowDays ?? resolveDefaultDueWindowDays();
   return addDays(args.start, windowDays);
 }
+
+/**
+ * Parse a wizard time-of-day string into 24-hour components. Accepts the
+ * canonical `"H:MM AM/PM"` value produced by the UI's TimePicker (and tolerates
+ * loose input the same way): the digits form the hour/minute and an `a`/`p`
+ * marker selects the meridiem. Returns `null` for empty or unparseable input.
+ */
+function parseTimeOfDay(value: string): { hours: number; minutes: number } | null {
+  const str = value.trim().toLowerCase();
+  if (!str) return null;
+
+  const digits = str.replace(/\D/g, '');
+  if (!digits) return null;
+
+  let hours: number;
+  let minutes = 0;
+  if (digits.length <= 2) {
+    hours = parseInt(digits, 10);
+  } else if (digits.length === 3) {
+    hours = parseInt(digits[0], 10);
+    minutes = parseInt(digits.slice(1), 10);
+  } else {
+    hours = parseInt(digits.slice(0, 2), 10);
+    minutes = parseInt(digits.slice(2, 4), 10);
+  }
+
+  if (hours > 23 || minutes > 59) return null;
+
+  if (str.includes('p') && hours < 12) hours += 12;
+  else if (str.includes('a') && hours === 12) hours = 0;
+
+  return { hours, minutes };
+}
+
+/**
+ * Combine the course wizard's separate date and time-of-day inputs into a single
+ * absolute deadline. Returns `null` when no date is given (the caller then falls
+ * back to a computed window). The date is interpreted in UTC — `dueDate` arrives
+ * as a UTC-midnight `Date` (from `new Date("YYYY-MM-DD")`) — so a missing or
+ * unparseable `dueTime` leaves the deadline at 00:00 UTC on that day.
+ */
+export function combineDateAndTime(
+  dueDate: Date | null | undefined,
+  dueTime: string | null | undefined,
+): Date | null {
+  if (!dueDate) return null;
+
+  const result = new Date(dueDate);
+  const time = dueTime ? parseTimeOfDay(dueTime) : null;
+  if (time) {
+    result.setUTCHours(time.hours, time.minutes, 0, 0);
+  }
+  return result;
+}

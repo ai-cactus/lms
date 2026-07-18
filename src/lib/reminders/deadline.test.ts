@@ -10,6 +10,7 @@ import {
   resolveDefaultDueWindowDays,
   resolveStartDate,
   computeDueAt,
+  combineDateAndTime,
 } from './deadline';
 
 // Snap-shot the original value so we can restore it.
@@ -137,5 +138,63 @@ describe('computeDueAt', () => {
     });
     // start + 60 days = 2024-07-31
     expect(result.toISOString()).toBe('2024-07-31T00:00:00.000Z');
+  });
+});
+
+describe('combineDateAndTime', () => {
+  // Regression guard for the wizard deadline-drop bug (Issue #2 / TC-015):
+  // createFullCourse must pass a real due date through to enrollUsers instead
+  // of silently dropping it.
+  it('returns null when no date is given, regardless of time', () => {
+    expect(combineDateAndTime(null, '9:00 AM')).toBeNull();
+    expect(combineDateAndTime(undefined, '9:00 AM')).toBeNull();
+  });
+
+  it('leaves the deadline at 00:00 UTC when no time is given', () => {
+    const date = new Date('2026-08-01T00:00:00Z');
+    const result = combineDateAndTime(date, undefined);
+    expect(result?.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('leaves the deadline at 00:00 UTC when the time string is empty', () => {
+    const date = new Date('2026-08-01T00:00:00Z');
+    const result = combineDateAndTime(date, '');
+    expect(result?.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('parses a canonical "H:MM AM" time onto the date', () => {
+    const date = new Date('2026-08-01T00:00:00Z');
+    const result = combineDateAndTime(date, '9:30 AM');
+    expect(result?.toISOString()).toBe('2026-08-01T09:30:00.000Z');
+  });
+
+  it('parses a canonical "H:MM PM" time, rolling the hour into 24h', () => {
+    const date = new Date('2026-08-01T00:00:00Z');
+    const result = combineDateAndTime(date, '5:45 PM');
+    expect(result?.toISOString()).toBe('2026-08-01T17:45:00.000Z');
+  });
+
+  it('treats 12:00 AM (midnight) as hour 0', () => {
+    const date = new Date('2026-08-01T00:00:00Z');
+    const result = combineDateAndTime(date, '12:00 AM');
+    expect(result?.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('treats 12:00 PM (noon) as hour 12', () => {
+    const date = new Date('2026-08-01T00:00:00Z');
+    const result = combineDateAndTime(date, '12:00 PM');
+    expect(result?.toISOString()).toBe('2026-08-01T12:00:00.000Z');
+  });
+
+  it('returns 00:00 UTC when the time string is unparseable (no digits)', () => {
+    const date = new Date('2026-08-01T00:00:00Z');
+    const result = combineDateAndTime(date, 'noon-ish');
+    expect(result?.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('does not mutate the original dueDate object', () => {
+    const date = new Date('2026-08-01T00:00:00Z');
+    combineDateAndTime(date, '9:30 AM');
+    expect(date.toISOString()).toBe('2026-08-01T00:00:00.000Z');
   });
 });

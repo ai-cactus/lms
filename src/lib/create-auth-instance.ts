@@ -18,6 +18,7 @@ import type { Role } from '@/types/next-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
+import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 
 interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
@@ -398,6 +399,12 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 metadata: { provider: 'microsoft-entra-id', email: maskEmail(user.email!) },
               });
             }
+
+            // Live auto-enroll: a new OAuth account that joined an org via invite
+            // must pick up that role's active role-target assignments. Never throws.
+            if (dbUser.organizationId) {
+              await enrollUserForRoleTargets(dbUser.id, dbUser.organizationId);
+            }
           } else {
             if (pendingInvite && !dbUser.organizationId) {
               logger.info({
@@ -417,6 +424,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                   role: ALL_ROLES.includes(pendingInvite.role as Role)
                     ? pendingInvite.role
                     : DEFAULT_SELF_SERVE_WORKER_ROLE,
+                  // Join date drives the deadline window for role-target assignments.
+                  roleAssignedAt: new Date(),
                 },
                 select: { id: true, organizationId: true, role: true },
               });
@@ -435,6 +444,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 targetId: pendingInvite.id,
                 metadata: { provider: 'microsoft-entra-id', email: maskEmail(user.email!) },
               });
+
+              // Live auto-enroll into the accepted role's role-target assignments.
+              if (dbUser.organizationId) {
+                await enrollUserForRoleTargets(dbUser.id, dbUser.organizationId);
+              }
             } else if (
               cookiePrefix === 'admin' &&
               dbUser.role !== 'owner' &&

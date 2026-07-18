@@ -34,6 +34,9 @@ vi.mock('@/lib/reminders/status-tracker', () => ({
 vi.mock('@/components/dashboard/status-tracker/StatusTrackerTableClient', () => ({
   default: () => <div data-testid="status-tracker-table" />,
 }));
+vi.mock('@/components/dashboard/status-tracker/NearDeadlineTable', () => ({
+  default: () => <div data-testid="near-deadline-table" />,
+}));
 
 import StatusTrackerPage from './page';
 
@@ -44,6 +47,7 @@ beforeEach(() => {
     overdueCount: 0,
     hardEscalationCount: 0,
     rows: [],
+    nearDeadline: { count: 0, rows: [] },
   });
 });
 
@@ -57,6 +61,7 @@ describe('StatusTrackerPage — assignment.read gate', () => {
       render(element);
 
       expect(screen.getByTestId('status-tracker-table')).toBeInTheDocument();
+      expect(screen.getByTestId('near-deadline-table')).toBeInTheDocument();
       expect(mockRedirect).not.toHaveBeenCalled();
     },
   );

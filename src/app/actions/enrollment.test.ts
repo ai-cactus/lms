@@ -18,10 +18,12 @@ const { prismaMock, mockAdminAuth, mockWorkerAuth } = vi.hoisted(() => {
     user: { findUnique: vi.fn(), create: vi.fn() },
     profile: { upsert: vi.fn() },
     orgCourseOffering: { findUnique: vi.fn(), upsert: vi.fn() },
-    courseAssignment: { create: vi.fn() },
+    courseAssignment: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    assignmentReminderStage: { upsert: vi.fn() },
     enrollment: { findFirst: vi.fn(), create: vi.fn() },
     // Added in facility split: enrollUsers looks up facilityId for new users.
     facility: { findFirst: vi.fn() },
+    reminderLog: { create: vi.fn() },
   };
   const mockAdminAuth = vi.fn();
   const mockWorkerAuth = vi.fn();
@@ -126,7 +128,12 @@ describe('enrollUsers — course-ownership guard', () => {
     prismaMock.enrollment.create.mockResolvedValue({});
 
     // Org-scoped enrollment now creates a CourseAssignment batch first.
+    // No prior assignment for this (org, course) — upsertCourseAssignment takes the create branch.
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
+    // Role-target auto-enroll hook (fires for newly-invited users): no role-target
+    // assignments in these fixtures, so it's a no-op.
+    prismaMock.courseAssignment.findMany.mockResolvedValue([]);
 
     // Assigning a global catalog course upserts an OrgCourseOffering.
     prismaMock.orgCourseOffering.upsert.mockResolvedValue({ id: 'offering-001' });
@@ -341,7 +348,12 @@ describe('enrollUsers — CSV role mapping (entry.role "admin" → DB role "supe
     prismaMock.course.findUnique.mockResolvedValue(ownCourse);
     prismaMock.enrollment.findFirst.mockResolvedValue(null);
     prismaMock.enrollment.create.mockResolvedValue({});
+    // No prior assignment for this (org, course) — upsertCourseAssignment takes the create branch.
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
+    // Role-target auto-enroll hook (fires for newly-invited users): no role-target
+    // assignments in these fixtures, so it's a no-op.
+    prismaMock.courseAssignment.findMany.mockResolvedValue([]);
     prismaMock.facility.findFirst.mockResolvedValue(null);
   });
 
@@ -428,7 +440,12 @@ describe('enrollUsers — billing gate (Defect B)', () => {
     prismaMock.course.findUnique.mockResolvedValue(ownCourse);
     prismaMock.enrollment.findFirst.mockResolvedValue(null);
     prismaMock.enrollment.create.mockResolvedValue({});
+    // No prior assignment for this (org, course) — upsertCourseAssignment takes the create branch.
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
+    // Role-target auto-enroll hook (fires for newly-invited users): no role-target
+    // assignments in these fixtures, so it's a no-op.
+    prismaMock.courseAssignment.findMany.mockResolvedValue([]);
   });
 
   it.each([

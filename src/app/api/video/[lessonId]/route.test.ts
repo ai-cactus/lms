@@ -4,6 +4,7 @@ const {
   mockAdminAuth,
   mockWorkerAuth,
   mockLessonFindUnique,
+  mockLessonUpdateMany,
   mockResolvePlaybackUrl,
   mockResolveVideoSource,
 } = vi.hoisted(() => {
@@ -12,6 +13,7 @@ const {
     mockAdminAuth: vi.fn(),
     mockWorkerAuth: vi.fn(),
     mockLessonFindUnique: vi.fn(),
+    mockLessonUpdateMany: vi.fn(),
     mockResolvePlaybackUrl,
     mockResolveVideoSource: vi.fn<
       (provider: string) => { resolvePlaybackUrl: typeof mockResolvePlaybackUrl }
@@ -22,7 +24,12 @@ const {
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('@/lib/prisma', () => {
-  const prisma = { lesson: { findUnique: (...a: unknown[]) => mockLessonFindUnique(...a) } };
+  const prisma = {
+    lesson: {
+      findUnique: (...a: unknown[]) => mockLessonFindUnique(...a),
+      updateMany: (...a: unknown[]) => mockLessonUpdateMany(...a),
+    },
+  };
   return { prisma, default: prisma };
 });
 vi.mock('@/lib/video', () => ({
@@ -64,6 +71,7 @@ beforeEach(() => {
   mockAdminAuth.mockResolvedValue(null);
   mockWorkerAuth.mockResolvedValue(null);
   mockResolvePlaybackUrl.mockResolvedValue('http://minio:9000/lms-documents/system/videos/v.mp4');
+  mockLessonUpdateMany.mockResolvedValue({ count: 1 });
 });
 
 describe('GET /api/video/[lessonId]', () => {
@@ -141,6 +149,69 @@ describe('GET /api/video/[lessonId]', () => {
 
     await GET(makeReq(), { params });
     expect(mockResolveVideoSource).toHaveBeenCalledWith('self');
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('GET /api/video/[lessonId] — Issue #7/#9: honest mediaStatus on upstream storage errors', () => {
+  beforeEach(() => {
+    mockAdminAuth.mockResolvedValue({ user: { id: 'u1' } });
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ enrollments: [{ id: 'e1' }] }));
+  });
+
+  it('flips the lesson mediaStatus to failed on a definitive upstream 404', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('gone', { status: 404 })));
+
+    const res = await GET(makeReq(), { params });
+
+    expect(res.status).toBe(404);
+    expect(mockLessonUpdateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'lesson-1', mediaStatus: { not: 'failed' } },
+      data: { mediaStatus: 'failed' },
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it('is idempotent — the where-clause guard means a second 404 does not re-issue a redundant write to an already-failed lesson', async () => {
+    // The guard itself (`mediaStatus: { not: 'failed' }`) is what makes a repeat
+    // 404 a no-op at the DB level; here we assert the route always issues the
+    // SAME guarded call regardless of the lesson's current status, never a bare
+    // unconditional update that could stomp a status set by something else.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('gone', { status: 404 })));
+
+    await GET(makeReq(), { params });
+
+    expect(mockLessonUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ mediaStatus: { not: 'failed' } }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it.each([500, 502, 503, 403])(
+    'does NOT flip mediaStatus on a transient/config upstream error (%i)',
+    async (status) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('error', { status })));
+
+      const res = await GET(makeReq(), { params });
+
+      expect(res.status).toBe(status);
+      expect(mockLessonUpdateMany).not.toHaveBeenCalled();
+
+      vi.unstubAllGlobals();
+    },
+  );
+
+  it('never flips mediaStatus, and never touches the DB write path, on the happy 200/206 path', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('bytes', { status: 200 })));
+
+    await GET(makeReq(), { params });
+
+    expect(mockLessonUpdateMany).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();
   });

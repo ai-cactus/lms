@@ -1133,6 +1133,84 @@ export async function sendEscalationEmail(
 }
 
 /**
+ * Admin pre-deadline reminder (Issue #8) — a heads-up to the escalation manager
+ * that a worker's training deadline is approaching. Unlike {@link sendEscalationEmail},
+ * this fires BEFORE the deadline, so the copy is a proactive nudge, never an
+ * overdue alert.
+ */
+export async function sendPreDeadlineEscalationEmail(
+  to: string,
+  recipientName: string,
+  workerName: string,
+  courseName: string,
+  dueAt: Date | string | null,
+  actionLink: string,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Pre-deadline escalation email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const formattedDue = formatDueDate(dueAt);
+  const resolvedActionLink = /^https?:\/\//i.test(actionLink)
+    ? actionLink
+    : `${reminderBaseUrl()}${actionLink.startsWith('/') ? '' : '/'}${actionLink}`;
+
+  const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #DD6B20;">⏳ Upcoming Deadline: Worker Training</h2>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Hi <strong>${escapeHtml(recipientName)}</strong>,
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                A worker in your organization has a required training with an approaching deadline:
+            </p>
+            <div style="background: #FFFAF0; border-left: 4px solid #DD6B20; border-radius: 8px; padding: 20px; margin: 24px 0;">
+                <p style="margin: 4px 0;"><strong>Worker:</strong> ${escapeHtml(workerName)}</p>
+                <p style="margin: 4px 0;"><strong>Course:</strong> ${escapeHtml(courseName)}</p>
+                ${
+                  formattedDue
+                    ? `<p style="margin: 4px 0;"><strong>Due Date:</strong> ${escapeHtml(formattedDue)}</p>`
+                    : ''
+                }
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Please follow up with this worker so the training is completed before the deadline.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${resolvedActionLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Review Compliance</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                This is an automated notification from ${appName}.
+            </p>
+        </div>
+    `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      subject: `⏳ Upcoming deadline: ${workerName}'s ${courseName} training`,
+      html,
+    });
+    logger.info({
+      msg: '[email] Pre-deadline escalation email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send pre-deadline escalation email',
+      err: error,
+      to: maskEmail(to),
+    });
+    return { success: false, error };
+  }
+}
+
+/**
  * Track B — Retake reminder. Nudges a worker who failed the quiz but still has
  * attempts remaining to retake it. Links to the worker trainings page.
  */

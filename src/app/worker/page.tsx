@@ -78,6 +78,7 @@ export default async function LearnerDashboard() {
       deadline: picked.dueAt,
       duration: picked.course.duration || undefined,
       quizAttempts: picked.quizAttempts,
+      passingScore: picked.course.quiz?.passingScore ?? null,
       retakeOf: picked.retakeOf,
     };
   });
