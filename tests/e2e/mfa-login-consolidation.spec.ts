@@ -311,6 +311,15 @@ test.describe('2FA consolidation: OTP send rate limit surfaces as a real UI erro
   test('exhausting the 3-per-15-min send budget shows "Too many code requests", not a false success', async ({
     page,
   }) => {
+    // CI (and any env with E2E_TEST_BYPASS_RATE_LIMIT=true) globally bypasses
+    // the rate limiter, so the mfa-send budget can never be exhausted here and
+    // the "Too many code requests" branch never fires. This flow is covered at
+    // the unit level (send route returns 429; /mfa/verify surfaces the error);
+    // run this end-to-end assertion only where rate limiting is actually live.
+    test.skip(
+      process.env.E2E_TEST_BYPASS_RATE_LIMIT === 'true',
+      'MFA send rate limiting is bypassed in this environment',
+    );
     test.setTimeout(60_000);
 
     const ip = randomIp();
