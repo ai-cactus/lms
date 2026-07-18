@@ -337,3 +337,160 @@ test.describe('Regression: logout still clears the sibling cookie after the sess
     }
   });
 });
+
+/**
+ * Regression variant for the 2FA consolidation fix (src/lib/auth/mfa-session-stamp.ts):
+ * the MFA verify route must stamp the instance recorded on the CHALLENGE
+ * (`challengeData.role`), never sniff which sibling cookie happens to be on
+ * the request. A normal admin login already clears any pre-existing worker
+ * cookie via the ISSUE 4 signIn callback BEFORE the MFA challenge is even
+ * shown, so a worker cookie is re-injected here right before submitting the
+ * OTP to genuinely recreate the "both cookies present" condition at
+ * verification time — the same condition the unit tests
+ * (mfa-session-stamp.test.ts, verify/route.test.ts) exercise directly.
+ */
+test.describe('Regression: MFA-enabled admin login stamps the ADMIN cookie even with a worker cookie present', () => {
+  const MAILHOG_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
+
+  interface MfaAdminSeed extends Seeded {
+    email: string;
+    password: string;
+  }
+
+  async function seedMfaAdmin(email: string, password: string): Promise<MfaAdminSeed> {
+    const client = await db();
+    try {
+      const hashed = await bcrypt.hash(password, 10);
+      const orgSlug = `dual-cookie-mfa-${crypto.randomBytes(4).toString('hex')}`;
+      const orgId = crypto.randomUUID();
+      const facilityId = crypto.randomUUID();
+      const userId = crypto.randomUUID();
+
+      await client.query(
+        `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, false, NOW(), NOW())`,
+        [orgId, `Dual-Cookie MFA Test ${orgSlug}`, orgSlug, email],
+      );
+      await client.query(
+        `INSERT INTO facilities (id, organization_id, name, program_services, created_at, updated_at)
+         VALUES ($1, $2, $3, '{}', NOW(), NOW())`,
+        [facilityId, orgId, `Dual-Cookie MFA Test ${orgSlug}`],
+      );
+      await client.query(
+        `INSERT INTO users (id, email, password, role, email_verified, mfa_enabled, organization_id, facility_id, created_at, updated_at)
+         VALUES ($1, $2, $3, 'owner'::"UserRole", true, true, $4, $5, NOW(), NOW())`,
+        [userId, email, hashed, orgId, facilityId],
+      );
+      await client.query(
+        `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
+         VALUES ($1, $2, 'Dual', 'Cookie MFA', 'Dual Cookie MFA', NOW(), NOW())`,
+        [userId, email],
+      );
+      await client.query(
+        `INSERT INTO mfa_factors (id, user_id, type, secret, name, verified, created_at, updated_at)
+         VALUES ($1, $2, 'email', 'placeholder', 'Email OTP', true, NOW(), NOW())`,
+        [crypto.randomUUID(), userId],
+      );
+
+      return { userId, orgId, facilityId, email, password };
+    } finally {
+      await client.end();
+    }
+  }
+
+  function decodeQuotedPrintable(input: string): string {
+    return input
+      .replace(/=\r?\n/g, '')
+      .replace(/=([0-9A-Fa-f]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  }
+
+  async function pollForOtpCode(email: string, timeoutMs = 20000): Promise<string> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const res = await fetch(
+        `${MAILHOG_URL}/api/v2/search?kind=to&query=${encodeURIComponent(email)}`,
+      );
+      const data = (await res.json()) as {
+        items: { Content: { Headers: Record<string, string[]>; Body: string } }[];
+      };
+      const fresh = data.items?.find((m) =>
+        (m.Content.Headers['Subject']?.[0] ?? '').includes('verification code'),
+      );
+      if (fresh) {
+        const decoded = decodeQuotedPrintable(fresh.Content.Body);
+        const match = decoded.match(/\b(\d{6})\b/);
+        if (match) return match[1];
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error(`Timed out waiting for an MFA OTP email to ${email}`);
+  }
+
+  test('admin login while a worker cookie is present stamps admin.session-token, not the worker cookie', async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(90_000);
+
+    const workerEmail = uniqueEmail('dual-mfa-worker');
+    const workerPassword = 'DualMfaWorker!91';
+    const adminEmail = uniqueEmail('dual-mfa-admin');
+    const adminPassword = 'DualMfaAdmin!92';
+
+    const workerSeed = await seedActiveUser(workerEmail, workerPassword, 'nurse');
+    const adminSeed = await seedMfaAdmin(adminEmail, adminPassword);
+
+    try {
+      // 1. Worker session first.
+      await loginAs(page, workerEmail, workerPassword);
+      await page.waitForURL('**/worker', { timeout: 15000 });
+      const workerCookie = await findCookie(context, 'worker.session-token');
+      expect(workerCookie, 'worker cookie should be set after worker login').toBeTruthy();
+
+      // 2. Admin (MFA-enabled) login. The ISSUE 4 signIn callback clears the
+      // worker cookie immediately, before the MFA challenge is even shown.
+      await loginAs(page, adminEmail, adminPassword);
+      await page.waitForURL('**/mfa/verify**', { timeout: 15000 });
+      expect(await findCookie(context, 'worker.session-token')).toBeFalsy();
+      expect(await findCookie(context, 'admin.session-token')).toBeTruthy();
+
+      // 3. Re-inject a worker cookie so BOTH cookies genuinely coexist at the
+      // moment the OTP is submitted — the exact condition the fix must
+      // resolve via challengeData.role, not by inspecting which cookie(s)
+      // are on the request.
+      await context.addCookies([
+        {
+          name: 'worker.session-token',
+          value: workerCookie!.value,
+          domain: 'localhost',
+          path: '/',
+          httpOnly: true,
+          sameSite: 'Lax',
+        },
+      ]);
+      expect(await findCookie(context, 'worker.session-token')).toBeTruthy();
+
+      // 4. Submit the real code and confirm the ADMIN cookie gets stamped —
+      // landing on /dashboard (not /worker) with no /verify-2fa bounce.
+      const code = await pollForOtpCode(adminEmail);
+      for (let i = 0; i < code.length; i++) {
+        await page.getByLabel(`Digit ${i + 1}`).fill(code[i]);
+      }
+      await page.waitForURL('**/dashboard**', { timeout: 20000 });
+
+      // Both cookies now genuinely coexist post-verification: the admin
+      // cookie was re-stamped, and the re-injected worker cookie is
+      // untouched — proof the stamp targeted only the challenge's instance.
+      expect(await findCookie(context, 'admin.session-token')).toBeTruthy();
+      expect(await findCookie(context, 'worker.session-token')).toBeTruthy();
+
+      // A follow-up /dashboard visit must not bounce back to any step-up
+      // challenge — the admin session is genuinely mfaVerified now.
+      await page.goto('/dashboard');
+      expect(page.url()).toContain('/dashboard');
+    } finally {
+      await cleanup(workerSeed);
+      await cleanup(adminSeed);
+    }
+  });
+});

@@ -25,14 +25,19 @@ const {
   mockHashRecoveryCode,
 } = vi.hoisted(() => {
   const txMock = {
-    mfaFactor: { update: vi.fn() },
+    mfaFactor: { update: vi.fn(), deleteMany: vi.fn() },
     user: { update: vi.fn() },
     mfaRecoveryCode: { deleteMany: vi.fn(), createMany: vi.fn() },
   };
   const prismaMock = {
     user: { findUnique: vi.fn(), update: vi.fn() },
     mfaFactor: { findFirst: vi.fn(), update: vi.fn(), deleteMany: vi.fn(), create: vi.fn() },
-    mfaRecoveryCode: { deleteMany: vi.fn(), createMany: vi.fn() },
+    mfaRecoveryCode: {
+      deleteMany: vi.fn(),
+      createMany: vi.fn(),
+      findMany: vi.fn(),
+      update: vi.fn(),
+    },
     $transaction: vi.fn(),
   };
   return {
@@ -72,7 +77,7 @@ vi.mock('@/lib/mfa', async () => {
   return { ...actual, hashRecoveryCode: mockHashRecoveryCode };
 });
 
-import { verifyMfaSetup, regenerateRecoveryCodes } from './mfa';
+import { verifyMfaSetup, regenerateRecoveryCodes, disableMfa } from './mfa';
 import { encryptOtpPayload } from '@/lib/mfa';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -90,6 +95,8 @@ beforeEach(() => {
   );
   mockMarkSessionMfaVerified.mockResolvedValue(undefined);
   mockAudit.mockResolvedValue(undefined);
+  prismaMock.mfaRecoveryCode.findMany.mockResolvedValue([]);
+  prismaMock.mfaRecoveryCode.update.mockResolvedValue({});
 });
 
 describe('verifyMfaSetup — not authenticated', () => {
@@ -267,5 +274,124 @@ describe('regenerateRecoveryCodes — THER-016 regression', () => {
     expect(result.success).toBe(true);
     expect(callOrder.filter((e) => e === 'hash')).toHaveLength(10);
     expect(callOrder.indexOf('tx-start')).toBeGreaterThan(callOrder.lastIndexOf('hash'));
+  });
+});
+
+/**
+ * Regression: disableMfa() gated on `if (!isValid)` where `isValid` was the
+ * whole { valid, error } object returned by verifyUserMfaCode — always
+ * truthy, so ANY string (including garbage) "disabled" 2FA for any
+ * authenticated user. Fixed to gate on `verification.valid`. These tests
+ * confirm a wrong code is rejected with MFA left fully intact, and a correct
+ * code disables it.
+ */
+describe('disableMfa — not authenticated / input validation', () => {
+  it('returns an error and never reads the user when there is no session', async () => {
+    mockAdminAuth.mockResolvedValue(null as never);
+    mockWorkerAuth.mockResolvedValue(null as never);
+
+    const result = await disableMfa('123456');
+
+    expect(result).toEqual({ success: false, error: 'Not authenticated' });
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns an error when no code is provided', async () => {
+    const result = await disableMfa('');
+
+    expect(result).toEqual({ success: false, error: 'Verification code is required' });
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns an error when MFA is not enabled on the account', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ mfaEnabled: false } as never);
+
+    const result = await disableMfa('123456');
+
+    expect(result).toEqual({ success: false, error: 'MFA is not enabled' });
+    expect(prismaMock.mfaFactor.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('disableMfa — regression: gate on verification.valid, not object truthiness', () => {
+  it('a WRONG code is rejected and MFA/recovery codes are left fully intact', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ mfaEnabled: true } as never);
+    const secret = encryptOtpPayload('123456');
+    prismaMock.mfaFactor.findFirst.mockResolvedValue({
+      id: 'factor-1',
+      secret,
+      type: 'email',
+      verified: true,
+    } as never);
+
+    const result = await disableMfa('999999');
+
+    expect(result).toEqual({ success: false, error: 'Invalid verification code' });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(txMock.mfaFactor.deleteMany).not.toHaveBeenCalled();
+    expect(txMock.mfaRecoveryCode.deleteMany).not.toHaveBeenCalled();
+    expect(txMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it('an arbitrary junk string is rejected the same way a wrong numeric code is (the original bypass vector)', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ mfaEnabled: true } as never);
+    const secret = encryptOtpPayload('123456');
+    prismaMock.mfaFactor.findFirst.mockResolvedValue({
+      id: 'factor-1',
+      secret,
+      type: 'email',
+      verified: true,
+    } as never);
+
+    const result = await disableMfa('not-a-real-code');
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('the CORRECT code disables MFA: deletes factors + recovery codes and flips mfaEnabled false', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ mfaEnabled: true } as never);
+    const secret = encryptOtpPayload('123456');
+    prismaMock.mfaFactor.findFirst.mockResolvedValue({
+      id: 'factor-1',
+      secret,
+      type: 'email',
+      verified: true,
+    } as never);
+
+    const result = await disableMfa('123456');
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(txMock.mfaFactor.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    expect(txMock.mfaRecoveryCode.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    expect(txMock.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { mfaEnabled: false },
+    });
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'auth.mfa.disable', actorId: 'user-1' }),
+    );
+  });
+
+  it('a valid recovery code also disables MFA (verification.valid via usedRecoveryCode path)', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ mfaEnabled: true } as never);
+    // No usable primary OTP factor — forces the recovery-code branch.
+    prismaMock.mfaFactor.findFirst.mockResolvedValue(null as never);
+    // Real (low-cost) bcrypt hash so the actual (unmocked) verifyRecoveryCode
+    // genuinely matches — this exercises the real compare, not a stub.
+    const bcrypt = (await import('bcryptjs')).default;
+    const codeHash = await bcrypt.hash('RECOVERY-CODE', 4);
+    prismaMock.mfaRecoveryCode.findMany.mockResolvedValue([
+      { id: 'rc-1', codeHash, usedAt: null },
+    ] as never);
+
+    const result = await disableMfa('RECOVERY-CODE');
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.mfaRecoveryCode.update).toHaveBeenCalledWith({
+      where: { id: 'rc-1' },
+      data: { usedAt: expect.any(Date) },
+    });
   });
 });
