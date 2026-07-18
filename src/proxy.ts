@@ -143,21 +143,23 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
   }
 
   // ✅ MFA Step-up check
-  // NOTE: We deliberately skip this check on the login page itself.
-  // A user with an unfinished/abandoned 2FA session must be allowed to reach
-  // /login so they can re-authenticate (as the same or a different account).
-  // NextAuth's signIn flow will mint a new session and new sessionId, starting
-  // the MFA challenge fresh. Redirecting to /verify-2fa from /login would
-  // trap the user in the old session's 2FA flow with no way out.
+  //
+  // A session whose MFA is enabled but not yet verified is bounced to /login —
+  // NOT to the challenge page directly. The single email-OTP challenge lives
+  // behind a short-lived Redis challenge token that only authenticate() (in
+  // src/app/actions/auth.ts) mints on a fresh sign-in; there is no standing
+  // challenge for the stateless Edge proxy to resume. A fresh login starts the
+  // challenge cleanly and itself routes to /mfa/verify?challenge=...
+  //
+  // We deliberately skip this on /login itself so an unfinished/abandoned 2FA
+  // session can re-authenticate (as the same or a different account) instead of
+  // being trapped in a redirect loop.
   if (
     (token as unknown as Record<string, unknown>).mfaEnabled === true &&
     (token as unknown as Record<string, unknown>).mfaVerified !== true &&
-    pathname !== '/verify-2fa' &&
     pathname !== cfg.loginPath
   ) {
-    const mfaUrl = new URL('/verify-2fa', req.url);
-    mfaUrl.searchParams.set('callbackUrl', pathname);
-    return NextResponse.redirect(mfaUrl);
+    return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
   // Worker-specific: force onboarding if no org

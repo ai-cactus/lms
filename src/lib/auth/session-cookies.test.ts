@@ -9,7 +9,22 @@
  * current environment (dev vs. production) actually set.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { siblingCookieNames, expireSiblingSessionCookies } from './session-cookies';
+import {
+  siblingCookieNames,
+  expireSiblingSessionCookies,
+  sessionCookieName,
+} from './session-cookies';
+
+describe('sessionCookieName', () => {
+  it.each([
+    ['admin', false, 'admin.session-token'],
+    ['worker', false, 'worker.session-token'],
+    ['admin', true, '__Secure-admin.session-token'],
+    ['worker', true, '__Secure-worker.session-token'],
+  ] as const)('instance=%s useSecureCookies=%s -> %s', (instance, useSecureCookies, expected) => {
+    expect(sessionCookieName(instance, useSecureCookies)).toBe(expected);
+  });
+});
 
 describe('siblingCookieNames', () => {
   it("returns the worker instance's cookie name pair when the current instance is admin", () => {
