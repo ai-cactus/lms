@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
 import { useParams, useRouter } from 'next/navigation';
 import { Menu, AlertCircle } from 'lucide-react';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -451,8 +451,13 @@ export default function LearnPage() {
           setIsQuizActive(false);
           setQuizUnlocked(true);
           setHighestUnlockedIndex(lessonCount - 1);
-        } else if (data.enrollment?.status === 'locked' || (hasQuizAttempt && !activeAttempt)) {
-          // Locked or has submitted quiz (not completed/attested yet): show quiz review
+        } else if (
+          data.enrollment?.status === 'locked' ||
+          (hasQuizAttempt && !activeAttempt && data.enrollment?.score != null)
+        ) {
+          // Locked or has a submitted (scored) quiz not yet completed/attested: show quiz review.
+          // Gate on score != null so a retaken enrollment (score reset to null) is NOT trapped
+          // here — the review screen is only for submitted attempts.
           const resultsData: QuizResultsData = data.quizResultsData || {
             passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
             score: data.enrollment.score || 0,
@@ -470,6 +475,15 @@ export default function LearnPage() {
           setQuizStep('review');
           setQuizUnlocked(true);
           setHighestUnlockedIndex(lessonCount - 1);
+        } else if (hasQuizAttempt && !activeAttempt) {
+          // Retake pending: retakeQuiz() reset enrollment.score to null and left the completed
+          // attempts immutable, creating no draft. Land on the quiz START screen (intro) so the
+          // worker sees "Attempt N of M" + Start Quiz (which calls /start to append the new draft).
+          setQuizUnlocked(true);
+          setHighestUnlockedIndex(lessonCount - 1);
+          setActiveIndex(lessonCount);
+          setIsQuizActive(true);
+          setQuizStep('intro');
         } else if (data.enrollment?.progress > 0) {
           const savedProgress = data.enrollment.progress;
           const restoredIndex = Math.min(
@@ -583,6 +597,12 @@ export default function LearnPage() {
   // Whether to show the shared rail + topbar (quiz views only)
   const showSharedLayout = isQuizIndex || (quizStep === 'review' && quizResults);
 
+  // Attempt counters derive from the (unsorted) quizAttempts array: completed
+  // attempts have timeTaken !== null; at most one in-progress draft has null.
+  const completedAttemptCount =
+    enrollment?.quizAttempts?.filter((a) => a.timeTaken !== null).length ?? 0;
+  const activeDraftAttempt = enrollment?.quizAttempts?.find((a) => a.timeTaken === null);
+
   return (
     <div className="flex flex-row-reverse max-md:flex-col h-screen w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a]">
       {showSharedLayout && (
@@ -680,7 +700,7 @@ export default function LearnPage() {
                 hideActions={
                   enrollment?.status === 'completed' || enrollment?.status === 'attested'
                 }
-                showAttestation={userData?.role === 'worker' && quizResults.passed}
+                showAttestation={isWorkerRole(userData?.role) && quizResults.passed}
                 userRole={userData?.role}
                 organizationName={userData?.organizationName}
                 onAttestSuccess={() => {
@@ -794,9 +814,7 @@ export default function LearnPage() {
                                   }}
                                 >
                                   Attempt{' '}
-                                  {enrollment?.quizAttempts?.[0]?.attemptCount
-                                    ? enrollment.quizAttempts[0].attemptCount + 1
-                                    : 1}{' '}
+                                  {Math.min(completedAttemptCount + 1, course.quiz.allowedAttempts)}{' '}
                                   of {course.quiz.allowedAttempts}
                                 </span>
                               )}
@@ -826,7 +844,7 @@ export default function LearnPage() {
                             <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-text-muted">
                               Question {currentQuestionIndex + 1} of {course.quiz.questions.length}
                               {course.quiz.allowedAttempts &&
-                                ` | Attempt ${enrollment?.quizAttempts?.[0]?.attemptCount ?? 1} of ${course.quiz.allowedAttempts}`}
+                                ` | Attempt ${activeDraftAttempt?.attemptCount ?? completedAttemptCount + 1} of ${course.quiz.allowedAttempts}`}
                             </span>
                             <span className="text-[11px] font-semibold text-text-muted">
                               {Math.floor(timeLeft / 60)}:

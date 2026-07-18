@@ -13,7 +13,8 @@ interface Course {
   progress: number;
   deadline?: Date | string | null;
   duration?: number;
-  quizAttempts?: { id: string; attemptCount: number; timeTaken: number | null }[];
+  quizAttempts?: { id: string; attemptCount: number; timeTaken: number | null; score: number }[];
+  passingScore?: number | null;
   retakeOf?: string | null;
   enrollmentId?: string;
 }
@@ -42,7 +43,8 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
   const getStatusBadge = (
     status: string,
     progress: number,
-    quizAttempts?: { id: string; attemptCount: number; timeTaken: number | null }[],
+    quizAttempts?: { id: string; attemptCount: number; timeTaken: number | null; score: number }[],
+    passingScore?: number | null,
   ) => {
     if (status === 'attested') {
       return (
@@ -83,6 +85,19 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
 
     // Default to In Progress or Assigned
     const isStarted = progress > 0 || status === 'in_progress';
+    const latestAttempt = quizAttempts?.[0];
+    // Once the worker has passed the latest completed attempt they only need to
+    // attest, so suppress the "next attempt" hint entirely.
+    const passedLatest =
+      latestAttempt != null &&
+      latestAttempt.timeTaken !== null &&
+      passingScore != null &&
+      latestAttempt.score >= passingScore;
+    const attemptNumber = latestAttempt
+      ? latestAttempt.timeTaken === null
+        ? latestAttempt.attemptCount
+        : latestAttempt.attemptCount + 1
+      : 1;
     return (
       <div className="flex flex-col gap-0.5">
         <span
@@ -94,15 +109,8 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
           <Clock className="size-3" aria-hidden="true" />
           {isStarted ? 'In progress' : 'Assigned'}
         </span>
-        {isStarted && quizAttempts && (
-          <span className="pl-1 text-[10px] text-[#A0AEC0]">
-            Attempt{' '}
-            {quizAttempts[0]
-              ? quizAttempts[0].timeTaken === null
-                ? quizAttempts[0].attemptCount
-                : quizAttempts[0].attemptCount + 1
-              : 1}
-          </span>
+        {isStarted && quizAttempts && !passedLatest && (
+          <span className="pl-1 text-[10px] text-[#A0AEC0]">Attempt {attemptNumber}</span>
         )}
       </div>
     );
@@ -211,7 +219,12 @@ export default function WorkerCourseList({ courses }: WorkerCourseListProps) {
                       {formatDate(course.deadline)}
                     </td>
                     <td className="px-6 py-4 align-middle text-[#1a202c] max-md:mr-3 max-md:inline-flex max-md:border-none max-md:px-0 max-md:py-1 max-md:text-xs">
-                      {getStatusBadge(course.status, course.progress, course.quizAttempts)}
+                      {getStatusBadge(
+                        course.status,
+                        course.progress,
+                        course.quizAttempts,
+                        course.passingScore,
+                      )}
                     </td>
                   </tr>
                 );
