@@ -17,6 +17,15 @@ const nextConfig: NextConfig = {
         destination: '/dashboard/audit-reports',
         permanent: false,
       },
+      {
+        // The legacy /verify-2fa step-up page was removed when 2FA consolidated
+        // onto the single /mfa/verify email-OTP flow. Catch stale bookmarks and
+        // in-flight back-button hits during deploy so they land on /login (which
+        // re-mints a fresh MFA challenge) rather than a 404.
+        source: '/verify-2fa',
+        destination: '/login',
+        permanent: false,
+      },
     ];
   },
   async headers() {

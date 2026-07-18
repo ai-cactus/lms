@@ -13,6 +13,17 @@ export function siblingCookieNames(current: 'admin' | 'worker'): string[] {
   return [`__Secure-${sibling}.session-token`, `${sibling}.session-token`];
 }
 
+/**
+ * The session-token cookie name for an auth instance in the current
+ * environment. Mirrors the name each NextAuth instance sets in
+ * `create-auth-instance.ts` and the name the Edge proxy decodes in
+ * `proxy.ts`: the `__Secure-` prefix is applied only when secure cookies are in
+ * use (production). Kept here so cookie naming has a single source of truth.
+ */
+export function sessionCookieName(instance: 'admin' | 'worker', useSecureCookies: boolean): string {
+  return `${useSecureCookies ? '__Secure-' : ''}${instance}.session-token`;
+}
+
 // Minimal structural type for the mutable cookie store returned by
 // `cookies()` (next/headers). Declared locally to keep this module
 // dependency-free (see the file header) — importing next/headers here would

@@ -39,7 +39,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    await sendLoginMfaCode(challengeData.userId);
+    // Surface a per-user rate-limit (or send failure) to the client instead of
+    // masking it as success — the client shows the message and stops waiting for
+    // a code that will never arrive (Issue 4).
+    const result = await sendLoginMfaCode(challengeData.userId);
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 429 });
+    }
+
     await recordRateLimitAttempt(`mfa-send-ip:${ip}`, 900);
 
     return NextResponse.json({ success: true });
