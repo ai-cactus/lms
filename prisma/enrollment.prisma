@@ -19,6 +19,7 @@ enum ReminderStage {
   DAY_OF_DEADLINE
   GRACE_SOFT_ESCALATION
   HARD_ESCALATION
+  ADMIN_PRE_DEADLINE_REMINDER
 }
 
 enum ReminderNudgeKind {
@@ -52,6 +53,7 @@ model Enrollment {
   lockedAt             DateTime?         @map("locked_at")
   retakeOf             String?           @map("retake_of")
   retakeReason         String?           @map("retake_reason")
+  renewedFrom          String?           @map("renewed_from")
   assignmentId         String?           @map("assignment_id")
   accessAt             DateTime?         @map("access_at")
   dueAt                DateTime?         @map("due_at")
@@ -68,6 +70,7 @@ model Enrollment {
   @@index([completedAt])
   @@index([assignmentId])
   @@index([status, dueAt])
+  @@index([courseId, status, completedAt])
   @@map("enrollments")
 }
 

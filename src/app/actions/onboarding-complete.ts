@@ -202,6 +202,7 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
           organizationId: org.id,
           facilityId: facility.id,
           role: 'owner',
+          roleAssignedAt: new Date(),
         },
       });
 

@@ -1,7 +1,10 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { createNotification } from '@/app/actions/notifications';
 import { runRetentionPurge, type RetentionPurgeSummary } from '@/lib/retention';
-import { SWEEP_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
+import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
+import type { UserRole, RenewalCycle } from '@/generated/prisma/enums';
+import { SWEEP_LADDER_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, startOfDayInTz, addDays, diffInDaysInTz } from './time';
 import {
   dispatchLadderStage,
@@ -49,11 +52,22 @@ export interface ReminderSweepSummary {
   ladderSent: number;
   nudgesSent: number;
   skipped: number;
+  /**
+   * Sends the sweep *would* have made were it not a dry run. Counted separately
+   * from {@link skipped} (Issue #12) so a dry-run summary reflects intended sends
+   * instead of masking them as genuine skips (disabled/out-of-window/already-sent).
+   * Always 0 outside dry-run.
+   */
+  wouldSend: number;
   errors: number;
   /** Failed reminder emails successfully re-sent by the retry pre-pass (F-020). */
   retriesSent: number;
   /** Rows deleted by the data-retention purge pre-pass (F-054); null when skipped. */
   retentionPurged: RetentionPurgeSummary | null;
+  /** Role holders backfilled by the role-target reconcile pre-pass (Issue #4). */
+  roleTargetEnrolled: number;
+  /** Renewal enrollments created by the recurrence re-trigger pre-pass (Issue #6). */
+  renewalsCreated: number;
 }
 
 /**
@@ -83,20 +97,25 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
     ladderSent: 0,
     nudgesSent: 0,
     skipped: 0,
+    wouldSend: 0,
     errors: 0,
     retriesSent: 0,
     retentionPurged: null,
+    roleTargetEnrolled: 0,
+    renewalsCreated: 0,
   };
 
   const tallyLadder = (result: DispatchResult): void => {
     if (result.sent) summary.ladderSent += 1;
     else if (result.reason === 'error') summary.errors += 1;
+    else if (result.reason === 'dry-run') summary.wouldSend += 1;
     else summary.skipped += 1;
   };
 
   const tallyNudge = (result: DispatchResult): void => {
     if (result.sent) summary.nudgesSent += 1;
     else if (result.reason === 'error') summary.errors += 1;
+    else if (result.reason === 'dry-run') summary.wouldSend += 1;
     else summary.skipped += 1;
   };
 
@@ -104,6 +123,8 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
 
   await runRetryPrePass(opts, summary);
   await runRetentionPrePass(opts, summary);
+  await runRoleTargetReconcilePrePass(opts, summary);
+  await runRenewalRetriggerPrePass(opts, summary);
   await runTrackA(opts, summary, tallyLadder);
   await runTrackB(opts, summary, tallyNudge);
 
@@ -218,6 +239,348 @@ async function runRetentionPrePass(
   summary.retentionPurged = await runRetentionPurge(opts.now);
 }
 
+/**
+ * Reconcile role-target course assignments before the reminder tracks.
+ *
+ * A backstop for the live {@link enrollUserForRoleTargets} hook: for every active
+ * role-target assignment, find org users who hold the targeted role but have no
+ * enrollment for that course and enroll them, with a deadline counted from each
+ * user's `roleAssignedAt` (role-target assignments never carry an absolute
+ * `dueAt`). This catches any role-write site the live hook missed and any user
+ * who gained the role while the app was down.
+ *
+ * Bulk queries only (no N+1): one query for the assignments, one for all
+ * candidate holders across every targeted (org, role), and one for their existing
+ * enrollments. The per-user create runs only for genuinely missing enrollments,
+ * and {@link createEnrollmentForUser}'s own existence check makes it idempotent —
+ * a second sweep enrolls no one twice. A no-op under `dryRun` (it writes
+ * enrollments and sends launch emails).
+ *
+ * Self-contained so later sweep pre-passes can slot in alongside it untouched.
+ */
+async function runRoleTargetReconcilePrePass(
+  opts: ReminderSweepOptions,
+  summary: ReminderSweepSummary,
+): Promise<void> {
+  if (opts.dryRun) return;
+
+  try {
+    const assignments = await prisma.courseAssignment.findMany({
+      where: { targetRole: { not: null } },
+      select: {
+        id: true,
+        organizationId: true,
+        courseId: true,
+        targetRole: true,
+        dueWindowDays: true,
+        course: { select: { title: true } },
+        organization: { select: { name: true } },
+      },
+    });
+    if (assignments.length === 0) return;
+
+    const orgIds = [...new Set(assignments.map((a) => a.organizationId))];
+    const roles = [
+      ...new Set(assignments.map((a) => a.targetRole).filter((r): r is UserRole => r !== null)),
+    ];
+    const courseIds = [...new Set(assignments.map((a) => a.courseId))];
+
+    // One query for every candidate holder across all targeted orgs/roles.
+    const holders = await prisma.user.findMany({
+      where: { organizationId: { in: orgIds }, role: { in: roles } },
+      select: { id: true, email: true, organizationId: true, role: true, roleAssignedAt: true },
+    });
+    if (holders.length === 0) return;
+
+    // One query for the holders already enrolled in the targeted courses.
+    const existing = await prisma.enrollment.findMany({
+      where: { courseId: { in: courseIds }, userId: { in: holders.map((h) => h.id) } },
+      select: { userId: true, courseId: true },
+    });
+    const enrolledSet = new Set(existing.map((e) => `${e.userId}|${e.courseId}`));
+
+    // Index holders by `${organizationId}|${role}` for O(1) assignment matching.
+    const holdersByOrgRole = new Map<string, typeof holders>();
+    for (const holder of holders) {
+      if (!holder.organizationId) continue;
+      const key = `${holder.organizationId}|${holder.role}`;
+      const list = holdersByOrgRole.get(key);
+      if (list) list.push(holder);
+      else holdersByOrgRole.set(key, [holder]);
+    }
+
+    for (const assignment of assignments) {
+      if (!assignment.targetRole) continue;
+      const matches =
+        holdersByOrgRole.get(`${assignment.organizationId}|${assignment.targetRole}`) ?? [];
+
+      for (const holder of matches) {
+        const enrollmentKey = `${holder.id}|${assignment.courseId}`;
+        if (enrolledSet.has(enrollmentKey)) continue;
+
+        try {
+          const ctx: CreateEnrollmentContext = {
+            courseId: assignment.courseId,
+            courseTitle: assignment.course.title,
+            organizationId: assignment.organizationId,
+            organizationName: assignment.organization?.name || 'Your Organization',
+            facilityId: null,
+            assignmentId: assignment.id,
+            // Count the deadline window from the holder's role-join date.
+            scheduleAt: holder.roleAssignedAt,
+            assignmentDueAt: null,
+            assignmentWindowDays: assignment.dueWindowDays,
+            enrolledByUserId: 'system-sweep',
+          };
+
+          const outcome = await createEnrollmentForUser({ email: holder.email }, ctx);
+          if (outcome.status === 'enrolled' || outcome.status === 'newInvited') {
+            summary.roleTargetEnrolled += 1;
+          }
+          // Guard against re-processing the same pair within this run.
+          enrolledSet.add(enrollmentKey);
+        } catch (err) {
+          summary.errors += 1;
+          logger.error({
+            msg: '[reminders] Role-target reconcile failed',
+            userId: holder.id,
+            courseId: assignment.courseId,
+            err,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    // Best-effort pre-pass (mirrors retention/retry): a bulk-query failure here
+    // must never prevent the reminder tracks from dispatching.
+    summary.errors += 1;
+    logger.error({ msg: '[reminders] Role-target reconcile pre-pass failed', err });
+  }
+}
+
+/**
+ * Days before a renewal's deadline at which the renewal enrollment is created.
+ * Matches the earliest pre-deadline ladder stage (FRIENDLY_REMINDER's −14d) so
+ * the whole pre-deadline ladder (−14/−7/−3) gets its full window to fire — the
+ * renewal deadline itself stays `completedAt + cycleLengthDays` (unchanged).
+ */
+const RENEWAL_LEAD_DAYS = 14;
+
+/**
+ * Length of a renewal cycle in days. Approximate calendar spans (monthly ≈ 30,
+ * quarterly ≈ 90, semiannual ≈ 180, annual ≈ 365) — only a consistent interval
+ * from completion to the next deadline is required, not an exact anniversary.
+ * `none` is 0 (the assignment never renews) and is filtered out before this runs.
+ */
+function cycleLengthDays(cycle: RenewalCycle): number {
+  switch (cycle) {
+    case 'monthly':
+      return 30;
+    case 'quarterly':
+      return 90;
+    case 'semiannual':
+      return 180;
+    case 'annual':
+      return 365;
+    case 'none':
+      return 0;
+  }
+}
+
+/**
+ * Re-trigger recurring training before the reminder tracks (Issue #6 / TC-019).
+ *
+ * For every course assignment on a renewal cycle, find its terminal
+ * (completed/attested) enrollments whose cycle has elapsed since completion and
+ * that have not already been renewed or superseded, then create a fresh
+ * enrollment for the same (user, course, assignment): progress reset, a new
+ * `dueAt = completedAt + cycleLengthDays`, and a `renewedFrom` audit link back to
+ * the completed enrollment. Each renewal seeds its own `INITIAL_LAUNCH` reminder
+ * log so the ladder dedup lineage starts clean, notifies the worker in-app, and
+ * emails the launch notice with the renewal deadline.
+ *
+ * Idempotent: a candidate is skipped when any newer enrollment already exists for
+ * that (user, course) — which includes the renewal this pre-pass just created —
+ * so a second sweep renews no one twice. Bulk queries only (no N+1): one for the
+ * renewal assignments, one for their terminal enrollments, one for the newer-
+ * enrollment guard. A no-op under `dryRun` (it writes enrollments and sends mail).
+ *
+ * Best-effort (mirrors the other pre-passes): a bulk-query failure is logged and
+ * swallowed so it can never prevent the reminder tracks from dispatching.
+ */
+async function runRenewalRetriggerPrePass(
+  opts: ReminderSweepOptions,
+  summary: ReminderSweepSummary,
+): Promise<void> {
+  const { now, dryRun } = opts;
+  if (dryRun) return;
+
+  try {
+    // Gate on renewal assignments first (empty in the common case) so a run with
+    // no recurring courses never scans the enrollment table.
+    const assignments = await prisma.courseAssignment.findMany({
+      where: { renewalCycle: { not: 'none' } },
+      select: {
+        id: true,
+        courseId: true,
+        organizationId: true,
+        renewalCycle: true,
+        course: { select: { title: true } },
+        organization: { select: { name: true } },
+      },
+    });
+    if (assignments.length === 0) return;
+
+    const assignmentById = new Map(assignments.map((a) => [a.id, a]));
+
+    const candidates = await prisma.enrollment.findMany({
+      where: {
+        assignmentId: { in: assignments.map((a) => a.id) },
+        status: { in: [...TERMINAL_STATUSES] },
+        completedAt: { not: null },
+      },
+      select: {
+        id: true,
+        userId: true,
+        courseId: true,
+        completedAt: true,
+        assignmentId: true,
+        user: { select: { email: true, profile: { select: { fullName: true } } } },
+      },
+    });
+    if (candidates.length === 0) return;
+
+    // Newer-enrollment guard: the latest `startedAt` per (user, course). A
+    // candidate whose latest start is after its own completion has already been
+    // renewed or re-enrolled, so it must not renew again (idempotency).
+    const userIds = [...new Set(candidates.map((c) => c.userId))];
+    const courseIds = [...new Set(candidates.map((c) => c.courseId))];
+    const related = await prisma.enrollment.findMany({
+      where: { userId: { in: userIds }, courseId: { in: courseIds } },
+      select: { userId: true, courseId: true, startedAt: true },
+    });
+    const latestStartByUserCourse = new Map<string, Date>();
+    for (const row of related) {
+      const key = `${row.userId}|${row.courseId}`;
+      const current = latestStartByUserCourse.get(key);
+      if (!current || row.startedAt > current) latestStartByUserCourse.set(key, row.startedAt);
+    }
+
+    // Guards against renewing the same (user, course) twice within one run.
+    const renewedThisRun = new Set<string>();
+
+    for (const candidate of candidates) {
+      const completedAt = candidate.completedAt;
+      if (!completedAt) continue; // Defensive: the query already filters non-null.
+
+      const assignment = candidate.assignmentId
+        ? assignmentById.get(candidate.assignmentId)
+        : undefined;
+      if (!assignment) continue;
+
+      const key = `${candidate.userId}|${candidate.courseId}`;
+      if (renewedThisRun.has(key)) continue;
+
+      // A start strictly after this completion means a newer enrollment already
+      // exists (a prior renewal or a manual re-enroll) — skip to stay idempotent.
+      const latestStart = latestStartByUserCourse.get(key);
+      if (latestStart && latestStart > completedAt) continue;
+
+      const cycleDays = cycleLengthDays(assignment.renewalCycle);
+      const renewalDueAt = addDays(completedAt, cycleDays);
+      // Create the renewal RENEWAL_LEAD_DAYS ahead of the deadline so the full
+      // pre-deadline ladder can fire; clamp the lead below the cycle length so a
+      // renewal can never become eligible before the prior enrollment completed
+      // (guarantees eligibleAt > completedAt for every cycle, incl. monthly=30d).
+      const leadDays = Math.min(RENEWAL_LEAD_DAYS, cycleDays - 1);
+      const renewalEligibleAt = addDays(renewalDueAt, -leadDays);
+      if (now < renewalEligibleAt) continue;
+
+      try {
+        const renewal = await prisma.enrollment.create({
+          data: {
+            userId: candidate.userId,
+            courseId: candidate.courseId,
+            status: 'enrolled',
+            progress: 0,
+            assignmentId: candidate.assignmentId ?? undefined,
+            renewedFrom: candidate.id,
+            accessAt: now,
+            dueAt: renewalDueAt,
+          },
+        });
+
+        // Fresh INITIAL_LAUNCH lineage so the ladder never treats the renewal as
+        // already-launched. A logging failure must not abort the renewal.
+        try {
+          await prisma.reminderLog.create({
+            data: {
+              enrollmentId: renewal.id,
+              stage: 'INITIAL_LAUNCH',
+              channels: ['email', 'in_app'],
+              targetDate: now,
+            },
+          });
+        } catch (logErr) {
+          logger.warn({
+            msg: '[reminders] Renewal INITIAL_LAUNCH reminder log not written',
+            enrollmentId: renewal.id,
+            err: logErr,
+          });
+        }
+
+        await createNotification({
+          userId: candidate.userId,
+          type: 'COURSE_ASSIGNED',
+          title: 'Training due for renewal',
+          message: `Your training "${assignment.course.title}" is due for renewal. Please complete it again before the deadline.`,
+          linkUrl: '/worker/trainings',
+          metadata: { courseId: candidate.courseId, enrollmentId: renewal.id },
+        });
+
+        try {
+          const { sendCourseLaunchEmail } = await import('@/lib/email');
+          await sendCourseLaunchEmail(
+            candidate.user.email,
+            candidate.user.profile?.fullName || 'there',
+            assignment.course.title,
+            assignment.organization?.name || 'Your Organization',
+            renewalDueAt,
+          );
+        } catch (emailErr) {
+          logger.error({
+            msg: '[reminders] Failed to send renewal launch email',
+            enrollmentId: renewal.id,
+            err: emailErr,
+          });
+        }
+
+        renewedThisRun.add(key);
+        summary.renewalsCreated += 1;
+        logger.info({
+          msg: '[reminders] Renewal enrollment created',
+          renewedFrom: candidate.id,
+          enrollmentId: renewal.id,
+          courseId: candidate.courseId,
+        });
+      } catch (err) {
+        summary.errors += 1;
+        logger.error({
+          msg: '[reminders] Renewal re-trigger failed',
+          enrollmentId: candidate.id,
+          courseId: candidate.courseId,
+          err,
+        });
+      }
+    }
+  } catch (err) {
+    // Best-effort pre-pass (mirrors retention/retry): a bulk-query failure here
+    // must never prevent the reminder tracks from dispatching.
+    summary.errors += 1;
+    logger.error({ msg: '[reminders] Renewal re-trigger pre-pass failed', err });
+  }
+}
+
 async function runTrackA(
   opts: ReminderSweepOptions,
   summary: ReminderSweepSummary,
@@ -289,7 +652,7 @@ async function runTrackA(
         name: enrollment.user.profile?.fullName ?? null,
       };
 
-      for (const stage of SWEEP_STAGES) {
+      for (const stage of SWEEP_LADDER_STAGES) {
         const defaults = REMINDER_STAGE_DEFAULTS[stage];
         const config = stageConfig.find((s) => s.stage === stage);
 

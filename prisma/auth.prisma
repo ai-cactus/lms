@@ -35,6 +35,7 @@ model User {
   mfaEnabled            Boolean                  @default(false) @map("mfa_enabled")
   mfaVerifiedAt         DateTime?                @map("mfa_verified_at")
   sessionVersion        Int                      @default(0) @map("session_version")
+  roleAssignedAt        DateTime                 @default(now()) @map("role_assigned_at")
   lastLoginAt           DateTime?                @map("last_login_at")
   managerId             String?                  @map("manager_id")
   createdAt             DateTime                 @default(now()) @map("created_at")

@@ -9,6 +9,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { assertSeatAvailable, SeatLimitError } from '@/lib/seat-limits';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
+import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -157,6 +158,10 @@ export async function POST(req: Request) {
       ...getClientContext(req.headers),
       metadata: { email: maskEmail(invite.email) },
     });
+
+    // Live auto-enroll: a new account just joined the org with a role — enroll it
+    // in any active role-target assignments for that role. Never throws.
+    await enrollUserForRoleTargets(newUser.id, invite.organizationId);
 
     return NextResponse.json({ success: true, userId: newUser.id });
   } catch (error: unknown) {

@@ -152,6 +152,28 @@ export async function getSignedUrl(storageUri: string, expirySeconds = 900): Pro
 }
 
 /**
+ * Report whether a stored object still exists in its backend.
+ *
+ * Resolves `false` only for a definitively-missing object (404 / NoSuchKey);
+ * transient failures (network, auth, 5xx) reject so callers can avoid recording
+ * a false "missing". Legacy local paths are treated as absent from cloud storage.
+ *
+ * @param storageUri  The opaque URI persisted for the object.
+ */
+export async function objectExists(storageUri: string): Promise<boolean> {
+  if (isLegacyPath(storageUri)) {
+    logger.warn({
+      msg: '[storage] objectExists called with a legacy local path — treating as missing',
+      storageUri,
+    });
+    return false;
+  }
+
+  const provider = resolveProvider(storageUri);
+  return provider.objectExists(storageUri);
+}
+
+/**
  * Permanently delete a stored file.
  * Idempotent — safe to call if the object is already gone.
  *

@@ -39,6 +39,7 @@ export type CourseAssignmentMinAggregateOutputType = {
   organizationId: string | null
   courseId: string | null
   assignedByAdminId: string | null
+  targetRole: $Enums.UserRole | null
   scheduleAt: Date | null
   dueAt: Date | null
   dueWindowDays: number | null
@@ -53,6 +54,7 @@ export type CourseAssignmentMaxAggregateOutputType = {
   organizationId: string | null
   courseId: string | null
   assignedByAdminId: string | null
+  targetRole: $Enums.UserRole | null
   scheduleAt: Date | null
   dueAt: Date | null
   dueWindowDays: number | null
@@ -67,6 +69,7 @@ export type CourseAssignmentCountAggregateOutputType = {
   organizationId: number
   courseId: number
   assignedByAdminId: number
+  targetRole: number
   scheduleAt: number
   dueAt: number
   dueWindowDays: number
@@ -91,6 +94,7 @@ export type CourseAssignmentMinAggregateInputType = {
   organizationId?: true
   courseId?: true
   assignedByAdminId?: true
+  targetRole?: true
   scheduleAt?: true
   dueAt?: true
   dueWindowDays?: true
@@ -105,6 +109,7 @@ export type CourseAssignmentMaxAggregateInputType = {
   organizationId?: true
   courseId?: true
   assignedByAdminId?: true
+  targetRole?: true
   scheduleAt?: true
   dueAt?: true
   dueWindowDays?: true
@@ -119,6 +124,7 @@ export type CourseAssignmentCountAggregateInputType = {
   organizationId?: true
   courseId?: true
   assignedByAdminId?: true
+  targetRole?: true
   scheduleAt?: true
   dueAt?: true
   dueWindowDays?: true
@@ -220,6 +226,7 @@ export type CourseAssignmentGroupByOutputType = {
   organizationId: string
   courseId: string
   assignedByAdminId: string
+  targetRole: $Enums.UserRole | null
   scheduleAt: Date | null
   dueAt: Date | null
   dueWindowDays: number | null
@@ -257,6 +264,7 @@ export type CourseAssignmentWhereInput = {
   organizationId?: Prisma.StringFilter<"CourseAssignment"> | string
   courseId?: Prisma.StringFilter<"CourseAssignment"> | string
   assignedByAdminId?: Prisma.StringFilter<"CourseAssignment"> | string
+  targetRole?: Prisma.EnumUserRoleNullableFilter<"CourseAssignment"> | $Enums.UserRole | null
   scheduleAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
   dueAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
   dueWindowDays?: Prisma.IntNullableFilter<"CourseAssignment"> | number | null
@@ -275,6 +283,7 @@ export type CourseAssignmentOrderByWithRelationInput = {
   organizationId?: Prisma.SortOrder
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
+  targetRole?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduleAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dueAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dueWindowDays?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -296,6 +305,7 @@ export type CourseAssignmentWhereUniqueInput = Prisma.AtLeast<{
   organizationId?: Prisma.StringFilter<"CourseAssignment"> | string
   courseId?: Prisma.StringFilter<"CourseAssignment"> | string
   assignedByAdminId?: Prisma.StringFilter<"CourseAssignment"> | string
+  targetRole?: Prisma.EnumUserRoleNullableFilter<"CourseAssignment"> | $Enums.UserRole | null
   scheduleAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
   dueAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
   dueWindowDays?: Prisma.IntNullableFilter<"CourseAssignment"> | number | null
@@ -314,6 +324,7 @@ export type CourseAssignmentOrderByWithAggregationInput = {
   organizationId?: Prisma.SortOrder
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
+  targetRole?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduleAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dueAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dueWindowDays?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -336,6 +347,7 @@ export type CourseAssignmentScalarWhereWithAggregatesInput = {
   organizationId?: Prisma.StringWithAggregatesFilter<"CourseAssignment"> | string
   courseId?: Prisma.StringWithAggregatesFilter<"CourseAssignment"> | string
   assignedByAdminId?: Prisma.StringWithAggregatesFilter<"CourseAssignment"> | string
+  targetRole?: Prisma.EnumUserRoleNullableWithAggregatesFilter<"CourseAssignment"> | $Enums.UserRole | null
   scheduleAt?: Prisma.DateTimeNullableWithAggregatesFilter<"CourseAssignment"> | Date | string | null
   dueAt?: Prisma.DateTimeNullableWithAggregatesFilter<"CourseAssignment"> | Date | string | null
   dueWindowDays?: Prisma.IntNullableWithAggregatesFilter<"CourseAssignment"> | number | null
@@ -348,6 +360,7 @@ export type CourseAssignmentScalarWhereWithAggregatesInput = {
 export type CourseAssignmentCreateInput = {
   id?: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -366,6 +379,7 @@ export type CourseAssignmentUncheckedCreateInput = {
   organizationId: string
   courseId: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -380,6 +394,7 @@ export type CourseAssignmentUncheckedCreateInput = {
 export type CourseAssignmentUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -398,6 +413,7 @@ export type CourseAssignmentUncheckedUpdateInput = {
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -414,6 +430,7 @@ export type CourseAssignmentCreateManyInput = {
   organizationId: string
   courseId: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -426,6 +443,7 @@ export type CourseAssignmentCreateManyInput = {
 export type CourseAssignmentUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -440,6 +458,7 @@ export type CourseAssignmentUncheckedUpdateManyInput = {
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -464,6 +483,7 @@ export type CourseAssignmentCountOrderByAggregateInput = {
   organizationId?: Prisma.SortOrder
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
+  targetRole?: Prisma.SortOrder
   scheduleAt?: Prisma.SortOrder
   dueAt?: Prisma.SortOrder
   dueWindowDays?: Prisma.SortOrder
@@ -482,6 +502,7 @@ export type CourseAssignmentMaxOrderByAggregateInput = {
   organizationId?: Prisma.SortOrder
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
+  targetRole?: Prisma.SortOrder
   scheduleAt?: Prisma.SortOrder
   dueAt?: Prisma.SortOrder
   dueWindowDays?: Prisma.SortOrder
@@ -496,6 +517,7 @@ export type CourseAssignmentMinOrderByAggregateInput = {
   organizationId?: Prisma.SortOrder
   courseId?: Prisma.SortOrder
   assignedByAdminId?: Prisma.SortOrder
+  targetRole?: Prisma.SortOrder
   scheduleAt?: Prisma.SortOrder
   dueAt?: Prisma.SortOrder
   dueWindowDays?: Prisma.SortOrder
@@ -559,6 +581,10 @@ export type CourseAssignmentUncheckedUpdateManyWithoutCourseNestedInput = {
   update?: Prisma.CourseAssignmentUpdateWithWhereUniqueWithoutCourseInput | Prisma.CourseAssignmentUpdateWithWhereUniqueWithoutCourseInput[]
   updateMany?: Prisma.CourseAssignmentUpdateManyWithWhereWithoutCourseInput | Prisma.CourseAssignmentUpdateManyWithWhereWithoutCourseInput[]
   deleteMany?: Prisma.CourseAssignmentScalarWhereInput | Prisma.CourseAssignmentScalarWhereInput[]
+}
+
+export type NullableEnumUserRoleFieldUpdateOperationsInput = {
+  set?: $Enums.UserRole | null
 }
 
 export type EnumRenewalCycleFieldUpdateOperationsInput = {
@@ -640,6 +666,7 @@ export type CourseAssignmentUncheckedUpdateManyWithoutOrganizationNestedInput = 
 export type CourseAssignmentCreateWithoutCourseInput = {
   id?: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -656,6 +683,7 @@ export type CourseAssignmentUncheckedCreateWithoutCourseInput = {
   id?: string
   organizationId: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -701,6 +729,7 @@ export type CourseAssignmentScalarWhereInput = {
   organizationId?: Prisma.StringFilter<"CourseAssignment"> | string
   courseId?: Prisma.StringFilter<"CourseAssignment"> | string
   assignedByAdminId?: Prisma.StringFilter<"CourseAssignment"> | string
+  targetRole?: Prisma.EnumUserRoleNullableFilter<"CourseAssignment"> | $Enums.UserRole | null
   scheduleAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
   dueAt?: Prisma.DateTimeNullableFilter<"CourseAssignment"> | Date | string | null
   dueWindowDays?: Prisma.IntNullableFilter<"CourseAssignment"> | number | null
@@ -713,6 +742,7 @@ export type CourseAssignmentScalarWhereInput = {
 export type CourseAssignmentCreateWithoutReminderStagesInput = {
   id?: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -730,6 +760,7 @@ export type CourseAssignmentUncheckedCreateWithoutReminderStagesInput = {
   organizationId: string
   courseId: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -759,6 +790,7 @@ export type CourseAssignmentUpdateToOneWithWhereWithoutReminderStagesInput = {
 export type CourseAssignmentUpdateWithoutReminderStagesInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -776,6 +808,7 @@ export type CourseAssignmentUncheckedUpdateWithoutReminderStagesInput = {
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -789,6 +822,7 @@ export type CourseAssignmentUncheckedUpdateWithoutReminderStagesInput = {
 export type CourseAssignmentCreateWithoutEnrollmentsInput = {
   id?: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -806,6 +840,7 @@ export type CourseAssignmentUncheckedCreateWithoutEnrollmentsInput = {
   organizationId: string
   courseId: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -835,6 +870,7 @@ export type CourseAssignmentUpdateToOneWithWhereWithoutEnrollmentsInput = {
 export type CourseAssignmentUpdateWithoutEnrollmentsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -852,6 +888,7 @@ export type CourseAssignmentUncheckedUpdateWithoutEnrollmentsInput = {
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -865,6 +902,7 @@ export type CourseAssignmentUncheckedUpdateWithoutEnrollmentsInput = {
 export type CourseAssignmentCreateWithoutOrganizationInput = {
   id?: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -881,6 +919,7 @@ export type CourseAssignmentUncheckedCreateWithoutOrganizationInput = {
   id?: string
   courseId: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -922,6 +961,7 @@ export type CourseAssignmentCreateManyCourseInput = {
   id?: string
   organizationId: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -934,6 +974,7 @@ export type CourseAssignmentCreateManyCourseInput = {
 export type CourseAssignmentUpdateWithoutCourseInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -950,6 +991,7 @@ export type CourseAssignmentUncheckedUpdateWithoutCourseInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -965,6 +1007,7 @@ export type CourseAssignmentUncheckedUpdateManyWithoutCourseInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -978,6 +1021,7 @@ export type CourseAssignmentCreateManyOrganizationInput = {
   id?: string
   courseId: string
   assignedByAdminId: string
+  targetRole?: $Enums.UserRole | null
   scheduleAt?: Date | string | null
   dueAt?: Date | string | null
   dueWindowDays?: number | null
@@ -990,6 +1034,7 @@ export type CourseAssignmentCreateManyOrganizationInput = {
 export type CourseAssignmentUpdateWithoutOrganizationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1006,6 +1051,7 @@ export type CourseAssignmentUncheckedUpdateWithoutOrganizationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1021,6 +1067,7 @@ export type CourseAssignmentUncheckedUpdateManyWithoutOrganizationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   courseId?: Prisma.StringFieldUpdateOperationsInput | string
   assignedByAdminId?: Prisma.StringFieldUpdateOperationsInput | string
+  targetRole?: Prisma.NullableEnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole | null
   scheduleAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueWindowDays?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1075,6 +1122,7 @@ export type CourseAssignmentSelect<ExtArgs extends runtime.Types.Extensions.Inte
   organizationId?: boolean
   courseId?: boolean
   assignedByAdminId?: boolean
+  targetRole?: boolean
   scheduleAt?: boolean
   dueAt?: boolean
   dueWindowDays?: boolean
@@ -1094,6 +1142,7 @@ export type CourseAssignmentSelectCreateManyAndReturn<ExtArgs extends runtime.Ty
   organizationId?: boolean
   courseId?: boolean
   assignedByAdminId?: boolean
+  targetRole?: boolean
   scheduleAt?: boolean
   dueAt?: boolean
   dueWindowDays?: boolean
@@ -1110,6 +1159,7 @@ export type CourseAssignmentSelectUpdateManyAndReturn<ExtArgs extends runtime.Ty
   organizationId?: boolean
   courseId?: boolean
   assignedByAdminId?: boolean
+  targetRole?: boolean
   scheduleAt?: boolean
   dueAt?: boolean
   dueWindowDays?: boolean
@@ -1126,6 +1176,7 @@ export type CourseAssignmentSelectScalar = {
   organizationId?: boolean
   courseId?: boolean
   assignedByAdminId?: boolean
+  targetRole?: boolean
   scheduleAt?: boolean
   dueAt?: boolean
   dueWindowDays?: boolean
@@ -1135,7 +1186,7 @@ export type CourseAssignmentSelectScalar = {
   updatedAt?: boolean
 }
 
-export type CourseAssignmentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "courseId" | "assignedByAdminId" | "scheduleAt" | "dueAt" | "dueWindowDays" | "remindersEnabled" | "renewalCycle" | "createdAt" | "updatedAt", ExtArgs["result"]["courseAssignment"]>
+export type CourseAssignmentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "organizationId" | "courseId" | "assignedByAdminId" | "targetRole" | "scheduleAt" | "dueAt" | "dueWindowDays" | "remindersEnabled" | "renewalCycle" | "createdAt" | "updatedAt", ExtArgs["result"]["courseAssignment"]>
 export type CourseAssignmentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   organization?: boolean | Prisma.OrganizationDefaultArgs<ExtArgs>
   course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>
@@ -1165,6 +1216,7 @@ export type $CourseAssignmentPayload<ExtArgs extends runtime.Types.Extensions.In
     organizationId: string
     courseId: string
     assignedByAdminId: string
+    targetRole: $Enums.UserRole | null
     scheduleAt: Date | null
     dueAt: Date | null
     dueWindowDays: number | null
@@ -1603,6 +1655,7 @@ export interface CourseAssignmentFieldRefs {
   readonly organizationId: Prisma.FieldRef<"CourseAssignment", 'String'>
   readonly courseId: Prisma.FieldRef<"CourseAssignment", 'String'>
   readonly assignedByAdminId: Prisma.FieldRef<"CourseAssignment", 'String'>
+  readonly targetRole: Prisma.FieldRef<"CourseAssignment", 'UserRole'>
   readonly scheduleAt: Prisma.FieldRef<"CourseAssignment", 'DateTime'>
   readonly dueAt: Prisma.FieldRef<"CourseAssignment", 'DateTime'>
   readonly dueWindowDays: Prisma.FieldRef<"CourseAssignment", 'Int'>

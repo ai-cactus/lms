@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { Loader2, Pencil, RotateCcw, SearchCheck, TriangleAlert, Trash2 } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { RowActionsMenu } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
@@ -14,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { setVideoCourseStatus } from '@/app/actions/video-course';
+import { setVideoCourseStatus, verifyGlobalVideoMedia } from '@/app/actions/video-course';
 import { logger } from '@/lib/logger';
 import { isEmptyHtml } from '@/lib/html';
 import VideoCourseForm, { type VideoCourseFormValues } from './VideoCourseForm';
@@ -52,8 +53,9 @@ function MediaStatusBadge({ status }: { status: MediaStatus }) {
   }
   if (status === 'failed') {
     return (
-      <span className="inline-flex items-center rounded-full bg-error/10 px-2.5 py-1 text-xs font-semibold text-error">
-        Processing failed
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-error/10 px-2.5 py-1 text-xs font-semibold text-error">
+        <TriangleAlert className="size-3" aria-hidden="true" />
+        Unavailable
       </span>
     );
   }
@@ -116,7 +118,40 @@ export default function VideoCoursesClient({ courses }: Props) {
 
   const [, startStatusTransition] = useTransition();
 
+  const [isVerifying, startVerifyTransition] = useTransition();
+  const [verifyResult, setVerifyResult] = useState<{
+    variant: 'success' | 'warning' | 'error';
+    title: string;
+    message: string;
+  } | null>(null);
+
   // ── Handlers ────────────────────────────────────────────────────────────────
+
+  const handleVerifyMedia = () => {
+    setVerifyResult(null);
+    startVerifyTransition(async () => {
+      try {
+        const { checked, missing } = await verifyGlobalVideoMedia();
+        const noun = checked === 1 ? 'video' : 'videos';
+        setVerifyResult({
+          variant: missing > 0 ? 'warning' : 'success',
+          title: 'Media check complete',
+          message:
+            missing > 0
+              ? `${checked} ${noun} checked · ${missing} missing from storage and flagged unavailable.`
+              : `${checked} ${noun} checked · all present.`,
+        });
+        router.refresh();
+      } catch (err) {
+        logger.error({ msg: '[VideoCoursesClient] verify media failed', err });
+        setVerifyResult({
+          variant: 'error',
+          title: 'Media check failed',
+          message: err instanceof Error ? err.message : 'Request failed',
+        });
+      }
+    });
+  };
 
   const handleDeactivate = (course: VideoCourseRow) => {
     if (
@@ -275,10 +310,25 @@ export default function VideoCoursesClient({ courses }: Props) {
       {/* ── Table ─────────────────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-border bg-background">
         <div className="border-b border-border px-6 py-4">
-          <h2 className="text-base font-semibold text-foreground">
-            Global video courses
-            <span className="ml-2 text-sm font-normal text-text-secondary">({courses.length})</span>
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground">
+              Global video courses
+              <span className="ml-2 text-sm font-normal text-text-secondary">
+                ({courses.length})
+              </span>
+            </h2>
+            <Button variant="secondary" size="sm" onClick={handleVerifyMedia} loading={isVerifying}>
+              <SearchCheck className="size-4" aria-hidden="true" />
+              Verify media
+            </Button>
+          </div>
+          {verifyResult && (
+            <div className="mt-4">
+              <Alert variant={verifyResult.variant} title={verifyResult.title}>
+                {verifyResult.message}
+              </Alert>
+            </div>
+          )}
         </div>
 
         <Table>

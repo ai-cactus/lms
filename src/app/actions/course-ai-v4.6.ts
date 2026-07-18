@@ -312,17 +312,82 @@ async function generateSlidesV46(
 
 // ─── Stage C: Quiz Generation ────────────────────
 
-async function generateQuizV46(
+// Documented output ceiling for the Stage C model (gemini-2.5-flash-lite):
+// 65,536 output tokens per Vertex AI / Gemini model reference. The previous
+// fixed 16,384 cap was only ~25% of this and silently TRUNCATED large quizzes
+// (finishReason=MAX_TOKENS → cut-off JSON → parse failure → 0 questions).
+const QUIZ_MODEL_MAX_OUTPUT_TOKENS = 65536;
+
+// Each quiz question costs ~370–500 output tokens in practice (stimulus + 4
+// options each with a 12–100-word explanation + metadata). Budget ~2× that so a
+// verbose batch never brushes the ceiling.
+const QUIZ_OUTPUT_TOKENS_PER_QUESTION = 900;
+const QUIZ_BASE_OUTPUT_TOKENS = 2048;
+
+// Admin-requested counts scale unboundedly, so a single call can always be made
+// to truncate. Counts at or below the single-call threshold fit comfortably in
+// one request under the count-scaled cap (empirically ~370 output tokens/
+// question, so ~20 questions ≈ 7.5k tokens ≪ ceiling); larger counts are split
+// into small sub-batches so no single call can ever brush the output cap — the
+// robust fix for the unbounded case, and it lets a partial batch still return
+// questions instead of zeroing the whole quiz.
+const QUIZ_SINGLE_CALL_MAX = 20;
+const QUIZ_SUB_BATCH_SIZE = 6;
+const QUIZ_CHUNK_MAX_ATTEMPTS = 2;
+
+type QuizChunkFailureReason = 'api_error' | 'parse_error' | 'validation_error';
+
+// Carries a machine-readable reason so a degraded quiz stage is diagnosable
+// from structured logs rather than a free-text message.
+class QuizChunkError extends Error {
+  readonly reason: QuizChunkFailureReason;
+  constructor(reason: QuizChunkFailureReason, message: string) {
+    super(message);
+    this.name = 'QuizChunkError';
+    this.reason = reason;
+  }
+}
+
+function quizOutputTokenBudget(count: number): number {
+  return Math.min(
+    QUIZ_MODEL_MAX_OUTPUT_TOKENS,
+    QUIZ_BASE_OUTPUT_TOKENS + count * QUIZ_OUTPUT_TOKENS_PER_QUESTION,
+  );
+}
+
+function planQuizChunks(total: number): number[] {
+  const target = Math.max(0, Math.floor(total));
+  if (target === 0) return [];
+  // Small/typical requests stay a single call — cheaper, faster, and no risk of
+  // duplicate questions across independently-generated sub-batches.
+  if (target <= QUIZ_SINGLE_CALL_MAX) return [target];
+
+  const chunks: number[] = [];
+  let remaining = target;
+  while (remaining > 0) {
+    const n = Math.min(QUIZ_SUB_BATCH_SIZE, remaining);
+    chunks.push(n);
+    remaining -= n;
+  }
+  return chunks;
+}
+
+/**
+ * Generate a single quiz sub-batch. One Vertex call, one parse, one validation —
+ * throws a {@link QuizChunkError} tagged with a machine-readable reason on any
+ * failure so the orchestrator can retry the chunk and log why it failed.
+ */
+async function generateQuizChunkV46(
   articleMarkdown: string,
   articleMetaJson: string,
-  requestedQuestionCount: number,
+  count: number,
   quizDifficulty: QuizDifficulty,
-  ragContext: string = '',
-): Promise<{ quizJson: QuizV46; raw: string }> {
+  ragContext: string,
+): Promise<QuizV46> {
   const prompt = buildPromptC_v46(
     articleMarkdown,
     articleMetaJson,
-    requestedQuestionCount,
+    count,
     quizDifficulty,
     ragContext,
   );
@@ -331,11 +396,14 @@ async function generateQuizV46(
   try {
     rawResponse = await callVertexAI(prompt, {
       temperature: 0.5,
-      maxOutputTokens: 16384,
+      maxOutputTokens: quizOutputTokenBudget(count),
     });
   } catch (error) {
     logger.error({ msg: '[v4.6] Vertex AI Call Failed during Quiz Generation:', err: error });
-    throw new Error(`Vertex AI API Error (Quiz): ${(error as Error).message}`);
+    throw new QuizChunkError(
+      'api_error',
+      `Vertex AI API Error (Quiz): ${(error as Error).message}`,
+    );
   }
 
   const jsonStr = extractJsonFromResponse(rawResponse);
@@ -347,7 +415,8 @@ async function generateQuizV46(
       msg: '[v4.6] Failed to parse JSON from Vertex AI (Quiz). Raw Response:',
       err: rawResponse,
     });
-    throw new Error(
+    throw new QuizChunkError(
+      'parse_error',
       `Failed to parse Quiz JSON from Vertex AI response. Raw Response: ${rawResponse.substring(0, 500)}...`,
     );
   }
@@ -359,12 +428,134 @@ async function generateQuizV46(
       data: JSON.stringify(result.error.format(), null, 2),
     });
     logger.error({ msg: '[v4.6] Quiz Raw Invalid JSON:', err: jsonStr });
-    throw new Error(
+    throw new QuizChunkError(
+      'validation_error',
       `Quiz validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
   }
 
-  return { quizJson: result.data as QuizV46, raw: jsonStr };
+  return result.data as QuizV46;
+}
+
+/**
+ * Merge sub-batch quizzes into one. Questions are de-duplicated by normalized
+ * stem (independent chunks can pick the same snippet) and re-numbered so ids
+ * stay unique for the downstream judge/regen stages. `requestedQuestionCount` is
+ * preserved as the ORIGINAL admin request so the publish-review gate and step-6
+ * UI can detect a partial fill.
+ */
+function mergeQuizChunks(
+  chunks: QuizV46[],
+  requestedQuestionCount: number,
+  quizDifficulty: QuizDifficulty,
+): QuizV46 {
+  const merged: QuizQuestionV46[] = [];
+  const seen = new Set<string>();
+  for (const chunk of chunks) {
+    for (const q of chunk.questions) {
+      const key = q.question.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      merged.push({ ...q, id: `q${String(merged.length + 1).padStart(2, '0')}` });
+    }
+  }
+
+  const baseMeta = chunks[0].meta;
+  return {
+    ...chunks[0],
+    meta: {
+      ...baseMeta,
+      requestedQuestionCount,
+      quizDifficulty,
+      totalQuestions: merged.length,
+    },
+    questions: merged,
+  };
+}
+
+/**
+ * Stage C orchestrator: generate `requestedQuestionCount` questions as bounded
+ * sub-batches, retry each independently, then merge. Returns as many valid
+ * questions as were produced (a partial batch is surfaced to the wizard via the
+ * preserved `requestedQuestionCount`); throws only when EVERY sub-batch failed.
+ */
+// Exported (still async, so this stays valid in a 'use server' module — see the
+// assessCourseQuality comment above for the constraint) solely so the chunking
+// orchestration (single-call vs sub-batch planning, dedup/renumbering, partial
+// results, requestedQuestionCount preservation) is unit-testable in isolation
+// from the full processBackgroundV46 pipeline. No behavior change.
+export async function generateQuizV46(
+  articleMarkdown: string,
+  articleMetaJson: string,
+  requestedQuestionCount: number,
+  quizDifficulty: QuizDifficulty,
+  ragContext: string = '',
+): Promise<{ quizJson: QuizV46; raw: string }> {
+  const plan = planQuizChunks(requestedQuestionCount);
+  const succeeded: QuizV46[] = [];
+  let failedChunks = 0;
+  let lastReason: QuizChunkFailureReason | 'unknown' = 'unknown';
+
+  for (let i = 0; i < plan.length; i++) {
+    const count = plan[i];
+    let chunkOk = false;
+    for (let attempt = 1; attempt <= QUIZ_CHUNK_MAX_ATTEMPTS; attempt++) {
+      try {
+        succeeded.push(
+          await generateQuizChunkV46(
+            articleMarkdown,
+            articleMetaJson,
+            count,
+            quizDifficulty,
+            ragContext,
+          ),
+        );
+        chunkOk = true;
+        break;
+      } catch (err) {
+        lastReason = err instanceof QuizChunkError ? err.reason : 'unknown';
+        logger.warn({
+          msg: `[v4.6] Quiz sub-batch ${i + 1}/${plan.length} attempt ${attempt}/${QUIZ_CHUNK_MAX_ATTEMPTS} failed`,
+          reason: lastReason,
+          err: (err as Error).message,
+        });
+        if (attempt < QUIZ_CHUNK_MAX_ATTEMPTS) {
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
+        }
+      }
+    }
+    if (!chunkOk) failedChunks += 1;
+  }
+
+  const merged =
+    succeeded.length > 0
+      ? mergeQuizChunks(succeeded, requestedQuestionCount, quizDifficulty)
+      : null;
+
+  if (!merged || merged.questions.length === 0) {
+    logger.error({
+      msg: '[v4.6] Quiz generation produced 0 questions',
+      reason: 'all_sub_batches_failed',
+      lastReason,
+      requestedQuestionCount,
+      failedChunks,
+    });
+    throw new Error(
+      `Quiz generation failed: all ${plan.length} sub-batches failed (${lastReason})`,
+    );
+  }
+
+  if (merged.questions.length < requestedQuestionCount) {
+    logger.warn({
+      msg: '[v4.6] Quiz generation degraded (partial batch)',
+      reason: 'partial',
+      requestedQuestionCount,
+      produced: merged.questions.length,
+      failedChunks,
+    });
+  }
+
+  return { quizJson: merged, raw: JSON.stringify(merged) };
 }
 
 // ─── Stage D: Judge ──────────────────────────────

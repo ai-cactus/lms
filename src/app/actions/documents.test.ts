@@ -1,5 +1,6 @@
 /**
- * THER-003 regression tests for uploadDocument's PHI gate.
+ * THER-003 regression tests for uploadDocument's PHI gate, plus Phase 2 Issue
+ * #11 (server-side PHI attestation) and the .doc/.docx extension guard.
  *
  * The PHI scanner now always fails CLOSED (see phiScanner.test.ts). This
  * suite guards the action-level consequence of that:
@@ -8,6 +9,10 @@
  *   - A scan that could not complete (`scanFailed: true`) is blocked with a
  *     distinct "could not verify" message and never silently saved.
  *   - A clean scan proceeds to storage + DB persistence as before.
+ *
+ * Every fixture in the PHI-gate suite below sets `phiAttested: 'true'` on the
+ * FormData (via `makeFormData`'s default) so those tests exercise the PHI
+ * gate specifically, past the attestation check that now runs first.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -30,6 +35,14 @@ const {
   const prismaMock = {
     $transaction: vi.fn(async (cb: (tx: typeof txClient) => Promise<unknown>) => cb(txClient)),
     _tx: txClient,
+    // Top-level `document` methods used by getDocuments/renameDocument/deleteDocument
+    // (distinct from `_tx.document`, which is scoped to the uploadDocument transaction).
+    document: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
   };
   return {
     mockAuth: vi.fn(),
@@ -60,11 +73,15 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { uploadDocument } from './documents';
+import { uploadDocument, getDocuments, renameDocument, deleteDocument } from './documents';
 
-function makeFormData(fileName = 'policy.pdf') {
+function makeFormData(fileName = 'policy.pdf', opts: { attested?: boolean } = {}) {
+  const { attested = true } = opts;
   const formData = new FormData();
   formData.set('file', new File(['contents'], fileName, { type: 'application/pdf' }));
+  if (attested) {
+    formData.set('phiAttested', 'true');
+  }
   return formData;
 }
 
@@ -128,5 +145,216 @@ describe('uploadDocument — THER-003 PHI gate always fails closed', () => {
 
     expect(mockSaveFile).toHaveBeenCalledOnce();
     expect(result).toEqual({ success: true, phiDetected: false });
+  });
+});
+
+describe('uploadDocument — Issue #11: server-side PHI attestation gate', () => {
+  it('rejects when phiAttested is missing from FormData, before any file processing', async () => {
+    const result = await uploadDocument(null, makeFormData('policy.pdf', { attested: false }));
+
+    expect(result).toEqual({
+      error: 'You must confirm this document contains no PHI (Personal Health Information).',
+    });
+    // Fails fast — never reaches text extraction, the PHI scan, or storage.
+    expect(mockExtractTextFromFile).not.toHaveBeenCalled();
+    expect(mockScanText).not.toHaveBeenCalled();
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  it('rejects when phiAttested is present but not the string "true"', async () => {
+    const formData = new FormData();
+    formData.set('file', new File(['contents'], 'policy.pdf', { type: 'application/pdf' }));
+    formData.set('phiAttested', 'false');
+
+    const result = await uploadDocument(null, formData);
+
+    expect(result.error).toBe(
+      'You must confirm this document contains no PHI (Personal Health Information).',
+    );
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('uploadDocument — Issue #13: .doc/.docx server-side extension guard', () => {
+  it('rejects a legacy .doc file by extension even when the client spoofs an allowed MIME type', async () => {
+    const formData = new FormData();
+    // application/msword is the real .doc MIME type — must not be admitted.
+    formData.set('file', new File(['contents'], 'policy.doc', { type: 'application/msword' }));
+    formData.set('phiAttested', 'true');
+
+    const result = await uploadDocument(null, formData);
+
+    expect(result).toEqual({ error: 'Only PDF and DOCX files are allowed.' });
+    expect(mockExtractTextFromFile).not.toHaveBeenCalled();
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  it('rejects a .doc file with no/unrecognized MIME type on extension alone', async () => {
+    const formData = new FormData();
+    // Some browsers/OSes send an empty MIME type for legacy .doc files; the
+    // extension-regex signal must independently catch this.
+    formData.set('file', new File(['contents'], 'policy.doc', { type: '' }));
+    formData.set('phiAttested', 'true');
+
+    const result = await uploadDocument(null, formData);
+
+    expect(result).toEqual({ error: 'Only PDF and DOCX files are allowed.' });
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  // The extension is authoritative: a .doc file whose declared MIME type is
+  // spoofed as an allowed value (e.g. 'application/pdf') must still be rejected,
+  // because both signals must agree and the extension arm fails.
+  it('rejects a .doc file with a spoofed application/pdf MIME type (extension is authoritative)', async () => {
+    const formData = new FormData();
+    formData.set('file', new File(['contents'], 'policy.doc', { type: 'application/pdf' }));
+    formData.set('phiAttested', 'true');
+
+    const result = await uploadDocument(null, formData);
+
+    expect(result).toEqual({ error: 'Only PDF and DOCX files are allowed.' });
+    expect(mockExtractTextFromFile).not.toHaveBeenCalled();
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  it('accepts a real .docx file', async () => {
+    const formData = new FormData();
+    formData.set(
+      'file',
+      new File(['contents'], 'policy.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+    );
+    formData.set('phiAttested', 'true');
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
+
+    const result = await uploadDocument(null, formData);
+
+    expect(result).toEqual({ success: true, phiDetected: false });
+  });
+});
+
+describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDocument)', () => {
+  const ORG_A_ADMIN = { user: { id: 'admin-a1', organizationId: 'org-a', role: 'owner' } };
+  const ORG_A_ADMIN_2 = { user: { id: 'admin-a2', organizationId: 'org-a', role: 'supervisor' } };
+  const ORG_B_ADMIN = { user: { id: 'admin-b1', organizationId: 'org-b', role: 'owner' } };
+
+  describe('getDocuments', () => {
+    it('scopes the query by the caller organizationId, not the caller userId', async () => {
+      mockAuth.mockResolvedValue(ORG_A_ADMIN);
+      prismaMock.document.findMany.mockResolvedValue([]);
+
+      await getDocuments();
+
+      expect(prismaMock.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { user: { organizationId: 'org-a' } },
+        }),
+      );
+    });
+
+    it('returns [] for a non-admin caller without querying the database', async () => {
+      mockAuth.mockResolvedValue({
+        user: { id: 'worker-a1', organizationId: 'org-a', role: 'nurse' },
+      });
+
+      const result = await getDocuments();
+
+      expect(result).toEqual([]);
+      expect(prismaMock.document.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns [] when there is no session', async () => {
+      mockAuth.mockResolvedValue(null);
+
+      const result = await getDocuments();
+
+      expect(result).toEqual([]);
+      expect(prismaMock.document.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('renameDocument — any org admin may rename any org document', () => {
+    it('renames a document uploaded by a DIFFERENT admin in the same org (full parity)', async () => {
+      mockAuth.mockResolvedValue(ORG_A_ADMIN_2);
+      prismaMock.document.findUnique.mockResolvedValue({
+        user: { organizationId: 'org-a' }, // uploaded by admin-a1, renamed by admin-a2
+      });
+      prismaMock.document.update.mockResolvedValue({});
+
+      const result = await renameDocument('doc-1', 'New Name.pdf');
+
+      expect(result).toEqual({ success: true });
+      expect(prismaMock.document.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'doc-1' },
+          data: expect.objectContaining({ filename: 'New Name.pdf' }),
+        }),
+      );
+    });
+
+    it('reports "not found" (never leaking existence) for a document in a different org', async () => {
+      mockAuth.mockResolvedValue(ORG_B_ADMIN);
+      prismaMock.document.findUnique.mockResolvedValue({ user: { organizationId: 'org-a' } });
+
+      const result = await renameDocument('doc-1', 'New Name.pdf');
+
+      expect(result).toEqual({ error: 'Document not found' });
+      expect(prismaMock.document.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an empty filename before querying the document', async () => {
+      mockAuth.mockResolvedValue(ORG_A_ADMIN);
+
+      const result = await renameDocument('doc-1', '   ');
+
+      expect(result).toEqual({ error: 'Filename cannot be empty.' });
+      expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteDocument — any org admin may delete any org document', () => {
+    it('deletes a document uploaded by a DIFFERENT admin in the same org (full parity)', async () => {
+      mockAuth.mockResolvedValue(ORG_A_ADMIN_2);
+      prismaMock.document.findUnique.mockResolvedValue({
+        user: { organizationId: 'org-a' },
+        versions: [{ id: 'ver-1', storagePath: 'gcs://bucket/policy.pdf' }],
+      });
+      mockDeleteFile.mockResolvedValue(undefined);
+      prismaMock.document.delete.mockResolvedValue({});
+
+      const result = await deleteDocument('doc-1');
+
+      expect(result).toEqual({ success: true });
+      expect(prismaMock.document.delete).toHaveBeenCalledWith({ where: { id: 'doc-1' } });
+    });
+
+    it('reports "not found" for a document in a different org and never deletes it', async () => {
+      mockAuth.mockResolvedValue(ORG_B_ADMIN);
+      prismaMock.document.findUnique.mockResolvedValue({
+        user: { organizationId: 'org-a' },
+        versions: [],
+      });
+
+      const result = await deleteDocument('doc-1');
+
+      expect(result).toEqual({ error: 'Document not found' });
+      expect(prismaMock.document.delete).not.toHaveBeenCalled();
+      expect(mockDeleteFile).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-admin caller before any lookup', async () => {
+      mockAuth.mockResolvedValue({
+        user: { id: 'worker-a1', organizationId: 'org-a', role: 'nurse' },
+      });
+
+      const result = await deleteDocument('doc-1');
+
+      expect(result).toEqual({ error: 'Document not found' });
+      expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+    });
   });
 });

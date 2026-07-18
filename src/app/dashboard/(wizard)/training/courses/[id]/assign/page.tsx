@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { hasActiveBilling } from '@/lib/billing';
+import { getCourseAssignmentSettings, getRoleHolderCounts } from '@/app/actions/enrollment';
 import AssignPublishClient from '@/components/dashboard/training/AssignPublishClient';
 
 export const dynamic = 'force-dynamic';
@@ -55,11 +56,18 @@ export default async function AssignCoursePage(props: PageProps) {
   });
   if (!course) redirect('/dashboard/courses');
 
+  const [existingSettings, roleHolderCounts] = await Promise.all([
+    getCourseAssignmentSettings(course.id),
+    getRoleHolderCounts(),
+  ]);
+
   return (
     <AssignPublishClient
       courseId={course.id}
       courseTitle={course.title}
       courseStatus={course.status}
+      existingSettings={existingSettings}
+      roleHolderCounts={roleHolderCounts}
     />
   );
 }
