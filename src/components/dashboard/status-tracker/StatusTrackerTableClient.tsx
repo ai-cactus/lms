@@ -32,12 +32,12 @@ export interface StatusTrackerRowView {
   daysOverdue: number;
   status: string;
   managerName: string | null;
+  /** Whether this row has crossed its (per-assignment) hard-escalation threshold. */
+  isHardEscalation: boolean;
 }
 
 interface Props {
   rows: StatusTrackerRowView[];
-  /** Days-overdue boundary at/above which a row is a hard escalation (red). */
-  hardThresholdDays: number;
 }
 
 const ALL = '__all__';
@@ -61,7 +61,7 @@ function statusLabel(status: string): string {
  * Client-side filtering + responsive table for the admin status-tracker page. Data
  * is fetched server-side; this component only filters the already-loaded rows.
  */
-export default function StatusTrackerTableClient({ rows, hardThresholdDays }: Props) {
+export default function StatusTrackerTableClient({ rows }: Props) {
   const [courseFilter, setCourseFilter] = useState<string>(ALL);
   const [managerFilter, setManagerFilter] = useState<string>(ALL);
   const [minDays, setMinDays] = useState<string>('0');
@@ -176,7 +176,7 @@ export default function StatusTrackerTableClient({ rows, hardThresholdDays }: Pr
           </TableHeader>
           <TableBody>
             {filteredRows.map((row) => {
-              const isHard = row.daysOverdue >= hardThresholdDays;
+              const isHard = row.isHardEscalation;
               return (
                 <TableRow key={row.enrollmentId}>
                   <TableCell>

@@ -1,17 +1,19 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole, WORKER_ROLES, DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
+import { isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { hasActiveBilling } from '@/lib/billing';
-import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { notifyOrganizationAdmins } from './notifications';
 import { CourseWithStats, CourseWithRelations } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
+import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
+import { combineDateAndTime } from '@/lib/reminders/deadline';
+import { enrollUsers } from './enrollment';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -948,7 +950,11 @@ export async function createFullCourse(data: {
     }
   }
 
-  // 2. Handle Assignments (existing members + new invites)
+  // 2. Handle Assignments — delegate to enrollUsers so wizard-assigned workers
+  // get the same CourseAssignment, per-user deadline, seeded reminder ladder,
+  // INITIAL_LAUNCH log, and launch email as the standalone assign flow. The old
+  // bespoke path wrote bare enrollments with no dueAt and no reminders, silently
+  // disabling escalation for wizard-assigned workers (Issue #2).
   const inviteResults = {
     existingEnrolled: 0,
     newInvited: 0,
@@ -957,139 +963,24 @@ export async function createFullCourse(data: {
   };
 
   if (data.assignments && data.assignments.length > 0) {
-    const { sendCourseInviteEmail } = await import('@/lib/email');
-    const bcrypt = await import('bcryptjs');
-    const crypto = await import('crypto');
+    const dueAt = combineDateAndTime(data.dueDate, data.dueTime);
+    const staffEntries: StaffEntry[] = data.assignments.map((email) => ({ email }));
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    const validEmails = data.assignments.filter((email) => {
-      if (!emailRegex.test(email)) {
-        inviteResults.skipped.push(email);
-        return false;
-      }
-      return true;
-    });
-
-    if (validEmails.length === 0) {
-      revalidatePath('/dashboard/training');
-      return {
-        success: true,
+    // Enrollment problems must never fail course creation — the course already
+    // exists. enrollUsers throws on org-level gates (billing/authorization); a
+    // per-user failure is reported in its result and never thrown.
+    try {
+      const enrollResults = await enrollUsers(course.id, staffEntries, { dueAt });
+      inviteResults.existingEnrolled = enrollResults.success.length;
+      inviteResults.newInvited = enrollResults.newInvited.length;
+      inviteResults.failed = enrollResults.failed;
+      inviteResults.skipped = enrollResults.alreadyEnrolled;
+    } catch (enrollError) {
+      logger.error({
+        msg: '[course] Failed to assign workers during course creation',
         courseId: course.id,
-        reviewRequired,
-        qualityWarnings,
-        inviteResults,
-      };
-    }
-
-    const org = await prisma.organization.findUnique({
-      where: { id: currentUser.organizationId },
-      select: { name: true },
-    });
-    const orgName = org?.name || 'Your Organization';
-
-    const existingUsers = await prisma.user.findMany({
-      where: {
-        organizationId: currentUser.organizationId,
-        email: { in: validEmails },
-      },
-      include: { profile: true },
-    });
-    const existingEmails = existingUsers.map((u) => u.email);
-
-    // Check for users that exist in OTHER organizations (can't invite)
-    const usersInOtherOrgs = await prisma.user.findMany({
-      where: {
-        email: { in: validEmails },
-        organizationId: { not: currentUser.organizationId },
-      },
-      select: { email: true },
-    });
-    const otherOrgEmails = usersInOtherOrgs.map((u) => u.email);
-    otherOrgEmails.forEach((e) => inviteResults.skipped.push(e));
-
-    // Identify truly new emails (not in any org)
-    const newEmails = validEmails.filter(
-      (e) => !existingEmails.includes(e) && !otherOrgEmails.includes(e),
-    );
-
-    const newUserIds: string[] = [];
-
-    const newUserPromises = newEmails.map(async (email) => {
-      const tempPassword = crypto.randomBytes(8).toString('hex');
-      const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_COST);
-
-      const newUser = await prisma.user.create({
-        data: {
-          email,
-          password: hashedPassword,
-          role: DEFAULT_SELF_SERVE_WORKER_ROLE,
-          organizationId: currentUser.organizationId,
-          emailVerified: true,
-          profile: {
-            create: {
-              email,
-              fullName: email.split('@')[0],
-            },
-          },
-        },
+        err: enrollError,
       });
-
-      // Send invite email (don't fail the whole process if email fails)
-      try {
-        await sendCourseInviteEmail(email, tempPassword, data.title, orgName);
-      } catch (emailError) {
-        logger.error({ msg: `Failed to send email to ${email}:`, err: emailError });
-      }
-
-      return newUser.id;
-    });
-
-    const settledResults = await Promise.allSettled(newUserPromises);
-
-    settledResults.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        newUserIds.push(result.value);
-        inviteResults.newInvited++;
-      } else {
-        logger.error({ msg: `Failed to create user ${newEmails[index]}:`, err: result.reason });
-        inviteResults.failed.push(newEmails[index]);
-      }
-    });
-
-    const allUserIds = [...existingUsers.map((u) => u.id), ...newUserIds];
-
-    if (allUserIds.length > 0) {
-      try {
-        await prisma.enrollment.createMany({
-          data: allUserIds.map((userId) => ({
-            userId,
-            courseId: course.id,
-            status: 'enrolled' as const,
-            startedAt: new Date(),
-          })),
-          skipDuplicates: true,
-        });
-        inviteResults.existingEnrolled = existingUsers.length;
-
-        const { sendCourseEnrollmentEmail } = await import('@/lib/email');
-
-        // We do this asynchronously without awaiting to not block the response
-        Promise.allSettled(
-          existingUsers.map((user) =>
-            sendCourseEnrollmentEmail(
-              user.email,
-              user.profile?.fullName || 'there',
-              course.title,
-              orgName,
-            ).catch((err) =>
-              logger.error({ msg: `Failed to send enrollment email to ${user.email}`, err }),
-            ),
-          ),
-        );
-      } catch (enrollError) {
-        logger.error({ msg: 'Failed to create enrollments:', err: enrollError });
-      }
     }
   }
 

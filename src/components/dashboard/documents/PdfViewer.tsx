@@ -6,8 +6,14 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { Button } from '@/components/ui/button';
 
-// Configure the worker using unpkg (recommended by react-pdf docs for simplicity)
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Self-host the pdf.js worker so it is served same-origin. The CSP allows
+// `worker-src 'self' blob:` but not external CDNs, so the previous unpkg URL was
+// blocked. `new URL(..., import.meta.url)` lets the bundler emit the worker as a
+// same-origin static chunk (react-pdf's documented bundler setup).
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString();
 
 interface PdfViewerProps {
   fileUrl: string;

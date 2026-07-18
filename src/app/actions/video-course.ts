@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma';
 import { verifySystemAdminCookie } from '@/lib/system-auth';
 import { getOrCreateSystemUser } from '@/lib/video/system-user';
+import { objectExists } from '@/lib/storage';
 import type { ParsedQuiz } from '@/lib/video/types';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
@@ -402,4 +403,71 @@ export async function setVideoCourseStatus(courseId: string, status: 'inactive' 
   await assertSystemAdmin();
   await prisma.course.update({ where: { id: courseId }, data: { status } });
   revalidatePath('/system/video-courses');
+}
+
+export interface VerifyMediaResult {
+  /** Lessons for which storage returned a definitive answer (present or missing). */
+  checked: number;
+  /** Lessons whose storage object is confirmed gone and were flagged unavailable. */
+  missing: number;
+}
+
+/**
+ * Proactively reconcile every global video lesson's DB status with storage
+ * reality. HEAD-checks each object through the storage abstraction (GCS in prod,
+ * MinIO on staging) — read-only against storage, writing only the DB status.
+ *
+ * A confirmed-missing object flips the lesson to `failed`; transient storage
+ * errors are logged and skipped (never counted as missing) so a blip can't mark
+ * a healthy video unavailable. Existing statuses are never "healed" back to
+ * ready here — re-seeding a missing object is a separate infra concern.
+ */
+export async function verifyGlobalVideoMedia(): Promise<VerifyMediaResult> {
+  await assertSystemAdmin();
+
+  const lessons = await prisma.lesson.findMany({
+    where: {
+      videoStorageUri: { not: null },
+      course: { type: 'video', isGlobal: true },
+    },
+    select: { id: true, videoStorageUri: true, mediaStatus: true },
+  });
+
+  let checked = 0;
+  let missing = 0;
+
+  for (const lesson of lessons) {
+    if (!lesson.videoStorageUri) continue;
+
+    let exists: boolean;
+    try {
+      exists = await objectExists(lesson.videoStorageUri);
+    } catch (err) {
+      logger.error({
+        msg: '[video] verify media: transient storage error — skipped',
+        err,
+        lessonId: lesson.id,
+      });
+      continue;
+    }
+
+    checked += 1;
+    if (exists) continue;
+
+    missing += 1;
+    if (lesson.mediaStatus !== 'failed') {
+      await prisma.lesson.update({
+        where: { id: lesson.id },
+        data: { mediaStatus: 'failed' },
+      });
+    }
+    logger.warn({
+      msg: '[video] verify media: storage object missing — flagged unavailable',
+      lessonId: lesson.id,
+    });
+  }
+
+  logger.info({ msg: '[video] verify media complete', checked, missing });
+  revalidatePath('/system/video-courses');
+  return { checked, missing };
 }

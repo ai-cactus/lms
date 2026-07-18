@@ -326,7 +326,7 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     expect(mockUserUpdate).toHaveBeenCalledOnce();
     expect(mockUserUpdate).toHaveBeenCalledWith({
       where: { id: 'target-1' },
-      data: { role: 'nurse', sessionVersion: { increment: 1 } },
+      data: { role: 'nurse', roleAssignedAt: expect.any(Date), sessionVersion: { increment: 1 } },
     });
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -404,7 +404,7 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     expect(result).toEqual({ success: true });
     expect(mockUserUpdate).toHaveBeenCalledWith({
       where: { id: 'target-1' },
-      data: { role: 'hr', sessionVersion: { increment: 1 } },
+      data: { role: 'hr', roleAssignedAt: expect.any(Date), sessionVersion: { increment: 1 } },
     });
   });
 });

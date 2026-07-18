@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
 import type { UserRole } from '@/generated/prisma/enums';
 import { enrollUsers, type AssignmentSettingsInput } from '@/app/actions/enrollment';
+import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
@@ -207,7 +208,9 @@ export async function updateStaffDetails(
       // takes effect immediately (F-059 kill-switch precedent).
       data: {
         role: data.role,
-        ...(roleChanged ? { sessionVersion: { increment: 1 } } : {}),
+        // Stamp the role-join date so late-joiner deadline windows count from the
+        // change, and bump sessionVersion so the new ceiling takes effect at once.
+        ...(roleChanged ? { roleAssignedAt: new Date(), sessionVersion: { increment: 1 } } : {}),
       },
     });
 
@@ -229,6 +232,10 @@ export async function updateStaffDetails(
         fromRole: target.role,
         toRole: data.role,
       });
+
+      // Live auto-enroll: the user now holds a new role, so enroll them in any
+      // active role-target assignments for it. Never throws.
+      await enrollUserForRoleTargets(userId, session.user.organizationId);
     }
 
     await prisma.profile.upsert({

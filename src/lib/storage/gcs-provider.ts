@@ -184,6 +184,17 @@ export class GCSProvider implements StorageProvider {
     return contents;
   }
 
+  async objectExists(storageUri: string): Promise<boolean> {
+    const { key } = parseStorageUri(storageUri);
+    const file = this.storage.bucket(this.bucketName).file(key);
+
+    // file.exists() resolves to [false] for a definitively-missing object and
+    // rejects only on transient/auth errors — which propagate so callers can
+    // tell "missing" from "unreachable".
+    const [exists] = await file.exists();
+    return exists;
+  }
+
   async list(prefix: string): Promise<StorageListItem[]> {
     const bucket = this.storage.bucket(this.bucketName);
 

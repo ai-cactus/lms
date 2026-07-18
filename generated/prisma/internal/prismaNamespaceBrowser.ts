@@ -151,6 +151,7 @@ export const UserScalarFieldEnum = {
   mfaEnabled: 'mfaEnabled',
   mfaVerifiedAt: 'mfaVerifiedAt',
   sessionVersion: 'sessionVersion',
+  roleAssignedAt: 'roleAssignedAt',
   lastLoginAt: 'lastLoginAt',
   managerId: 'managerId',
   createdAt: 'createdAt',
@@ -377,6 +378,7 @@ export const CourseAssignmentScalarFieldEnum = {
   organizationId: 'organizationId',
   courseId: 'courseId',
   assignedByAdminId: 'assignedByAdminId',
+  targetRole: 'targetRole',
   scheduleAt: 'scheduleAt',
   dueAt: 'dueAt',
   dueWindowDays: 'dueWindowDays',
@@ -488,6 +490,7 @@ export const EnrollmentScalarFieldEnum = {
   lockedAt: 'lockedAt',
   retakeOf: 'retakeOf',
   retakeReason: 'retakeReason',
+  renewedFrom: 'renewedFrom',
   assignmentId: 'assignmentId',
   accessAt: 'accessAt',
   dueAt: 'dueAt'
