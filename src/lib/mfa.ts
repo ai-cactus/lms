@@ -24,7 +24,9 @@ function getEncryptionKey(): Buffer {
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
-const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+/** OTP validity window in minutes. Single-sourced so email copy can't drift. */
+export const OTP_EXPIRY_MINUTES = 10;
+const OTP_EXPIRY_MS = OTP_EXPIRY_MINUTES * 60 * 1000;
 
 /**
  * Encrypt a plaintext string using AES-256-GCM.

@@ -1,5 +1,8 @@
-import React from 'react';
-import { Mail, ChevronDown } from 'lucide-react';
+'use client';
+
+import { useMemo, useState } from 'react';
+import { Mail, ChevronDown, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 
 const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'support@theraptly.com';
 
@@ -34,6 +37,16 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
 ];
 
 export default function HelpCenterContent() {
+  const [query, setQuery] = useState('');
+
+  const filteredFaq = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return FAQ_ITEMS;
+    return FAQ_ITEMS.filter(
+      (item) => item.question.toLowerCase().includes(q) || item.answer.toLowerCase().includes(q),
+    );
+  }, [query]);
+
   return (
     <div className="mx-auto w-full max-w-3xl">
       <header className="mb-8">
@@ -43,6 +56,17 @@ export default function HelpCenterContent() {
           hand.
         </p>
       </header>
+
+      <div className="mb-8">
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search help articles…"
+          aria-label="Search help articles"
+          startIcon={<Search className="size-4" />}
+        />
+      </div>
 
       <section className="mb-10 rounded-xl border border-border bg-background-secondary p-6">
         <div className="flex items-start gap-4">
@@ -67,20 +91,30 @@ export default function HelpCenterContent() {
 
       <section>
         <h2 className="mb-4 text-base font-semibold text-foreground">Frequently asked questions</h2>
-        <div className="flex flex-col gap-3">
-          {FAQ_ITEMS.map((item) => (
-            <details
-              key={item.question}
-              className="group rounded-xl border border-border bg-background p-4 [&_summary::-webkit-details-marker]:hidden"
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-foreground">
-                {item.question}
-                <ChevronDown className="size-4 flex-shrink-0 text-text-secondary transition-transform group-open:rotate-180" />
-              </summary>
-              <p className="mt-3 text-sm text-text-secondary">{item.answer}</p>
-            </details>
-          ))}
-        </div>
+        {filteredFaq.length === 0 ? (
+          <div className="rounded-xl border border-border bg-background p-8 text-center">
+            <p className="text-sm font-semibold text-foreground">No results found</p>
+            <p className="mt-1.5 text-sm text-text-secondary">
+              We couldn&apos;t find anything matching &ldquo;{query.trim()}&rdquo;. Try a different
+              search, or email our support team above.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {filteredFaq.map((item) => (
+              <details
+                key={item.question}
+                className="group rounded-xl border border-border bg-background p-4 [&_summary::-webkit-details-marker]:hidden"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-foreground">
+                  {item.question}
+                  <ChevronDown className="size-4 flex-shrink-0 text-text-secondary transition-transform group-open:rotate-180" />
+                </summary>
+                <p className="mt-3 text-sm text-text-secondary">{item.answer}</p>
+              </details>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

@@ -172,7 +172,7 @@ describe('POST /api/invite/accept — valid token', () => {
     });
   });
 
-  it('rejects when a user already exists for the invite email, without creating a duplicate', async () => {
+  it('rejects when a user already exists for the invite email in a DIFFERENT org, without relinking it', async () => {
     prismaMock.invite.findUnique.mockResolvedValueOnce({
       id: 'invite-1',
       token: 'tok-1',
@@ -181,13 +181,94 @@ describe('POST /api/invite/accept — valid token', () => {
       role: 'nurse',
       expiresAt: FUTURE,
     });
-    prismaMock.user.findUnique.mockResolvedValueOnce({ id: 'already-there' });
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'already-there',
+      organizationId: 'org-other',
+    });
 
     const res = await POST(
       makeReq({ token: 'tok-1', firstName: 'Jane', lastName: 'Doe', password: VALID_PASSWORD }),
     );
+    const body = await res.json();
 
     expect(res.status).toBe(400);
+    expect(body.error).toMatch(/already exists/i);
     expect(prismaMock.user.create).not.toHaveBeenCalled();
+  });
+});
+
+// ── Re-invite lifecycle: relinking an org-less (removed) account ────────────
+
+describe('POST /api/invite/accept — relinking an org-less existing account', () => {
+  /**
+   * The emailed invite token proves control of the address — the same trust
+   * model as a password-reset link — so an org-less account (a previously
+   * removed staff member) is relinked via tx.user.update rather than
+   * rejected or duplicated via tx.user.create.
+   */
+  it('relinks an org-less existing account via tx.user.update, not tx.user.create', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce({
+      id: 'invite-relink',
+      token: 'tok-relink',
+      email: 'removed@acme.com',
+      organizationId: 'org-new',
+      role: 'hr',
+      expiresAt: FUTURE,
+    });
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'removed-user-1',
+      organizationId: null,
+    });
+    const mockUserUpdate = vi.fn().mockResolvedValue({ id: 'removed-user-1' });
+    prismaMock.$transaction.mockImplementationOnce(async (cb) =>
+      cb({
+        user: { create: prismaMock.user.create, update: mockUserUpdate },
+        invite: { update: prismaMock.invite.update },
+      }),
+    );
+
+    const res = await POST(
+      makeReq({
+        token: 'tok-relink',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        password: VALID_PASSWORD,
+      }),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.userId).toBe('removed-user-1');
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
+    expect(mockUserUpdate).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'removed-user-1' },
+      data: expect.objectContaining({
+        emailVerified: true,
+        password: 'hashed-password',
+        organizationId: 'org-new',
+        facilityId: 'facility-1',
+        role: 'hr',
+        profile: {
+          upsert: {
+            create: {
+              firstName: 'Jane',
+              lastName: 'Doe',
+              fullName: 'Jane Doe',
+              email: 'removed@acme.com',
+            },
+            update: {
+              firstName: 'Jane',
+              lastName: 'Doe',
+              fullName: 'Jane Doe',
+              email: 'removed@acme.com',
+            },
+          },
+        },
+      }),
+    });
+    expect(prismaMock.invite.update).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'invite-relink' },
+      data: { status: 'accepted' },
+    });
   });
 });

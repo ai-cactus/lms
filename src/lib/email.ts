@@ -2,6 +2,7 @@ import nodemailer, { type SendMailOptions } from 'nodemailer';
 import prisma from './prisma';
 import { logger, maskEmail } from './logger';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
+import { OTP_EXPIRY_MINUTES } from '@/lib/mfa';
 import type { Role } from '@/types/next-auth';
 
 /**
@@ -219,7 +220,7 @@ export const sendMfaOtpEmail = async (email: string, code: string) => {
             <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #1a202c; padding: 16px; background: #f7fafc; border-radius: 8px; text-align: center; margin: 24px 0;">
               ${code}
             </div>
-            <p style="margin-top: 24px; font-size: 12px; color: #718096;">Code expires in 15 minutes.</p>
+            <p style="margin-top: 24px; font-size: 12px; color: #718096;">Code expires in ${OTP_EXPIRY_MINUTES} minutes.</p>
             <p style="font-size: 12px; color: #718096;">If you didn't request this, you can safely ignore this email.</p>
         </div>
     `;

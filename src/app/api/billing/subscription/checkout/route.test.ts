@@ -62,6 +62,7 @@ vi.mock('@/lib/stripe', () => ({ getStripeClient: () => stripeMock, default: str
 vi.mock('@/lib/audit', () => ({ audit: vi.fn(), getClientContext: () => ({}) }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  maskEmail: (email: string) => email,
 }));
 vi.mock('@/lib/billing-plans', () => ({
   BILLING_PLANS: [
@@ -142,9 +143,45 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Session now carries the `role` claim so the F-012 guardApiSession check
   // (auth + MFA + admin role, read from session claims) passes.
-  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
+  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
   prismaMock.organization.findUnique.mockResolvedValue(ORG);
+});
+
+// ---------------------------------------------------------------------------
+// RBAC: billing.* is reserved for owner + finance. Regression guard for the
+// isAdminRole → authorize('billing.create') migration.
+// ---------------------------------------------------------------------------
+describe('POST /api/billing/subscription/checkout — RBAC (billing.create registry enforcement)', () => {
+  it.each(['supervisor', 'hr', 'clinical_director'])(
+    'denies role=%s with 403 and never touches Stripe or the subscription row',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-x', role, organizationId: 'org-1' } });
+
+      const res = await POST(makeReq({ planKey: 'starter', billingCycle: 'monthly' }));
+      const body = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(body).toEqual({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' });
+      expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
+      expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows role=finance through to the normal checkout path', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
+    });
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+    stripeMock.checkout.sessions.create.mockResolvedValue({
+      url: 'https://checkout.stripe.com/session_finance',
+    });
+
+    const res = await POST(makeReq({ planKey: 'starter', billingCycle: 'monthly' }));
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.checkout.sessions.create).toHaveBeenCalledOnce();
+  });
 });
 
 describe('POST /api/billing/subscription/checkout — create path (no existing subscription)', () => {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminRole } from '@/lib/rbac/role-utils';
-import { auth } from '@/auth';
+import { authorize } from '@/lib/rbac/authorize';
 import prisma from '@/lib/prisma';
 import { sendEnterpriseInquiryEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
@@ -36,19 +35,9 @@ function isValidEmail(email: string): boolean {
 // POST /api/billing/contact-enterprise — sends enterprise inquiry to sales team
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true, email: true },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const authResult = await authorize('billing.read');
+    if (!authResult.ok) return authResult.response;
+    const { ctx } = authResult;
 
     let body: EnterpriseInquiryBody;
     try {
@@ -125,7 +114,7 @@ export async function POST(request: NextRequest) {
     }
 
     const organization = await prisma.organization.findUnique({
-      where: { id: user.organizationId ?? '' },
+      where: { id: ctx.organizationId ?? '' },
       select: { name: true, primaryEmail: true },
     });
 
@@ -145,7 +134,7 @@ export async function POST(request: NextRequest) {
       currentTrainingMethod: currentTrainingMethod.trim(),
       primaryPainPoint: primaryPainPoint.trim(),
       // Authenticated user context (for reply-to)
-      authUserEmail: user.email,
+      authUserEmail: ctx.email,
       orgName: organization?.name ?? 'Unknown Organization',
     });
 

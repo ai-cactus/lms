@@ -38,6 +38,7 @@ vi.mock('@/lib/stripe', () => ({ getStripeClient: () => stripeMock, default: str
 vi.mock('@/lib/audit', () => ({ audit: mockAudit, getClientContext: () => ({}) }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  maskEmail: (email: string) => email,
 }));
 vi.mock('@/lib/billing-plans', () => ({
   BILLING_PLANS: [
@@ -101,8 +102,43 @@ function liveSubscription(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
+  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
+});
+
+// ---------------------------------------------------------------------------
+// RBAC: billing.* is reserved for owner + finance. Regression guard for the
+// isAdminRole → authorize('billing.read') migration.
+// ---------------------------------------------------------------------------
+describe('POST /api/billing/subscription/preview-plan-change — RBAC (billing.read registry enforcement)', () => {
+  it.each(['supervisor', 'hr', 'clinical_director'])(
+    'denies role=%s with 403 and never touches the subscription row',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-x', role, organizationId: 'org-1' } });
+
+      const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+      const body = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(body).toEqual({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' });
+      expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows role=finance through to the normal preview path', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
+    });
+    prismaMock.subscription.findUnique.mockResolvedValue(
+      liveSubscription({ plan: 'professional', billingCycle: 'monthly' }),
+    );
+
+    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ classification: 'no_op' });
+  });
 });
 
 describe('POST /api/billing/subscription/preview-plan-change — classification', () => {
@@ -259,7 +295,7 @@ describe('POST /api/billing/subscription/preview-plan-change — guards', () => 
   });
 
   it('returns 404 when the user has no organization', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ role: 'owner', organizationId: null });
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: null } });
 
     const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
     const body = await res.json();

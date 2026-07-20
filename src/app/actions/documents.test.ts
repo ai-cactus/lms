@@ -87,7 +87,7 @@ function makeFormData(fileName = 'policy.pdf', opts: { attested?: boolean } = {}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'user-1', organizationId: 'org-1' } });
+  mockAuth.mockResolvedValue({ user: { id: 'user-1', organizationId: 'org-1', role: 'owner' } });
   mockExtractTextFromFile.mockResolvedValue('some extracted document text');
   mockCalculateHash.mockResolvedValue('hash-abc');
   mockSaveFile.mockResolvedValue('gcs://bucket/policy.pdf');
@@ -234,6 +234,109 @@ describe('uploadDocument — Issue #13: .doc/.docx server-side extension guard',
     const result = await uploadDocument(null, formData);
 
     expect(result).toEqual({ success: true, phiDetected: false });
+  });
+});
+
+describe('Document Hub — per-role registry gate (RBAC billing+documents tightening)', () => {
+  // Regression: uploadDocument previously had NO role gate at all — Finance
+  // uploaded documents live on staging. It now requires `document.create`,
+  // which Finance is not granted (Finance has no document.* permissions).
+  it('denies uploadDocument for role=finance (regression: was live-exploitable)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'fin-1', organizationId: 'org-1', role: 'finance' } });
+
+    const result = await uploadDocument(null, makeFormData());
+
+    expect(result).toEqual({ error: 'You do not have permission to upload documents.' });
+    expect(mockExtractTextFromFile).not.toHaveBeenCalled();
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  // HR has document.read only (invites/roster/compliance-metrics manager) — it
+  // is NOT granted document.create, so it stays read-only on the Document Hub.
+  it('denies uploadDocument for role=hr (document.read only, no document.create)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'hr-1', organizationId: 'org-1', role: 'hr' } });
+
+    const result = await uploadDocument(null, makeFormData());
+
+    expect(result).toEqual({ error: 'You do not have permission to upload documents.' });
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  it('allows uploadDocument for role=clinical_director (full document access)', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'cd-1', organizationId: 'org-1', role: 'clinical_director' },
+    });
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
+
+    const result = await uploadDocument(null, makeFormData());
+
+    expect(result).toEqual({ success: true, phiDetected: false });
+  });
+
+  // Finance has no document.* permission at all (not even read) — the
+  // Document Hub must be entirely invisible to it.
+  it('returns [] for getDocuments with role=finance, without querying the database', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'fin-1', organizationId: 'org-1', role: 'finance' } });
+
+    const result = await getDocuments();
+
+    expect(result).toEqual([]);
+    expect(prismaMock.document.findMany).not.toHaveBeenCalled();
+  });
+
+  // HR keeps read-only Document Hub access (document.read) but is not granted
+  // document.delete or document.edit — it must lose delete/rename.
+  it('allows getDocuments for role=hr (document.read granted)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'hr-1', organizationId: 'org-1', role: 'hr' } });
+    prismaMock.document.findMany.mockResolvedValue([]);
+
+    await getDocuments();
+
+    expect(prismaMock.document.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { user: { organizationId: 'org-1' } } }),
+    );
+  });
+
+  it('denies deleteDocument for role=hr (no document.delete) without querying the document', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'hr-1', organizationId: 'org-1', role: 'hr' } });
+
+    const result = await deleteDocument('doc-1');
+
+    expect(result).toEqual({ error: 'Document not found' });
+    expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('denies renameDocument for role=hr (no document.edit) without querying the document', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'hr-1', organizationId: 'org-1', role: 'hr' } });
+
+    const result = await renameDocument('doc-1', 'New Name.pdf');
+
+    expect(result).toEqual({ error: 'Document not found' });
+    expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('denies deleteDocument for role=finance (no document.delete)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'fin-1', organizationId: 'org-1', role: 'finance' } });
+
+    const result = await deleteDocument('doc-1');
+
+    expect(result).toEqual({ error: 'Document not found' });
+    expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('allows deleteDocument/renameDocument for role=clinical_director (full document access)', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'cd-1', organizationId: 'org-1', role: 'clinical_director' },
+    });
+    prismaMock.document.findUnique.mockResolvedValue({ user: { organizationId: 'org-1' } });
+    prismaMock.document.update.mockResolvedValue({});
+
+    const result = await renameDocument('doc-1', 'New Name.pdf');
+
+    expect(result).toEqual({ success: true });
   });
 });
 
