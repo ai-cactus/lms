@@ -2,6 +2,7 @@
 - [Constructor mock must use regular function](feedback-constructor-mock-arrow-fn.md) — mockImplementation with arrow fn throws when called with `new`; use `function()` instead
 - [Scripts testing constraints](project-scripts-testing.md) — transcode-worker.mjs: can't import directly, child-process blocked by Prisma 7.8 CJS crash, replicated-algorithm approach used
 - [Storage/sweep test files and patterns](project-storage-sweep-tests.md) — abort-cleanup route, GCS/MinIO list, listFiles dual-backend, runVideoSweep/getVideoSweepWorker tests
+- [Video sweep guardrails test patterns](video-sweep-guardrails-tests.md) — new guardrail silently broke old empty-ref fixtures, opt-in flag flip trap, fire-and-forget catch needs microtask flush not vi.waitFor
 - [Resumable upload test patterns](resumable-upload-tests.md) — 3 new test files for GCS upload feature; JSDoc */  gotcha; reject-before-runAllTimers pattern; e2e skipped (system admin cookie + GCS stub impractical)
 - [RBAC proxy bug — admin login broken](project-rbac-proxy-bug.md) — proxy.ts requiredRole:'admin' rejects all post-migration roles; fix: use ADMIN_ROLES includes check
 - [Reminders engine test patterns](reminders-test-patterns.md) — DST midnight gotcha, P2002 mock class pattern, enrollment.findMany call ordering in sweep, fake timers for compliance
