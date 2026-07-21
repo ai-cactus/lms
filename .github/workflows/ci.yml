@@ -276,9 +276,29 @@ jobs:
       AUTH_MICROSOFT_ENTRA_ID_TENANT_ID: ci-dummy-tenant-id
       # Bypass auth rate limiting during e2e (double-guarded to non-production).
       E2E_TEST_BYPASS_RATE_LIMIT: 'true'
+      # MinIO storage backend (started via docker run below — the official image
+      # needs a `server /data` command, which service containers can't pass).
+      # Without it every storage-touching flow (certificate PDF upload on
+      # attestation, document uploads) dies with ECONNREFUSED :9000 because GCS
+      # is unconfigured in CI and the app falls back to MinIO.
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: '9000'
+      MINIO_USE_SSL: 'false'
+      MINIO_ACCESS_KEY: lms_minio_ci
+      MINIO_SECRET_KEY: lms_minio_secret_ci
+      MINIO_BUCKET: lms-documents
 
     steps:
       - uses: actions/checkout@v4
+
+      # The app's MinIOProvider auto-creates the bucket on first use; only the
+      # server needs to exist. Started first so it is warm long before tests.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER="$MINIO_ACCESS_KEY" \
+            -e MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY" \
+            minio/minio:latest server /data
 
       - uses: actions/setup-node@v4
         with:
@@ -305,6 +325,16 @@ jobs:
 
       - name: Install Playwright browser (chromium)
         run: npx playwright install --with-deps chromium
+
+      - name: Wait for MinIO to be ready
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf "http://localhost:9000/minio/health/live" && exit 0
+            sleep 2
+          done
+          echo "MinIO did not become ready in time" >&2
+          docker logs minio >&2 || true
+          exit 1
 
       - name: Run Playwright e2e tests
         run: npx playwright test tests/e2e

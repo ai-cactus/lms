@@ -34,6 +34,7 @@ vi.mock('@/lib/stripe', () => ({ getStripeClient: () => stripeMock, default: str
 vi.mock('@/lib/audit', () => ({ audit: mockAudit, getClientContext: () => ({}) }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  maskEmail: (email: string) => email,
 }));
 
 // ---------------------------------------------------------------------------
@@ -58,8 +59,42 @@ function makeReq(): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
+  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
+});
+
+// ---------------------------------------------------------------------------
+// RBAC: billing.* is reserved for owner + finance. Regression guard for the
+// isAdminRole → authorize('billing.edit') migration.
+// ---------------------------------------------------------------------------
+describe('POST /api/billing/subscription/cancel-scheduled-change — RBAC (billing.edit registry enforcement)', () => {
+  it.each(['supervisor', 'hr', 'clinical_director'])(
+    'denies role=%s with 403 and never touches Stripe or the subscription row',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-x', role, organizationId: 'org-1' } });
+
+      const res = await POST(makeReq() as never);
+      const body = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(body).toEqual({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' });
+      expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
+      expect(stripeMock.subscriptionSchedules.release).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows role=finance through to the normal cancel-scheduled-change path', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
+    });
+    prismaMock.subscription.findUnique.mockResolvedValue(SCHEDULED_SUB);
+    stripeMock.subscriptionSchedules.release.mockResolvedValue({});
+
+    const res = await POST(makeReq() as never);
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.subscriptionSchedules.release).toHaveBeenCalledWith('sub_sched_1');
+  });
 });
 
 describe('POST /api/billing/subscription/cancel-scheduled-change', () => {
@@ -130,7 +165,7 @@ describe('POST /api/billing/subscription/cancel-scheduled-change', () => {
   });
 
   it('returns 404 when the user has no organization', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ role: 'owner', organizationId: null });
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: null } });
 
     const res = await POST(makeReq() as never);
     const body = await res.json();

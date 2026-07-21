@@ -49,15 +49,17 @@ describe('worker Prisma dependency chain [regression]', () => {
   });
 
   it('bare new PrismaClient() without adapter throws PrismaClientInitializationError synchronously', () => {
-    // Prisma 7.8 rejects a bare construction immediately because there is no
+    // Prisma 7.x rejects a bare construction immediately because there is no
     // query-engine binary — only the pg driver adapter is supported. This throw
     // is confirmed synchronous at construction time; if that behavior ever
     // changes, this assertion should be removed rather than made async/lazy.
     // The generated client's type also requires the adapter arg — the runtime
     // throw is exactly what we assert here, so bypass the compile-time check.
+    // The message wording varies across 7.x minors (7.9 reworded it), so match
+    // the stable "adapter is required" intent rather than one exact phrasing.
     // @ts-expect-error - intentionally omitting the required adapter to prove it throws
     expect(() => new PrismaClient()).toThrow(
-      /PrismaClientInitializationError|needs to be constructed with/,
+      /PrismaClientInitializationError|needs to be constructed with|driver adapter is required/,
     );
   });
 });

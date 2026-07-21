@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { authorize } from '@/lib/rbac/authorize';
+import { apiError } from '@/lib/api-response';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
@@ -15,27 +16,21 @@ import { logger } from '@/lib/logger';
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-    // F-012: enforce authentication + MFA step-up + admin role at the data layer.
-    const denied = guardApiSession(session, { role: 'admin' });
+    // F-012: enforce authentication + MFA step-up at the data layer. RBAC (the
+    // billing permission) is enforced by authorize() below against the registry.
+    const denied = guardApiSession(session);
     if (denied) return denied;
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const authResult = await authorize('billing.read');
+    if (!authResult.ok) return authResult.response;
+    const { ctx } = authResult;
+
+    if (!ctx.organizationId) {
+      return apiError('No organization found', 404);
     }
+    const organizationId = ctx.organizationId;
 
     const stripe = getStripeClient();
-
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    if (!user.organizationId) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
 
     const body = (await request.json()) as { planKey: string; billingCycle: BillingCycle };
     const { planKey, billingCycle } = body;
@@ -58,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const subscription = await prisma.subscription.findUnique({
-      where: { organizationId: user.organizationId },
+      where: { organizationId },
       select: {
         status: true,
         stripeSubscriptionId: true,

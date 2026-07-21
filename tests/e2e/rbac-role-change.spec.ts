@@ -138,6 +138,30 @@ async function seedActorAndTarget(
       firstName: 'Target',
       lastName: 'Staffer',
     });
+    // An active subscription is required so the target's worker-portal login
+    // (several scenarios re-login as the target after the role change) isn't
+    // blocked by the worker billing gate (TC-041-B) — a missing subscription
+    // row is treated as inactive billing, which is unrelated to what this
+    // spec actually tests.
+    const subNow = new Date();
+    const subPeriodEnd = new Date(subNow);
+    subPeriodEnd.setFullYear(subPeriodEnd.getFullYear() + 1);
+    await client.query(
+      `INSERT INTO subscriptions (
+         id, organization_id, stripe_subscription_id, stripe_price_id, plan,
+         billing_cycle, status, current_period_start, current_period_end,
+         cancel_at_period_end, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, 'professional'::"SubscriptionPlan", 'yearly'::"SubscriptionBillingCycle",
+         'active'::"SubscriptionStatus", $5, $6, false, NOW(), NOW())`,
+      [
+        crypto.randomUUID(),
+        orgId,
+        `sub_e2e_${crypto.randomBytes(6).toString('hex')}`,
+        `price_e2e_${crypto.randomBytes(6).toString('hex')}`,
+        subNow,
+        subPeriodEnd,
+      ],
+    );
 
     return { actorId, targetId, orgId, facilityId };
   } finally {
@@ -197,6 +221,7 @@ async function seedActorAndTargetWithHistory(
 async function cleanup(seeded: SeededOrg): Promise<void> {
   const client = await db();
   try {
+    await client.query(`DELETE FROM subscriptions WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM certificates WHERE user_id = ANY($1)`, [
       [seeded.actorId, seeded.targetId],
     ]);

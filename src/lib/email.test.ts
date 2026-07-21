@@ -33,7 +33,8 @@ vi.mock('@/lib/logger', () => ({
 
 // ─── Module under test ────────────────────────────────────────────────────────
 
-import { sendInviteEmail, sendPartnerApplicationEmail } from './email';
+import { sendInviteEmail, sendPartnerApplicationEmail, sendMfaOtpEmail } from './email';
+import { OTP_EXPIRY_MINUTES } from './mfa';
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,38 @@ describe('sendInviteEmail — role label rendering (QA ISSUE 5)', () => {
  * inbox precedence, reply-to wiring, subject formatting, and HTML-escaping
  * of every applicant-supplied field.
  */
+/**
+ * OTP expiry copy-drift regression (see mfa.test.ts): the template used to
+ * hardcode "15 minutes" while mfa.ts enforced a 10-minute window. It now
+ * interpolates OTP_EXPIRY_MINUTES so the copy can never silently drift from
+ * the actual enforced expiry again.
+ */
+describe('sendMfaOtpEmail — expiry copy is single-sourced from OTP_EXPIRY_MINUTES', () => {
+  it('embeds the current OTP_EXPIRY_MINUTES value in the email body', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-otp' });
+
+    await sendMfaOtpEmail('user@test.com', '123456');
+
+    expect(mockSendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: expect.stringContaining(`Code expires in ${OTP_EXPIRY_MINUTES} minutes.`),
+      }),
+    );
+    // Regression pin: the old hardcoded value must never reappear.
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).not.toMatch(/15 minutes/);
+  });
+
+  it('embeds the OTP code in the email body', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-otp-2' });
+
+    await sendMfaOtpEmail('user@test.com', '654321');
+
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).toContain('654321');
+  });
+});
+
 describe('sendPartnerApplicationEmail', () => {
   const ORIGINAL_ENV = { ...process.env };
 
