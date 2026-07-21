@@ -8,7 +8,10 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/worker' }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/worker',
+  useRouter: () => ({ push: vi.fn() }),
+}));
 vi.mock('@/components/worker/WorkerHeader', () => ({ default: () => null }));
 vi.mock('@/components/dashboard/SidebarModeSwitcher', () => ({
   default: ({ mode }: { mode: string }) => <div data-testid="mode-switcher" data-mode={mode} />,
