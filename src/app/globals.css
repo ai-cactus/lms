@@ -12,6 +12,10 @@
   --color-foreground: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
+  --color-text-bold: #202020;
+  --color-text-neutral: #475467;
+  --color-text-body: #101828;
+  --color-text-title: #101828;
   --color-text-tertiary: var(--text-tertiary);
   --color-text-white: var(--text-white);
   --color-border: var(--border-color);
@@ -24,6 +28,7 @@
   --color-bg-primary: var(--bg-primary);
   --color-bg-secondary: var(--bg-secondary);
   --color-bg-hover: var(--bg-hover);
+  --color-tertiary: #f5f5f5;
 
   /* shadcn semantic tokens — back the shadcn/radix component utilities
      (text-primary-foreground, border-input, ring, accent, secondary,
@@ -58,18 +63,21 @@
   /* Font Families */
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+  --font-headline: var(--font-switzer);
+  --font-text: var(--font-geist);
 
   /* Font Sizes */
-  --text-xs: var(--text-xs);
-  --text-sm: var(--text-sm);
-  --text-base: var(--text-base);
-  --text-lg: var(--text-lg);
-  --text-xl: var(--text-xl);
-  --text-2xl: var(--text-2xl);
-  --text-3xl: var(--text-3xl);
-  --text-4xl: var(--text-4xl);
-  --text-5xl: var(--text-5xl);
-  --text-6xl: var(--text-6xl);
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.875rem; /* 14px */
+  --text-base: 1rem; /* 16px — minimum body size for mobile */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.25rem; /* 20px */
+  --text-2xl: 1.5rem; /* 24px */
+  --text-headline-3: 1.625rem; /* 26px */
+  --text-3xl: 1.875rem; /* 30px */
+  --text-4xl: 2.25rem; /* 36px */
+  --text-5xl: 3rem; /* 48px */
+  --text-6xl: 3.75rem; /* 60px */
 
   /* Animations */
   --animate-spin: spin 1s linear infinite;
@@ -160,6 +168,15 @@
   }
 }
 
+/**Hide scrollbar**/
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* =====================================================
    FONT SYSTEM — Suisse Int'l + JetBrains Mono
    Suisse Int'l is self-hosted via next/font/local.
@@ -236,18 +253,6 @@
   --font-heading: var(--font-sans);
   --font-body: var(--font-sans);
   --font-logo: var(--font-sans);
-
-  /* --- Type Scale (mobile-first) --- */
-  --text-xs: 0.75rem; /* 12px */
-  --text-sm: 0.875rem; /* 14px */
-  --text-base: 1rem; /* 16px — minimum body size for mobile */
-  --text-lg: 1.125rem; /* 18px */
-  --text-xl: 1.25rem; /* 20px */
-  --text-2xl: 1.5rem; /* 24px */
-  --text-3xl: 1.875rem; /* 30px */
-  --text-4xl: 2.25rem; /* 36px */
-  --text-5xl: 3rem; /* 48px */
-  --text-6xl: 3.75rem; /* 60px */
 
   /* --- Font Weights ---
      Only SuisseIntl-Regular (400) is currently bundled.

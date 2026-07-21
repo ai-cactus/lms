@@ -1,16 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Logo } from '@/components/ui';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { OtpInput } from '@/components/ui/otp-input';
-import { AuthShell } from '@/components/auth/AuthShell';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
-function MfaVerifyForm() {
+export default function MfaVerifyPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const challenge = searchParams.get('challenge');
@@ -116,88 +115,76 @@ function MfaVerifyForm() {
   };
 
   return (
-    <AuthShell>
-      <Logo size="md" />
-
-      <div className="w-full text-left">
-        <h1 className="mb-2 text-2xl font-semibold text-foreground">Two-Factor Authentication</h1>
-        <p className="text-sm leading-relaxed text-text-secondary">
-          We&apos;ve sent a 6-digit code to your email. Enter it below to continue.
-        </p>
+    <div className="flex flex-col w-full h-full justify-center items-center 2xl:w-max 2xl:items-end py-10 md:px-15 px-5">
+      <div className="flex flex-col w-full gap-10">
+        <div className="flex flex-col gap-5">
+          <Logo size="md" causeRedirect />
+          <div className="w-full text-left flex flex-col gap-1">
+            <h1 className="text-headline-3 font-semibold font-headline leading-8 text-text-bold">
+              Two-Factor Authentication
+            </h1>
+            <p className="text-base leading-6 font-text text-text-neutral">
+              We&apos;ve sent a 6-digit code to your email. Enter it below to continue.
+            </p>
+          </div>
+        </div>
+        {error && (
+          <Alert variant="error" className="w-full">
+            {error}
+          </Alert>
+        )}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-8">
+          <div className="flex flex-col gap-5">
+            <OtpInput
+              value={code}
+              onChange={(v) => {
+                setCode(v);
+                if (error) setError('');
+              }}
+              onComplete={(v) => submitCode(v)}
+              ariaLabel="Two-factor authentication code"
+            />
+          </div>
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full"
+            loading={loading}
+            disabled={code.length !== 6}
+          >
+            Verify
+          </Button>
+        </form>
+        <div className="flex flex-col items-start gap-5">
+          <div className="text-sm text-text-secondary">
+            Didn&apos;t get a code?{' '}
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0 text-sm"
+              onClick={handleResend}
+              loading={resending}
+              disabled={resendCooldown > 0 || resending}
+            >
+              {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+            </Button>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push('/mfa/recover?challenge=' + challenge)}
+            className="text-sm font-medium text-primary hover:underline cursor-pointer"
+          >
+            Use a recovery code instead
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/login')}
+            className="text-sm text-text-secondary hover:text-foreground cursor-pointer"
+          >
+            ← Back to login
+          </button>
+        </div>
       </div>
-
-      {error && (
-        <Alert variant="error" className="w-full">
-          {error}
-        </Alert>
-      )}
-
-      <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
-        <OtpInput
-          value={code}
-          onChange={(v) => {
-            setCode(v);
-            if (error) setError('');
-          }}
-          onComplete={(v) => submitCode(v)}
-          ariaLabel="Two-factor authentication code"
-        />
-
-        <Button
-          type="submit"
-          size="lg"
-          className="w-full"
-          loading={loading}
-          disabled={code.length !== 6}
-        >
-          Verify
-        </Button>
-      </form>
-
-      <div className="text-sm text-text-secondary">
-        Didn&apos;t get a code?{' '}
-        <Button
-          type="button"
-          variant="link"
-          className="h-auto p-0 text-sm"
-          onClick={handleResend}
-          loading={resending}
-          disabled={resendCooldown > 0 || resending}
-        >
-          {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
-        </Button>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => router.push('/mfa/recover?challenge=' + challenge)}
-        className="text-sm font-medium text-primary hover:underline"
-      >
-        Use a recovery code instead
-      </button>
-
-      <button
-        type="button"
-        onClick={() => router.push('/login')}
-        className="text-sm text-text-secondary hover:text-foreground"
-      >
-        ← Back to login
-      </button>
-    </AuthShell>
-  );
-}
-
-export default function MfaVerifyPage() {
-  return (
-    <Suspense
-      fallback={
-        <AuthShell>
-          <Logo size="md" />
-          <p className="text-sm text-text-secondary">Loading...</p>
-        </AuthShell>
-      }
-    >
-      <MfaVerifyForm />
-    </Suspense>
+    </div>
   );
 }
