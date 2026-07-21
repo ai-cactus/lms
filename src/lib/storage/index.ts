@@ -16,6 +16,7 @@
 import { GCSProvider } from './gcs-provider';
 import { MinIOProvider } from './minio-provider';
 import type {
+  StorageBackend,
   StorageListItem,
   StorageProvider,
   StorageUploadResult,
@@ -192,10 +193,15 @@ export async function deleteFile(storageUri: string): Promise<void> {
 /**
  * List every stored object under a key prefix across BOTH backends.
  *
- * Used by the orphaned-object reconciliation sweeper. Each backend is queried
- * independently and wrapped so that one backend being unavailable (e.g. GCS not
- * configured in local dev) logs a warning and contributes [] rather than
- * aborting the whole sweep.
+ * NOTE: The orphaned-object video sweeper no longer uses this — it must scope
+ * its list to the single backend it actively writes to (see
+ * {@link listFilesForActiveBackend} and the incident note there). This
+ * cross-backend variant remains for any caller that genuinely wants a merged
+ * view and is not making destructive decisions from the result.
+ *
+ * Each backend is queried independently and wrapped so that one backend being
+ * unavailable (e.g. GCS not configured in local dev) logs a warning and
+ * contributes [] rather than aborting the whole listing.
  *
  * @param prefix  Object key prefix (e.g. "system/videos/").
  */
@@ -226,6 +232,47 @@ export async function listFiles(prefix: string): Promise<StorageListItem[]> {
   ]);
 
   return [...gcsItems, ...minioItems];
+}
+
+/**
+ * List objects under a key prefix from ONLY the backend this environment
+ * actively writes to — GCS if configured/resolvable, otherwise MinIO. This
+ * mirrors the exact selection order {@link uploadFile} uses, so the listing
+ * reflects the same backend new objects land in.
+ *
+ * WHY single-backend (and NOT {@link listFiles}): cross-backend listing is
+ * unsafe for any caller that deletes based on the result. The orphan video
+ * sweeper twice deleted PRODUCTION GCS objects after running in a NON-prod
+ * environment that held prod GCS credentials: the merged GCS+MinIO listing
+ * surfaced every prod object, but the local/staging database referenced none of
+ * them, so all of prod looked "orphaned" and was swept. Scoping the list to the
+ * single active backend does not fix that on its own, but it is the correct
+ * primitive for the sweeper — combined with the sweeper's own opt-in flag and
+ * empty-reference-set guardrail.
+ *
+ * On list failure this logs a warning and RETHROWS — it never returns []. An
+ * empty array here is indistinguishable from "no objects exist", which a
+ * destructive caller could act on; a failed list must abort the caller, not be
+ * treated as an empty backend.
+ *
+ * @param prefix  Object key prefix (e.g. "system/videos/").
+ */
+export async function listFilesForActiveBackend(prefix: string): Promise<StorageListItem[]> {
+  const gcs = tryGetGCS();
+  const provider = gcs ?? getMinio();
+  const backend: StorageBackend = gcs ? 'gcs' : 'minio';
+
+  try {
+    return await provider.list(prefix);
+  } catch (err: unknown) {
+    logger.warn({
+      msg: '[storage] Active-backend list failed — aborting (not treating as empty)',
+      prefix,
+      backend,
+      reason: (err as Error).message,
+    });
+    throw err;
+  }
 }
 
 /**
