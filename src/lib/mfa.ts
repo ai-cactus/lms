@@ -1,24 +1,16 @@
 /**
- * MFA utility functions — TOTP generation/verification and recovery codes.
+ * MFA utility functions — email-OTP encryption and recovery codes.
  *
- * Uses the `otpauth` library (RFC 6238 TOTP) and bcrypt for recovery code hashing.
- * TOTP secrets are encrypted at rest using AES-256-GCM derived from NEXTAUTH_SECRET.
+ * OTP payloads are encrypted at rest using AES-256-GCM derived from
+ * NEXTAUTH_SECRET; recovery codes are hashed with bcrypt.
  */
 
-import { TOTP, Secret } from 'otpauth';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
-// ── Configuration ─────────────────────────────────────────────────────────────
-
-const TOTP_ISSUER = 'Theraptly LMS';
-const TOTP_PERIOD = 30; // seconds
-const TOTP_DIGITS = 6;
 const RECOVERY_CODE_COUNT = 10;
 const RECOVERY_CODE_LENGTH = 10; // characters per code
-
-// ── Encryption helpers ────────────────────────────────────────────────────────
 
 function getEncryptionKey(): Buffer {
   const secret = process.env.NEXTAUTH_SECRET;
@@ -32,7 +24,9 @@ function getEncryptionKey(): Buffer {
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
-const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+/** OTP validity window in minutes. Single-sourced so email copy can't drift. */
+export const OTP_EXPIRY_MINUTES = 10;
+const OTP_EXPIRY_MS = OTP_EXPIRY_MINUTES * 60 * 1000;
 
 /**
  * Encrypt a plaintext string using AES-256-GCM.
@@ -60,8 +54,6 @@ export function decryptSecret(encoded: string): string {
   decipher.setAuthTag(authTag);
   return decipher.update(ciphertext) + decipher.final('utf8');
 }
-
-// ── OTP Payload with Expiry ───────────────────────────────────────────────────
 
 interface OtpPayload {
   code: string;
@@ -91,56 +83,6 @@ export function decryptOtpPayload(encoded: string): { code: string; expired: boo
     return null;
   }
 }
-
-// ── TOTP ──────────────────────────────────────────────────────────────────────
-
-/**
- * Generate a new TOTP secret and otpauth:// URI for QR code generation.
- */
-export function generateTotpSecret(userEmail: string): { secret: string; uri: string } {
-  const secret = new Secret({ size: 20 }); // 160-bit secret
-
-  const totp = new TOTP({
-    issuer: TOTP_ISSUER,
-    label: userEmail,
-    algorithm: 'SHA1',
-    digits: TOTP_DIGITS,
-    period: TOTP_PERIOD,
-    secret,
-  });
-
-  return {
-    secret: secret.base32,
-    uri: totp.toString(),
-  };
-}
-
-/**
- * Verify a TOTP code against a base32-encoded secret.
- * Uses a window of ±1 to account for clock drift (30-second windows).
- */
-export function verifyTotpCode(base32Secret: string, code: string): boolean {
-  try {
-    const totp = new TOTP({
-      issuer: TOTP_ISSUER,
-      algorithm: 'SHA1',
-      digits: TOTP_DIGITS,
-      period: TOTP_PERIOD,
-      secret: Secret.fromBase32(base32Secret),
-    });
-
-    const delta = totp.validate({
-      token: code,
-      window: 1, // Allow ±1 period (±30 seconds)
-    });
-
-    return delta !== null;
-  } catch {
-    return false;
-  }
-}
-
-// ── Recovery Codes ────────────────────────────────────────────────────────────
 
 /**
  * Generate a set of human-readable recovery codes.

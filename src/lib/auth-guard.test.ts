@@ -28,7 +28,7 @@ function makeSession(user: TestUser): Session {
 const adminVerified: TestUser = {
   id: 'u1',
   email: 'a@example.com',
-  role: 'admin',
+  role: 'owner',
   organizationId: 'org1',
   mfaEnabled: true,
   mfaVerified: true,
@@ -37,7 +37,7 @@ const adminVerified: TestUser = {
 const workerNoMfa: TestUser = {
   id: 'u2',
   email: 'w@example.com',
-  role: 'worker',
+  role: 'nurse',
   organizationId: 'org1',
   mfaEnabled: false,
   mfaVerified: true,
@@ -46,7 +46,7 @@ const workerNoMfa: TestUser = {
 const mfaPending: TestUser = {
   id: 'u3',
   email: 'p@example.com',
-  role: 'admin',
+  role: 'owner',
   organizationId: 'org1',
   mfaEnabled: true,
   mfaVerified: false,

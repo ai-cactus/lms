@@ -14,6 +14,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 import { logger, maskEmail } from '@/lib/logger';
 import { createMfaChallenge } from '@/lib/mfa-challenge';
+import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
 import { verifyCaptcha } from '@/lib/captcha';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
@@ -24,7 +25,6 @@ import { BCRYPT_COST } from '@/lib/bcrypt-config';
 // dummy compare takes the same time as a real login (F-058).
 const DUMMY_BCRYPT_HASH = '$2b$12$WcSFYgX/PiZHV/21.0M2fuVfQ23xb6TQloNTnuIk9twRudyN/T8cW';
 
-// Define return type
 export type AuthState = {
   error?: string;
   success?: boolean;
@@ -64,7 +64,7 @@ export async function authenticate(
     const lookupUser = email
       ? await prisma.user.findUnique({
           where: { email },
-          select: { role: true, mfaEnabled: true, id: true },
+          select: { role: true, mfaEnabled: true, id: true, organizationId: true },
         })
       : null;
 
@@ -91,7 +91,17 @@ export async function authenticate(
       return { error: 'Invalid credentials.' };
     }
 
-    if (lookupUser.role === 'worker') {
+    // A non-owner admin-tier account with no org has been removed from its
+    // organization — surface an actionable message instead of routing to a
+    // signIn that authorize() would reject as generic invalid credentials.
+    if (isAdminRole(lookupUser.role) && lookupUser.role !== 'owner' && !lookupUser.organizationId) {
+      return {
+        error:
+          'Your access to this organization has been removed. Please contact your administrator.',
+      };
+    }
+
+    if (isWorkerRole(lookupUser.role)) {
       role = 'worker';
     }
 
@@ -143,37 +153,17 @@ export async function authenticate(
 
 export type SignupResult = { success: true } | { success: false; error: string };
 
-export async function signup(
-  prevState: SignupResult | undefined,
-  formData: FormData,
-): Promise<SignupResult> {
-  // Legacy function - kept for backwards compatibility
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
-  const firstName = formData.get('firstName') as string;
-  const lastName = formData.get('lastName') as string;
-
-  return signupWithRole({
-    email,
-    password,
-    firstName,
-    lastName,
-    role: 'worker', // Default role
-  });
-}
-
-interface SignupWithRoleData {
+interface SignupData {
   email: string;
   password: string;
   firstName: string;
   lastName: string;
-  role: 'admin' | 'worker';
   /** Optional hCaptcha token; verified only when the feature is enabled (inert otherwise). */
   captchaToken?: string;
 }
 
-export async function signupWithRole(data: SignupWithRoleData): Promise<SignupResult> {
-  const { email, password, firstName, lastName, role, captchaToken } = data;
+export async function signup(data: SignupData): Promise<SignupResult> {
+  const { email, password, firstName, lastName, captchaToken } = data;
 
   // Rate limiting — 5 attempts per IP per 10 minutes. Runs before any DB access
   // (existence check, token creation) and before any email send.
@@ -196,8 +186,7 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
     return { success: false, error: 'Captcha verification failed. Please try again.' };
   }
 
-  // Basic validation
-  if (!email || !password || !firstName || !lastName || !role) {
+  if (!email || !password || !firstName || !lastName) {
     return { success: false, error: 'All fields are required' };
   }
 
@@ -211,7 +200,6 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
   }
 
   try {
-    // Check if user already exists
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       return { success: false, error: 'Account with this email already exists.' };
@@ -219,12 +207,14 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
-    // Clean up any existing verification tokens for this email
     await prisma.verificationToken.deleteMany({
       where: { identifier: email, type: 'email_verification' },
     });
 
-    // Create verification token with pending user data including role (24 hour expiry)
+    // Create verification token with pending user data including role (24 hour expiry).
+    // Self-serve signup always founds an organisation, so the account becomes an `owner`.
+    // Worker accounts are created only via invites (join/[token] flow), never here.
+    const persistedRole = 'owner';
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MS);
 
@@ -237,7 +227,7 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
         password: hashedPassword,
         firstName,
         lastName,
-        role,
+        role: persistedRole,
       },
     });
 
@@ -264,7 +254,7 @@ export async function signupWithRole(data: SignupWithRoleData): Promise<SignupRe
     await audit({
       action: 'auth.signup',
       ...getClientContext(headersList),
-      metadata: { role, email: maskEmail(email), pendingVerification: true },
+      metadata: { role: persistedRole, email: maskEmail(email), pendingVerification: true },
     });
 
     return { success: true };
@@ -300,7 +290,6 @@ export async function sendPasswordResetLink(email: string) {
     return { success: true }; // Security: Don't reveal user existence
   }
 
-  // Generate secure UUID token
   const token = crypto.randomUUID();
   const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
@@ -372,7 +361,6 @@ export async function resetPasswordWithToken(
     select: { id: true, role: true, organizationId: true },
   });
 
-  // delete used token
   await prisma.verificationToken.delete({
     where: {
       identifier_token: {

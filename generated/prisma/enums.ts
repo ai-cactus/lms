@@ -10,8 +10,19 @@
 */
 
 export const UserRole = {
-  admin: 'admin',
-  worker: 'worker'
+  owner: 'owner',
+  supervisor: 'supervisor',
+  hr: 'hr',
+  clinical_director: 'clinical_director',
+  finance: 'finance',
+  psychiatrist_prescriber: 'psychiatrist_prescriber',
+  nurse: 'nurse',
+  therapist_clinician: 'therapist_clinician',
+  case_manager: 'case_manager',
+  behavioral_health_technician: 'behavioral_health_technician',
+  peer_support_specialist: 'peer_support_specialist',
+  front_desk_admin: 'front_desk_admin',
+  facilities_support: 'facilities_support'
 } as const
 
 export type UserRole = (typeof UserRole)[keyof typeof UserRole]
@@ -84,7 +95,8 @@ export const ReminderStage = {
   URGENT_REMINDER: 'URGENT_REMINDER',
   DAY_OF_DEADLINE: 'DAY_OF_DEADLINE',
   GRACE_SOFT_ESCALATION: 'GRACE_SOFT_ESCALATION',
-  HARD_ESCALATION: 'HARD_ESCALATION'
+  HARD_ESCALATION: 'HARD_ESCALATION',
+  ADMIN_PRE_DEADLINE_REMINDER: 'ADMIN_PRE_DEADLINE_REMINDER'
 } as const
 
 export type ReminderStage = (typeof ReminderStage)[keyof typeof ReminderStage]

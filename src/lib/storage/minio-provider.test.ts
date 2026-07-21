@@ -10,8 +10,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const { MockMinioClient, mockBucketExists, mockListObjectsV2, mockLoggerInfo } = vi.hoisted(() => {
   const mockBucketExists = vi.fn<() => Promise<boolean>>();
   const mockListObjectsV2 = vi.fn<() => EventEmitter>();
@@ -26,8 +24,6 @@ const { MockMinioClient, mockBucketExists, mockListObjectsV2, mockLoggerInfo } =
   return { MockMinioClient, mockBucketExists, mockListObjectsV2, mockLoggerInfo };
 });
 
-// ─── Module mocks ─────────────────────────────────────────────────────────────
-
 vi.mock('minio', () => ({
   Client: MockMinioClient,
 }));
@@ -41,24 +37,16 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
-// ─── Module under test ────────────────────────────────────────────────────────
-
 import { MinIOProvider } from '@/lib/storage/minio-provider';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Flush all pending microtasks so async operations inside the module complete. */
 const flushMicrotasks = () => new Promise<void>((r) => setTimeout(r, 0));
-
-// ─── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   vi.clearAllMocks();
   // Bucket always exists → ensureBucket completes in one microtask.
   mockBucketExists.mockResolvedValue(true);
 });
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('MinIOProvider.list', () => {
   it('emits two data events then end → returns two items with correct URIs and createdAt', async () => {

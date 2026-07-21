@@ -13,13 +13,13 @@ export default async function WorkerProfilePage() {
     redirect('/login');
   }
 
-  // Fetch user with profile and organization
   logger.info({ msg: '[WorkerProfilePage] Rendering for user:', data: session.user.id });
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: {
       profile: true,
       organization: true,
+      facility: true,
     },
   });
 
@@ -48,13 +48,14 @@ export default async function WorkerProfilePage() {
     authProvider: user.authProvider,
   };
 
+  // Name is org-level; location fields now live on the facility.
   const organizationData = user.organization
     ? {
         name: user.organization.name,
-        address: user.organization.address,
-        city: user.organization.city,
-        state: user.organization.state,
-        zipCode: user.organization.zipCode,
+        address: user.facility?.address ?? null,
+        city: user.facility?.city ?? null,
+        state: user.facility?.state ?? null,
+        zipCode: user.facility?.zipCode ?? null,
       }
     : null;
 

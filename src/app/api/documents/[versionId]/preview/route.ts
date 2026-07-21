@@ -15,7 +15,6 @@ export async function GET(
 
   const { versionId } = await params;
 
-  // Verify ownership
   const version = await prisma.documentVersion.findUnique({
     where: { id: versionId },
     include: { document: true },

@@ -1,6 +1,7 @@
 'use server';
 
 import { auth } from '@/auth';
+import { isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { startedAtWhere, type AuditDateRangeInput } from '@/lib/audit-reports/date-range';
@@ -46,7 +47,7 @@ async function requireAdminSession() {
     where: { id: session.user.id },
     select: { role: true, organizationId: true },
   });
-  if (!user || user.role !== 'admin' || !user.organizationId) {
+  if (!user || !isAdminRole(user.role) || !user.organizationId) {
     throw new Error('Unauthorized');
   }
   return { userId: session.user.id, organizationId: user.organizationId };
@@ -99,7 +100,7 @@ export async function getAuditorOverviewStats(
     }),
     // Staff count (workers only)
     prisma.user.count({
-      where: { organizationId, role: 'worker' },
+      where: { organizationId, role: { in: [...WORKER_ROLES] } },
     }),
   ]);
 
@@ -196,7 +197,7 @@ export async function getAuditorStaff(
   const workers = await prisma.user.findMany({
     where: {
       organizationId,
-      role: 'worker',
+      role: { in: [...WORKER_ROLES] },
       ...(search
         ? {
             OR: [

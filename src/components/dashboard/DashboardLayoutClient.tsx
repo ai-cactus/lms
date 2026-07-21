@@ -1,8 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import { canAccessModule } from '@/lib/rbac/roles-matrix-config';
+import type { Role } from '@/types/next-auth';
 import { Logo } from '@/components/ui';
 import Header from '@/components/dashboard/Header';
+import SidebarModeSwitcher from '@/components/dashboard/SidebarModeSwitcher';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -13,7 +18,9 @@ import {
   ClipboardCheck,
   CreditCard,
   ChevronDown,
-  ShieldAlert,
+  Gauge,
+  Settings,
+  HelpCircle,
 } from 'lucide-react';
 
 interface DashboardLayoutClientProps {
@@ -33,7 +40,25 @@ export default function DashboardLayoutClient({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isProfilePage = pathname === '/dashboard/profile';
 
-  // Close sidebar on route change
+  // Sidebar module visibility is driven by the RBAC registry via the Settings →
+  // Roles matrix, so nav and matrix can never drift apart.
+  const roleKey = role ? dbRoleToRoleKey(role as Role) : undefined;
+
+  const canSeeDashboard = roleKey ? canAccessModule(roleKey, 'Dashboard') : false;
+  const canSeeDocuments = roleKey ? canAccessModule(roleKey, 'Documents') : false;
+  const canSeeCourses = roleKey ? canAccessModule(roleKey, 'Courses') : false;
+  const canSeeStatusTracker = roleKey ? canAccessModule(roleKey, 'Status Tracker') : false;
+  const canSeeStaffManagement = roleKey ? canAccessModule(roleKey, 'Staff Management') : false;
+  // Audit Reports is intentionally NOT a matrix row (the design's Settings matrix
+  // omits it), so gate it directly on the auditor-pack read permission.
+  const canSeeAuditReports = can(roleKey, 'auditPack.read');
+  const canSeeSettings = roleKey ? canAccessModule(roleKey, 'Settings') : false;
+  const canSeeBilling = roleKey ? canAccessModule(roleKey, 'Billing') : false;
+  const canSeeHelpCenter = roleKey ? canAccessModule(roleKey, 'Help Center') : false;
+
+  const showPerformanceSection = canSeeStaffManagement || canSeeAuditReports;
+  const showSettingsSection = canSeeSettings || canSeeBilling || canSeeHelpCenter;
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync sidebar state with navigation
     setSidebarOpen(false);
@@ -51,13 +76,11 @@ export default function DashboardLayoutClient({
     };
   }, [sidebarOpen]);
 
-  // If on profile page, render simplified layout
   if (isProfilePage) {
     return (
       <div className="relative min-h-screen w-full flex flex-col bg-white">
         <header className="flex h-20 w-full items-center justify-between border-b border-[#e2e8f0] px-10">
           <div className="flex items-center">
-            {/* Blue Logo for Profile Page */}
             <Logo size="md" variant="blue" />
           </div>
 
@@ -87,18 +110,16 @@ export default function DashboardLayoutClient({
 
   return (
     <div className="relative min-h-screen w-full bg-[#f8f9fa]">
-      {/* Mobile Backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-[90] bg-black/40 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={[
-          'fixed top-0 left-0 z-[100] flex h-screen w-[280px] flex-col border-r border-[#e2e8f0] bg-white p-6',
+          'fixed top-0 left-0 z-40 flex h-screen w-[280px] flex-col border-r border-[#e2e8f0] bg-white p-6',
           'transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
           // On lg+ always visible; on mobile slides in/out
           'lg:translate-x-0',
@@ -109,87 +130,122 @@ export default function DashboardLayoutClient({
           <Logo size="sm" />
         </div>
 
+        {isAdminRole(role) && (
+          <div className="mb-8">
+            <SidebarModeSwitcher mode="manage" />
+          </div>
+        )}
+
         <nav className="flex flex-col gap-8">
-          {/* MAIN MENU Section */}
           <div className="flex flex-col gap-2">
             <h4 className={navSectionLabelCls}>MAIN MENU</h4>
 
-            <Link
-              href="/dashboard"
-              className={`${navItemBase} ${pathname === '/dashboard' ? navItemActive : ''}`}
-            >
-              <Home className="size-5" />
-              <span>Dashboard</span>
-            </Link>
-
-            <Link
-              href="/dashboard/documents"
-              className={`${navItemBase} ${pathname.startsWith('/dashboard/documents') ? navItemActive : ''}`}
-            >
-              <FileText className="size-5" />
-              <span>Documents</span>
-            </Link>
-
-            <Link
-              href="/dashboard/courses"
-              className={`${navItemBase} ${pathname.startsWith('/dashboard/courses') ? navItemActive : ''}`}
-            >
-              <BookOpen className="size-5" />
-              <span>Courses</span>
-            </Link>
-          </div>
-
-          {/* PERFORMANCE Section — admin only */}
-          {role === 'admin' && (
-            <div className="flex flex-col gap-2">
-              <h4 className={navSectionLabelCls}>PERFORMANCE</h4>
-
+            {canSeeDashboard && (
               <Link
-                href="/dashboard/staff"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/staff') ? navItemActive : ''}`}
+                href="/dashboard"
+                className={`${navItemBase} ${pathname === '/dashboard' ? navItemActive : ''}`}
               >
-                <Users className="size-5" />
-                <span>Staff Management</span>
+                <Home className="size-5" />
+                <span>Dashboard</span>
               </Link>
+            )}
 
+            {canSeeDocuments && (
               <Link
-                href="/dashboard/audit-reports"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/audit-reports') ? navItemActive : ''}`}
+                href="/dashboard/documents"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/documents') ? navItemActive : ''}`}
               >
-                <ClipboardCheck className="size-5" />
-                <span>Audit Reports</span>
+                <FileText className="size-5" />
+                <span>Documents</span>
               </Link>
+            )}
 
+            {canSeeCourses && (
+              <Link
+                href="/dashboard/courses"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/courses') ? navItemActive : ''}`}
+              >
+                <BookOpen className="size-5" />
+                <span>Courses</span>
+              </Link>
+            )}
+
+            {canSeeStatusTracker && (
               <Link
                 href="/dashboard/status-tracker"
                 className={`${navItemBase} ${pathname.startsWith('/dashboard/status-tracker') ? navItemActive : ''}`}
               >
-                <ShieldAlert className="size-5" />
+                <Gauge className="size-5" />
                 <span>Status Tracker</span>
               </Link>
+            )}
+          </div>
+
+          {showPerformanceSection && (
+            <div className="flex flex-col gap-2">
+              <h4 className={navSectionLabelCls}>PERFORMANCE</h4>
+
+              {canSeeStaffManagement && (
+                <Link
+                  href="/dashboard/staff"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/staff') ? navItemActive : ''}`}
+                >
+                  <Users className="size-5" />
+                  <span>Staff Management</span>
+                </Link>
+              )}
+
+              {canSeeAuditReports && (
+                <Link
+                  href="/dashboard/audit-reports"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/audit-reports') ? navItemActive : ''}`}
+                >
+                  <ClipboardCheck className="size-5" />
+                  <span>Audit Reports</span>
+                </Link>
+              )}
             </div>
           )}
 
-          {/* SETTINGS Section — admin only */}
-          {role === 'admin' && (
+          {showSettingsSection && (
             <div className="flex flex-col gap-2">
               <h4 className={navSectionLabelCls}>SETTINGS</h4>
 
-              <Link
-                href="/dashboard/billing"
-                className={`${navItemBase} ${pathname.startsWith('/dashboard/billing') ? navItemActive : ''}`}
-              >
-                <CreditCard className="size-5" />
-                <span>Billing</span>
-              </Link>
+              {canSeeSettings && (
+                <Link
+                  href="/dashboard/settings"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/settings') ? navItemActive : ''}`}
+                >
+                  <Settings className="size-5" />
+                  <span>Settings</span>
+                </Link>
+              )}
+
+              {canSeeBilling && (
+                <Link
+                  href="/dashboard/billing"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/billing') ? navItemActive : ''}`}
+                >
+                  <CreditCard className="size-5" />
+                  <span>Billing</span>
+                </Link>
+              )}
+
+              {canSeeHelpCenter && (
+                <Link
+                  href="/dashboard/help"
+                  className={`${navItemBase} ${pathname.startsWith('/dashboard/help') ? navItemActive : ''}`}
+                >
+                  <HelpCircle className="size-5" />
+                  <span>Help Center</span>
+                </Link>
+              )}
             </div>
           )}
         </nav>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex min-h-screen w-full flex-col lg:ml-[280px] lg:w-[calc(100%-280px)]">
-        {/* Top Header */}
         <Header fullName={fullName} onMenuClick={() => setSidebarOpen(true)} />
 
         <div className="min-w-0 flex-1 p-4 lg:p-10">{children}</div>

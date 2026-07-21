@@ -10,16 +10,12 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     enrollment: { findMany: vi.fn() },
   };
   return { prismaMock };
 });
-
-// ─── Module mocks ─────────────────────────────────────────────────────────────
 
 vi.mock('@/lib/prisma', () => ({ default: prismaMock, prisma: prismaMock }));
 vi.mock('@/lib/logger', () => ({
@@ -29,8 +25,6 @@ vi.mock('@/lib/logger', () => ({
 // ─── Module under test ────────────────────────────────────────────────────────
 
 import { getStatusTrackerSummaryForOrg } from './status-tracker';
-
-// ─── Fixed clock ──────────────────────────────────────────────────────────────
 
 // noon UTC June 15 = 08:00 EDT in America/New_York (local date "2024-06-15")
 const NOW = new Date('2024-06-15T12:00:00Z');
@@ -45,8 +39,6 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function makeEnrollment(
   id: string,
   dueAtIso: string,
@@ -55,6 +47,9 @@ function makeEnrollment(
     fullName?: string | null;
     managerName?: string | null;
     timezone?: string | null;
+    assignment?: {
+      reminderStages: { stage: string; offsetDays: number; enabled: boolean }[];
+    } | null;
   } = {},
 ) {
   const {
@@ -62,6 +57,7 @@ function makeEnrollment(
     fullName = `Worker ${id}`,
     managerName = null,
     timezone = 'America/New_York',
+    assignment = null,
   } = opts;
   return {
     id,
@@ -69,12 +65,13 @@ function makeEnrollment(
     courseId: `course-${id}`,
     dueAt: new Date(dueAtIso),
     status,
+    assignment,
     course: { title: `Course ${id}` },
     user: {
       email: `worker-${id}@test.com`,
       profile: fullName !== null ? { fullName } : null,
       manager: managerName !== null ? { profile: { fullName: managerName } } : null,
-      organization: timezone !== null ? { timezone } : null,
+      facility: timezone !== null ? { timezone } : null,
     },
   };
 }
@@ -169,7 +166,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
     expect(rows[0].managerName).toBeNull();
   });
 
-  it('uses DEFAULT_TZ when organization timezone is null', async () => {
+  it('uses DEFAULT_TZ when facility timezone is null', async () => {
     // dueAt = June 5 noon UTC; with DEFAULT_TZ (America/New_York) daysOverdue = 10
     prismaMock.enrollment.findMany.mockResolvedValue([
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { timezone: null }),
@@ -178,6 +175,28 @@ describe('getStatusTrackerSummaryForOrg', () => {
     const { rows } = await getStatusTrackerSummaryForOrg('org-1');
     // Should still compute 10 days using the fallback timezone
     expect(rows[0].daysOverdue).toBe(10);
+  });
+
+  it('reads timezone from the worker facility, not organization — regression guard', async () => {
+    // dueAt = 2024-06-05T05:00:00Z straddles midnight differently per zone:
+    //   America/New_York (EDT, UTC-4): 05:00 - 4h = 01:00 June 5  → local date June 5
+    //   America/Los_Angeles (PDT, UTC-7): 05:00 - 7h = 22:00 June 4 → local date June 4
+    // So the DEFAULT_TZ fallback would compute 10 days overdue, while the real
+    // facility timezone (LA) computes 11. If the code regressed to reading
+    // organization.timezone (a field removed from the select entirely), the
+    // facility value below would never be reached, `?? DEFAULT_TZ` would
+    // silently kick in, and this assertion would fail (10 !== 11).
+    prismaMock.enrollment.findMany.mockResolvedValue([
+      makeEnrollment('e1', '2024-06-05T05:00:00Z', { timezone: 'America/Los_Angeles' }),
+    ]);
+
+    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
+
+    expect(rows[0].daysOverdue).toBe(11);
+
+    const call = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(call.select.user.select.facility).toEqual({ select: { timezone: true } });
+    expect(call.select.user.select.organization).toBeUndefined();
   });
 
   it('queries with the correct orgId filter (passes it to prisma)', async () => {
@@ -192,5 +211,118 @@ describe('getStatusTrackerSummaryForOrg', () => {
         }),
       }),
     );
+  });
+});
+
+// ─── Per-assignment hard-escalation threshold override (Issues #9/#10, TC-022/023) ─
+
+describe('getStatusTrackerSummaryForOrg — per-assignment HARD_ESCALATION override', () => {
+  it('flags an overdue row as hard-escalated at offset 0 (immediate escalation override)', async () => {
+    // Only 2 days overdue — far short of the default 7-day threshold — but the
+    // assignment overrides HARD_ESCALATION to offset 0, so it must still flag.
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e1', '2024-06-13T12:00:00Z', {
+          assignment: {
+            reminderStages: [{ stage: 'HARD_ESCALATION', offsetDays: 0, enabled: true }],
+          },
+        }),
+      ])
+      .mockResolvedValueOnce([]); // nearDeadline
+
+    const { rows, hardEscalationCount } = await getStatusTrackerSummaryForOrg('org-1');
+
+    expect(rows[0].daysOverdue).toBe(2);
+    expect(rows[0].isHardEscalation).toBe(true);
+    expect(hardEscalationCount).toBe(1);
+  });
+
+  it('never flags a row as hard-escalated when the assignment disables HARD_ESCALATION, however overdue', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e1', '2024-06-01T12:00:00Z', {
+          // 14 days overdue — would be hard-escalated under the default (7d)
+          // threshold, but this assignment has explicitly disabled the stage.
+          assignment: {
+            reminderStages: [{ stage: 'HARD_ESCALATION', offsetDays: 7, enabled: false }],
+          },
+        }),
+      ])
+      .mockResolvedValueOnce([]);
+
+    const { rows, hardEscalationCount } = await getStatusTrackerSummaryForOrg('org-1');
+
+    expect(rows[0].daysOverdue).toBe(14);
+    expect(rows[0].isHardEscalation).toBe(false);
+    expect(hardEscalationCount).toBe(0);
+  });
+
+  it('falls back to the system default (7d) threshold when the assignment has no HARD_ESCALATION override row', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e1', '2024-06-08T12:00:00Z', {
+          // 7 days overdue; assignment present but with only an unrelated stage row.
+          assignment: {
+            reminderStages: [{ stage: 'FRIENDLY_REMINDER', offsetDays: -14, enabled: true }],
+          },
+        }),
+      ])
+      .mockResolvedValueOnce([]);
+
+    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
+
+    expect(rows[0].isHardEscalation).toBe(true); // 7 >= default threshold (7)
+  });
+});
+
+// ─── At-risk / near-deadline view (Issue #9, TC-025) ──────────────────────────
+
+describe('getStatusTrackerSummaryForOrg — nearDeadline (At Risk) view', () => {
+  it('returns near-deadline rows separately from overdue rows, sorted soonest-due first', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeEnrollment('overdue-1', '2024-06-05T12:00:00Z')]) // overdue query
+      .mockResolvedValueOnce([
+        // near-deadline query: due in 5 days, then in 2 days
+        makeEnrollment('soon-1', '2024-06-20T12:00:00Z'),
+        makeEnrollment('soon-2', '2024-06-17T12:00:00Z'),
+      ]);
+
+    const { rows, nearDeadline } = await getStatusTrackerSummaryForOrg('org-1');
+
+    // Disjoint: the overdue row never leaks into nearDeadline and vice versa.
+    expect(rows.map((r) => r.enrollmentId)).toEqual(['overdue-1']);
+    expect(nearDeadline.rows.map((r) => r.enrollmentId)).toEqual(['soon-2', 'soon-1']);
+    expect(nearDeadline.count).toBe(2);
+  });
+
+  it('computes daysUntilDue for a near-deadline row (tz-aware)', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([makeEnrollment('soon-1', '2024-06-18T12:00:00Z')]); // 3 days out
+
+    const { nearDeadline } = await getStatusTrackerSummaryForOrg('org-1');
+
+    expect(nearDeadline.rows[0].daysUntilDue).toBe(3);
+  });
+
+  it('queries the near-deadline window as [now, now + 7 days] and excludes terminal statuses', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    await getStatusTrackerSummaryForOrg('org-1');
+
+    const nearDeadlineCall = prismaMock.enrollment.findMany.mock.calls[1][0];
+    expect(nearDeadlineCall.where.dueAt).toEqual({
+      gte: NOW,
+      lte: new Date('2024-06-22T12:00:00Z'), // NOW + 7 days
+    });
+    expect(nearDeadlineCall.where.status).toEqual({ notIn: ['completed', 'attested'] });
+  });
+
+  it('returns an empty nearDeadline block when there is nothing due soon', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    const { nearDeadline } = await getStatusTrackerSummaryForOrg('org-1');
+
+    expect(nearDeadline).toEqual({ count: 0, rows: [] });
   });
 });

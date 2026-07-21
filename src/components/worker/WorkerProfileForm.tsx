@@ -61,7 +61,6 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // DEBUG: Client-side mount check
   React.useEffect(() => {
     setFormData({
       first_name: user.first_name,
@@ -95,7 +94,6 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-    // Clear field error when user types
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
     }

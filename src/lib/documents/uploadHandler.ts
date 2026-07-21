@@ -23,7 +23,6 @@ import { uploadFile } from '@/lib/storage';
 export async function saveFile(file: File, userId: string): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Sanitise filename: lowercase, only alphanumeric + dots/hyphens
   const timestamp = Date.now();
   const safeName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
   const key = `documents/${userId}/${timestamp}-${safeName}`;

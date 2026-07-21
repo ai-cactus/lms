@@ -9,6 +9,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { assertSeatAvailable, SeatLimitError } from '@/lib/seat-limits';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
+import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -28,6 +29,10 @@ export async function POST(req: Request) {
     const result = acceptInviteSchema.safeParse(body);
 
     if (!result.success) {
+      logger.warn({
+        msg: '[invite] Rejected accept-invite request with invalid payload',
+        fields: Object.keys(result.error.flatten().fieldErrors),
+      });
       return NextResponse.json(
         { error: 'Invalid input data', details: result.error.flatten().fieldErrors },
         { status: 400 },
@@ -63,7 +68,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Server-side password policy enforcement (beyond basic zod length checks)
     const pwCheck = validatePassword(password);
     if (!pwCheck.valid) {
       return NextResponse.json(
@@ -72,29 +76,49 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Find pending invite
+    // `token` is Zod-validated as a non-empty string and `token` is @unique, so
+    // this lookup resolves to exactly the invite that owns the token or none —
+    // a crafted POST can never widen to reach another organization's invite.
     const invite = await prisma.invite.findUnique({
       where: { token, status: 'pending' },
     });
 
     if (!invite || new Date() > invite.expiresAt) {
+      logger.warn({
+        msg: '[invite] Accept attempt with invalid or expired token',
+        tokenPrefix: token.slice(0, 8),
+      });
       return NextResponse.json({ error: 'Invalid or expired invite' }, { status: 400 });
     }
 
-    // 3. Check if user already exists (just in case they signed up manually in the meantime)
     const existingUser = await prisma.user.findUnique({
       where: { email: invite.email },
+      select: { id: true, organizationId: true },
     });
 
-    if (existingUser) {
+    // An account already bound to an organization cannot accept a new invite. An
+    // org-less account (e.g. a removed user) IS allowed through and relinked into
+    // the inviting org below — the emailed token proves control of the address,
+    // the same trust model as a password-reset link.
+    if (existingUser && existingUser.organizationId !== null) {
       return NextResponse.json({ error: 'User with this email already exists' }, { status: 400 });
     }
 
-    // 4. Hash password
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
-    // 5. Create User and Profile within a transaction
-    // Using transaction ensures atomicity
+    const facility = await prisma.facility.findFirst({
+      where: { organizationId: invite.organizationId },
+      select: { id: true },
+    });
+    if (!facility) {
+      logger.warn({
+        msg: '[invite] Accepting invite: no facility for organization',
+        organizationId: invite.organizationId,
+      });
+    }
+
+    const fullName = `${firstName} ${lastName}`;
+
     const newUser = await prisma.$transaction(async (tx) => {
       // F-022: re-check seat availability INSIDE the transaction so a seat that
       // filled between invite issuance and acceptance (concurrent accepts, or
@@ -103,24 +127,40 @@ export async function POST(req: Request) {
       // source; a no-op for unlimited plans / no active subscription.
       await assertSeatAvailable(invite.organizationId, { seatsNeeded: 1, client: tx });
 
-      const user = await tx.user.create({
-        data: {
-          email: invite.email,
-          password: hashedPassword,
-          organizationId: invite.organizationId,
-          role: invite.role,
-          profile: {
-            create: {
-              firstName,
-              lastName,
-              fullName: `${firstName} ${lastName}`,
-              email: invite.email,
+      // Relink an org-less account (removed user rejoining): reset its org,
+      // facility, role, credentials and verification, and upsert the profile —
+      // equivalent to a fresh join for an address whose control was just proven.
+      const user = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              emailVerified: true,
+              password: hashedPassword,
+              organizationId: invite.organizationId,
+              facilityId: facility?.id ?? null,
+              role: invite.role,
+              profile: {
+                upsert: {
+                  create: { firstName, lastName, fullName, email: invite.email },
+                  update: { firstName, lastName, fullName, email: invite.email },
+                },
+              },
             },
-          },
-        },
-      });
+          })
+        : await tx.user.create({
+            data: {
+              email: invite.email,
+              emailVerified: true,
+              password: hashedPassword,
+              organizationId: invite.organizationId,
+              facilityId: facility?.id ?? null,
+              role: invite.role,
+              profile: {
+                create: { firstName, lastName, fullName, email: invite.email },
+              },
+            },
+          });
 
-      // 6. Mark invite as accepted
       await tx.invite.update({
         where: { id: invite.id },
         data: { status: 'accepted' },
@@ -140,6 +180,10 @@ export async function POST(req: Request) {
       ...getClientContext(req.headers),
       metadata: { email: maskEmail(invite.email) },
     });
+
+    // Live auto-enroll: a new account just joined the org with a role — enroll it
+    // in any active role-target assignments for that role. Never throws.
+    await enrollUserForRoleTargets(newUser.id, invite.organizationId);
 
     return NextResponse.json({ success: true, userId: newUser.id });
   } catch (error: unknown) {

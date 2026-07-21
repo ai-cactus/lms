@@ -84,14 +84,12 @@ export function VideoPlayer({
     const now = Date.now();
     const msSinceLast = now - lastSavedAtRef.current;
 
-    // Clear any pending debounce timer
     if (debounceTimerRef.current !== null) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
 
     if (immediate || msSinceLast >= DEBOUNCE_MS) {
-      // Save right away
       lastSavedAtRef.current = now;
       saveVideoProgress(enrollmentIdRef.current, currentTime, watchedPct).catch((err: unknown) => {
         logger.warn({
@@ -177,6 +175,14 @@ export function VideoPlayer({
     persistProgress(maxWatchedSecondsRef.current, reportWatchedPct(video.duration), true);
   }
 
+  // The proxy returns 404 when the underlying storage object is gone; the
+  // <video> element then fires `error`. Surface a clear inline state instead of
+  // a dead player. The proxy also persists the honest status server-side.
+  function handleVideoError() {
+    logger.error({ msg: '[video] player failed to load source', lessonId });
+    if (mountedRef.current) setLoadError('This video is currently unavailable.');
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (loadError) {
     return (
@@ -211,6 +217,7 @@ export function VideoPlayer({
       onTimeUpdate={handleTimeUpdate}
       onPause={handlePause}
       onEnded={handleEnded}
+      onError={handleVideoError}
     />
   );
 }

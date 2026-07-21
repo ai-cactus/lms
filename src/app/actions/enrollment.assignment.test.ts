@@ -9,6 +9,9 @@ const {
   mockOfferingFindUnique,
   mockOfferingUpsert,
   mockAssignmentCreate,
+  mockAssignmentFindFirst,
+  mockAssignmentUpdate,
+  mockStageUpsert,
   mockEnrollmentFindFirst,
   mockEnrollmentCreate,
   mockReminderLogCreate,
@@ -22,6 +25,9 @@ const {
   mockOfferingFindUnique: vi.fn(),
   mockOfferingUpsert: vi.fn(),
   mockAssignmentCreate: vi.fn(),
+  mockAssignmentFindFirst: vi.fn(),
+  mockAssignmentUpdate: vi.fn(),
+  mockStageUpsert: vi.fn(),
   mockEnrollmentFindFirst: vi.fn(),
   mockEnrollmentCreate: vi.fn(),
   mockReminderLogCreate: vi.fn(),
@@ -33,8 +39,15 @@ vi.mock('@/lib/prisma', () => {
     course: { findUnique: mockCourseFindUnique },
     user: { findUnique: mockUserFindUnique },
     orgCourseOffering: { findUnique: mockOfferingFindUnique, upsert: mockOfferingUpsert },
-    courseAssignment: { create: mockAssignmentCreate },
+    courseAssignment: {
+      create: mockAssignmentCreate,
+      findFirst: mockAssignmentFindFirst,
+      update: mockAssignmentUpdate,
+    },
+    assignmentReminderStage: { upsert: mockStageUpsert },
     enrollment: { findFirst: mockEnrollmentFindFirst, create: mockEnrollmentCreate },
+    // Added in facility split: enrollUsers resolves facilityId for new users.
+    facility: { findFirst: vi.fn().mockResolvedValue(null) },
     reminderLog: { create: mockReminderLogCreate },
   };
   return { prisma, default: prisma };
@@ -68,11 +81,17 @@ beforeEach(() => {
   mockUserFindUnique
     .mockResolvedValueOnce({
       id: 'admin-1',
-      role: 'admin',
+      // After RBAC migration: 'admin' is retired; 'owner' is an admin role.
+      role: 'owner',
       organizationId: 'org-1',
-      organization: { name: 'Org' },
+      // Defect B billing gate: enrollUsers now requires active, unpaused
+      // billing — without this the gate throws before reaching the
+      // assignment-batch logic under test here.
+      organization: { name: 'Org', subscription: { status: 'active', pausedAt: null } },
     })
     .mockResolvedValue({ id: 'worker-1', email: 'w@x.com', profile: { fullName: 'W' } });
+  // No prior assignment for this (org, course) — upsertCourseAssignment takes the create branch.
+  mockAssignmentFindFirst.mockResolvedValue(null);
   mockAssignmentCreate.mockResolvedValue({ id: 'assignment-1' });
   mockEnrollmentFindFirst.mockResolvedValue(null);
   mockEnrollmentCreate.mockResolvedValue({ id: 'enroll-1' });
@@ -140,5 +159,67 @@ describe('enrollUsers assignment batch', () => {
         }),
       }),
     );
+  });
+});
+
+describe('enrollUsers — upsert path (Issue #5 / TC-018): re-submitting settings updates, never duplicates', () => {
+  beforeEach(() => {
+    mockAssignmentFindFirst.mockResolvedValue({ id: 'existing-assignment-1' });
+    mockAssignmentUpdate.mockResolvedValue({ id: 'existing-assignment-1' });
+    mockStageUpsert.mockResolvedValue({});
+  });
+
+  it('updates the existing CourseAssignment + stage rows instead of creating a new one', async () => {
+    await enrollUsers('course-1', [{ email: 'w@x.com' }], {
+      renewalCycle: 'annual',
+      remindersEnabled: false,
+      stages: [{ stage: 'FRIENDLY_REMINDER', offsetDays: -10, enabled: true, channels: ['email'] }],
+    });
+
+    expect(mockAssignmentUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'existing-assignment-1' },
+        data: expect.objectContaining({ renewalCycle: 'annual', remindersEnabled: false }),
+      }),
+    );
+    expect(mockStageUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          assignmentId_stage: { assignmentId: 'existing-assignment-1', stage: 'FRIENDLY_REMINDER' },
+        },
+        update: { offsetDays: -10, enabled: true, channels: ['email'] },
+      }),
+    );
+    // No duplicate CourseAssignment row created.
+    expect(mockAssignmentCreate).not.toHaveBeenCalled();
+  });
+
+  it('links the enrollment to the EXISTING assignment id on re-submit, not a fresh one', async () => {
+    await enrollUsers('course-1', [{ email: 'w@x.com' }]);
+
+    expect(mockEnrollmentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assignmentId: 'existing-assignment-1' }),
+      }),
+    );
+  });
+});
+
+describe('enrollUsers — defaultStageRows() seeding (Issue #8 / TC-024)', () => {
+  it('seeds exactly the 5 SWEEP_STAGES rows, never ADMIN_PRE_DEADLINE_REMINDER, when no explicit stages are given', async () => {
+    await enrollUsers('course-1', [{ email: 'w@x.com' }]); // no assignmentSettings.stages
+
+    const call = mockAssignmentCreate.mock.calls[0][0];
+    const seededStages = call.data.reminderStages.create.map((row: { stage: string }) => row.stage);
+
+    expect(seededStages).toEqual([
+      'FRIENDLY_REMINDER',
+      'URGENT_REMINDER',
+      'DAY_OF_DEADLINE',
+      'GRACE_SOFT_ESCALATION',
+      'HARD_ESCALATION',
+    ]);
+    expect(seededStages).not.toContain('ADMIN_PRE_DEADLINE_REMINDER');
+    expect(seededStages).not.toContain('INITIAL_LAUNCH');
   });
 });

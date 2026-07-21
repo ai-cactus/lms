@@ -71,11 +71,9 @@ export default function InactivityTimer({
     signOut({ callbackUrl: '/login' });
   }, []);
 
-  // Track user activity
   useEffect(() => {
     if (!session) return;
 
-    // Initialize on mount
     if (lastActivityRef.current === 0) {
       lastActivityRef.current = Date.now();
     }
@@ -99,29 +97,25 @@ export default function InactivityTimer({
     };
   }, [session]);
 
-  // Main timer that checks inactivity
   useEffect(() => {
     if (!session) return;
 
-    const checkInterval = 30_000; // Check every 30 seconds
+    const checkInterval = 30_000;
 
     timerRef.current = setInterval(() => {
       const now = Date.now();
       const elapsed = now - lastActivityRef.current;
 
       if (elapsed >= TIMEOUT_MS) {
-        // Session expired — redirect
         handleLogout();
         return;
       }
 
       if (elapsed >= WARNING_MS && !showWarning) {
-        // Show warning
         const remainingMs = TIMEOUT_MS - elapsed;
         setCountdownSeconds(Math.ceil(remainingMs / 1000));
         setShowWarning(true);
 
-        // Start countdown
         countdownRef.current = setInterval(() => {
           setCountdownSeconds((prev) => {
             if (prev <= 1) {
@@ -177,7 +171,6 @@ export default function InactivityTimer({
           textAlign: 'center',
         }}
       >
-        {/* Icon */}
         <div
           style={{
             width: '48px',

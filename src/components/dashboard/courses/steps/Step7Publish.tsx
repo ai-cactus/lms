@@ -30,14 +30,12 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
   const [knownEmails, setKnownEmails] = useState<Set<string>>(new Set()); // Track existing org members
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Debounce search
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (inputValue.length >= 2) {
         setIsLoading(true);
         try {
           const results = await searchStaffUsers(inputValue);
-          // Track known emails from search results
           setKnownEmails((prev) => {
             const updated = new Set(prev);
             results.forEach((w: Worker) => updated.add(w.email));
@@ -111,7 +109,6 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
     onChange('assignments', newAssignments);
   };
 
-  // Close suggestions on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
@@ -132,7 +129,6 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
       </p>
 
       <div className="w-full max-w-[600px]">
-        {/* Assign To Section */}
         <div className="mb-8">
           <label className="mb-2 block flex-shrink-0 text-sm text-text-secondary">Assign to</label>
           <div
@@ -184,7 +180,6 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
               onFocus={() => setShowSuggestions(true)}
             />
 
-            {/* Autocomplete Dropdown */}
             {showSuggestions && (inputValue.length >= 2 || suggestions.length > 0) && (
               <div className="absolute left-0 top-full z-[50] mt-1 max-h-[200px] w-full overflow-y-auto rounded-lg border border-border bg-background shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)]">
                 {isLoading ? (
@@ -221,7 +216,6 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
           )}
         </div>
 
-        {/* Due Date & Time Section */}
         <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
           <div className="flex w-full flex-col gap-2">
             <label className="mb-2 block flex-shrink-0 text-sm text-text-secondary">Due Date</label>

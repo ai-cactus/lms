@@ -28,7 +28,6 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
 
-      // Close modal after delay
       const timer = setTimeout(() => {
         onClose();
       }, 1500);
@@ -50,14 +49,12 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    // Validate Type
     const allowedTypes = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/msword',
     ];
     // Also check extension as backup
-    const validExtension = /\.(pdf|docx|doc)$/i.test(selected.name);
+    const validExtension = /\.(pdf|docx)$/i.test(selected.name);
 
     if (!allowedTypes.includes(selected.type) && !validExtension) {
       setValidationError('Only PDF and DOCX files are allowed.');
@@ -81,13 +78,14 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
         </DialogHeader>
 
         <form action={action} className="flex flex-col gap-6">
+          <input type="hidden" name="phiAttested" value={agreed ? 'true' : 'false'} />
           <div className="relative rounded-[10px] border-2 border-dashed border-border p-8 text-center">
             <input
               ref={fileInputRef}
               type="file"
               name="file"
               onChange={handleFileChange}
-              accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               required
               className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             />

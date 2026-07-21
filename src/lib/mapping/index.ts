@@ -8,7 +8,6 @@ export const CARF_STANDARDS = [
 ];
 
 export async function suggestMappings(text: string) {
-  // Simple heuristic: if text contains "safety", suggest 1.A.1
   const suggestions = [];
 
   if (text.toLowerCase().includes('safety')) {
@@ -27,7 +26,6 @@ export async function suggestMappings(text: string) {
     });
   }
 
-  // Default suggestion
   if (suggestions.length === 0) {
     suggestions.push({
       standardId: '1.A.1',

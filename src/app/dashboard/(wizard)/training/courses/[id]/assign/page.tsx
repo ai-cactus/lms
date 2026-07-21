@@ -1,7 +1,10 @@
 import React from 'react';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
+import { hasActiveBilling } from '@/lib/billing';
+import { getCourseAssignmentSettings, getRoleHolderCounts } from '@/app/actions/enrollment';
 import AssignPublishClient from '@/components/dashboard/training/AssignPublishClient';
 
 export const dynamic = 'force-dynamic';
@@ -16,9 +19,23 @@ export default async function AssignCoursePage(props: PageProps) {
 
   const me = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { role: true, organizationId: true },
+    select: {
+      role: true,
+      organizationId: true,
+      organization: {
+        select: {
+          subscription: { select: { status: true, pausedAt: true } },
+        },
+      },
+    },
   });
-  if (!me || me.role !== 'admin') redirect('/dashboard');
+  if (!me || !isAdminRole(me.role)) redirect('/dashboard');
+
+  // Block URL-bypass of the billing gate: assigning courses requires active
+  // billing. Redirect to the courses list where the gate UI is shown.
+  if (!hasActiveBilling(me.organization?.subscription)) {
+    redirect('/dashboard/courses');
+  }
 
   const { id } = await props.params;
 
@@ -39,11 +56,18 @@ export default async function AssignCoursePage(props: PageProps) {
   });
   if (!course) redirect('/dashboard/courses');
 
+  const [existingSettings, roleHolderCounts] = await Promise.all([
+    getCourseAssignmentSettings(course.id),
+    getRoleHolderCounts(),
+  ]);
+
   return (
     <AssignPublishClient
       courseId={course.id}
       courseTitle={course.title}
       courseStatus={course.status}
+      existingSettings={existingSettings}
+      roleHolderCounts={roleHolderCounts}
     />
   );
 }

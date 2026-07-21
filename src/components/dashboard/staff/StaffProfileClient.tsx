@@ -25,6 +25,9 @@ import {
   getAssignableManagers,
   setStaffManager,
 } from '@/app/actions/staff';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 import { getAdminWorkerCertificates } from '@/app/actions/certificate';
 import CertificateCardList from '../training/CertificateCardList';
 import {
@@ -94,10 +97,22 @@ interface StaffProfileClientProps {
       allowedAttempts?: number;
     }[];
   };
+  viewerRole: Role;
+  viewerUserId: string;
 }
 
-export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
+export default function StaffProfileClient({
+  staff,
+  viewerRole,
+  viewerUserId,
+}: StaffProfileClientProps) {
   const { user, stats, enrollments } = staff;
+
+  // Roster-management affordances hinge on the viewer's role: view-only roles
+  // (Finance, Clinical Director) can read a profile but see no mutating controls.
+  // The server actions enforce the same gates — this only hides dead-end UI.
+  const canEdit = can(dbRoleToRoleKey(viewerRole), 'user.edit');
+  const canDelete = can(dbRoleToRoleKey(viewerRole), 'user.delete');
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -130,7 +145,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
   const [certificates, setCertificates] = useState<WorkerCertificate[]>([]);
   const [loadingCerts, setLoadingCerts] = useState(false);
 
-  // Manager assignment
   const [managers, setManagers] = useState<AssignableManager[]>([]);
   const [loadingManagers, setLoadingManagers] = useState(false);
   const [managerId, setManagerId] = useState<string>(user.managerId ?? NO_MANAGER_VALUE);
@@ -206,14 +220,12 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
     }
   };
 
-  // Filter enrollments
   const filteredEnrollments = enrollments.filter((e) =>
     e.courseName.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
     <div className="mx-auto w-full max-w-[1400px]">
-      {/* Breadcrumb */}
       <Link
         href="/dashboard/staff"
         className="mb-6 inline-flex items-center gap-2 text-sm text-[#718096] hover:text-[#4a5568]"
@@ -226,7 +238,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         <span className="font-medium text-primary">Staff Profile</span>
       </Link>
 
-      {/* Header */}
       <div className="mb-8 flex items-start justify-between gap-4 max-md:flex-col">
         <div className="flex gap-6">
           <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1a202c] text-white">
@@ -264,7 +275,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
               <Select
                 value={managerId}
                 onValueChange={handleManagerChange}
-                disabled={loadingManagers || savingManager}
+                disabled={loadingManagers || savingManager || !canEdit}
               >
                 <SelectTrigger
                   id="staff-manager-select"
@@ -284,6 +295,11 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
                   ))}
                 </SelectContent>
               </Select>
+              {!canEdit && (
+                <p className="text-xs text-text-secondary">
+                  View only — you can&apos;t change this staff member&apos;s manager.
+                </p>
+              )}
               {managerMessage && (
                 <Alert
                   variant={managerMessage.type === 'success' ? 'success' : 'error'}
@@ -297,21 +313,24 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         </div>
 
         <div className="flex flex-wrap items-start gap-3">
-          <Button variant="outline" onClick={() => setIsEditModalOpen(true)}>
-            Edit Profile
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setShowRemoveModal(true)}
-            className="border-red-600 text-red-600 hover:bg-red-50 hover:text-red-700"
-          >
-            Remove Staff
-          </Button>
-          <Button onClick={() => setIsAssignModalOpen(true)}>Assign Course</Button>
+          {canEdit && (
+            <Button variant="outline" onClick={() => setIsEditModalOpen(true)}>
+              Edit Profile
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="outline"
+              onClick={() => setShowRemoveModal(true)}
+              className="border-red-600 text-red-600 hover:bg-red-50 hover:text-red-700"
+            >
+              Remove Staff
+            </Button>
+          )}
+          {canEdit && <Button onClick={() => setIsAssignModalOpen(true)}>Assign Course</Button>}
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#bee3f8] bg-[#ebf8ff]">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2b6cb0]">
@@ -354,7 +373,6 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         </div>
       </div>
 
-      {/* Courses & Certificates */}
       <div className="mt-6 rounded-xl border border-[#e2e8f0] bg-white p-5">
         <div className="flex gap-6 border-b border-[#E2E8F0] mb-6">
           <button
@@ -553,10 +571,11 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
         )}
       </div>
 
-      {/* Modals */}
       <EditStaffModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
+        viewerRole={viewerRole}
+        viewerUserId={viewerUserId}
         staff={{
           id: user.id,
           name: user.name,
@@ -569,7 +588,7 @@ export default function StaffProfileClient({ staff }: StaffProfileClientProps) {
       <AssignUserCourseModal
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
-        userEmail={user.email}
+        staffUserId={user.id}
         userName={user.name}
         enrolledCourseIds={enrollments.map((e) => e.courseId)}
         onSuccess={() => {

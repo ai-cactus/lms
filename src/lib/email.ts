@@ -1,6 +1,9 @@
 import nodemailer, { type SendMailOptions } from 'nodemailer';
 import prisma from './prisma';
 import { logger, maskEmail } from './logger';
+import { getRoleDisplayName } from '@/lib/rbac/role-utils';
+import { OTP_EXPIRY_MINUTES } from '@/lib/mfa';
+import type { Role } from '@/types/next-auth';
 
 /**
  * Escape a string for safe interpolation into HTML email bodies.
@@ -38,8 +41,13 @@ const user = process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
 const pass = process.env.SMTP_PASSWORD || process.env.ZOHO_MAIL_PASSWORD;
 const host = process.env.SMTP_HOST || 'smtp.zoho.com';
 const port = parseInt(process.env.SMTP_PORT || '465', 10);
-// Port 465 = implicit TLS (secure: true). Port 587 = STARTTLS (secure: false + requireTLS: true).
 const secure = port === 465;
+const isDevelopment = process.env.NODE_ENV === 'development';
+// Loopback SMTP sinks (MailHog in CI e2e / local dev) advertise neither AUTH nor
+// STARTTLS — enforcing them there fails every send. Real deployments always point
+// at a remote SMTP host, so hardening stays on for any non-loopback host.
+const isLoopbackSmtpSink = ['localhost', '127.0.0.1', '::1'].includes(host);
+const skipSmtpHardening = isDevelopment || isLoopbackSmtpSink;
 
 if (!user || !pass) {
   logger.warn({ msg: 'SMTP credentials not found in environment variables' });
@@ -49,19 +57,17 @@ const transporter = nodemailer.createTransport({
   host,
   port,
   secure,
-  requireTLS: !secure, // Force STARTTLS on port 587 — prevents plaintext fallback
+  requireTLS: skipSmtpHardening ? undefined : !secure, // Force STARTTLS on port 587 — prevents plaintext fallback
   connectionTimeout: 10_000, // 10 s — fail fast instead of hanging
   greetingTimeout: 8_000, // 8 s — max time to wait for server greeting
   socketTimeout: 10_000, // 10 s — idle socket timeout per send
-  auth: {
-    user,
-    pass,
-  },
+  auth: skipSmtpHardening
+    ? undefined
+    : {
+        user,
+        pass,
+      },
 });
-
-/* -------------------------------------------------------------------------- */
-/* Delivery tracking (F-021)                                                  */
-/* -------------------------------------------------------------------------- */
 
 /** Reduce a Nodemailer `to` field to a single loggable/persistable address string. */
 function normalizeRecipient(to: SendMailOptions['to']): string {
@@ -133,10 +139,14 @@ export async function sendInviteEmail(
   role: string,
 ) {
   const appName = 'Theraptly';
+  // `role` is a DB role slug (e.g. `behavioral_health_technician`). Render the
+  // same human-readable label the in-app UI uses, and phrase it as "as: <Label>"
+  // to sidestep the a/an article problem across role names.
+  const roleLabel = getRoleDisplayName(role as Role);
   const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #4C6EF5;">You've been invited!</h2>
-            <p><strong>${escapeHtml(orgName)}</strong> has invited you to join their team as a <strong>${escapeHtml(role)}</strong>.</p>
+            <p><strong>${escapeHtml(orgName)}</strong> has invited you to join their team as: <strong>${escapeHtml(roleLabel)}</strong>.</p>
             <p>Click the link below to accept the invitation and set up your account:</p>
             <a href="${inviteLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 16px;">Accept Invitation</a>
             <p style="margin-top: 24px; font-size: 12px; color: #718096;">Link expires in 7 days.</p>
@@ -168,7 +178,6 @@ export async function sendInviteEmail(
 export const sendPasswordResetEmail = async (email: string, token: string) => {
   const resetLink = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
 
-  // Fallback if env var is missing or localhost
   const appName = 'Theraptly LMS';
 
   const html = `
@@ -211,7 +220,7 @@ export const sendMfaOtpEmail = async (email: string, code: string) => {
             <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #1a202c; padding: 16px; background: #f7fafc; border-radius: 8px; text-align: center; margin: 24px 0;">
               ${code}
             </div>
-            <p style="margin-top: 24px; font-size: 12px; color: #718096;">Code expires in 15 minutes.</p>
+            <p style="margin-top: 24px; font-size: 12px; color: #718096;">Code expires in ${OTP_EXPIRY_MINUTES} minutes.</p>
             <p style="font-size: 12px; color: #718096;">If you didn't request this, you can safely ignore this email.</p>
         </div>
     `;
@@ -775,10 +784,6 @@ export async function sendPartnerApplicationEmail(data: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Reminder & Escalation Emails
-// ---------------------------------------------------------------------------
-
 /** Resolve the server-side base URL using the same precedence as the other emails. */
 function reminderBaseUrl(): string {
   return (
@@ -1129,6 +1134,84 @@ export async function sendEscalationEmail(
 }
 
 /**
+ * Admin pre-deadline reminder (Issue #8) — a heads-up to the escalation manager
+ * that a worker's training deadline is approaching. Unlike {@link sendEscalationEmail},
+ * this fires BEFORE the deadline, so the copy is a proactive nudge, never an
+ * overdue alert.
+ */
+export async function sendPreDeadlineEscalationEmail(
+  to: string,
+  recipientName: string,
+  workerName: string,
+  courseName: string,
+  dueAt: Date | string | null,
+  actionLink: string,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Pre-deadline escalation email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const formattedDue = formatDueDate(dueAt);
+  const resolvedActionLink = /^https?:\/\//i.test(actionLink)
+    ? actionLink
+    : `${reminderBaseUrl()}${actionLink.startsWith('/') ? '' : '/'}${actionLink}`;
+
+  const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #DD6B20;">⏳ Upcoming Deadline: Worker Training</h2>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Hi <strong>${escapeHtml(recipientName)}</strong>,
+            </p>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                A worker in your organization has a required training with an approaching deadline:
+            </p>
+            <div style="background: #FFFAF0; border-left: 4px solid #DD6B20; border-radius: 8px; padding: 20px; margin: 24px 0;">
+                <p style="margin: 4px 0;"><strong>Worker:</strong> ${escapeHtml(workerName)}</p>
+                <p style="margin: 4px 0;"><strong>Course:</strong> ${escapeHtml(courseName)}</p>
+                ${
+                  formattedDue
+                    ? `<p style="margin: 4px 0;"><strong>Due Date:</strong> ${escapeHtml(formattedDue)}</p>`
+                    : ''
+                }
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Please follow up with this worker so the training is completed before the deadline.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${resolvedActionLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Review Compliance</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                This is an automated notification from ${appName}.
+            </p>
+        </div>
+    `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      subject: `⏳ Upcoming deadline: ${workerName}'s ${courseName} training`,
+      html,
+    });
+    logger.info({
+      msg: '[email] Pre-deadline escalation email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send pre-deadline escalation email',
+      err: error,
+      to: maskEmail(to),
+    });
+    return { success: false, error };
+  }
+}
+
+/**
  * Track B — Retake reminder. Nudges a worker who failed the quiz but still has
  * attempts remaining to retake it. Links to the worker trainings page.
  */
@@ -1195,10 +1278,6 @@ export async function sendRetakeReminderEmail(
     return { success: false, error };
   }
 }
-
-// ---------------------------------------------------------------------------
-// PDF Report Emails
-// ---------------------------------------------------------------------------
 
 /**
  * Sends a staff member's activity report PDF to the admin as an email attachment.

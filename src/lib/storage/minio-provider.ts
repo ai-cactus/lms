@@ -120,6 +120,22 @@ export class MinIOProvider implements StorageProvider {
     }
   }
 
+  async objectExists(storageUri: string): Promise<boolean> {
+    await this.ensureBucket();
+    const { key } = parseStorageUri(storageUri);
+
+    try {
+      await this.client.statObject(this.bucketName, key);
+      return true;
+    } catch (err: unknown) {
+      // NoSuchKey / NotFound → definitively missing. Anything else is transient
+      // and rethrown so callers don't record a false "missing".
+      const e = err as { code?: string };
+      if (e?.code === 'NoSuchKey' || e?.code === 'NotFound') return false;
+      throw err;
+    }
+  }
+
   async download(storageUri: string): Promise<Buffer> {
     await this.ensureBucket();
     const { key } = parseStorageUri(storageUri);

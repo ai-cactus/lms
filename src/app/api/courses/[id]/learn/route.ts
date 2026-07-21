@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -16,7 +17,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     const courseId = params.id;
 
-    // Get course with lessons and quiz
     const course = await prisma.course.findUnique({
       where: { id: courseId },
       include: {
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       // (read-only review before assigning).
       const isGlobalCatalog = course.isGlobal && course.status === 'published';
 
-      if (adminEnroll || (adminUser?.role === 'admin' && (isSameOrg || isGlobalCatalog))) {
+      if (adminEnroll || (isAdminRole(adminUser?.role) && (isSameOrg || isGlobalCatalog))) {
         activeUserId = adminSession.user.id;
         // Cast the role to 'admin' | 'worker' | undefined based on session type if necessary
         // Or cast as `any` or exactly `typeof session.user.role`
@@ -101,8 +101,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       }
     }
 
-    // Check if resolved user is admin
-    const isAdmin = activeRole === 'admin';
+    const isAdmin = isAdminRole(activeRole);
 
     if (!enrollment && !isAdmin) {
       return NextResponse.json({ error: 'Not enrolled in this course' }, { status: 403 });
@@ -165,7 +164,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         })
       : null;
 
-    // Build detailed quiz results if the user has completed the quiz
     let quizResultsData = null;
     const quizAttempts =
       (effectiveEnrollment.quizAttempts as

@@ -3,6 +3,7 @@ import {
   sendDeadlineReminderEmail,
   sendDeadlineOverdueWorkerEmail,
   sendEscalationEmail,
+  sendPreDeadlineEscalationEmail,
   sendRetakeReminderEmail,
 } from '@/lib/email';
 import type { EmailDeliveryResult, ReminderEmailMessage, ReminderEmailSender } from './dispatch';
@@ -34,6 +35,8 @@ function toDelivery(result: { success: boolean; error?: unknown }): EmailDeliver
 function escalationStageLabel(message: ReminderEmailMessage): string {
   if (message.kind === 'ADMIN_REASSIGN') return 'Re-assignment needed';
   switch (message.stage) {
+    case 'ADMIN_PRE_DEADLINE_REMINDER':
+      return 'Upcoming deadline';
     case 'GRACE_SOFT_ESCALATION':
       return 'Soft escalation (grace period)';
     case 'HARD_ESCALATION':
@@ -48,7 +51,6 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
   const workerName = message.workerName ?? message.toName ?? message.to;
   const daysOverdue = message.daysOverdue ?? 0;
 
-  // Track B recurring nudges.
   if (message.kind) {
     switch (message.kind) {
       case 'WORKER_RETAKE':
@@ -143,6 +145,18 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             message.dueAt,
             daysOverdue,
             escalationStageLabel(message),
+            STATUS_TRACKER_LINK,
+          ),
+        );
+      case 'ADMIN_PRE_DEADLINE_REMINDER':
+        // Pre-deadline heads-up to the escalation manager — never overdue copy.
+        return toDelivery(
+          await sendPreDeadlineEscalationEmail(
+            message.to,
+            recipientName,
+            workerName,
+            message.courseTitle,
+            message.dueAt,
             STATUS_TRACKER_LINK,
           ),
         );

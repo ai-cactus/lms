@@ -1,15 +1,19 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { BCRYPT_COST } from '@/lib/bcrypt-config';
+import { isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { hasActiveBilling } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { notifyOrganizationAdmins } from './notifications';
 import { CourseWithStats, CourseWithRelations } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
+import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
+import { combineDateAndTime } from '@/lib/reminders/deadline';
+import { enrollUsers } from './enrollment';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -19,7 +23,6 @@ async function resolveSession() {
 
 // KursWithStats is now imported from '@/types/course'
 
-// Get all courses for current user (admin)
 export async function getCourses(): Promise<CourseWithStats[]> {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -102,7 +105,6 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   return [...own, ...adopted.filter((c) => !seen.has(c.id))];
 }
 
-// Get single course by ID with lessons
 export async function getCourseById(courseId: string): Promise<CourseWithRelations> {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -221,7 +223,6 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
   return course;
 }
 
-// Create a new course
 export async function createCourse(data: { title: string; description?: string }) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -241,7 +242,6 @@ export async function createCourse(data: { title: string; description?: string }
   return course;
 }
 
-// Update course details
 export async function updateCourse(
   courseId: string,
   data: {
@@ -256,7 +256,6 @@ export async function updateCourse(
     throw new Error('Unauthorized');
   }
 
-  // Verify ownership
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
   if (!existing || existing.createdBy !== session.user.id) {
     logger.warn({
@@ -283,7 +282,6 @@ export async function updateCourse(
   return course;
 }
 
-// Publish a course
 export async function publishCourse(courseId: string, opts?: { acknowledgeWarnings?: boolean }) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -339,7 +337,6 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   return course;
 }
 
-// Delete a course
 export async function deleteCourse(courseId: string) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -431,7 +428,7 @@ export async function getDashboardData() {
     totalOrgStaff = await prisma.user.count({
       where: {
         organizationId: currentUser.organizationId,
-        role: 'worker',
+        role: { in: [...WORKER_ROLES] },
       },
     });
   }
@@ -507,7 +504,6 @@ export async function getDashboardData() {
 
   // Calculate Course Performance (Scores vs Courses)
   const coursePerformance = coursesRaw.map((course) => {
-    // Find passing score
     const quiz = course.lessons.find((l) => l.quiz)?.quiz;
     const passingScore = quiz?.passingScore || 70;
 
@@ -631,7 +627,6 @@ export async function getDashboardData() {
   };
 }
 
-// Assign course to users
 export async function assignCourseToUsers(courseId: string, emails: string[]) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -656,11 +651,28 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   // 2. Get Current User's Org to ensure we only assign to own staff
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { organizationId: true },
+    select: {
+      organizationId: true,
+      organization: {
+        select: {
+          subscription: { select: { status: true, pausedAt: true } },
+        },
+      },
+    },
   });
 
   if (!currentUser?.organizationId) {
     throw new Error('You must belong to an organization to assign courses');
+  }
+
+  // Billing gate (defense in depth): assigning courses requires active billing.
+  if (!hasActiveBilling(currentUser?.organization?.subscription)) {
+    logger.warn({
+      msg: '[course] Course assignment blocked — organization lacks active billing',
+      organizationId: currentUser.organizationId,
+      userId: session.user.id,
+    });
+    throw new Error('Your organization needs an active subscription to assign courses.');
   }
 
   // 3. Find Users by Email (filtered by Org)
@@ -705,7 +717,6 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   return { success: true, count: results.count };
 }
 
-// Create full course with content and assignments
 // Outcome of the server-side course quality assessment used by the publish-review
 // gate (F-051). `reviewRequired` gates publishing; `qualityWarnings` are the
 // human-readable reasons surfaced in the wizard.
@@ -836,7 +847,6 @@ export async function createFullCourse(data: {
     throw new Error('Unauthorized');
   }
 
-  // Get currentUser for Org ID
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { organizationId: true },
@@ -934,13 +944,17 @@ export async function createFullCourse(data: {
         data: {
           courseId: course.id,
           documentVersionId: latestDocVersion.id,
-          version: 1, // Initial version
+          version: 1,
         },
       });
     }
   }
 
-  // 2. Handle Assignments (existing members + new invites)
+  // 2. Handle Assignments — delegate to enrollUsers so wizard-assigned workers
+  // get the same CourseAssignment, per-user deadline, seeded reminder ladder,
+  // INITIAL_LAUNCH log, and launch email as the standalone assign flow. The old
+  // bespoke path wrote bare enrollments with no dueAt and no reminders, silently
+  // disabling escalation for wizard-assigned workers (Issue #2).
   const inviteResults = {
     existingEnrolled: 0,
     newInvited: 0,
@@ -949,147 +963,24 @@ export async function createFullCourse(data: {
   };
 
   if (data.assignments && data.assignments.length > 0) {
-    const { sendCourseInviteEmail } = await import('@/lib/email');
-    const bcrypt = await import('bcryptjs');
-    const crypto = await import('crypto');
+    const dueAt = combineDateAndTime(data.dueDate, data.dueTime);
+    const staffEntries: StaffEntry[] = data.assignments.map((email) => ({ email }));
 
-    // Email validation regex
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    // Filter valid emails only
-    const validEmails = data.assignments.filter((email) => {
-      if (!emailRegex.test(email)) {
-        inviteResults.skipped.push(email);
-        return false;
-      }
-      return true;
-    });
-
-    if (validEmails.length === 0) {
-      revalidatePath('/dashboard/training');
-      return {
-        success: true,
+    // Enrollment problems must never fail course creation — the course already
+    // exists. enrollUsers throws on org-level gates (billing/authorization); a
+    // per-user failure is reported in its result and never thrown.
+    try {
+      const enrollResults = await enrollUsers(course.id, staffEntries, { dueAt });
+      inviteResults.existingEnrolled = enrollResults.success.length;
+      inviteResults.newInvited = enrollResults.newInvited.length;
+      inviteResults.failed = enrollResults.failed;
+      inviteResults.skipped = enrollResults.alreadyEnrolled;
+    } catch (enrollError) {
+      logger.error({
+        msg: '[course] Failed to assign workers during course creation',
         courseId: course.id,
-        reviewRequired,
-        qualityWarnings,
-        inviteResults,
-      };
-    }
-
-    // Get org details for email
-    const org = await prisma.organization.findUnique({
-      where: { id: currentUser.organizationId },
-      select: { name: true },
-    });
-    const orgName = org?.name || 'Your Organization';
-
-    // Find existing users in this org
-    const existingUsers = await prisma.user.findMany({
-      where: {
-        organizationId: currentUser.organizationId,
-        email: { in: validEmails },
-      },
-      include: { profile: true },
-    });
-    const existingEmails = existingUsers.map((u) => u.email);
-
-    // Check for users that exist in OTHER organizations (can't invite)
-    const usersInOtherOrgs = await prisma.user.findMany({
-      where: {
-        email: { in: validEmails },
-        organizationId: { not: currentUser.organizationId },
-      },
-      select: { email: true },
-    });
-    const otherOrgEmails = usersInOtherOrgs.map((u) => u.email);
-    otherOrgEmails.forEach((e) => inviteResults.skipped.push(e));
-
-    // Identify truly new emails (not in any org)
-    const newEmails = validEmails.filter(
-      (e) => !existingEmails.includes(e) && !otherOrgEmails.includes(e),
-    );
-
-    // Create new users for new emails
-    const newUserIds: string[] = [];
-
-    const newUserPromises = newEmails.map(async (email) => {
-      const tempPassword = crypto.randomBytes(8).toString('hex');
-      const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_COST);
-
-      // Create user + profile
-      const newUser = await prisma.user.create({
-        data: {
-          email,
-          password: hashedPassword,
-          role: 'worker',
-          organizationId: currentUser.organizationId,
-          emailVerified: true,
-          profile: {
-            create: {
-              email,
-              fullName: email.split('@')[0],
-            },
-          },
-        },
+        err: enrollError,
       });
-
-      // Send invite email (don't fail the whole process if email fails)
-      try {
-        await sendCourseInviteEmail(email, tempPassword, data.title, orgName);
-      } catch (emailError) {
-        logger.error({ msg: `Failed to send email to ${email}:`, err: emailError });
-      }
-
-      return newUser.id;
-    });
-
-    const settledResults = await Promise.allSettled(newUserPromises);
-
-    settledResults.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        newUserIds.push(result.value);
-        inviteResults.newInvited++;
-      } else {
-        logger.error({ msg: `Failed to create user ${newEmails[index]}:`, err: result.reason });
-        inviteResults.failed.push(newEmails[index]);
-      }
-    });
-
-    // Combine all user IDs for enrollment
-    const allUserIds = [...existingUsers.map((u) => u.id), ...newUserIds];
-
-    if (allUserIds.length > 0) {
-      try {
-        await prisma.enrollment.createMany({
-          data: allUserIds.map((userId) => ({
-            userId,
-            courseId: course.id,
-            status: 'enrolled' as const,
-            startedAt: new Date(),
-          })),
-          skipDuplicates: true,
-        });
-        inviteResults.existingEnrolled = existingUsers.length;
-
-        // Send enrollment emails to existing users
-        const { sendCourseEnrollmentEmail } = await import('@/lib/email');
-
-        // We do this asynchronously without awaiting to not block the response
-        Promise.allSettled(
-          existingUsers.map((user) =>
-            sendCourseEnrollmentEmail(
-              user.email,
-              user.profile?.fullName || 'there',
-              course.title,
-              orgName,
-            ).catch((err) =>
-              logger.error({ msg: `Failed to send enrollment email to ${user.email}`, err }),
-            ),
-          ),
-        );
-      } catch (enrollError) {
-        logger.error({ msg: 'Failed to create enrollments:', err: enrollError });
-      }
     }
   }
 
@@ -1115,7 +1006,6 @@ export async function createFullCourse(data: {
   };
 }
 
-// Attest a course completion
 export async function attestCourse(enrollmentId: string, signature: string, role: string) {
   // Resolve BOTH sessions to handle cookie collision (admin + worker in same browser)
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
@@ -1189,7 +1079,6 @@ export async function attestCourse(enrollmentId: string, signature: string, role
   return { success: true };
 }
 
-// Start a course (mark as in_progress)
 export async function startCourse(courseId: string) {
   // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
@@ -1239,7 +1128,6 @@ export async function startCourse(courseId: string) {
   return { success: true };
 }
 
-// Update quiz questions (Admin)
 export async function updateQuizQuestions(
   courseId: string,
   questions: {
@@ -1316,7 +1204,6 @@ export async function updateQuizQuestions(
   return { success: true };
 }
 
-// Update lesson content (Admin)
 export async function updateLessonContent(lessonId: string, content: string, title?: string) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -1350,7 +1237,6 @@ export async function updateLessonContent(lessonId: string, content: string, tit
   return { success: true };
 }
 
-// Retake a quiz (reset status to in_progress)
 export async function retakeQuiz(enrollmentId: string) {
   // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
@@ -1369,11 +1255,8 @@ export async function retakeQuiz(enrollmentId: string) {
           lessons: {
             include: { quiz: true },
           },
+          quiz: true,
         },
-      },
-      quizAttempts: {
-        orderBy: { completedAt: 'desc' },
-        take: 1,
       },
     },
   });
@@ -1383,28 +1266,22 @@ export async function retakeQuiz(enrollmentId: string) {
     throw new Error('Enrollment not found or unauthorized');
   }
 
+  // Quiz lives on the last lesson (text courses) or on the course itself
+  // (video courses). Prefer the lesson quiz, fall back to the course quiz.
   const lastLesson = enrollment.course.lessons[enrollment.course.lessons.length - 1];
-  const quiz = lastLesson?.quiz;
-  const latestAttempt = enrollment.quizAttempts[0];
+  const quiz = lastLesson?.quiz ?? enrollment.course.quiz;
 
+  // Enforce the attempt limit against COMPLETED attempts (timeTaken !== null),
+  // consistent with the append-history model in the quiz start/submit routes.
+  // A null/0 allowedAttempts means unlimited. The fresh draft is appended by
+  // /api/quiz/[id]/start; retake must not mutate historical attempts.
   if (quiz && quiz.allowedAttempts) {
-    const attemptsUsed = latestAttempt?.attemptCount || 0;
-    if (attemptsUsed >= quiz.allowedAttempts) {
+    const completedCount = await prisma.quizAttempt.count({
+      where: { enrollmentId, quizId: quiz.id, timeTaken: { not: null } },
+    });
+    if (completedCount >= quiz.allowedAttempts) {
       throw new Error('No attempts remaining');
     }
-  }
-
-  // Reset the quiz attempt so the start endpoint allows a new attempt
-  if (latestAttempt) {
-    await prisma.quizAttempt.update({
-      where: { id: latestAttempt.id },
-      data: {
-        timeTaken: null,
-        answers: [],
-        score: 0,
-        completedAt: new Date(),
-      },
-    });
   }
 
   await prisma.enrollment.update({
@@ -1427,7 +1304,6 @@ export async function retakeQuiz(enrollmentId: string) {
   return { success: true };
 }
 
-// Assign a retake for a locked enrollment (admin only)
 export async function assignRetake(enrollmentId: string, retakeReason?: string) {
   // Only admins can assign retakes
   const session = await resolveSession();
@@ -1440,7 +1316,7 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     select: { role: true },
   });
 
-  if (!adminUser || adminUser.role !== 'admin') {
+  if (!adminUser || !isAdminRole(adminUser.role)) {
     throw new Error('Insufficient permissions');
   }
 

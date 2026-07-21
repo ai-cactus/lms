@@ -3,8 +3,10 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronDown, X } from 'lucide-react';
+import { Check, ChevronDown, Users, X } from 'lucide-react';
 import { RenewalCycle, ReminderStage } from '@/generated/prisma/enums';
+import { ALL_ROLES, getRoleDisplayName } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
@@ -21,7 +23,11 @@ import {
 import DatePicker from '@/components/ui/DatePicker';
 import { cn } from '@/lib/utils';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
-import { enrollUsers } from '@/app/actions/enrollment';
+import {
+  enrollUsers,
+  assignCourseToRole,
+  type CourseAssignmentSettings,
+} from '@/app/actions/enrollment';
 import { publishCourse } from '@/app/actions/course';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
@@ -44,6 +50,8 @@ const STAGE_LABELS: Record<ReminderStage, string> = {
   DAY_OF_DEADLINE: 'Day of deadline',
   GRACE_SOFT_ESCALATION: 'Grace period (soft escalation)',
   HARD_ESCALATION: 'Overdue (hard escalation)',
+  // Fixed system stage — excluded from the editable form (SWEEP_STAGES); entry satisfies the Record type.
+  ADMIN_PRE_DEADLINE_REMINDER: 'Admin pre-deadline reminder',
 };
 
 interface StageRow {
@@ -52,16 +60,30 @@ interface StageRow {
   enabled: boolean;
 }
 
+/** How the course is being targeted: named individuals, or a whole role. */
+type AssignMode = 'people' | 'role';
+
 interface AssignPublishClientProps {
   courseId: string;
   courseTitle: string;
   courseStatus: string;
+  /** The org's saved assignment settings, when this course was already assigned. */
+  existingSettings?: CourseAssignmentSettings | null;
+  /** Current headcount per role in the org, so role mode can preview enrollment. */
+  roleHolderCounts?: Record<string, number>;
+}
+
+/** Format a stored deadline/schedule Date as the `YYYY-MM-DD` DatePicker expects. */
+function toDateInput(value: Date | null | undefined): string {
+  return value ? new Date(value).toISOString().slice(0, 10) : '';
 }
 
 export default function AssignPublishClient({
   courseId,
   courseTitle,
   courseStatus,
+  existingSettings = null,
+  roleHolderCounts = {},
 }: AssignPublishClientProps) {
   const router = useRouter();
 
@@ -69,19 +91,37 @@ export default function AssignPublishClient({
   // UI should read "Assign" rather than "Assigning & Publish".
   const isExisting = courseStatus === 'published';
 
+  // Re-opening the page for a course that already has an assignment prefills the
+  // live settings so a re-submit updates the same assignment instead of resetting
+  // it to factory defaults.
+  const hasExistingAssignment = existingSettings !== null;
+
+  // A course already assigned to a role re-opens in role mode.
+  const [mode, setMode] = useState<AssignMode>(existingSettings?.targetRole ? 'role' : 'people');
+  const [targetRole, setTargetRole] = useState<Role>(
+    (existingSettings?.targetRole as Role | null) ?? 'nurse',
+  );
+
   const [entries, setEntries] = useState<StaffEntry[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [scheduleDate, setScheduleDate] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [renewalCycle, setRenewalCycle] = useState<RenewalCycle>('annual');
-  const [remindersEnabled, setRemindersEnabled] = useState(true);
+  const [scheduleDate, setScheduleDate] = useState(() => toDateInput(existingSettings?.scheduleAt));
+  const [dueDate, setDueDate] = useState(() => toDateInput(existingSettings?.dueAt));
+  const [renewalCycle, setRenewalCycle] = useState<RenewalCycle>(
+    existingSettings?.renewalCycle ?? 'annual',
+  );
+  const [remindersEnabled, setRemindersEnabled] = useState(
+    existingSettings?.remindersEnabled ?? true,
+  );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [stages, setStages] = useState<StageRow[]>(() =>
-    SWEEP_STAGES.map((stage) => ({
-      stage,
-      offsetDays: REMINDER_STAGE_DEFAULTS[stage].offsetDays,
-      enabled: true,
-    })),
+    SWEEP_STAGES.map((stage) => {
+      const saved = existingSettings?.stages.find((s) => s.stage === stage);
+      return {
+        stage,
+        offsetDays: saved?.offsetDays ?? REMINDER_STAGE_DEFAULTS[stage].offsetDays,
+        enabled: saved?.enabled ?? true,
+      };
+    }),
   );
 
   const [submitting, setSubmitting] = useState(false);
@@ -127,27 +167,39 @@ export default function AssignPublishClient({
     setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, enabled } : s)));
 
   // ── Publish ──────────────────────────────────────────────────────────────
-  const canPublish = entries.length > 0 && !submitting;
+  const roleHolderCount = roleHolderCounts[targetRole] ?? 0;
+  const canPublish = (mode === 'role' || entries.length > 0) && !submitting;
 
   const handlePublish = async () => {
-    if (entries.length === 0) {
+    if (mode === 'people' && entries.length === 0) {
       setError('Add at least one person to assign this course to.');
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
-      const res = await enrollUsers(courseId, entries, {
-        scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
-        dueAt: dueDate ? new Date(dueDate) : null,
-        renewalCycle,
-        remindersEnabled,
-        stages,
-      });
+      if (mode === 'role') {
+        // Role targets never carry an absolute due date — the deadline is computed
+        // per user from their role-join date and the window.
+        await assignCourseToRole(courseId, targetRole, {
+          scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
+          renewalCycle,
+          remindersEnabled,
+          stages,
+        });
+      } else {
+        const res = await enrollUsers(courseId, entries, {
+          scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
+          dueAt: dueDate ? new Date(dueDate) : null,
+          renewalCycle,
+          remindersEnabled,
+          stages,
+        });
 
-      if (res.failed.length > 0 && res.success.length + res.newInvited.length === 0) {
-        setError(`Could not assign: ${res.failed.join(', ')}`);
-        return;
+        if (res.failed.length > 0 && res.success.length + res.newInvited.length === 0) {
+          setError(`Could not assign: ${res.failed.join(', ')}`);
+          return;
+        }
       }
 
       // Publish a still-draft course as part of finalizing (best-effort — a
@@ -172,7 +224,6 @@ export default function AssignPublishClient({
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-white">
-      {/* Top bar */}
       <header className="flex h-[72px] items-center border-b border-border">
         <div className="flex h-full items-center border-r border-border px-6">
           <Logo size="sm" />
@@ -200,65 +251,130 @@ export default function AssignPublishClient({
           </p>
         </div>
 
+        {hasExistingAssignment && (
+          <Alert variant="info" className="mb-6">
+            This course has an existing assignment — the schedule, deadline, renewal, and reminder
+            settings below are its current values, and saving will update them for everyone already
+            assigned.
+          </Alert>
+        )}
+
         {error && (
           <Alert variant="error" className="mb-6">
             {error}
           </Alert>
         )}
 
-        {/* Assign To */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
           <label className="pt-3 text-sm text-text-secondary sm:w-[160px] sm:shrink-0">
             Assign To
           </label>
-          <div className="flex flex-1 items-start gap-3">
-            <div
-              className="flex min-h-12 flex-1 flex-wrap items-center gap-1.5 rounded-lg border border-primary bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-primary"
-              onClick={() => document.getElementById('assign-input')?.focus()}
-            >
-              {entries.map((entry, index) => (
-                <span
-                  key={entry.email}
-                  className="flex items-center rounded bg-secondary px-2 py-1 text-[13px] font-medium text-foreground"
+          <div className="flex flex-1 flex-col gap-4">
+            <div className="inline-flex w-fit rounded-lg border border-border bg-background-secondary p-1">
+              {(['people', 'role'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  disabled={submitting}
+                  aria-pressed={mode === m}
+                  className={cn(
+                    'rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50',
+                    mode === m
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-text-secondary hover:text-foreground',
+                  )}
                 >
-                  {entry.email}
-                  <button
-                    type="button"
-                    className="ml-1.5 text-text-secondary hover:text-error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeEntry(index);
-                    }}
-                    aria-label={`Remove ${entry.email}`}
-                  >
-                    <X className="size-3.5" aria-hidden="true" />
-                  </button>
-                </span>
+                  {m === 'people' ? 'Specific people' : 'A whole role'}
+                </button>
               ))}
-              <input
-                id="assign-input"
-                className="min-w-[160px] flex-1 border-none bg-transparent text-sm text-foreground outline-none"
-                placeholder={entries.length === 0 ? 'Add people, emails or names' : ''}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={submitting}
-              />
             </div>
-            <Button
-              type="button"
-              size="lg"
-              onClick={() => addEmails(inputValue)}
-              disabled={submitting}
-            >
-              Invite
-            </Button>
+
+            {mode === 'people' ? (
+              <div className="flex items-start gap-3">
+                <div
+                  className="flex min-h-12 flex-1 flex-wrap items-center gap-1.5 rounded-lg border border-primary bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-primary"
+                  onClick={() => document.getElementById('assign-input')?.focus()}
+                >
+                  {entries.map((entry, index) => (
+                    <span
+                      key={entry.email}
+                      className="flex items-center rounded bg-secondary px-2 py-1 text-[13px] font-medium text-foreground"
+                    >
+                      {entry.email}
+                      <button
+                        type="button"
+                        className="ml-1.5 text-text-secondary hover:text-error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeEntry(index);
+                        }}
+                        aria-label={`Remove ${entry.email}`}
+                      >
+                        <X className="size-3.5" aria-hidden="true" />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    id="assign-input"
+                    className="min-w-[160px] flex-1 border-none bg-transparent text-sm text-foreground outline-none"
+                    placeholder={entries.length === 0 ? 'Add people, emails or names' : ''}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={submitting}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="lg"
+                  onClick={() => addEmails(inputValue)}
+                  disabled={submitting}
+                >
+                  Invite
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Select
+                  value={targetRole}
+                  onValueChange={(v) => setTargetRole(v as Role)}
+                  disabled={submitting}
+                >
+                  <SelectTrigger className="h-11 w-full sm:w-[320px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ALL_ROLES.map((role) => (
+                      <SelectItem key={role} value={role}>
+                        {getRoleDisplayName(role)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="flex items-center gap-1.5 text-sm text-text-secondary">
+                  <Users className="size-4 shrink-0" aria-hidden="true" />
+                  {roleHolderCount === 0 ? (
+                    <>
+                      No one currently holds this role. Anyone assigned{' '}
+                      {getRoleDisplayName(targetRole)} later will be enrolled automatically.
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-foreground">
+                        {roleHolderCount} {roleHolderCount === 1 ? 'person' : 'people'}
+                      </span>{' '}
+                      will be enrolled now — plus anyone assigned this role later.
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="my-6 h-px bg-border" />
 
-        {/* Training Schedule */}
         <SettingRow
           title="Training Schedule"
           description="Workers will receive access on this date"
@@ -268,17 +384,19 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
-        {/* Due Date */}
-        <SettingRow
-          title="Due Date"
-          description="Deadline for completing the course. Leave empty to compute it automatically."
-        >
-          <DatePicker value={dueDate} onChange={setDueDate} placeholder="Select due date" />
-        </SettingRow>
+        {mode === 'people' && (
+          <>
+            <SettingRow
+              title="Due Date"
+              description="Deadline for completing the course. Leave empty to compute it automatically."
+            >
+              <DatePicker value={dueDate} onChange={setDueDate} placeholder="Select due date" />
+            </SettingRow>
 
-        <div className="my-6 h-px bg-border" />
+            <div className="my-6 h-px bg-border" />
+          </>
+        )}
 
-        {/* Renewal Settings */}
         <SettingRow
           title="Renewal Settings"
           description="Choose a date for staffs to renew this course"
@@ -299,7 +417,6 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
-        {/* Deadline reminders */}
         <SettingRow
           title="Deadline Reminders"
           description="Send workers automated reminders as the deadline approaches and escalate when overdue."
@@ -314,7 +431,6 @@ export default function AssignPublishClient({
           </label>
         </SettingRow>
 
-        {/* Advanced reminder schedule */}
         <div className="mt-4">
           <button
             type="button"
@@ -374,7 +490,6 @@ export default function AssignPublishClient({
           )}
         </div>
 
-        {/* Footer actions */}
         <div className="mt-12 flex items-center justify-between">
           <Button type="button" variant="outline" size="lg" onClick={() => router.back()}>
             Back
@@ -391,7 +506,6 @@ export default function AssignPublishClient({
         </div>
       </div>
 
-      {/* Success modal */}
       <Dialog open={showSuccess} onOpenChange={() => {}}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           {/* Visually-hidden accessible title (Radix requires a DialogTitle). */}

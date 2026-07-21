@@ -50,7 +50,6 @@ export async function storeArtifact(
   try {
     const { storageUri } = await uploadFile(storagePath, buffer, 'application/json');
 
-    // Determine the next version number
     const latest = await prisma.courseArtifact.findFirst({
       where: { courseId, type },
       orderBy: { version: 'desc' },
@@ -97,7 +96,6 @@ export async function getArtifact<T = unknown>(
   courseId: string,
   type: ArtifactType,
 ): Promise<T | null> {
-  // Try artifact storage first
   try {
     const artifact = await prisma.courseArtifact.findFirst({
       where: { courseId, type },
@@ -130,7 +128,6 @@ export async function getArtifact<T = unknown>(
     });
   }
 
-  // Fallback: read from legacy JSON column
   const columnName = ARTIFACT_COLUMN_MAP[type];
   if (!columnName) return null;
 

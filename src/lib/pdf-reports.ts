@@ -10,10 +10,6 @@
 
 import PDFDocument from 'pdfkit';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export interface ActivityReportEnrollment {
   courseId: string;
   courseTitle: string;
@@ -32,16 +28,11 @@ export interface UserActivityReportData {
   enrollments: ActivityReportEnrollment[];
 }
 
-// ---------------------------------------------------------------------------
-// Constants — layout
-// ---------------------------------------------------------------------------
-
 const MARGIN = 48;
 const PAGE_WIDTH = 841.89; // A4 landscape width in points
 const PAGE_HEIGHT = 595.28; // A4 landscape height in points
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 
-// Column definitions: key, header label, width (in points), alignment
 const COLUMNS: {
   key:
     | keyof ActivityReportEnrollment
@@ -61,17 +52,12 @@ const COLUMNS: {
   { key: 'dateCompletedDisplay', label: 'Date Completed', width: 95, align: 'center' },
 ];
 
-// Brand colours
 const BRAND_BLUE = '#4C6EF5';
 const HEADER_BG = '#F0F4FF';
 const ROW_ALT_BG = '#F8FAFC';
 const TEXT_DARK = '#1A202C';
 const TEXT_MUTED = '#718096';
 const BORDER_COLOUR = '#E2E8F0';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function formatDate(date: Date | null): string {
   if (!date) return '—';
@@ -91,10 +77,6 @@ function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen - 1) + '…';
 }
-
-// ---------------------------------------------------------------------------
-// Row data resolver
-// ---------------------------------------------------------------------------
 
 function resolveCell(
   enrollment: ActivityReportEnrollment,
@@ -119,10 +101,6 @@ function resolveCell(
       return '';
   }
 }
-
-// ---------------------------------------------------------------------------
-// PDF builder
-// ---------------------------------------------------------------------------
 
 export async function generateUserActivityPdf(data: UserActivityReportData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -151,7 +129,6 @@ export async function generateUserActivityPdf(data: UserActivityReportData): Pro
       resolve(Buffer.concat(buffers));
     });
 
-    // ---- Chunk enrollments into pages ----------------------------------------
     const ROW_HEIGHT = 20;
     const HEADER_HEIGHT = 22;
     const tableTop = 180; // y-position where the table starts on page 1
@@ -170,14 +147,12 @@ export async function generateUserActivityPdf(data: UserActivityReportData): Pro
       currentY += HEADER_HEIGHT;
     };
 
-    // First page
     doc.addPage();
     drawPageHeader(doc, data, true);
     drawTableHeader(doc, currentY);
     currentY += HEADER_HEIGHT;
 
     data.enrollments.forEach((enrollment, idx) => {
-      // Check if we need a new page
       if (currentY + ROW_HEIGHT > usableHeight) {
         addPage();
       }
@@ -189,21 +164,15 @@ export async function generateUserActivityPdf(data: UserActivityReportData): Pro
   });
 }
 
-// ---------------------------------------------------------------------------
-// Drawing helpers
-// ---------------------------------------------------------------------------
-
 function drawPageHeader(doc: PDFKit.PDFDocument, data: UserActivityReportData, isFirst: boolean) {
   if (!isFirst) return; // Subsequent pages just have the table header
 
-  // Title
   doc
     .font('Helvetica-Bold')
     .fontSize(18)
     .fillColor(TEXT_DARK)
     .text(`User Learning — ${data.userName}`, MARGIN, MARGIN, { width: CONTENT_WIDTH });
 
-  // Generated timestamp
   const ts = data.generatedAt.toLocaleString('en-US', {
     month: 'numeric',
     day: 'numeric',
@@ -218,7 +187,6 @@ function drawPageHeader(doc: PDFKit.PDFDocument, data: UserActivityReportData, i
     .fillColor(TEXT_MUTED)
     .text(ts, MARGIN, MARGIN + 28, { width: CONTENT_WIDTH });
 
-  // Divider
   doc
     .moveTo(MARGIN, MARGIN + 46)
     .lineTo(MARGIN + CONTENT_WIDTH, MARGIN + 46)
@@ -228,10 +196,8 @@ function drawPageHeader(doc: PDFKit.PDFDocument, data: UserActivityReportData, i
 }
 
 function drawTableHeader(doc: PDFKit.PDFDocument, y: number) {
-  // Background
   doc.rect(MARGIN, y, CONTENT_WIDTH, 22).fillColor(HEADER_BG).fill();
 
-  // Border bottom
   doc
     .moveTo(MARGIN, y + 22)
     .lineTo(MARGIN + CONTENT_WIDTH, y + 22)
@@ -260,12 +226,10 @@ function drawRow(
   y: number,
   isAlt: boolean,
 ) {
-  // Row background
   if (isAlt) {
     doc.rect(MARGIN, y, CONTENT_WIDTH, 20).fillColor(ROW_ALT_BG).fill();
   }
 
-  // Bottom border
   doc
     .moveTo(MARGIN, y + 20)
     .lineTo(MARGIN + CONTENT_WIDTH, y + 20)
@@ -276,7 +240,6 @@ function drawRow(
   let x = MARGIN;
   COLUMNS.forEach((col) => {
     const text = resolveCell(enrollment, col.key);
-    // Colour-code certain cells
     let colour = TEXT_DARK;
     if (col.key === 'type') colour = BRAND_BLUE;
     if (col.key === 'category') colour = '#553C9A'; // purple accent
@@ -303,7 +266,6 @@ function drawFooter(
 ) {
   const y = PAGE_HEIGHT - 38;
 
-  // Horizontal rule
   doc
     .moveTo(MARGIN, y - 6)
     .lineTo(MARGIN + CONTENT_WIDTH, y - 6)

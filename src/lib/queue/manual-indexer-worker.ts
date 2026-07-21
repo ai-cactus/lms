@@ -2,8 +2,9 @@
  * BullMQ Worker: Standard Manual PDF Indexer
  *
  * Consumes jobs from the manual-indexer-queue. For each job it spawns
- * scripts/index-worker.mjs as a CHILD PROCESS so the heavy embedding work
- * runs in its own V8 heap, completely isolated from the Next.js server.
+ * scripts/index-worker.ts (via `node --import tsx`) as a CHILD PROCESS so the
+ * heavy embedding work runs in its own V8 heap, completely isolated from the
+ * Next.js server.
  *
  * This prevents the indexer from OOM-killing the server:
  *   - The Next.js server accumulates ~3-4 GB of heap over time from RSC
@@ -30,18 +31,16 @@ import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { MANUAL_INDEXER_QUEUE_NAME, type ManualIndexerJobData } from './manual-indexer-queue';
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 declare global {
   var __manualIndexerWorker: Worker | undefined;
 }
 
 /** Absolute path to the standalone indexer script. */
-const WORKER_SCRIPT = join(process.cwd(), 'scripts', 'index-worker.mjs');
+const WORKER_SCRIPT = join(process.cwd(), 'scripts', 'index-worker.ts');
 
 /**
- * Spawns scripts/index-worker.mjs and resolves when it exits with code 0.
- * Rejects for any non-zero exit code or signal termination.
+ * Spawns scripts/index-worker.ts (via `node --import tsx`) and resolves when it
+ * exits with code 0. Rejects for any non-zero exit code or signal termination.
  *
  * stdout lines from the child are expected to be JSON log objects and are
  * re-emitted via the server logger at the appropriate level.
@@ -57,6 +56,8 @@ function runIndexerProcess(
       [
         '--max-old-space-size=3000',
         '--expose-gc',
+        '--import',
+        'tsx',
         WORKER_SCRIPT,
         `--manual-id=${manualId}`,
         `--storage-path=${storagePath}`,
@@ -128,8 +129,6 @@ function runIndexerProcess(
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Returns the singleton worker, creating it if it doesn't exist yet.
  * Safe to call multiple times — only one Worker instance will be created.
@@ -187,7 +186,6 @@ export function getManualIndexerWorker(): Worker {
     },
   );
 
-  // ── Global failure handler ──────────────────────────────────────────────
   worker.on('failed', async (job, err) => {
     logger.error({
       msg: '[ManualIndexerWorker] Job exhausted all retries',

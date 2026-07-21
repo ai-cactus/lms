@@ -119,7 +119,6 @@ export default function AuthHeroSlider() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Overlay Content */}
       <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-end gap-2.5 bg-[linear-gradient(180deg,rgba(16,16,16,0)_53.5%,rgba(16,16,16,1)_100%)] p-10">
         <AnimatePresence mode="wait">
           <motion.div

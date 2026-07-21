@@ -10,8 +10,6 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const {
   prismaMock,
   mockCreateNotification,
@@ -54,8 +52,6 @@ const {
   };
 });
 
-// ─── Module mocks ─────────────────────────────────────────────────────────────
-
 vi.mock('@/lib/prisma', () => ({ default: prismaMock, prisma: prismaMock }));
 
 vi.mock('@/generated/prisma/client', () => ({
@@ -80,11 +76,7 @@ vi.mock('@/lib/logger', () => ({
   maskEmail: (e: string) => e,
 }));
 
-// ─── Module under test ────────────────────────────────────────────────────────
-
 import { dispatchLadderStage, dispatchNudge } from './dispatch';
-
-// ─── Shared fixtures ──────────────────────────────────────────────────────────
 
 const WORKER = { id: 'user-1', email: 'worker@test.com', name: 'Test Worker' };
 const ENROLLMENT = { id: 'enroll-1', userId: 'user-1', courseId: 'course-1' };
@@ -106,8 +98,6 @@ const baseLadderInput = () => ({
   dryRun: false,
 });
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.reminderLog.create.mockResolvedValue({ id: 'log-1' });
@@ -118,8 +108,6 @@ beforeEach(() => {
   prismaMock.emailMessage.create.mockResolvedValue({ id: 'email-1' });
   prismaMock.emailMessage.update.mockResolvedValue({});
 });
-
-// ─── dispatchLadderStage ──────────────────────────────────────────────────────
 
 describe('dispatchLadderStage', () => {
   describe('dry-run', () => {
@@ -247,6 +235,66 @@ describe('dispatchLadderStage', () => {
     });
   });
 
+  describe('happy path — ADMIN_PRE_DEADLINE_REMINDER (Issue #8 / TC-024, audience: escalation only)', () => {
+    it('notifies escalation recipients only, in the -7d pre-deadline window, with pre-deadline (never overdue) copy', async () => {
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+      const result = await dispatchLadderStage({
+        ...baseLadderInput(),
+        stage: 'ADMIN_PRE_DEADLINE_REMINDER',
+        // targetDate (2024-06-15) is 7 days BEFORE dueAt (2024-06-22) — the -7d window.
+        dueAt: new Date('2024-06-22T04:00:00Z'),
+        sendEmail,
+      });
+
+      expect(result).toEqual({ sent: true, reason: 'sent' });
+
+      expect(mockResolveEscalationRecipients).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-1' }),
+      );
+
+      // Escalation in-app notification uses the hard-typed COMPLIANCE_ESCALATION
+      // notification type (per dispatchLadderStage's in-app branch), never the
+      // stageToNotificationType mapping (which is worker-notification-only).
+      // Its copy is pre-deadline ("approaching"), never "overdue"/"past its deadline".
+      const escalationNotif = mockCreateNotification.mock.calls.find(
+        ([a]) => a.userId === 'admin-1',
+      )?.[0];
+      expect(escalationNotif).toMatchObject({ type: 'COMPLIANCE_ESCALATION' });
+      expect(escalationNotif.message.toLowerCase()).not.toContain('overdue');
+      expect(escalationNotif.message.toLowerCase()).not.toContain('past its deadline');
+      expect(escalationNotif.message.toLowerCase()).toContain('approaching');
+
+      const emailCall = sendEmail.mock.calls[0][0];
+      expect(emailCall).toEqual(
+        expect.objectContaining({
+          to: 'admin@test.com',
+          recipientRole: 'escalation',
+          stage: 'ADMIN_PRE_DEADLINE_REMINDER',
+        }),
+      );
+      // daysOverdue passed to the email template must be 0 — the deadline hasn't passed.
+      expect(emailCall.daysOverdue).toBe(0);
+
+      // Worker is never notified for this admin-only stage.
+      const workerCalls = mockCreateNotification.mock.calls.filter(
+        ([arg]) => arg.userId === 'user-1',
+      );
+      expect(workerCalls).toHaveLength(0);
+    });
+
+    it('maps to a non-overdue notification type via stageToNotificationType (exhaustiveness)', async () => {
+      const { stageToNotificationType } = await import('./dispatch');
+      expect(stageToNotificationType('ADMIN_PRE_DEADLINE_REMINDER')).toBe(
+        'COURSE_DEADLINE_REMINDER',
+      );
+      expect(stageToNotificationType('ADMIN_PRE_DEADLINE_REMINDER')).not.toBe('COURSE_OVERDUE');
+      expect(stageToNotificationType('ADMIN_PRE_DEADLINE_REMINDER')).not.toBe(
+        'COMPLIANCE_ESCALATION',
+      );
+    });
+  });
+
   describe('idempotency — P2002 unique constraint', () => {
     it('returns {sent:false, reason:"duplicate"} and does NOT send when log already exists', async () => {
       const sendEmail = vi.fn();
@@ -342,8 +390,6 @@ describe('dispatchLadderStage', () => {
     });
   });
 });
-
-// ─── dispatchNudge ────────────────────────────────────────────────────────────
 
 describe('dispatchNudge', () => {
   const NOW = new Date('2024-06-15T12:00:00Z');

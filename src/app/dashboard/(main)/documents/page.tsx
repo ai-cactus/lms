@@ -1,5 +1,6 @@
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import UploadSection from './upload-section';
 import DocumentListClient from './DocumentListClient';
 
@@ -17,22 +18,33 @@ const DOCUMENTS_LIMIT = 200;
 export default async function DocumentsPage() {
   const session = await auth();
 
-  const docs = await prisma.document.findMany({
-    where: { userId: session?.user?.id },
-    include: {
-      versions: {
+  // Org-scoped Document Hub: every org admin sees all documents uploaded in
+  // their organization. isAdminRole is defense-in-depth; the tenancy boundary
+  // is the uploader's organizationId.
+  const organizationId = session?.user?.organizationId;
+  const canView = !!session?.user?.id && !!organizationId && isAdminRole(session.user.role);
+
+  const docs = canView
+    ? await prisma.document.findMany({
+        where: { user: { organizationId } },
         include: {
-          phiReport: true,
-          courseVersions: {
-            include: { course: { select: { id: true, title: true, status: true } } },
+          user: {
+            select: { email: true, profile: { select: { firstName: true, lastName: true } } },
+          },
+          versions: {
+            include: {
+              phiReport: true,
+              courseVersions: {
+                include: { course: { select: { id: true, title: true, status: true } } },
+              },
+            },
+            orderBy: { version: 'desc' },
           },
         },
-        orderBy: { version: 'desc' },
-      },
-    },
-    orderBy: { updatedAt: 'desc' },
-    take: DOCUMENTS_LIMIT,
-  });
+        orderBy: { updatedAt: 'desc' },
+        take: DOCUMENTS_LIMIT,
+      })
+    : [];
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col">

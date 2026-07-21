@@ -5,7 +5,6 @@ import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
 
-// Create a new lesson
 export async function createLesson(data: {
   courseId: string;
   title: string;
@@ -17,7 +16,6 @@ export async function createLesson(data: {
     throw new Error('Unauthorized');
   }
 
-  // Verify course ownership
   const course = await prisma.course.findUnique({
     where: { id: data.courseId },
     include: { lessons: { select: { order: true } } },
@@ -26,7 +24,6 @@ export async function createLesson(data: {
     throw new Error('Course not found');
   }
 
-  // Get next order number
   const maxOrder = course.lessons.reduce((max, l) => Math.max(max, l.order), 0);
 
   const lesson = await prisma.lesson.create({
@@ -43,7 +40,6 @@ export async function createLesson(data: {
   return lesson;
 }
 
-// Update lesson content
 export async function updateLesson(
   lessonId: string,
   data: {
@@ -57,7 +53,6 @@ export async function updateLesson(
     throw new Error('Unauthorized');
   }
 
-  // Verify ownership through course
   const existing = await prisma.lesson.findUnique({
     where: { id: lessonId },
     include: { course: true },
@@ -75,7 +70,6 @@ export async function updateLesson(
   return lesson;
 }
 
-// Delete a lesson
 export async function deleteLesson(lessonId: string) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -109,7 +103,6 @@ export async function deleteLesson(lessonId: string) {
   return { success: true };
 }
 
-// Reorder lessons
 export async function reorderLessons(
   courseId: string,
   lessonOrder: { id: string; order: number }[],
@@ -137,7 +130,6 @@ export async function reorderLessons(
   return { success: true };
 }
 
-// Create lesson with quiz (bulk)
 export async function createLessonWithQuiz(data: {
   courseId: string;
   title: string;

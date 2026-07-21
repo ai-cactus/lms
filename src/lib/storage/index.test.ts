@@ -14,8 +14,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { StorageListItem } from './types';
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const {
   MockGCSProvider,
   mockGCSList,
@@ -56,8 +54,6 @@ const {
   };
 });
 
-// ─── Module mocks (hoisted, persisted across resetModules() calls) ────────────
-
 vi.mock('@/lib/storage/gcs-provider', () => ({
   GCSProvider: MockGCSProvider,
 }));
@@ -75,15 +71,11 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks();
   // Flush the module registry so index.ts's _gcs / _gcsInitialised singletons reset.
   vi.resetModules();
 });
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('listFiles — GCS configured but list() throws', () => {
   it('returns MinIO results and logs a warning when GCS list fails', async () => {

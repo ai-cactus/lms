@@ -1,4 +1,3 @@
-// src/lib/audit-reports/report-data.ts
 import type {
   AllCoursesReportInput,
   AllCoursesReportResult,

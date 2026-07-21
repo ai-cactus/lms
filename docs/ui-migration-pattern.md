@@ -119,7 +119,7 @@ Replace legacy `Modal` (and hand-rolled `fixed inset-0` overlays) with the shadc
 5. Replace legacy `<Input label error>` → `<Field label error><Input/></Field>`; passwords → `<PasswordInput>`; banners → `<Alert>`; OTP → `<OtpInput>`.
 6. Delete the page's `.module.css` (only if no other file imports it).
 7. Gate: `npm run lint && npx tsc --noEmit` clean; `grep` confirms no `module.css`/`style={{`/`console.` left.
-8. **Verify rendering yourself** before handing off: `node scripts/shot.mjs <route>` screenshots the page at mobile/tablet/desktop against the dev server (`:3005`). Compare against the THERAPTLY Figma intent. If layout/flow is ambiguous, ask for the specific Figma frame.
+8. **Verify rendering yourself** before handing off: `npx tsx scripts/shot.ts <route>` screenshots the page at mobile/tablet/desktop against the dev server (`:3005`). Compare against the THERAPTLY Figma intent. If layout/flow is ambiguous, ask for the specific Figma frame.
 
 ## 5. Gotchas (learned the hard way)
 

@@ -95,7 +95,6 @@ function LoginForm() {
     if (!isValid) return;
 
     setErrors({});
-    // Construct FormData manually
     const form = new FormData();
     form.append('email', formData.email);
     form.append('password', formData.password);
@@ -150,6 +149,12 @@ function LoginForm() {
       {oauthError === 'AccessDenied' && (
         <Alert variant="error" className="w-full" title="Access Denied">
           You do not have authorization to log in with this role.
+        </Alert>
+      )}
+
+      {oauthError === 'AccessRevoked' && (
+        <Alert variant="error" className="w-full" title="Access Removed">
+          Your access to this organization has been removed. Please contact your administrator.
         </Alert>
       )}
 

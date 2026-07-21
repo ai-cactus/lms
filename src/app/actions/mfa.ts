@@ -6,9 +6,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { headers } from 'next/headers';
 import {
-  verifyTotpCode,
   encryptSecret,
-  decryptSecret,
   encryptOtpPayload,
   decryptOtpPayload,
   generateRecoveryCodes,
@@ -57,7 +55,6 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
     return { success: false, error: 'Not authenticated' };
   }
 
-  // Check if MFA is already enabled
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { mfaEnabled: true, email: true },
@@ -140,20 +137,14 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
     return { success: false, error: 'No pending MFA setup found. Start setup again.' };
   }
 
-  let valid = false;
-  if (factor.type === 'totp') {
-    const decryptedSecret = decryptSecret(factor.secret);
-    valid = verifyTotpCode(decryptedSecret, code);
-  } else if (factor.type === 'email') {
-    const otpPayload = decryptOtpPayload(factor.secret);
-    if (!otpPayload) {
-      return { success: false, error: 'Code already used or invalid. Start setup again.' };
-    }
-    if (otpPayload.expired) {
-      return { success: false, error: 'Code has expired. Please request a new one.' };
-    }
-    valid = otpPayload.code === code;
+  const otpPayload = decryptOtpPayload(factor.secret);
+  if (!otpPayload) {
+    return { success: false, error: 'Code already used or invalid. Start setup again.' };
   }
+  if (otpPayload.expired) {
+    return { success: false, error: 'Code has expired. Please request a new one.' };
+  }
+  const valid = otpPayload.code === code;
 
   if (!valid) {
     logger.warn({ msg: 'MFA setup verification failed: invalid code', userId: session.user.id });
@@ -163,41 +154,51 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
   // Capture plaintext codes BEFORE hashing — these are shown to the user once only
   const recoveryCodes = generateRecoveryCodes();
 
+  // Hash the SAME codes we will return to the user, OUTSIDE the transaction:
+  // bcrypt work over 10 codes exceeds the interactive-transaction timeout on
+  // CPU-throttled hosts and would roll the whole enable back (P2028).
+  const hashedCodes = await Promise.all(recoveryCodes.map((c) => hashRecoveryCode(c)));
+
   // Mark factor as verified and enable MFA
-  await prisma.$transaction(async (tx) => {
-    await tx.mfaFactor.update({
-      where: { id: factor.id },
-      data: { verified: true },
-    });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.mfaFactor.update({
+        where: { id: factor.id },
+        data: { verified: true },
+      });
 
-    await tx.user.update({
-      where: { id: session.user.id },
-      data: {
-        mfaEnabled: true,
-        // Keep mfaVerifiedAt for backward compat (legacy sessions may still read it)
-        mfaVerifiedAt: new Date(),
-      },
-    });
+      await tx.user.update({
+        where: { id: session.user.id },
+        data: {
+          mfaEnabled: true,
+          // Keep mfaVerifiedAt for backward compat (legacy sessions may still read it)
+          mfaVerifiedAt: new Date(),
+        },
+      });
 
-    // Remove any old recovery codes
-    await tx.mfaRecoveryCode.deleteMany({
-      where: { userId: session.user.id },
-    });
+      // Remove any old recovery codes
+      await tx.mfaRecoveryCode.deleteMany({
+        where: { userId: session.user.id },
+      });
 
-    // Hash and store the SAME codes we will return to the user
-    const hashedCodes = await Promise.all(recoveryCodes.map((c) => hashRecoveryCode(c)));
-
-    await tx.mfaRecoveryCode.createMany({
-      data: hashedCodes.map((codeHash) => ({
-        userId: session.user.id!,
-        codeHash,
-      })),
+      await tx.mfaRecoveryCode.createMany({
+        data: hashedCodes.map((codeHash) => ({
+          userId: session.user.id!,
+          codeHash,
+        })),
+      });
     });
-  });
+  } catch (err) {
+    logger.error({ msg: '[auth] MFA enable transaction failed', err, userId: session.user.id });
+    return {
+      success: false,
+      error: 'Could not enable two-factor authentication. Please try again.',
+    };
+  }
 
   // Mark the current session as MFA-verified via Redis (per-session state).
-  // This prevents the middleware from redirecting the user to /verify-2fa
-  // immediately after they just completed setup.
+  // This prevents the middleware from bouncing the user back to /login for a
+  // fresh MFA challenge immediately after they just completed setup.
   const sessionId = (session.user as Record<string, unknown>).sessionId as string | undefined;
   if (sessionId) {
     await markSessionMfaVerified(session.user.id, sessionId);
@@ -243,10 +244,13 @@ export async function disableMfa(code: string): Promise<MfaActionResult> {
     return { success: false, error: 'MFA is not enabled' };
   }
 
-  // Verify the code (TOTP or recovery)
-  const isValid = await verifyUserMfaCode(session.user.id, code);
-  if (!isValid) {
-    return { success: false, error: 'Invalid verification code' };
+  // Verify the code (email OTP or recovery). verifyUserMfaCode returns an
+  // OBJECT ({ valid, error }) — checking its truthiness alone always passed,
+  // letting any authenticated user disable their own 2FA with an arbitrary
+  // code. Gate on .valid.
+  const verification = await verifyUserMfaCode(session.user.id, code);
+  if (!verification.valid) {
+    return { success: false, error: verification.error || 'Invalid verification code' };
   }
 
   await prisma.$transaction(async (tx) => {
@@ -294,39 +298,44 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
   }
 
   let valid = false;
-  if (factor.type === 'totp') {
-    const decryptedSecret = decryptSecret(factor.secret);
-    valid = verifyTotpCode(decryptedSecret, code);
-  } else if (factor.type === 'email') {
-    const otpPayload = decryptOtpPayload(factor.secret);
-    if (otpPayload && !otpPayload.expired) {
-      valid = otpPayload.code === code;
-    }
-    if (valid) {
-      await prisma.mfaFactor.update({
-        where: { id: factor.id },
-        data: { secret: encryptSecret('USED') },
-      });
-    }
+  const otpPayload = decryptOtpPayload(factor.secret);
+  if (otpPayload && !otpPayload.expired) {
+    valid = otpPayload.code === code;
+  }
+  if (valid) {
+    await prisma.mfaFactor.update({
+      where: { id: factor.id },
+      data: { secret: encryptSecret('USED') },
+    });
   }
 
   if (!valid) {
     return { success: false, error: 'Invalid verification code' };
   }
 
-  // Generate new recovery codes
   const recoveryCodes = generateRecoveryCodes();
 
-  await prisma.$transaction(async (tx) => {
-    await tx.mfaRecoveryCode.deleteMany({ where: { userId: session.user.id } });
-    const hashedCodes = await Promise.all(recoveryCodes.map((c) => hashRecoveryCode(c)));
-    await tx.mfaRecoveryCode.createMany({
-      data: hashedCodes.map((codeHash) => ({
-        userId: session.user.id!,
-        codeHash,
-      })),
+  // Hash outside the transaction — bcrypt over 10 codes would exceed the
+  // interactive-transaction timeout and roll back on CPU-throttled hosts (P2028).
+  const hashedCodes = await Promise.all(recoveryCodes.map((c) => hashRecoveryCode(c)));
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.mfaRecoveryCode.deleteMany({ where: { userId: session.user.id } });
+      await tx.mfaRecoveryCode.createMany({
+        data: hashedCodes.map((codeHash) => ({
+          userId: session.user.id!,
+          codeHash,
+        })),
+      });
     });
-  });
+  } catch (err) {
+    logger.error({ msg: '[auth] Recovery code regeneration failed', err, userId: session.user.id });
+    return {
+      success: false,
+      error: 'Could not regenerate recovery codes. Please try again.',
+    };
+  }
 
   logger.info({ msg: 'Recovery codes regenerated', userId: session.user.id });
 
@@ -356,31 +365,25 @@ export async function verifyUserMfaCode(
     return { valid: false, error: 'Too many attempts. Please try again later.' };
   }
 
-  // Try primary factors (email or totp)
+  // Try the primary email OTP factor
   const factor = await prisma.mfaFactor.findFirst({
     where: { userId, verified: true },
   });
 
   if (factor?.secret) {
-    if (factor.type === 'totp') {
-      const decryptedSecret = decryptSecret(factor.secret);
-      if (verifyTotpCode(decryptedSecret, code)) {
-        return { valid: true };
+    const otpPayload = decryptOtpPayload(factor.secret);
+    if (!otpPayload) {
+      // No usable OTP on file — fall through to recovery codes below.
+    } else if (otpPayload.expired) {
+      if (/^\d{1,6}$/.test(code)) {
+        return { valid: false, error: 'Code has expired. Please request a new one.' };
       }
-    } else if (factor.type === 'email') {
-      const otpPayload = decryptOtpPayload(factor.secret);
-      if (!otpPayload) {
-      } else if (otpPayload.expired) {
-        if (/^\d{1,6}$/.test(code)) {
-          return { valid: false, error: 'Code has expired. Please request a new one.' };
-        }
-      } else if (otpPayload.code === code) {
-        await prisma.mfaFactor.update({
-          where: { id: factor.id },
-          data: { secret: encryptSecret('USED') },
-        });
-        return { valid: true };
-      }
+    } else if (otpPayload.code === code) {
+      await prisma.mfaFactor.update({
+        where: { id: factor.id },
+        data: { secret: encryptSecret('USED') },
+      });
+      return { valid: true };
     }
   }
 

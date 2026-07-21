@@ -1,9 +1,25 @@
 ---
 name: e2e-local-auth-url-env-trap
-description: RESOLVED — running the e2e suite locally against lms_e2e requires exporting AUTH_URL (not just NEXTAUTH_URL), or NextAuth v5 redirects every successful login to the dead .env origin and every login-dependent test fails with ERR_CONNECTION_REFUSED
+description: ACTIVE (re-confirmed 2026-07-18) — running the e2e suite locally against lms_e2e requires exporting AUTH_URL (not just NEXTAUTH_URL), or NextAuth v5 redirects every successful login to the dead .env origin and every login-dependent test fails with ERR_CONNECTION_REFUSED
 metadata:
   type: project
 ---
+
+**Update 2026-07-18 (fix/phase-02 branch):** `.env` sets `AUTH_URL=http://localhost:3000`
+again — re-confirmed by direct `cat .env` immediately before an e2e run. The 2026-07-09 note
+below claiming this was resolved/stale is itself now stale; whether `.env` carries `AUTH_URL`
+apparently varies by branch/session. **Always verify current `.env` content before trusting
+either direction of this note** — don't skip the export based on a past "it's fine now" memory.
+Exporting `AUTH_URL=http://localhost:3005` (+ `NEXTAUTH_URL`/`NEXT_PUBLIC_APP_URL`/`APP_URL`)
+inline on the `npm run dev -- -p 3005` command that starts the webServer continues to be the
+reliable fix. See also [[e2e-webserver-dev-lock-conflict]] for a separate, still-current
+local-run gotcha (a stray `:3000` dev server blocks the webServer from starting at all).
+
+**2026-07-09 note (do not treat as current without re-verifying):** `.env` and `.env.local` no
+longer set `AUTH_URL` or `NEXTAUTH_URL` at all (verified via grep on branch `rbac`). A full local
+`npx playwright test --workers=1` run passed with no extra env exported. This did not hold on
+`fix/phase-02` — see the 2026-07-18 update above.
+
 
 Running `npx playwright test tests/e2e` locally (against a dedicated `lms_e2e` Postgres DB,
 `CI=true` forcing workers:1/retries:2) reliably failed the same 6 tests every time — every

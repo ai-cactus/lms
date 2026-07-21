@@ -3,22 +3,48 @@ import Credentials from 'next-auth/providers/credentials';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
+import { expireSiblingSessionCookies } from '@/lib/auth/session-cookies';
 import { logger, maskEmail } from '@/lib/logger';
 import { isSessionMfaVerified } from '@/lib/session-mfa';
+import {
+  ADMIN_ROLES,
+  WORKER_ROLES,
+  ALL_ROLES,
+  DEFAULT_SELF_SERVE_WORKER_ROLE,
+} from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
-type Role = 'admin' | 'worker';
+import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 
 interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
-  allowedRole: Role;
+  allowedRoles: readonly Role[];
   basePath: string; // "/api/auth" | "/api/auth-worker"
+  // Roles allowed to KEEP an existing session on this instance during JWT
+  // re-validation, as opposed to `allowedRoles` which gates who may LOG IN.
+  // Defaults to `allowedRoles`. The worker instance widens this to ALL_ROLES so
+  // an admin who bridges into learner mode (see actions/session-bridge.ts) keeps
+  // a valid worker-cookie session without being able to log in via the worker
+  // login form.
+  sessionAllowedRoles?: readonly Role[];
+}
+
+// Record the user's most-recent sign-in time. Fire-and-forget and fully
+// guarded: a failure here must never break the auth path, so it is logged at
+// `warn` and swallowed rather than propagated.
+function recordLoginTimestamp(userId: string, instance: string) {
+  prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } }).catch((err) => {
+    logger.warn({ msg: '[auth] Failed to record lastLoginAt', userId, instance, err });
+  });
 }
 
 export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
-  const { cookiePrefix, allowedRole, basePath } = instanceConfig;
+  const { cookiePrefix, allowedRoles, basePath } = instanceConfig;
+  const sessionAllowedRoles = instanceConfig.sessionAllowedRoles ?? allowedRoles;
   const useSecureCookies = process.env.NODE_ENV === 'production';
 
   // Fail fast at startup — prevents silent session failures in production.
@@ -27,11 +53,18 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
     process.env.NODE_ENV === 'test' ||
     process.env.NEXT_PHASE === 'phase-production-build' ||
     process.env.CI === 'true';
+  // Resolve the secret used to ENCRYPT the session JWT. This MUST match the value
+  // the proxy uses to DECRYPT it (see src/proxy.ts) — same vars, same order:
+  // AUTH_SECRET first, then NEXTAUTH_SECRET.
   const authSecret =
-    process.env.NEXTAUTH_SECRET || (isBuildOrTest ? 'build-time-dummy-secret' : undefined);
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    (isBuildOrTest ? 'build-time-dummy-secret' : undefined);
 
   if (!authSecret) {
-    throw new Error('[Auth] NEXTAUTH_SECRET is not defined. Set it in your environment variables.');
+    throw new Error(
+      '[Auth] Neither AUTH_SECRET nor NEXTAUTH_SECRET is defined. Set one in your environment variables.',
+    );
   }
 
   const config: NextAuthConfig = {
@@ -135,11 +168,11 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             return null;
           }
 
-          if (user.role !== allowedRole) {
+          if (!allowedRoles.includes(user.role as Role)) {
             logger.warn({
               msg: 'Auth login failed: role mismatch',
               role: user.role,
-              allowed: allowedRole,
+              allowed: allowedRoles.join(','),
               instance: cookiePrefix,
             });
             await audit({
@@ -149,6 +182,24 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               organizationId: user.organizationId ?? undefined,
               ...clientCtx,
               metadata: { reason: 'role_mismatch', instance: cookiePrefix, email: maskedEmail },
+            });
+            return null;
+          }
+
+          // ISSUE 2: a non-owner admin-tier account with no org has been removed
+          // from its organization (owner is the only legitimately org-less admin
+          // role, mid-onboarding). Deny login before verifying the password.
+          if (cookiePrefix === 'admin' && user.role !== 'owner' && !user.organizationId) {
+            logger.warn({
+              msg: 'Auth login failed: removed from organization',
+              instance: cookiePrefix,
+            });
+            await audit({
+              action: 'auth.login.failure',
+              actorId: user.id,
+              actorRole: user.role,
+              ...clientCtx,
+              metadata: { reason: 'removed_from_org', instance: cookiePrefix, email: maskedEmail },
             });
             return null;
           }
@@ -208,6 +259,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             metadata: { instance: cookiePrefix, mfaEnabled: user.mfaEnabled },
           });
 
+          recordLoginTimestamp(user.id, cookiePrefix);
+
           return {
             id: user.id,
             email: user.email,
@@ -258,28 +311,30 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             select: { id: true, organizationId: true, role: true },
           });
 
-          // Check for pending invites
           const pendingInvite = await prisma.invite.findFirst({
             where: { email: user.email!, status: 'pending' },
             orderBy: { createdAt: 'desc' },
           });
 
           if (!dbUser) {
-            // New user Signup Flow
+            // D3: a brand-new admin-instance user with no invite becomes `owner`
+            // (they are founding an organisation). A worker-instance user with no
+            // invite becomes the default self-serve worker role.
+            let matchedOrgId = null;
+            let matchedRole: Role =
+              cookiePrefix === 'worker' ? DEFAULT_SELF_SERVE_WORKER_ROLE : 'owner';
+
             logger.info({
               msg: 'OAuth: creating new user',
               email: maskEmail(user.email!),
-              role: allowedRole,
+              role: matchedRole,
             });
-
-            let matchedOrgId = null;
-            let matchedRole = allowedRole;
 
             if (pendingInvite) {
               matchedOrgId = pendingInvite.organizationId;
               const inviteRole = pendingInvite.role;
-              matchedRole =
-                inviteRole === 'admin' || inviteRole === 'worker' ? inviteRole : 'worker';
+              const isValidRole = (r: unknown): r is Role => ALL_ROLES.includes(r as Role);
+              matchedRole = isValidRole(inviteRole) ? inviteRole : DEFAULT_SELF_SERVE_WORKER_ROLE;
               logger.info({
                 msg: 'OAuth: pending invite found',
                 email: maskEmail(user.email!),
@@ -293,6 +348,16 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               BCRYPT_COST,
             );
 
+            // Attach to the org's facility when joining via invite; null otherwise.
+            const matchedFacilityId = matchedOrgId
+              ? ((
+                  await prisma.facility.findFirst({
+                    where: { organizationId: matchedOrgId },
+                    select: { id: true },
+                  })
+                )?.id ?? null)
+              : null;
+
             dbUser = await prisma.user.create({
               data: {
                 email: user.email!,
@@ -300,6 +365,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 authProvider: 'microsoft-entra-id',
                 role: matchedRole,
                 organizationId: matchedOrgId,
+                facilityId: matchedFacilityId,
                 emailVerified: true, // Trust OAuth provider email verification
               },
               select: { id: true, organizationId: true, role: true },
@@ -318,7 +384,6 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               },
             });
 
-            // Mark invite as accepted if we used one
             if (pendingInvite) {
               await prisma.invite.update({
                 where: { id: pendingInvite.id },
@@ -334,23 +399,33 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 metadata: { provider: 'microsoft-entra-id', email: maskEmail(user.email!) },
               });
             }
+
+            // Live auto-enroll: a new OAuth account that joined an org via invite
+            // must pick up that role's active role-target assignments. Never throws.
+            if (dbUser.organizationId) {
+              await enrollUserForRoleTargets(dbUser.id, dbUser.organizationId);
+            }
           } else {
-            // Existing user login
             if (pendingInvite && !dbUser.organizationId) {
-              // User exists but has no org yet, and has a new invite
               logger.info({
                 msg: 'OAuth: existing user accepting invite',
                 email: maskEmail(user.email!),
                 orgId: pendingInvite.organizationId,
               });
+              const inviteFacility = await prisma.facility.findFirst({
+                where: { organizationId: pendingInvite.organizationId },
+                select: { id: true },
+              });
               dbUser = await prisma.user.update({
                 where: { id: dbUser.id },
                 data: {
                   organizationId: pendingInvite.organizationId,
-                  role:
-                    pendingInvite.role === 'admin' || pendingInvite.role === 'worker'
-                      ? pendingInvite.role
-                      : 'worker',
+                  facilityId: inviteFacility?.id ?? null,
+                  role: ALL_ROLES.includes(pendingInvite.role as Role)
+                    ? pendingInvite.role
+                    : DEFAULT_SELF_SERVE_WORKER_ROLE,
+                  // Join date drives the deadline window for role-target assignments.
+                  roleAssignedAt: new Date(),
                 },
                 select: { id: true, organizationId: true, role: true },
               });
@@ -369,20 +444,37 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 targetId: pendingInvite.id,
                 metadata: { provider: 'microsoft-entra-id', email: maskEmail(user.email!) },
               });
+
+              // Live auto-enroll into the accepted role's role-target assignments.
+              if (dbUser.organizationId) {
+                await enrollUserForRoleTargets(dbUser.id, dbUser.organizationId);
+              }
+            } else if (
+              cookiePrefix === 'admin' &&
+              dbUser.role !== 'owner' &&
+              !dbUser.organizationId
+            ) {
+              // ISSUE 2: a non-owner admin-tier account with no org has been
+              // removed from its organization — deny the OAuth login.
+              logger.warn({
+                msg: 'OAuth: removed non-owner admin denied',
+                email: maskEmail(user.email!),
+              });
+              return `${config.pages?.signIn}?error=AccessRevoked`;
             }
           }
 
           if (!dbUser.role) {
             logger.info({ msg: 'OAuth: user has no role, continuing for onboarding' });
-          } else if (dbUser.role !== allowedRole) {
+          } else if (!allowedRoles.includes(dbUser.role as Role)) {
             logger.warn({
               msg: 'OAuth: role mismatch, routing to correct instance',
-              expected: allowedRole,
+              expected: allowedRoles.join(','),
               got: dbUser.role,
             });
-            if (dbUser.role === 'worker')
+            if (WORKER_ROLES.includes(dbUser.role as Role))
               return '/api/auth-worker/signin/microsoft-entra-id?callbackUrl=/worker';
-            if (dbUser.role === 'admin')
+            if (ADMIN_ROLES.includes(dbUser.role as Role))
               return '/api/auth/signin/microsoft-entra-id?callbackUrl=/dashboard';
             return `${config.pages?.signIn}?error=AccessDenied`;
           }
@@ -390,6 +482,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           user.id = dbUser.id;
           user.organizationId = dbUser.organizationId;
           user.role = dbUser.role as Role;
+
+          recordLoginTimestamp(dbUser.id, cookiePrefix);
           // OAuth users bypass MFA — Microsoft Entra ID has its own MFA policies
           (user as User & { mfaVerified?: boolean }).mfaVerified = true;
 
@@ -436,6 +530,29 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             }
           }
         }
+
+        // ISSUE 4: a successful login on this instance must drop any lingering
+        // session cookie from the sibling instance, so the two portals never
+        // hold two live sessions for different accounts at once. Deletion is
+        // emitted via expireSiblingSessionCookies() (not a bare cookies().delete)
+        // so the `__Secure-` prefixed cookie is expired WITH the `Secure`
+        // attribute — a bare delete omits it and the browser rejects the
+        // deletion under https (see session-cookies.ts).
+        try {
+          const cookieStore = await cookies();
+          expireSiblingSessionCookies(cookieStore, cookiePrefix);
+          logger.info({
+            msg: '[Auth] Cleared sibling session cookie on login',
+            instance: cookiePrefix,
+          });
+        } catch (err) {
+          logger.warn({
+            msg: '[Auth] Failed to clear sibling session cookie on login',
+            instance: cookiePrefix,
+            err,
+          });
+        }
+
         return true;
       },
 
@@ -459,6 +576,19 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
         // ✅ Re-validate against DB on every decode
         if (token.id) {
+          // Retired-role guard: the legacy `admin` role no longer exists. Any JWT
+          // still carrying it predates the RBAC rollout and must be forced to
+          // re-authenticate. A stale `worker` token needs no such guard — it
+          // self-heals below when DB re-validation overwrites token.role with the
+          // user's migrated worker-category role.
+          if (token.role === 'admin') {
+            logger.warn({
+              msg: '[Auth] Stale JWT with retired admin role detected, forcing re-auth',
+              instance: cookiePrefix,
+            });
+            return null;
+          }
+
           let freshUser;
           try {
             freshUser = await prisma.user.findUnique({
@@ -490,7 +620,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           }
 
           if (!freshUser) return null; // User was deleted — invalidate
-          if (freshUser.role !== allowedRole) return null; // Role changed — invalidate
+          if (!sessionAllowedRoles.includes(freshUser.role as Role)) return null; // Role no longer permitted on this instance — invalidate
 
           // F-059: a completed password reset bumps `sessionVersion`, logging out
           // every other existing session. On sign-in `token.sessionVersion` is
@@ -507,6 +637,18 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             return null;
           }
           token.sessionVersion = freshUser.sessionVersion;
+
+          // Defense-in-depth: a non-owner admin-tier account with no org can only be
+          // in this state after staff removal (owner is the only legitimately
+          // org-less admin role, mid-onboarding). Catches it even if a future removal
+          // path forgets to bump sessionVersion.
+          if (cookiePrefix === 'admin' && freshUser.role !== 'owner' && !freshUser.organizationId) {
+            logger.warn({
+              msg: '[Auth] Removed non-owner admin session detected, invalidating',
+              instance: cookiePrefix,
+            });
+            return null;
+          }
 
           token.role = freshUser.role as Role;
           token.organizationId = freshUser.organizationId;

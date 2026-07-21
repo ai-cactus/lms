@@ -35,6 +35,41 @@ async function loginAsAdmin(page: import('@playwright/test').Page): Promise<void
   await page.waitForURL('**/dashboard');
 }
 
+/**
+ * Drive the custom calendar DatePicker (src/components/ui/DatePicker.tsx — no
+ * native <input type="date">) to a specific date `daysFromNow` in the future.
+ * `pickerName` is the toggle button's accessible name, which equals its empty
+ * placeholder text ("Select date" for Training Schedule, "Select due date"
+ * for Due Date) — the two pickers on the Assign page are otherwise identical.
+ * Returns the resulting `YYYY-MM-DD` string so callers can assert against it.
+ */
+async function pickFutureDate(
+  page: import('@playwright/test').Page,
+  pickerName: string,
+  daysFromNow: number,
+): Promise<string> {
+  const today = new Date();
+  const target = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysFromNow);
+  const monthsToAdvance =
+    (target.getFullYear() - today.getFullYear()) * 12 + (target.getMonth() - today.getMonth());
+
+  await page.getByRole('button', { name: pickerName }).click();
+  const popover = page.locator('#date-picker-popover');
+  await expect(popover).toBeVisible();
+
+  const nextMonthButton = popover.getByRole('button').nth(1);
+  for (let i = 0; i < monthsToAdvance; i++) {
+    await nextMonthButton.click();
+  }
+
+  await popover.getByRole('button', { name: String(target.getDate()), exact: true }).click();
+  await expect(popover).toBeHidden();
+
+  const mm = String(target.getMonth() + 1).padStart(2, '0');
+  const dd = String(target.getDate()).padStart(2, '0');
+  return `${target.getFullYear()}-${mm}-${dd}`;
+}
+
 // ─── Test suite ───────────────────────────────────────────────────────────────
 
 test.describe('Reminders & Escalations', () => {
@@ -192,5 +227,157 @@ test.describe('Reminders & Escalations', () => {
     await viewAllLink.click();
     await page.waitForURL('**/dashboard/status-tracker');
     await expect(page.getByText(OVERDUE_WORKER_NAME)).toBeVisible();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Flow 7 (Phase 2 Issue #2 / TC-015 regression): the wizard-assigned-course
+  // deadline-drop bug — createFullCourse used to write bare enrollments with no
+  // dueAt, silently disabling the reminder ladder. createFullCourse now
+  // delegates to enrollUsers (unit-tested directly in
+  // course.create-full-course.test.ts); this e2e check proves the SAME
+  // underlying delegation (enrollUsers → createEnrollmentForUser) round-trips
+  // a due date all the way to what the assigned worker actually sees. The
+  // wizard's own UI can't reach this admin-assign step in this environment
+  // (Step 2+ requires a live Vertex AI call the sandbox has no credentials
+  // for), so this drives the assign page directly — the same server action the
+  // wizard delegates to.
+  // ---------------------------------------------------------------------------
+  test('TC-015: a due date set on assignment shows up on the assigned worker\'s training list', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+
+    await page.goto('/dashboard/courses');
+    await page.getByText(SEEDED_COURSE_TITLE).first().click();
+    await page.waitForURL('**/training/courses/**');
+    await page.getByRole('button', { name: 'Assign', exact: true }).click();
+    await page.waitForURL('**/assign');
+
+    const assignInput = page.locator('#assign-input');
+    await assignInput.fill('walt.assignable@test.com');
+    await assignInput.press('Enter');
+    await expect(page.getByText('walt.assignable@test.com')).toBeVisible();
+
+    const dueDateStr = await pickFutureDate(page, 'Select due date', 21);
+    const [y, m, d] = dueDateStr.split('-').map(Number);
+    const expectedDueLabel = new Date(y, m - 1, d).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    await page.getByRole('button', { name: 'Assign Course' }).click();
+    await expect(page.getByText('Course Assigned Successfully')).toBeVisible();
+
+    // Log out and back in as the assigned worker to see their own training list.
+    await page.goto('/login');
+    await page.fill('input[type="email"]', 'walt.assignable@test.com');
+    await page.fill('input[type="password"]', 'TestPassword123!');
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/worker**');
+
+    await page.goto('/worker/trainings');
+    await expect(page.getByText(SEEDED_COURSE_TITLE)).toBeVisible();
+    await expect(page.getByText(`Due ${expectedDueLabel}`)).toBeVisible();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Flow 8 (Phase 2 Issue #5 / TC-018): reopening the assign page for an
+  // already-assigned course prefills the live settings, and re-submitting
+  // updates the existing CourseAssignment rather than creating a duplicate
+  // enrollment for someone already assigned.
+  // ---------------------------------------------------------------------------
+  test('TC-018: re-opening Assign shows the saved due date, and re-submitting does not duplicate the enrollment', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+
+    await page.goto('/dashboard/courses');
+    await page.getByText(SEEDED_COURSE_TITLE).first().click();
+    await page.waitForURL('**/training/courses/**');
+
+    // Walt is already assigned by the TC-015 test above (or a prior run) —
+    // re-opening Assign must show "existing assignment" messaging, not a blank
+    // factory-default form.
+    await page.getByRole('button', { name: 'Assign', exact: true }).click();
+    await page.waitForURL('**/assign');
+    await expect(
+      page.getByText(/this course has an existing assignment/i),
+    ).toBeVisible();
+
+    // The saved schedule/deadline/renewal/reminder SETTINGS are prefilled from
+    // the existing CourseAssignment, but the assignee list is not (it isn't
+    // part of that row — it's derived from Enrollment rows) — re-add Walt so
+    // "Assign Course" enables, then re-submit. His EXISTING enrollment is left
+    // alone by createEnrollmentForUser's alreadyEnrolled check; only the
+    // CourseAssignment settings row is updated (the upsert path under test).
+    const assignInput = page.locator('#assign-input');
+    await assignInput.fill('walt.assignable@test.com');
+    await assignInput.press('Enter');
+
+    await page.getByRole('button', { name: 'Assign Course' }).click();
+    await expect(page.getByText('Course Assigned Successfully')).toBeVisible();
+
+    // Walt appears exactly once in the training-detail roster — no duplicate
+    // enrollment row from the re-submit.
+    await page.goto('/dashboard/courses');
+    await page.getByText(SEEDED_COURSE_TITLE).first().click();
+    await page.waitForURL('**/training/courses/**');
+    await expect(page.getByRole('row', { name: /walt assignable/i })).toHaveCount(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Flow 9 (Phase 2 Issue #4 / TC-016): role-based assignment enrolls current
+  // holders of the targeted role.
+  // ---------------------------------------------------------------------------
+  test('TC-016: assigning a course to a whole role enrolls current holders of that role', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+
+    await page.goto('/dashboard/courses');
+    await page.getByText(SEEDED_COURSE_TITLE).first().click();
+    await page.waitForURL('**/training/courses/**');
+    await page.getByRole('button', { name: 'Assign', exact: true }).click();
+    await page.waitForURL('**/assign');
+
+    await page.getByRole('button', { name: 'A whole role' }).click();
+    await page.getByRole('combobox').first().click();
+    // Display name per src/lib/rbac/permissions.ts — "Front Desk / Administrative
+    // Support", the seeded workers' role (worker, sarah, overdueWorker, walt, etc).
+    await page.getByRole('option', { name: /front desk/i }).click();
+
+    // Role-target assignments never carry an absolute due date — the "Due
+    // Date" field belongs to "Specific people" mode only.
+    await expect(page.getByRole('heading', { name: 'Due Date' })).not.toBeVisible();
+
+    // Current-holder preview copy is present (roleHolderCounts wiring).
+    await expect(page.getByText(/will be enrolled now/i)).toBeVisible();
+
+    await page.getByRole('button', { name: 'Assign Course' }).click();
+    await expect(page.getByText('Course Assigned Successfully')).toBeVisible();
+
+    // The seeded front_desk_admin holders (worker, sarah, overdueWorker,
+    // nearDeadlineWorker, walt) are all enrolled — already-enrolled ones are a
+    // safe no-op (idempotent), so this never fails on re-runs.
+    await page.goto('/dashboard/courses');
+    await page.getByText(SEEDED_COURSE_TITLE).first().click();
+    await page.waitForURL('**/training/courses/**');
+    await expect(page.getByRole('row', { name: /nadia nearing/i })).toBeVisible();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Flow 10 (Phase 2 Issues #9/#10, TC-025): the status-tracker "At Risk — Next
+  // 7 Days" section lists an enrollment due soon (not yet overdue) — seeded
+  // separately from the always-overdue "Olivia Overdue" fixture.
+  // ---------------------------------------------------------------------------
+  test('TC-025: status tracker shows the At Risk — Next 7 Days section with a near-deadline worker', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+    await page.goto('/dashboard/status-tracker');
+
+    await expect(page.getByRole('heading', { name: 'At Risk — Next 7 Days' })).toBeVisible();
+    await expect(page.getByText('Nadia Nearing')).toBeVisible();
   });
 });

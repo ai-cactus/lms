@@ -2,15 +2,19 @@
 
 import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { BILLING_PLANS, BillingCycle, canSelectPlan } from '@/lib/billing-plans';
+import type { PlanPriceMap } from '@/lib/billing-prices';
+import type { PlanChangeClassification } from '@/lib/billing-plan-change';
+import { getPlanCardPrice, getDiscountPercent, formatCents } from '@/lib/billing-price-format';
+import { Star, Check, Play, AlertTriangle, CalendarClock } from 'lucide-react';
 import {
-  BILLING_PLANS,
-  BillingCycle,
-  CYCLE_DISCOUNTS,
-  getEffectiveMonthlyPrice,
-  canSelectPlan,
-} from '@/lib/billing-plans';
-import { Star, Check, Play, AlertTriangle } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { HCaptcha } from '@/components/ui';
@@ -22,12 +26,28 @@ type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 interface Props {
   orgStaffCount: number;
   currentPlan: string | null;
+  /** Live Stripe-derived plan prices, keyed by plan and cycle. */
+  planPrices: PlanPriceMap;
+  /** Whether selecting a plan swaps the live Stripe subscription in place. */
+  hasLiveSubscription?: boolean;
   pausedAt?: string | null;
   pauseEndsAt?: string | null;
   cancelAtPeriodEnd?: boolean;
   billingCycle?: string | null;
   currentPeriodEnd?: string | null;
+  /** Display name of the plan a pending scheduled change moves to, or null. */
+  scheduledPlanName?: string | null;
+  /** ISO timestamp when a pending scheduled change takes effect, or null. */
+  scheduledEffectiveAt?: string | null;
   onChangeTab: (tab: Tab) => void;
+  /** Called after a successful billing mutation so sibling tabs can refetch. */
+  onMutated?: () => void;
+}
+
+const BILLING_CYCLES: readonly BillingCycle[] = ['monthly', 'quarterly', 'yearly'];
+
+function isBillingCycle(value: string | null | undefined): value is BillingCycle {
+  return value != null && (BILLING_CYCLES as readonly string[]).includes(value);
 }
 
 function formatLongDate(iso: string): string {
@@ -185,12 +205,17 @@ function validateForm(
 export default function SubscriptionTab({
   orgStaffCount,
   currentPlan,
+  planPrices,
+  hasLiveSubscription = false,
   pausedAt = null,
   pauseEndsAt = null,
   cancelAtPeriodEnd = false,
   billingCycle = null,
   currentPeriodEnd = null,
+  scheduledPlanName = null,
+  scheduledEffectiveAt = null,
   onChangeTab,
+  onMutated,
 }: Props) {
   const router = useRouter();
   const pauseState = getPauseState({ status: null, pausedAt, pauseEndsAt });
@@ -200,9 +225,27 @@ export default function SubscriptionTab({
   const billingCycleLabel = billingCycle
     ? billingCycle.charAt(0).toUpperCase() + billingCycle.slice(1)
     : null;
-  const [cycle, setCycle] = useState<BillingCycle>('yearly');
+  // Seed the cycle from the current subscription when one exists, so the plan
+  // grid reflects what the org is actually billed on; default to yearly for new
+  // subscribers.
+  const [cycle, setCycle] = useState<BillingCycle>(
+    currentPlan && isBillingCycle(billingCycle) ? billingCycle : 'yearly',
+  );
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+  const [pendingSwap, setPendingSwap] = useState<{
+    planKey: string;
+    fromPlanName: string;
+    toPlanName: string;
+    cycle: BillingCycle;
+    classification: PlanChangeClassification;
+    effectiveAt: string | null;
+    amountDueCents: number | null;
+    currency: string | null;
+  } | null>(null);
+  const [cancelingSchedule, setCancelingSchedule] = useState(false);
+  const [cancelScheduleError, setCancelScheduleError] = useState<string | null>(null);
 
   const [enterpriseModal, setEnterpriseModal] = useState<EnterpriseModalState>({
     ...EMPTY_FORM,
@@ -245,11 +288,17 @@ export default function SubscriptionTab({
           return;
         }
 
-        // Existing subscription was swapped in place (THER-001) — no redirect.
-        // Refresh so the new plan is reflected and send the admin to Overview.
-        if (data.updated) {
-          router.refresh();
+        // Existing subscription was swapped in place immediately (THER-001), or a
+        // change was scheduled for period end — either way there is no redirect.
+        // Send the admin to Overview and refresh the server tree so this tab's
+        // paused/plan/scheduled banners are fresh on return. `router.refresh()`
+        // MUST be deferred past the `router.replace('?tab=overview')` commit:
+        // issued synchronously it snapshots the pre-replace path and reasserts
+        // `?tab=subscription`, stranding the admin here (Next 16 App Router).
+        if (data.updated || data.scheduled) {
           onChangeTab('overview');
+          onMutated?.();
+          setTimeout(() => router.refresh(), 0);
         }
       } catch (err) {
         setCheckoutError(err instanceof Error ? err.message : 'Unexpected error');
@@ -257,8 +306,71 @@ export default function SubscriptionTab({
         setCheckoutLoading(null);
       }
     },
-    [checkoutLoading, cycle, router, onChangeTab],
+    [checkoutLoading, cycle, router, onChangeTab, onMutated],
   );
+
+  // Selecting a plan while a live subscription exists may schedule the change or
+  // charge a prorated difference now, so first ask the server to classify the
+  // change (and preview any immediate charge) and confirm before committing. New
+  // subscribers go straight to Checkout, which already gates the charge.
+  const handlePlanCardClick = useCallback(
+    async (plan: (typeof BILLING_PLANS)[number]) => {
+      if (!hasLiveSubscription) {
+        void handleSelectPlan(plan.key);
+        return;
+      }
+      if (previewLoading) return;
+      setPreviewLoading(plan.key);
+      setCheckoutError(null);
+      try {
+        const res = await fetch('/api/billing/subscription/preview-plan-change', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planKey: plan.key, billingCycle: cycle }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Failed to preview plan change');
+        setPendingSwap({
+          planKey: plan.key,
+          fromPlanName:
+            BILLING_PLANS.find((p) => p.key === currentPlan)?.name ?? 'your current plan',
+          toPlanName: plan.name,
+          cycle,
+          classification: data.classification as PlanChangeClassification,
+          effectiveAt: typeof data.effectiveAt === 'string' ? data.effectiveAt : null,
+          amountDueCents: typeof data.amountDueCents === 'number' ? data.amountDueCents : null,
+          currency: typeof data.currency === 'string' ? data.currency : null,
+        });
+      } catch (err) {
+        setCheckoutError(err instanceof Error ? err.message : 'Unexpected error');
+      } finally {
+        setPreviewLoading(null);
+      }
+    },
+    [hasLiveSubscription, previewLoading, currentPlan, cycle, handleSelectPlan],
+  );
+
+  // ── Cancel a pending scheduled plan change ─────────────────────────────────
+
+  const handleCancelScheduledChange = useCallback(async () => {
+    setCancelingSchedule(true);
+    setCancelScheduleError(null);
+    try {
+      const res = await fetch('/api/billing/subscription/cancel-scheduled-change', {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to cancel scheduled change');
+      // Navigate, then defer the refresh past the commit — see handleSelectPlan.
+      onChangeTab('overview');
+      onMutated?.();
+      setTimeout(() => router.refresh(), 0);
+    } catch (err) {
+      setCancelScheduleError(err instanceof Error ? err.message : 'Unexpected error');
+    } finally {
+      setCancelingSchedule(false);
+    }
+  }, [onChangeTab, onMutated, router]);
 
   // ── Enterprise form field helper ───────────────────────────────────────────
 
@@ -267,7 +379,6 @@ export default function SubscriptionTab({
       setEnterpriseModal((s) => ({
         ...s,
         [key]: value,
-        // Clear field error on change
         fieldErrors: { ...s.fieldErrors, [key]: undefined },
       }));
     },
@@ -280,7 +391,6 @@ export default function SubscriptionTab({
     async (e: React.FormEvent) => {
       e.preventDefault();
 
-      // Client-side validation
       const errors = validateForm(enterpriseModal);
       if (Object.keys(errors).length > 0) {
         setEnterpriseModal((s) => ({ ...s, fieldErrors: errors }));
@@ -345,14 +455,16 @@ export default function SubscriptionTab({
       const res = await fetch('/api/billing/subscription/resume', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to resume subscription');
-      router.refresh();
+      // Navigate, then defer the refresh past the commit — see handleSelectPlan.
       onChangeTab('overview');
+      onMutated?.();
+      setTimeout(() => router.refresh(), 0);
     } catch (err) {
       setResumeError(err instanceof Error ? err.message : 'Unexpected error');
     } finally {
       setResuming(false);
     }
-  }, [onChangeTab, router]);
+  }, [onChangeTab, onMutated, router]);
 
   // ── Reactivate subscription (clear scheduled cancellation) ─────────────────
 
@@ -363,22 +475,24 @@ export default function SubscriptionTab({
       const res = await fetch('/api/billing/subscription/reactivate', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to reactivate subscription');
-      router.refresh();
+      // Navigate, then defer the refresh past the commit — see handleSelectPlan.
       onChangeTab('overview');
+      onMutated?.();
+      setTimeout(() => router.refresh(), 0);
     } catch (err) {
       setReactivateError(err instanceof Error ? err.message : 'Unexpected error');
     } finally {
       setReactivating(false);
     }
-  }, [onChangeTab, router]);
+  }, [onChangeTab, onMutated, router]);
 
   // ── Billing cycle labels ───────────────────────────────────────────────────
 
-  const cycles: BillingCycle[] = ['monthly', 'quarterly', 'yearly'];
+  const cycles = BILLING_CYCLES;
   const cycleLabels: Record<BillingCycle, string> = {
     monthly: 'Monthly',
-    quarterly: 'Quarterly (-10%)',
-    yearly: 'Yearly (-25%)',
+    quarterly: 'Quarterly',
+    yearly: 'Yearly',
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -398,7 +512,6 @@ export default function SubscriptionTab({
         </div>
       )}
 
-      {/* Billing cycle toggle */}
       <div
         className="mb-8 inline-flex max-w-full gap-0 overflow-x-auto rounded-lg bg-muted p-1"
         role="group"
@@ -418,12 +531,14 @@ export default function SubscriptionTab({
         ))}
       </div>
 
-      {/* Plan cards */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(270px,1fr))]">
         {BILLING_PLANS.map((plan) => {
           const allowed = canSelectPlan(plan, orgStaffCount);
-          const effectivePrice = getEffectiveMonthlyPrice(plan, cycle);
-          const discount = CYCLE_DISCOUNTS[cycle];
+          const cyclePrice = getPlanCardPrice(planPrices[plan.key][cycle]);
+          const discountPct = getDiscountPercent(
+            planPrices[plan.key].monthly,
+            planPrices[plan.key][cycle],
+          );
           const isCurrent = currentPlan === plan.key;
           const isDisabled = !allowed && !plan.isEnterprise;
 
@@ -452,13 +567,22 @@ export default function SubscriptionTab({
               <div className="mb-5 flex items-baseline gap-1">
                 {plan.isEnterprise ? (
                   <span className="text-[32px] font-extrabold text-foreground">Custom</span>
+                ) : cyclePrice === null ? (
+                  <span className="text-lg font-semibold text-text-tertiary">
+                    Price unavailable
+                  </span>
                 ) : (
                   <>
                     <span className="text-[38px] font-extrabold text-foreground">
-                      ${effectivePrice}
+                      ${cyclePrice}
                     </span>
                     <span className="text-sm text-text-secondary">
-                      /mo{discount > 0 ? ` (billed ${cycle})` : ''}
+                      /mo
+                      {cycle !== 'monthly'
+                        ? ` (billed ${cycle}${
+                            discountPct !== null && discountPct > 0 ? ` — save ${discountPct}%` : ''
+                          })`
+                        : ''}
                     </span>
                   </>
                 )}
@@ -491,14 +615,23 @@ export default function SubscriptionTab({
                         ? 'cursor-default bg-[#cbd5e1] text-white'
                         : 'cursor-pointer border-[1.5px] border-primary bg-background text-primary hover:bg-primary/10',
                     )}
-                    disabled={isCurrent || !allowed || checkoutLoading === plan.key}
-                    onClick={() => void handleSelectPlan(plan.key)}
+                    disabled={
+                      isCurrent ||
+                      !allowed ||
+                      checkoutLoading === plan.key ||
+                      previewLoading === plan.key
+                    }
+                    onClick={() => void handlePlanCardClick(plan)}
                   >
                     {checkoutLoading === plan.key
-                      ? 'Redirecting...'
-                      : isCurrent
-                        ? 'Current Plan'
-                        : 'Subscribe'}
+                      ? hasLiveSubscription
+                        ? 'Updating plan...'
+                        : 'Redirecting...'
+                      : previewLoading === plan.key
+                        ? 'Loading...'
+                        : isCurrent
+                          ? 'Current Plan'
+                          : 'Subscribe'}
                   </button>
                 </>
               )}
@@ -521,6 +654,37 @@ export default function SubscriptionTab({
           );
         })}
       </div>
+
+      {scheduledPlanName && scheduledEffectiveAt && (
+        <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Plan change scheduled</h3>
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-[13px] text-primary">
+                <CalendarClock size={18} aria-hidden="true" />
+                Changing to {scheduledPlanName} on {formatLongDate(scheduledEffectiveAt)}
+              </div>
+              <p className="mt-3 text-sm text-text-secondary">
+                Your current plan stays active until then — no charge today. Cancel the scheduled
+                change to keep your current plan.
+              </p>
+              {cancelScheduleError && (
+                <p className="mt-2 text-[13px] text-error" role="alert">
+                  {cancelScheduleError}
+                </p>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              loading={cancelingSchedule}
+              disabled={cancelingSchedule}
+              onClick={() => void handleCancelScheduledChange()}
+            >
+              Cancel scheduled change
+            </Button>
+          </div>
+        </div>
+      )}
 
       {currentPlan && isPaused && (
         <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
@@ -639,6 +803,57 @@ export default function SubscriptionTab({
         </>
       )}
 
+      {/* ===== Plan-change confirmation ===== */}
+      <Dialog
+        open={pendingSwap !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingSwap(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>Confirm your plan change</DialogTitle>
+            <DialogDescription>
+              {pendingSwap?.classification === 'scheduled' && (
+                <>
+                  Your current {pendingSwap.fromPlanName} plan runs until{' '}
+                  {pendingSwap.effectiveAt
+                    ? formatLongDate(pendingSwap.effectiveAt)
+                    : 'the end of your billing period'}
+                  . Your new {pendingSwap.toPlanName} plan starts then — no charge today.
+                </>
+              )}
+              {pendingSwap?.classification === 'immediate_prorate' && (
+                <>
+                  You&apos;ll be charged the prorated difference
+                  {pendingSwap.amountDueCents !== null && pendingSwap.currency
+                    ? ` (~${formatCents(pendingSwap.amountDueCents, pendingSwap.currency)})`
+                    : ''}{' '}
+                  now, and your upgrade to {pendingSwap.toPlanName} takes effect immediately.
+                </>
+              )}
+              {pendingSwap?.classification === 'no_op' && (
+                <>You&apos;re already on the {pendingSwap.toPlanName} plan.</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingSwap(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const swap = pendingSwap;
+                setPendingSwap(null);
+                if (swap) void handleSelectPlan(swap.planKey);
+              }}
+            >
+              {pendingSwap?.classification === 'scheduled' ? 'Schedule change' : 'Confirm change'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ===== Enterprise Contact Modal ===== */}
       <Dialog
         open={enterpriseModal.open}
@@ -669,7 +884,6 @@ export default function SubscriptionTab({
               noValidate
               className="flex flex-col"
             >
-              {/* Header */}
               <DialogHeader className="mb-6">
                 <DialogTitle>Contact Sales</DialogTitle>
                 <p className="text-sm text-text-secondary">
@@ -683,7 +897,6 @@ export default function SubscriptionTab({
                 </Alert>
               )}
 
-              {/* Row: First Name + Last Name */}
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <div className="mb-4">
                   <label htmlFor="ent-first-name" className={labelClass}>
@@ -735,7 +948,6 @@ export default function SubscriptionTab({
                 </div>
               </div>
 
-              {/* Work Email */}
               <div className="mb-4">
                 <label htmlFor="ent-email" className={labelClass}>
                   Work Email <span className={requiredMarkClass}>*</span>
@@ -761,7 +973,6 @@ export default function SubscriptionTab({
                 )}
               </div>
 
-              {/* Row: Job Title + Organization Name */}
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <div className="mb-4">
                   <label htmlFor="ent-job-title" className={labelClass}>
@@ -813,7 +1024,6 @@ export default function SubscriptionTab({
                 </div>
               </div>
 
-              {/* Facility Type */}
               <div className="mb-4">
                 <label htmlFor="ent-facility-type" className={labelClass}>
                   Facility Type <span className={requiredMarkClass}>*</span>
@@ -872,7 +1082,6 @@ export default function SubscriptionTab({
                 </div>
               )}
 
-              {/* Row: Number of Facilities + Number of Staff */}
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <div className="mb-4">
                   <label htmlFor="ent-num-facilities" className={labelClass}>
@@ -928,7 +1137,6 @@ export default function SubscriptionTab({
                 </div>
               </div>
 
-              {/* Current Accreditation */}
               <div className="mb-4">
                 <label htmlFor="ent-accreditation" className={labelClass}>
                   Current Accreditation <span className={requiredMarkClass}>*</span>
@@ -958,7 +1166,6 @@ export default function SubscriptionTab({
                 )}
               </div>
 
-              {/* Current Training Method */}
               <div className="mb-4">
                 <label htmlFor="ent-training-method" className={labelClass}>
                   Current Training Method <span className={requiredMarkClass}>*</span>
@@ -988,7 +1195,6 @@ export default function SubscriptionTab({
                 )}
               </div>
 
-              {/* Primary Pain Point */}
               <div className="mb-4">
                 <label htmlFor="ent-pain-point" className={labelClass}>
                   Primary Pain Point <span className={requiredMarkClass}>*</span>
@@ -1016,7 +1222,6 @@ export default function SubscriptionTab({
                 )}
               </div>
 
-              {/* Terms and Conditions Disclaimer */}
               <p className="mb-6 mt-3 text-xs leading-relaxed text-text-secondary">
                 By clicking &quot;Request a demo&quot;, you agree to Theraptly&apos;s{' '}
                 <a
@@ -1044,7 +1249,6 @@ export default function SubscriptionTab({
                 onExpire={() => setEnterpriseCaptchaToken(undefined)}
               />
 
-              {/* Actions */}
               <div className="flex flex-col gap-2.5">
                 <Button
                   type="submit"

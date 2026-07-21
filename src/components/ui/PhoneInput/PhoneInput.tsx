@@ -4,7 +4,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Country data with flags, dial codes
 const countries = [
   { code: 'US', name: 'United States', dialCode: '+1', flag: '🇺🇸', expectedLength: 10 },
   { code: 'GB', name: 'United Kingdom', dialCode: '+44', flag: '🇬🇧', expectedLength: 10 },
@@ -96,6 +95,7 @@ interface PhoneInputProps {
   defaultCountry?: string;
   /** Restrict the country selector to only these country codes (e.g. ['US']). */
   allowedCountries?: string[];
+  disabled?: boolean;
 }
 
 export default function PhoneInput({
@@ -105,8 +105,8 @@ export default function PhoneInput({
   error,
   defaultCountry = 'US',
   allowedCountries,
+  disabled = false,
 }: PhoneInputProps) {
-  // Base list – optionally filtered to a subset
   const visibleCountries = allowedCountries
     ? countries.filter((c) => allowedCountries.includes(c.code))
     : countries;
@@ -128,7 +128,6 @@ export default function PhoneInput({
   // When only one country is allowed, keep the dropdown closed
   const isSingleCountry = visibleCountries.length <= 1;
 
-  // Filter countries based on search
   const filteredCountries = visibleCountries.filter(
     (country) =>
       country.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -136,7 +135,6 @@ export default function PhoneInput({
       country.code.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -149,7 +147,6 @@ export default function PhoneInput({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Focus search input when dropdown opens
   useEffect(() => {
     if (isOpen && searchInputRef.current) {
       searchInputRef.current.focus();
@@ -160,7 +157,6 @@ export default function PhoneInput({
     setSelectedCountry(country);
     setIsOpen(false);
     setSearch('');
-    // Update the full phone value
     if (onChange) {
       onChange(`${country.dialCode} ${phoneNumber}`);
     }
@@ -238,14 +234,14 @@ export default function PhoneInput({
           'flex h-14 w-full items-center rounded-[10px] border bg-background transition-colors',
           'focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50',
           error ? 'border-destructive focus-within:ring-destructive/20' : 'border-input',
+          disabled && 'pointer-events-none bg-secondary opacity-60',
         )}
       >
-        {/* Country Selector */}
         <button
           type="button"
           className="flex h-full items-center gap-1.5 rounded-l-[10px] px-3 text-text-secondary transition-colors hover:bg-background-secondary disabled:cursor-default disabled:hover:bg-transparent"
           onClick={() => !isSingleCountry && setIsOpen(!isOpen)}
-          disabled={isSingleCountry}
+          disabled={isSingleCountry || disabled}
         >
           <span className="text-xl leading-none">{selectedCountry.flag}</span>
           <ChevronDown
@@ -254,13 +250,13 @@ export default function PhoneInput({
           />
         </button>
 
-        {/* Divider */}
         <div className="h-6 w-px bg-border" />
 
         <input
           type="tel"
           className="h-full flex-1 border-none bg-transparent px-4 text-base text-foreground outline-none placeholder:text-muted-foreground"
           value={phoneNumber}
+          disabled={disabled}
           onChange={handlePhoneChange}
           onFocus={() => {
             if (selectedCountry.code === 'US' && (!phoneNumber || phoneNumber === '+1')) {
@@ -273,10 +269,8 @@ export default function PhoneInput({
         />
       </div>
 
-      {/* Dropdown */}
       {isOpen && (
         <div className="absolute left-0 top-[calc(100%+4px)] z-[1000] max-h-[360px] w-80 max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-border bg-background shadow-lg">
-          {/* Search Input */}
           <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
             <Search className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
             <input
@@ -289,7 +283,6 @@ export default function PhoneInput({
             />
           </div>
 
-          {/* Country List */}
           <div className="max-h-[280px] overflow-y-auto py-2">
             {filteredCountries.map((country) => (
               <button
@@ -315,7 +308,6 @@ export default function PhoneInput({
         </div>
       )}
 
-      {/* Error Message */}
       {error && <span className="mt-1.5 block text-[13px] text-error">{error}</span>}
     </div>
   );

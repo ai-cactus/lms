@@ -417,6 +417,8 @@ export const ModelName = {
   NotificationPreference: 'NotificationPreference',
   OrgCourseOffering: 'OrgCourseOffering',
   Organization: 'Organization',
+  Facility: 'Facility',
+  FacilityDocument: 'FacilityDocument',
   Subscription: 'Subscription',
   Invoice: 'Invoice',
   ProcessedWebhookEvent: 'ProcessedWebhookEvent',
@@ -438,7 +440,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "auditorPack" | "auditLog" | "user" | "profile" | "invite" | "verificationToken" | "mfaFactor" | "mfaRecoveryCode" | "courseCategory" | "standardManual" | "manualChunk" | "manualChunkCategory" | "course" | "courseModule" | "lesson" | "courseArtifact" | "courseVersion" | "courseAssignment" | "assignmentReminderStage" | "document" | "documentVersion" | "phiReport" | "mappingEvidence" | "emailMessage" | "enrollment" | "certificate" | "reminderLog" | "reminderNudge" | "job" | "notification" | "notificationPreference" | "orgCourseOffering" | "organization" | "subscription" | "invoice" | "processedWebhookEvent" | "quiz" | "question" | "quizAttempt"
+    modelProps: "auditorPack" | "auditLog" | "user" | "profile" | "invite" | "verificationToken" | "mfaFactor" | "mfaRecoveryCode" | "courseCategory" | "standardManual" | "manualChunk" | "manualChunkCategory" | "course" | "courseModule" | "lesson" | "courseArtifact" | "courseVersion" | "courseAssignment" | "assignmentReminderStage" | "document" | "documentVersion" | "phiReport" | "mappingEvidence" | "emailMessage" | "enrollment" | "certificate" | "reminderLog" | "reminderNudge" | "job" | "notification" | "notificationPreference" | "orgCourseOffering" | "organization" | "facility" | "facilityDocument" | "subscription" | "invoice" | "processedWebhookEvent" | "quiz" | "question" | "quizAttempt"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -2884,6 +2886,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    Facility: {
+      payload: Prisma.$FacilityPayload<ExtArgs>
+      fields: Prisma.FacilityFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.FacilityFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.FacilityFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload>
+        }
+        findFirst: {
+          args: Prisma.FacilityFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.FacilityFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload>
+        }
+        findMany: {
+          args: Prisma.FacilityFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload>[]
+        }
+        create: {
+          args: Prisma.FacilityCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload>
+        }
+        createMany: {
+          args: Prisma.FacilityCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.FacilityCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload>[]
+        }
+        delete: {
+          args: Prisma.FacilityDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload>
+        }
+        update: {
+          args: Prisma.FacilityUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload>
+        }
+        deleteMany: {
+          args: Prisma.FacilityDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.FacilityUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.FacilityUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload>[]
+        }
+        upsert: {
+          args: Prisma.FacilityUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityPayload>
+        }
+        aggregate: {
+          args: Prisma.FacilityAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateFacility>
+        }
+        groupBy: {
+          args: Prisma.FacilityGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FacilityGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.FacilityCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FacilityCountAggregateOutputType> | number
+        }
+      }
+    }
+    FacilityDocument: {
+      payload: Prisma.$FacilityDocumentPayload<ExtArgs>
+      fields: Prisma.FacilityDocumentFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.FacilityDocumentFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.FacilityDocumentFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        findFirst: {
+          args: Prisma.FacilityDocumentFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.FacilityDocumentFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        findMany: {
+          args: Prisma.FacilityDocumentFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>[]
+        }
+        create: {
+          args: Prisma.FacilityDocumentCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        createMany: {
+          args: Prisma.FacilityDocumentCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.FacilityDocumentCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>[]
+        }
+        delete: {
+          args: Prisma.FacilityDocumentDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        update: {
+          args: Prisma.FacilityDocumentUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        deleteMany: {
+          args: Prisma.FacilityDocumentDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.FacilityDocumentUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.FacilityDocumentUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>[]
+        }
+        upsert: {
+          args: Prisma.FacilityDocumentUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FacilityDocumentPayload>
+        }
+        aggregate: {
+          args: Prisma.FacilityDocumentAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateFacilityDocument>
+        }
+        groupBy: {
+          args: Prisma.FacilityDocumentGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FacilityDocumentGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.FacilityDocumentCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FacilityDocumentCountAggregateOutputType> | number
+        }
+      }
+    }
     Subscription: {
       payload: Prisma.$SubscriptionPayload<ExtArgs>
       fields: Prisma.SubscriptionFieldRefs
@@ -3401,12 +3551,15 @@ export const UserScalarFieldEnum = {
   password: 'password',
   passwordResetRequired: 'passwordResetRequired',
   organizationId: 'organizationId',
+  facilityId: 'facilityId',
   authProvider: 'authProvider',
   role: 'role',
   emailVerified: 'emailVerified',
   mfaEnabled: 'mfaEnabled',
   mfaVerifiedAt: 'mfaVerifiedAt',
   sessionVersion: 'sessionVersion',
+  roleAssignedAt: 'roleAssignedAt',
+  lastLoginAt: 'lastLoginAt',
   managerId: 'managerId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -3632,6 +3785,7 @@ export const CourseAssignmentScalarFieldEnum = {
   organizationId: 'organizationId',
   courseId: 'courseId',
   assignedByAdminId: 'assignedByAdminId',
+  targetRole: 'targetRole',
   scheduleAt: 'scheduleAt',
   dueAt: 'dueAt',
   dueWindowDays: 'dueWindowDays',
@@ -3743,6 +3897,7 @@ export const EnrollmentScalarFieldEnum = {
   lockedAt: 'lockedAt',
   retakeOf: 'retakeOf',
   retakeReason: 'retakeReason',
+  renewedFrom: 'renewedFrom',
   assignmentId: 'assignmentId',
   accessAt: 'accessAt',
   dueAt: 'dueAt'
@@ -3850,26 +4005,38 @@ export const OrganizationScalarFieldEnum = {
   slug: 'slug',
   dba: 'dba',
   ein: 'ein',
-  staffCount: 'staffCount',
   primaryContact: 'primaryContact',
   primaryEmail: 'primaryEmail',
-  phone: 'phone',
-  address: 'address',
-  city: 'city',
-  country: 'country',
-  state: 'state',
-  zipCode: 'zipCode',
-  licenseNumber: 'licenseNumber',
   isHipaaCompliant: 'isHipaaCompliant',
   hasAuditorAccess: 'hasAuditorAccess',
   primaryBusinessType: 'primaryBusinessType',
   additionalBusinessTypes: 'additionalBusinessTypes',
-  programServices: 'programServices',
   joinCode: 'joinCode',
   joinCodeExpiresAt: 'joinCodeExpiresAt',
   stripeCustomerId: 'stripeCustomerId',
   inactivityTimeoutMinutes: 'inactivityTimeoutMinutes',
   requireMfa: 'requireMfa',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type OrganizationScalarFieldEnum = (typeof OrganizationScalarFieldEnum)[keyof typeof OrganizationScalarFieldEnum]
+
+
+export const FacilityScalarFieldEnum = {
+  id: 'id',
+  organizationId: 'organizationId',
+  name: 'name',
+  type: 'type',
+  address: 'address',
+  city: 'city',
+  state: 'state',
+  country: 'country',
+  zipCode: 'zipCode',
+  phone: 'phone',
+  licenseNumber: 'licenseNumber',
+  staffCount: 'staffCount',
+  programServices: 'programServices',
   complianceDocumentUrl: 'complianceDocumentUrl',
   complianceDocumentName: 'complianceDocumentName',
   timezone: 'timezone',
@@ -3877,7 +4044,21 @@ export const OrganizationScalarFieldEnum = {
   updatedAt: 'updatedAt'
 } as const
 
-export type OrganizationScalarFieldEnum = (typeof OrganizationScalarFieldEnum)[keyof typeof OrganizationScalarFieldEnum]
+export type FacilityScalarFieldEnum = (typeof FacilityScalarFieldEnum)[keyof typeof FacilityScalarFieldEnum]
+
+
+export const FacilityDocumentScalarFieldEnum = {
+  id: 'id',
+  facilityId: 'facilityId',
+  url: 'url',
+  name: 'name',
+  sizeBytes: 'sizeBytes',
+  mimeType: 'mimeType',
+  uploadedById: 'uploadedById',
+  createdAt: 'createdAt'
+} as const
+
+export type FacilityDocumentScalarFieldEnum = (typeof FacilityDocumentScalarFieldEnum)[keyof typeof FacilityDocumentScalarFieldEnum]
 
 
 export const SubscriptionScalarFieldEnum = {
@@ -3893,6 +4074,11 @@ export const SubscriptionScalarFieldEnum = {
   cancelAtPeriodEnd: 'cancelAtPeriodEnd',
   pausedAt: 'pausedAt',
   pauseEndsAt: 'pauseEndsAt',
+  scheduledPlan: 'scheduledPlan',
+  scheduledBillingCycle: 'scheduledBillingCycle',
+  scheduledPriceId: 'scheduledPriceId',
+  scheduledEffectiveAt: 'scheduledEffectiveAt',
+  stripeScheduleId: 'stripeScheduleId',
   discountPromoCode: 'discountPromoCode',
   discountCouponName: 'discountCouponName',
   discountPercentOff: 'discountPercentOff',
@@ -4449,6 +4635,8 @@ export type GlobalOmitConfig = {
   notificationPreference?: Prisma.NotificationPreferenceOmit
   orgCourseOffering?: Prisma.OrgCourseOfferingOmit
   organization?: Prisma.OrganizationOmit
+  facility?: Prisma.FacilityOmit
+  facilityDocument?: Prisma.FacilityDocumentOmit
   subscription?: Prisma.SubscriptionOmit
   invoice?: Prisma.InvoiceOmit
   processedWebhookEvent?: Prisma.ProcessedWebhookEventOmit

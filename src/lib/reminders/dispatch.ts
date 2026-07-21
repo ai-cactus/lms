@@ -16,10 +16,6 @@ import { diffInDaysInTz } from './time';
  * non-throwing `createNotification`).
  */
 
-/* -------------------------------------------------------------------------- */
-/* Email seam (Phase 4 wires real templates)                                  */
-/* -------------------------------------------------------------------------- */
-
 /**
  * A single reminder email to send. Carries enough context for Phase 4 to pick
  * the right Nodemailer template (`src/lib/email.ts`) without this module taking
@@ -212,10 +208,6 @@ export async function retryReminderEmail(input: ReminderEmailRetryInput): Promis
   return delivery.ok;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Result + copy helpers                                                      */
-/* -------------------------------------------------------------------------- */
-
 export type DispatchReason = 'sent' | 'dry-run' | 'duplicate' | 'throttled' | 'error';
 
 export interface DispatchResult {
@@ -239,6 +231,11 @@ export function stageToNotificationType(stage: ReminderStage): string {
       return 'COURSE_OVERDUE';
     case 'HARD_ESCALATION':
       return 'COMPLIANCE_ESCALATION';
+    case 'ADMIN_PRE_DEADLINE_REMINDER':
+      // Escalation-audience only; this mapping is never consulted for the
+      // manager notification (which is hard-typed COMPLIANCE_ESCALATION below),
+      // but the pre-deadline framing keeps it accurate for exhaustiveness.
+      return 'COURSE_DEADLINE_REMINDER';
     case 'INITIAL_LAUNCH':
       // Not dispatched by the sweep; included for exhaustiveness.
       return 'COURSE_DEADLINE_REMINDER';
@@ -278,11 +275,44 @@ function workerStageCopy(
   }
 }
 
+/**
+ * Human-readable local due date (e.g. "January 5, 2026") for escalation copy.
+ * Returns null when there is no deadline. Guards against an invalid stored
+ * timezone (`Intl` throws `RangeError`) so copy formatting can never break a send.
+ */
+function formatDueLabel(dueAt: Date | null, timezone: string): string | null {
+  if (!dueAt) return null;
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(dueAt);
+  } catch {
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(dueAt);
+  }
+}
+
 function escalationStageCopy(
   stage: ReminderStage,
   courseTitle: string,
   workerName: string,
+  dueLabel: string | null,
 ): { title: string; message: string } {
+  if (stage === 'ADMIN_PRE_DEADLINE_REMINDER') {
+    // Pre-deadline heads-up — the deadline has NOT passed, so avoid overdue copy.
+    return {
+      title: 'Worker training deadline approaching',
+      message: `${workerName}'s training "${courseTitle}" deadline is approaching${
+        dueLabel ? ` (due ${dueLabel})` : ''
+      }.`,
+    };
+  }
   if (stage === 'HARD_ESCALATION') {
     return {
       title: 'Compliance escalation',
@@ -294,10 +324,6 @@ function escalationStageCopy(
     message: `${workerName}'s training "${courseTitle}" is overdue.`,
   };
 }
-
-/* -------------------------------------------------------------------------- */
-/* Track A — ladder stage dispatch                                            */
-/* -------------------------------------------------------------------------- */
 
 export interface LadderStageInput {
   enrollment: { id: string; userId: string; courseId: string };
@@ -364,7 +390,6 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
 
     const metadata = { enrollmentId: enrollment.id, courseId: enrollment.courseId, stage };
 
-    // Worker-facing notification: 'worker' and 'worker_and_escalation' stages.
     if (audience === 'worker' || audience === 'worker_and_escalation') {
       const copy = workerStageCopy(stage, courseTitle);
       if (wantsInApp) {
@@ -396,11 +421,15 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
       }
     }
 
-    // Escalation notification: 'escalation' and 'worker_and_escalation' stages.
     if (audience === 'escalation' || audience === 'worker_and_escalation') {
       const recipients = await resolveEscalationRecipients({ userId: enrollment.userId });
       const workerName = worker.name ?? worker.email;
-      const copy = escalationStageCopy(stage, courseTitle, workerName);
+      const copy = escalationStageCopy(
+        stage,
+        courseTitle,
+        workerName,
+        formatDueLabel(dueAt, timezone),
+      );
 
       if (wantsInApp) {
         for (const userId of recipients.userIds) {
@@ -452,10 +481,6 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
     return { sent: false, reason: 'error' };
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* Track B — recurring nudge dispatch                                         */
-/* -------------------------------------------------------------------------- */
 
 export interface NudgeInput {
   kind: ReminderNudgeKind;

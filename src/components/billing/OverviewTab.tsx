@@ -134,6 +134,8 @@ function getActiveDiscountLabel(sub: Subscription): string | null {
 
 interface Props {
   onChangeTab: (tab: Tab) => void;
+  /** Bumped by a sibling tab's mutation to force a refetch of overview data. */
+  refreshKey?: number;
 }
 
 const cardClass = 'rounded-xl border border-border bg-background p-6';
@@ -141,7 +143,7 @@ const cardTitleClass = 'text-[11px] font-bold uppercase tracking-[0.6px] text-pr
 const planLinkClass =
   'inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-primary hover:underline';
 
-export default function OverviewTab({ onChangeTab }: Props) {
+export default function OverviewTab({ onChangeTab, refreshKey }: Props) {
   const router = useRouter();
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -169,7 +171,7 @@ export default function OverviewTab({ onChangeTab }: Props) {
 
   useEffect(() => {
     void fetchOverview();
-  }, [fetchOverview]);
+  }, [fetchOverview, refreshKey]);
 
   const handleResume = useCallback(async () => {
     setResuming(true);
@@ -219,7 +221,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-      {/* Current Plan */}
       <div className={cardClass}>
         <div className="mb-4 flex items-center justify-between">
           <p className={cardTitleClass}>Current Plan</p>
@@ -351,7 +352,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
         )}
       </div>
 
-      {/* Staff Usage */}
       <div className={cardClass}>
         <div className="mb-4 flex items-center justify-between">
           <p className={cardTitleClass}>Staff Usage</p>
@@ -382,7 +382,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
         )}
       </div>
 
-      {/* Payment Method */}
       <div className={cardClass}>
         <div className="mb-4 flex items-center justify-between">
           <p className={cn(cardTitleClass, 'text-text-tertiary')}>Payment Method</p>
@@ -439,7 +438,6 @@ export default function OverviewTab({ onChangeTab }: Props) {
         )}
       </div>
 
-      {/* Recent Invoices */}
       <div className={cardClass}>
         <div className="mb-4 flex items-center justify-between">
           <p className={cn(cardTitleClass, 'text-text-tertiary')}>Recent Invoices</p>

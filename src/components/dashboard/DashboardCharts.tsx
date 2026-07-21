@@ -56,13 +56,8 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
   // But we want to ensure we don't pass empty array if something is weird.
   const activeDonutData = donutData.filter((d) => d.value > 0);
 
-  // Helper to check if we have any data
   const hasData = activeDonutData.length > 0;
 
-  // Placeholder for chartData, maxVal, ticks as they are not defined in the original snippet
-  // and seem to belong to a different chart type (bar chart) not fully provided.
-  // For the purpose of making the provided snippet syntactically correct,
-  // we'll define minimal versions if they are used in the provided edit.
   const chartData = coursePerformance.map((cp) => ({
     name: cp.name,
     passCount: cp.passCount,
@@ -73,7 +68,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-      {/* Performance Chart */}
       <div
         className="flex min-h-[400px] flex-col rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm flex-1"
         style={{ minHeight: '440px' }}
@@ -82,8 +76,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
           <h3 className="text-lg font-semibold text-[#1a202c]">Performance of Learners</h3>
         </div>
 
-        {/* Legend */}
-        {/* ... (Performance Chart Content) ... */}
         <div className="flex gap-6 mb-6 pb-4 border-b border-[#EDF2F7] mt-4">
           <div className="flex items-center gap-2">
             <div
@@ -110,8 +102,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
         </div>
 
         <div className="relative mt-2.5" style={{ height: 300 }}>
-          {/* ... (Performance Chart Bars/Axis) ... */}
-          {/* Y-Axis */}
           <div
             style={{
               position: 'absolute',
@@ -132,7 +122,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             ))}
           </div>
 
-          {/* Grid Lines */}
           <div
             style={{
               position: 'absolute',
@@ -151,7 +140,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             ))}
           </div>
 
-          {/* Bars Container */}
           <div
             style={{
               position: 'absolute',
@@ -166,7 +154,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             }}
           >
             {chartData.map((item, idx) => {
-              // Calculate heights relative to maxVal
               const passHeight = maxVal > 0 ? ((item.passCount || 0) / maxVal) * 100 : 0;
               const failHeight = maxVal > 0 ? ((item.failCount || 0) / maxVal) * 100 : 0;
 
@@ -187,7 +174,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                   onMouseEnter={() => setHoveredIndex(idx)}
                   onMouseLeave={() => setHoveredIndex(null)}
                 >
-                  {/* Pass Bar */}
                   <div
                     style={{
                       flex: '1',
@@ -227,7 +213,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                     </div>
                   </div>
 
-                  {/* Fail Bar */}
                   <div
                     style={{
                       flex: '1',
@@ -271,7 +256,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             })}
           </div>
 
-          {/* X-Axis Labels */}
           <div
             style={{
               position: 'absolute',
@@ -309,7 +293,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
         </div>
       </div>
 
-      {/* Coverage Donut Chart */}
       <div className="flex min-h-[400px] flex-col rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm flex flex-col">
         <div className="mb-6 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-[#1a202c]">Training Coverage</h3>
@@ -363,7 +346,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
         </div>
 
         <div className="flex flex-col gap-3 mt-auto pt-4">
-          {/* Item 1 */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div
@@ -375,7 +357,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             <div className="font-semibold text-[#1a202c]">{trainingCoverage?.completed}%</div>
           </div>
 
-          {/* Item 2 */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div
@@ -387,7 +368,6 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             <div className="font-semibold text-[#1a202c]">{trainingCoverage?.inProgress}%</div>
           </div>
 
-          {/* Item 3 */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div

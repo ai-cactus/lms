@@ -1,4 +1,7 @@
 import React from 'react';
+import { isAdminRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import type { Role } from '@/types/next-auth';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
@@ -40,20 +43,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const fullName = profile?.fullName || session.user.name || session.user.email || 'User';
   // User role should be in session or fetched from User model if needed.
   // For now we rely on session.
-  // User role should be in session or fetched from User model if needed.
-  // For now we rely on session.
   const role = user?.role || session.user.role;
   const organizationId = user?.organizationId; // Fetch from DB for freshest data
 
   // Surface a site-wide banner to admins while billing is paused.
   const subscription = user?.organization?.subscription;
-  const pauseState = role === 'admin' ? getPauseState(subscription) : 'none';
+  const pauseState = isAdminRole(role) ? getPauseState(subscription) : 'none';
 
-  // Surface a site-wide status-tracker banner to admins when training is overdue
-  // by the hard-escalation threshold. Only queried for admins so non-admin loads
-  // are unaffected.
+  // Surface a site-wide status-tracker banner when training is overdue by the
+  // hard-escalation threshold. Gated on roster-wide assignment visibility so
+  // finance (an admin-tier role) never sees worker-training metrics; only queried
+  // for eligible roles so other loads are unaffected.
+  const canSeeStatusTracker = can(dbRoleToRoleKey(role as Role), 'assignment.read');
   const hardEscalationCount =
-    role === 'admin' && organizationId
+    canSeeStatusTracker && organizationId
       ? (await getStatusTrackerSummaryForOrg(organizationId)).hardEscalationCount
       : 0;
 
@@ -74,7 +77,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               }
             />
           )}
-          {role === 'admin' && (
+          {canSeeStatusTracker && (
             <StatusTrackerAlertBanner hardEscalationCount={hardEscalationCount} />
           )}
           {children}

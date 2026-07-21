@@ -107,6 +107,7 @@ logger.debug({ msg: '[module] Intermediate state', data: someValue });
 - Use `userId`, `orgId`, `courseId`, `enrollmentId`, `documentId` etc. as context fields.
 - Prefix `msg` values with the module in brackets: `[course]`, `[enrollment]`, `[doc]`, `[auth]`, `[org]`, `[v4.6]`, `[proxy]`.
 - **Naming**: Use descriptive names for components and utility functions.
+- **Comments**: Don't add unnecessary comments. Self-explanatory code needs none — comment the "why," never the "what." See Core Operating Rule #16 → _No Unnecessary Comments_.
 - **Enforced Hooks**: Pre-commit hooks via Husky/lint-staged (ESLint + Prettier).
 
 ## Commit & Pull Request Guidelines
@@ -278,6 +279,17 @@ For non-trivial logic:
 - Add concise inline comments explaining "why," not "what."
 - Update README or relevant docs when behavior changes.
 - Document environment variables.
+
+### No Unnecessary Comments
+
+Comments must earn their place. **Do not add comments that merely restate what the code already says** — self-explanatory functions, handlers, and variables need no comment. Prefer clear names over narration.
+
+- ❌ Redundant: `// Get current user's org ID` above `const orgId = ...`, `// Handle page change` above `handlePageChange`, `// Save to localStorage`, `// Loop through items`, `// Return the result`.
+- ✅ Worth keeping: a comment that explains **why** — rationale, a tradeoff, a security/tenancy constraint, a workaround, or a non-obvious edge case (e.g. `// Restrict to the caller's own organization — never return users from other tenants`).
+- Always keep functional pragmas (`// eslint-disable*`, `// @ts-expect-error`, `// prettier-ignore`), `TODO`/`FIXME`/`HACK`/`NOTE` with content, spec/issue references, and meaningful JSDoc on exported APIs.
+- Never leave commented-out dead code.
+
+This applies to every subagent: `code-ninja` when writing or refactoring, and any agent touching source — do not introduce narration comments, and remove redundant ones you encounter in code you're already editing.
 
 ## 17. Tooling Awareness
 

@@ -105,7 +105,6 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
         </div>
       </div>
 
-      {/* Preferences */}
       {showPrefs && (
         <div className="flex flex-col gap-3 rounded-2xl border border-[#edf2f7] bg-[#fafcff] p-5">
           <h2 className="m-0 text-sm font-semibold text-[#1a202c]">Notify me about</h2>
@@ -142,7 +141,6 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
         </div>
       )}
 
-      {/* Filter chips */}
       <div className="flex flex-wrap gap-2">
         <FilterChip active={typeFilter === null} onClick={() => setTypeFilter(null)}>
           All

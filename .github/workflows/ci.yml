@@ -235,10 +235,20 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # Real SMTP sink so email-dependent journeys (signup verification, invites)
+      # actually deliver — signup fails closed when the verification email can't
+      # be sent, so a dummy SMTP host makes the signup happy path untestable.
+      mailhog:
+        image: mailhog/mailhog:v1.0.1
+        ports:
+          - 1025:1025
+          - 8025:8025
 
     env:
-      # Playwright's webServer runs `npm run dev -- -p 3005`; these are read at
-      # runtime (dev mode), mirroring the Build job's dummy values. NOT secrets.
+      # Playwright's webServer serves the production build (`npm run start -- -p 3005`
+      # after the Build step below) — `next dev` route registration proved flaky in CI.
+      # These mirror the Build job's dummy values; NEXT_PUBLIC_* are inlined at build
+      # time, the rest are read at runtime. NOT secrets.
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lms_test?schema=public
       REDIS_URL: redis://localhost:6379
       NEXTAUTH_SECRET: ci-build-secret-not-used-in-production
@@ -252,10 +262,13 @@ jobs:
       STRIPE_SECRET_KEY: sk_test_ci_dummy_key_not_real_000000000000
       STRIPE_WEBHOOK_SECRET: whsec_ci_dummy_not_real
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_dummy_not_real
+      # Point at the MailHog service; the mail transport skips auth/STARTTLS for
+      # loopback SMTP hosts (src/lib/email.ts), so plain port 1025 delivers even
+      # under the production build.
       SMTP_USER: ci@example.com
       SMTP_PASSWORD: ci_dummy_password
-      SMTP_HOST: smtp.example.com
-      SMTP_PORT: '465'
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
       # Dummy Microsoft Entra ID credentials so the NextAuth provider registers
       # (ENG-001 verifies the signIn POST fires). NOT real secrets.
       AUTH_MICROSOFT_ENTRA_ID_ID: ci-dummy-client-id
@@ -283,6 +296,12 @@ jobs:
 
       - name: Seed e2e database
         run: npx prisma db seed
+
+      # Playwright's webServer runs `next start` in CI, so the app must be built
+      # first. Runs after migrate/seed so any build-time page evaluation sees a
+      # ready database. NEXT_PUBLIC_* values from the job env are inlined here.
+      - name: Build app (production)
+        run: npm run build
 
       - name: Install Playwright browser (chromium)
         run: npx playwright install --with-deps chromium

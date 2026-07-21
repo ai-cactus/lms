@@ -53,10 +53,8 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Buf
     const H = doc.page.height;
     const pad = 60;
 
-    // ── Cream paper ──────────────────────────────────────────────────────────
     doc.rect(0, 0, W, H).fill(COLORS.paper);
 
-    // ── Dashed inner frame ─────────────────────────────────────────────────────
     doc
       .save()
       .lineWidth(1)
@@ -67,7 +65,6 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Buf
       .undash()
       .restore();
 
-    // ── Heading (top-left) ─────────────────────────────────────────────────────
     doc
       .font('Helvetica')
       .fontSize(16)
@@ -75,20 +72,17 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Buf
       .text('CERTIFICATE OF', pad, 64, { characterSpacing: 3 });
     doc.font('Helvetica-Bold').fontSize(42).fillColor(COLORS.ink).text('COMPLETION', pad, 84);
 
-    // ── Wordmark (top-right) ───────────────────────────────────────────────────
     doc
       .font('Helvetica-Bold')
       .fontSize(24)
       .fillColor(COLORS.ink)
       .text('Theraptly', W - pad - 220, 70, { width: 220, align: 'right' });
 
-    // ── Gold seal (rasterised real artwork, right) ─────────────────────────────
     if (SEAL_PNG) {
       const sealW = 126;
       doc.image(SEAL_PNG, W - pad - sealW - 6, 150, { width: sealW });
     }
 
-    // ── Body (left-aligned) ────────────────────────────────────────────────────
     const bodyW = 470;
     let y = 250;
 
@@ -126,8 +120,6 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Buf
       .fillColor(COLORS.body)
       .text(', showcasing your commitment to excellence, innovation, and teamwork.');
 
-    // ── Footer — metadata ──────────────────────────────────────────────────────
-    // "Presented on" sits bottom-left; "Valid certificate ID" bottom-right.
     const footY = H - pad - 52;
     const idColW = 240;
 

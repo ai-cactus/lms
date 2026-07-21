@@ -1,8 +1,19 @@
 // ── Authentication & User Management ──────────────────────────────────────────
 
 enum UserRole {
-  admin
-  worker
+  owner
+  supervisor
+  hr
+  clinical_director
+  finance
+  psychiatrist_prescriber
+  nurse
+  therapist_clinician
+  case_manager
+  behavioral_health_technician
+  peer_support_specialist
+  front_desk_admin
+  facilities_support
 }
 
 enum InviteStatus {
@@ -17,12 +28,15 @@ model User {
   password              String
   passwordResetRequired Boolean                  @default(false) @map("password_reset_required")
   organizationId        String?                  @map("organization_id")
+  facilityId            String?                  @map("facility_id")
   authProvider          String                   @default("credentials") @map("auth_provider")
-  role                  UserRole                 @default(worker)
+  role                  UserRole
   emailVerified         Boolean                  @default(false) @map("email_verified")
   mfaEnabled            Boolean                  @default(false) @map("mfa_enabled")
   mfaVerifiedAt         DateTime?                @map("mfa_verified_at")
   sessionVersion        Int                      @default(0) @map("session_version")
+  roleAssignedAt        DateTime                 @default(now()) @map("role_assigned_at")
+  lastLoginAt           DateTime?                @map("last_login_at")
   managerId             String?                  @map("manager_id")
   createdAt             DateTime                 @default(now()) @map("created_at")
   updatedAt             DateTime                 @updatedAt @map("updated_at")
@@ -33,6 +47,7 @@ model User {
   notificationPrefs     NotificationPreference[]
   profile               Profile?
   organization          Organization?            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  facility              Facility?                @relation(fields: [facilityId], references: [id], onDelete: Restrict)
   manager               User?                    @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
   reports               User[]                   @relation("UserManager")
   mfaFactors            MfaFactor[]
@@ -41,6 +56,7 @@ model User {
   approvedCourses       Course[]                 @relation("CourseApprover")
 
   @@index([organizationId])
+  @@index([facilityId])
   @@index([managerId])
   @@map("users")
 }
@@ -67,7 +83,7 @@ model Invite {
   email          String
   token          String       @unique
   organizationId String       @map("organization_id")
-  role           UserRole     @default(worker)
+  role           UserRole
   status         InviteStatus @default(pending)
   expiresAt      DateTime     @map("expires_at")
   createdAt      DateTime     @default(now()) @map("created_at")

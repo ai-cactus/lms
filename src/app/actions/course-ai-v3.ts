@@ -137,7 +137,6 @@ async function generateQuizJsonV3(
 export async function generateCourseAndQuizV3(
   formData: FormData,
 ): Promise<{ jobId?: string; error?: string }> {
-  // Extract data from FormData
   const rawData = formData.get('data');
   if (!rawData || typeof rawData !== 'string') {
     return { error: 'Missing course data' };
@@ -203,7 +202,6 @@ export async function generateCourseAndQuizV3(
 
   const session = await auth();
 
-  // Create a job
   const job = await prisma.job.create({
     data: {
       type: 'GENERATE_V3_COURSE',

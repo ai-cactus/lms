@@ -68,8 +68,40 @@ npx prisma generate
 npx prisma db push
 
 # (Optional) Seed the database with sample courses
-node scripts/seed-courses.js
+set -a && source .env && source .env.local && set +a
+npx tsx scripts/seed-courses.ts
 ```
+
+### 🧰 Running scripts
+
+Standalone scripts in `scripts/` are TypeScript, run with `tsx`, and read
+`process.env` directly (no dotenv).
+
+**On the staging/production server**, run them with `npm run script` — it
+execs the script inside the deployed app container
+(`docker exec lms-<env>-app npx tsx scripts/<script-file>`), whose environment
+is already loaded from the server's `.env.staging` / `.env.production`:
+
+```bash
+npm run script <staging|production> <script-file> [-- args]
+
+npm run script staging backfill-roles.ts
+npm run script -- staging backfill-roles.ts --dry-run   # extra flags need the --
+```
+
+This must run on the target server — the database hostname (`db`) only
+resolves inside that server's compose network. The container runs the deployed
+image, so scripts execute at the deployed version.
+
+**Locally**, export an env file into your shell and call tsx directly:
+
+```bash
+set -a && source .env && source .env.local && set +a
+npx tsx scripts/<script>.ts
+```
+
+Double-check which environment you're pointing at before running a
+destructive script.
 
 ---
 

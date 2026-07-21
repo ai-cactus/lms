@@ -36,7 +36,6 @@ export async function getStaffUsers() {
     throw new Error('Unauthorized');
   }
 
-  // Get current user's org ID
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { organizationId: true },
@@ -51,7 +50,8 @@ export async function getStaffUsers() {
       prisma.user.findMany({
         where: {
           organizationId: currentUser.organizationId,
-          role: { not: 'admin' },
+          // Show every seat-consuming staff member (all roles except owner).
+          role: { not: 'owner' },
         },
         include: { profile: true },
         orderBy: { createdAt: 'desc' },
@@ -75,7 +75,7 @@ export async function getStaffUsers() {
       name: user.profile?.fullName || user.email.split('@')[0],
       email: user.email,
       avatarUrl: user.profile?.avatarUrl || null,
-      role: user.role || 'worker',
+      role: user.role,
       jobTitle: user.profile?.jobTitle || 'Staff Member',
       dateInvited: user.createdAt,
       isPending: false,
@@ -92,7 +92,7 @@ export async function getStaffUsers() {
           name: invite.email.split('@')[0],
           email: invite.email,
           avatarUrl: null,
-          role: invite.role || 'worker',
+          role: invite.role,
           jobTitle: isExpired ? 'Expired Invite' : 'Pending Invite',
           dateInvited: invite.createdAt,
           isPending: true,
@@ -115,7 +115,6 @@ export async function searchStaffUsers(query: string) {
     return [];
   }
 
-  // Get current user's org ID
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { organizationId: true },
@@ -131,7 +130,7 @@ export async function searchStaffUsers(query: string) {
     const users = await prisma.user.findMany({
       where: {
         organizationId: currentUser.organizationId,
-        role: { not: 'admin' },
+        role: { not: 'owner' },
         OR: [
           { email: { contains: query, mode: 'insensitive' } },
           { profile: { fullName: { contains: query, mode: 'insensitive' } } },
@@ -148,7 +147,7 @@ export async function searchStaffUsers(query: string) {
       name: user.profile?.fullName || user.email.split('@')[0],
       email: user.email,
       initials: (user.profile?.fullName || user.email).slice(0, 2).toUpperCase(),
-      role: user.role || 'worker',
+      role: user.role,
     }));
   } catch (error) {
     logger.error({ msg: 'Failed to search staff:', err: error });
@@ -158,53 +157,12 @@ export async function searchStaffUsers(query: string) {
 
 // --- Onboarding / Profile Management ---
 
-export async function updateRole(role: 'admin' | 'worker') {
-  const session = await resolveSession();
-
-  if (!session?.user?.email || !session?.user?.id) {
-    return { success: false, error: 'Not authenticated' };
-  }
-
-  try {
-    // Self-service role selection is only permitted during initial onboarding,
-    // i.e. before the user has been attached to an organization. Once a user
-    // belongs to an org, this path must not allow self-promotion (e.g. a worker
-    // escalating to admin).
-    const current = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { organizationId: true },
-    });
-
-    if (!current) {
-      return { success: false, error: 'User not found' };
-    }
-
-    if (current.organizationId) {
-      return { success: false, error: 'Role can no longer be changed for this account.' };
-    }
-
-    // Update User role
-    await prisma.user.update({
-      where: {
-        email: session.user.email,
-      },
-      data: { role },
-    });
-
-    revalidatePath('/dashboard');
-    return { success: true };
-  } catch (error) {
-    logger.error({ msg: 'Failed to update role:', err: error });
-    return { success: false, error: 'Failed to update role' };
-  }
-}
-
 export async function updateProfile(data: {
   first_name: string;
   last_name: string;
   company_name?: string;
   jobTitle?: string;
-  avatarUrl?: string; // New field
+  avatarUrl?: string;
 }) {
   const session = await resolveSession();
 
@@ -214,7 +172,17 @@ export async function updateProfile(data: {
   }
 
   try {
-    const fullName = `${data.first_name} ${data.last_name}`.trim();
+    // Server-side name validation (client is not a trust boundary). Mirror the
+    // accept-invite zod bounds: non-empty after trim, max 100 characters.
+    const firstName = data.first_name?.trim() ?? '';
+    const lastName = data.last_name?.trim() ?? '';
+    if (!firstName || !lastName) {
+      return { success: false, error: 'First and last name are required.' };
+    }
+    if (firstName.length > 100 || lastName.length > 100) {
+      return { success: false, error: 'Name is too long (maximum 100 characters).' };
+    }
+    const fullName = `${firstName} ${lastName}`;
 
     if (!session.user.id) {
       logger.warn({ msg: '[user] updateProfile: user ID missing', email: session.user.email });
@@ -227,8 +195,8 @@ export async function updateProfile(data: {
         id: session.user.id,
       },
       update: {
-        firstName: data.first_name,
-        lastName: data.last_name,
+        firstName,
+        lastName,
         fullName: fullName,
         companyName: data.company_name,
         jobTitle: data.jobTitle,
@@ -238,8 +206,8 @@ export async function updateProfile(data: {
       create: {
         id: session.user.id,
         email: session.user.email,
-        firstName: data.first_name,
-        lastName: data.last_name,
+        firstName,
+        lastName,
         fullName: fullName,
         companyName: data.company_name,
         jobTitle: data.jobTitle,
@@ -276,7 +244,6 @@ export async function uploadAvatar(formData: FormData) {
     return { error: 'No file provided' };
   }
 
-  // Validate file type
   if (!file.type.startsWith('image/')) {
     return { error: 'Invalid file type. Please upload an image.' };
   }

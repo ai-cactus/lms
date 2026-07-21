@@ -9,8 +9,6 @@
  * - Section risk levels (high-risk/administrative)
  */
 
-// ─── Shared Types ────────────────────────────────
-
 export type QuizDifficulty = 'easy' | 'medium' | 'hard';
 
 export type NormModality = 'must' | 'should' | 'may' | 'prohibited' | 'conditional';
@@ -42,8 +40,6 @@ export type LayoutHint =
 
 /** Section risk level for 80/20 quiz weighting */
 export type SectionRiskLevel = 'high-risk' | 'administrative';
-
-// ─── Prompt A: articleMeta Types ─────────────────
 
 export interface ArticleMetaMeta {
   promptVersion: string;
@@ -95,8 +91,6 @@ export interface ArticleMetaV46 {
   norms: NormV46[];
 }
 
-// ─── Prompt B: Slides Types ─────────────────────
-
 export interface SlidesMeta {
   promptVersion: string;
   basedOnArticleMetaVersion: string;
@@ -144,8 +138,6 @@ export interface SlidesV46 {
   slides: SlideV46[];
 }
 
-// ─── Prompt C: Quiz Types ───────────────────────
-
 export interface QuizMetaV46 {
   promptVersion: string;
   basedOnArticleMetaVersion: string;
@@ -186,8 +178,6 @@ export interface QuizV46 {
   questions: QuizQuestionV46[];
 }
 
-// ─── Prompt D: Judge Types ──────────────────────
-
 export interface JudgeMeta {
   promptVersion: string;
   totalQuestions: number;
@@ -215,8 +205,6 @@ export interface JudgeV46 {
   ambiguous: AmbiguousFlag[];
   invalid: InvalidFlag[];
 }
-
-// ─── Prompt E: Regen Types ──────────────────────
 
 export interface RegenMeta {
   promptVersion: string;

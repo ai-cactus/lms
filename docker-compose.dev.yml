@@ -7,7 +7,7 @@
 # Usage:
 #   docker compose -f docker-compose.dev.yml up -d
 #
-# This allows you to run the Next.js app locally via `npm run dev` 
+# This allows you to run the Next.js app locally via `npm run dev`
 # while docker manages the database and redis.
 
 name: lms-dev
@@ -22,7 +22,7 @@ services:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     ports:
-      - '5433:5432'
+      - "5433:5432"
     environment:
       # These default to the values used in your local DATABASE_URL in .env
       POSTGRES_DB: ${POSTGRES_DB:-lms}
@@ -32,7 +32,11 @@ services:
       # Data persists locally in a named volume
       - dev-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-lms}']
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-lms}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -46,7 +50,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - '6380:6379'
+      - "6380:6379"
     volumes:
       # AOF persistence
       - dev-redis-data:/data
@@ -63,7 +67,11 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     healthcheck:
-      test: ['CMD-SHELL', 'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi']
+      test:
+        [
+          "CMD-SHELL",
+          'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi',
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -78,19 +86,33 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     ports:
-      - '9005:9000'   # S3-compatible API  → MINIO_ENDPOINT=localhost, MINIO_PORT=9000
-      - '9006:9001'   # Browser console    → http://localhost:9001
+      - "9005:9000" # S3-compatible API  → MINIO_ENDPOINT=localhost, MINIO_PORT=9000
+      - "9006:9001" # Browser console    → http://localhost:9001
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-lms_minio_dev}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-lms_minio_secret_dev}
     volumes:
       - dev-minio-data:/data
     healthcheck:
-      test: ['CMD-SHELL', 'mc ready local 2>/dev/null || curl -sf http://localhost:9000/minio/health/live']
+      test:
+        [
+          "CMD-SHELL",
+          "mc ready local 2>/dev/null || curl -sf http://localhost:9000/minio/health/live",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - dev-net
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: theraptly-mailhog
+    platform: linux/amd64
+    ports:
+      - 1025:1025 # smtp server
+      - 8025:8025 # web ui
     networks:
       - dev-net
 

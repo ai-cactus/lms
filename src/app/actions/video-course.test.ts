@@ -17,6 +17,9 @@ const {
   txQuizFindUnique,
   txQuestionDeleteMany,
   txCourseFindUnique,
+  mockObjectExists,
+  mockLessonFindMany,
+  mockLessonUpdate,
 } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
   mockGetSystemUser: vi.fn(),
@@ -34,6 +37,9 @@ const {
   txQuizFindUnique: vi.fn(),
   txQuestionDeleteMany: vi.fn(),
   txCourseFindUnique: vi.fn(),
+  mockObjectExists: vi.fn(),
+  mockLessonFindMany: vi.fn(),
+  mockLessonUpdate: vi.fn(),
 }));
 
 // Mock the transcode queue so the dynamic import in createVideoCourse never
@@ -46,16 +52,17 @@ vi.mock('@/lib/prisma', () => {
   const prisma = {
     $transaction: mockTransaction,
     course: { update: courseUpdate },
-    lesson: { update: vi.fn() },
+    lesson: { update: mockLessonUpdate, findMany: mockLessonFindMany },
   };
   return { prisma, default: prisma };
 });
 vi.mock('@/lib/system-auth', () => ({ verifySystemAdminCookie: mockVerify }));
 vi.mock('@/lib/video/system-user', () => ({ getOrCreateSystemUser: mockGetSystemUser }));
+vi.mock('@/lib/storage', () => ({ objectExists: mockObjectExists }));
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 
-import { createVideoCourse } from './video-course';
+import { createVideoCourse, verifyGlobalVideoMedia } from './video-course';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -394,5 +401,82 @@ describe('updateVideoCourse', () => {
     mockVerify.mockResolvedValue(false);
     const { updateVideoCourse } = await import('./video-course');
     await expect(updateVideoCourse('c1', { title: 'x' })).rejects.toThrow('Unauthorized');
+  });
+});
+
+describe('verifyGlobalVideoMedia — Issue #7/#9: HEAD-check reconciliation', () => {
+  beforeEach(() => {
+    mockLessonUpdate.mockResolvedValue({});
+  });
+
+  it('rejects when not a system admin, without querying any lesson', async () => {
+    mockVerify.mockResolvedValue(false);
+
+    await expect(verifyGlobalVideoMedia()).rejects.toThrow('Unauthorized');
+    expect(mockLessonFindMany).not.toHaveBeenCalled();
+  });
+
+  it('counts checked+missing and flips mediaStatus only for a confirmed-absent object', async () => {
+    mockLessonFindMany.mockResolvedValue([
+      { id: 'lesson-present', videoStorageUri: 'gcs://bucket/present.mp4', mediaStatus: 'ready' },
+      { id: 'lesson-missing', videoStorageUri: 'gcs://bucket/missing.mp4', mediaStatus: 'ready' },
+    ]);
+    mockObjectExists.mockImplementation((uri: string) => Promise.resolve(uri.includes('present')));
+
+    const result = await verifyGlobalVideoMedia();
+
+    expect(result).toEqual({ checked: 2, missing: 1 });
+    expect(mockLessonUpdate).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'lesson-missing' },
+      data: { mediaStatus: 'failed' },
+    });
+  });
+
+  it('does not re-write a lesson that is already flagged failed (avoids a redundant write)', async () => {
+    mockLessonFindMany.mockResolvedValue([
+      { id: 'lesson-missing', videoStorageUri: 'gcs://bucket/missing.mp4', mediaStatus: 'failed' },
+    ]);
+    mockObjectExists.mockResolvedValue(false);
+
+    const result = await verifyGlobalVideoMedia();
+
+    expect(result).toEqual({ checked: 1, missing: 1 });
+    expect(mockLessonUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not count a transient storage error as checked or missing, and never writes for it', async () => {
+    mockLessonFindMany.mockResolvedValue([
+      { id: 'lesson-flaky', videoStorageUri: 'gcs://bucket/flaky.mp4', mediaStatus: 'ready' },
+    ]);
+    mockObjectExists.mockRejectedValue(new Error('storage unavailable'));
+
+    const result = await verifyGlobalVideoMedia();
+
+    expect(result).toEqual({ checked: 0, missing: 0 });
+    expect(mockLessonUpdate).not.toHaveBeenCalled();
+  });
+
+  it('returns {checked: 0, missing: 0} for an empty catalog without calling objectExists', async () => {
+    mockLessonFindMany.mockResolvedValue([]);
+
+    const result = await verifyGlobalVideoMedia();
+
+    expect(result).toEqual({ checked: 0, missing: 0 });
+    expect(mockObjectExists).not.toHaveBeenCalled();
+  });
+
+  it('scopes the lesson query to global video courses with a storage URI', async () => {
+    mockLessonFindMany.mockResolvedValue([]);
+
+    await verifyGlobalVideoMedia();
+
+    expect(mockLessonFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          videoStorageUri: { not: null },
+          course: { type: 'video', isGlobal: true },
+        }),
+      }),
+    );
   });
 });

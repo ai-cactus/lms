@@ -25,6 +25,7 @@
  */
 import { NextResponse } from 'next/server';
 import type { Session } from 'next-auth';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 
 export type AuthzErrorCode = 'UNAUTHENTICATED' | 'MFA_REQUIRED' | 'FORBIDDEN';
 
@@ -91,7 +92,7 @@ function checkClaims(session: GuardSession, opts: AuthGuardOptions = {}): AuthzE
     return 'MFA_REQUIRED';
   }
 
-  if (opts.role === 'admin' && user.role !== 'admin') {
+  if (opts.role === 'admin' && !isAdminRole(user.role)) {
     return 'FORBIDDEN';
   }
 

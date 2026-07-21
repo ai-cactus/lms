@@ -14,7 +14,6 @@ export default function WorkerDashboardMetrics({
 }: WorkerDashboardMetricsProps) {
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-      {/* Total Courses - Green */}
       <div className="flex min-h-40 flex-col justify-between rounded-2xl bg-[#ECFDF5] p-6 shadow-sm max-[480px]:min-h-30 max-[480px]:p-4">
         <div>
           <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-[#10B981] text-white max-[480px]:size-10 max-[480px]:rounded-[10px]">
@@ -25,7 +24,6 @@ export default function WorkerDashboardMetrics({
         <p className="text-[32px] font-bold text-[#1a202c] max-[480px]:text-2xl">{totalCourses}</p>
       </div>
 
-      {/* Courses Completed - Blue */}
       <div className="flex min-h-40 flex-col justify-between rounded-2xl bg-[#EEF2FF] p-6 shadow-sm max-[480px]:min-h-30 max-[480px]:p-4">
         <div>
           <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-[#4730F7] text-white max-[480px]:size-10 max-[480px]:rounded-[10px]">
@@ -38,7 +36,6 @@ export default function WorkerDashboardMetrics({
         </p>
       </div>
 
-      {/* Average Grade - Red */}
       <div className="flex min-h-40 flex-col justify-between rounded-2xl bg-[#FEF2F2] p-6 shadow-sm max-[480px]:min-h-30 max-[480px]:p-4">
         <div>
           <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-[#EF4444] text-white max-[480px]:size-10 max-[480px]:rounded-[10px]">

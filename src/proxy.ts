@@ -3,12 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 // @ts-ignore - NextAuth does not reliably export decode type in this scope
 import { decode, JWT } from 'next-auth/jwt';
 import { logger, maskEmail } from '@/lib/logger';
+import { ADMIN_ROLES, ALL_ROLES } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 
-// All route rules live in one config object — easy to audit and extend
+// All route rules live in one config object — easy to audit and extend.
+// `allowedRoles` is a set: after the RBAC migration the admin portal is shared by
+// every admin-tier role (owner/supervisor/hr/clinical_director/finance). The
+// worker portal accepts every role at the proxy so an admin bridged into learner
+// mode (see actions/session-bridge.ts) can reach /worker on their worker cookie;
+// the worker LOGIN form still gates on WORKER_ROLES.
 const ROUTE_CONFIG = {
   worker: {
     cookiePrefix: 'worker',
-    requiredRole: 'worker',
+    allowedRoles: ALL_ROLES,
     loginPath: '/login',
     // All paths that belong to the worker context
     paths: ['/worker', '/onboarding-worker', '/api/auth-worker'],
@@ -18,7 +25,7 @@ const ROUTE_CONFIG = {
   },
   admin: {
     cookiePrefix: 'admin',
-    requiredRole: 'admin',
+    allowedRoles: ADMIN_ROLES,
     loginPath: '/login',
     paths: ['/dashboard', '/onboarding', '/login', '/api/auth'],
     homePath: '/dashboard',
@@ -70,11 +77,10 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
   if (!context) return passThrough();
 
   const cfg = ROUTE_CONFIG[context];
-  // F-035: decode with the SAME secret the encoder signs with.
-  // create-auth-instance.ts uses NEXTAUTH_SECRET; falling back to AUTH_SECRET
-  // preserves parity if only the legacy variable is set. Reading a different
-  // variable here than the encoder used would make every token fail to decode.
-  const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET!;
+  // Must match the encoder in src/lib/create-auth-instance.ts — same vars, same
+  // order (AUTH_SECRET first, then NEXTAUTH_SECRET) — or decryption fails and the
+  // proxy would wrongly discard a valid session.
+  const secret = (process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET)!;
   const useSecureCookies = process.env.NODE_ENV === 'production';
 
   const cookieName = `${useSecureCookies ? '__Secure-' : ''}${cfg.cookiePrefix}.session-token`;
@@ -115,8 +121,9 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
     return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
-  // ✅ Role mismatch at the token level (e.g., role changed in DB via jwt callback)
-  if (token.role !== cfg.requiredRole) {
+  // ✅ Role mismatch at the token level (e.g., role changed in DB via jwt callback).
+  // The token role must belong to this context's allowed set.
+  if (!cfg.allowedRoles.includes(token.role as Role)) {
     const res = NextResponse.redirect(new URL(cfg.loginPath, req.url));
     res.cookies.delete(cookieName);
     return res;
@@ -136,21 +143,23 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
   }
 
   // ✅ MFA Step-up check
-  // NOTE: We deliberately skip this check on the login page itself.
-  // A user with an unfinished/abandoned 2FA session must be allowed to reach
-  // /login so they can re-authenticate (as the same or a different account).
-  // NextAuth's signIn flow will mint a new session and new sessionId, starting
-  // the MFA challenge fresh. Redirecting to /verify-2fa from /login would
-  // trap the user in the old session's 2FA flow with no way out.
+  //
+  // A session whose MFA is enabled but not yet verified is bounced to /login —
+  // NOT to the challenge page directly. The single email-OTP challenge lives
+  // behind a short-lived Redis challenge token that only authenticate() (in
+  // src/app/actions/auth.ts) mints on a fresh sign-in; there is no standing
+  // challenge for the stateless Edge proxy to resume. A fresh login starts the
+  // challenge cleanly and itself routes to /mfa/verify?challenge=...
+  //
+  // We deliberately skip this on /login itself so an unfinished/abandoned 2FA
+  // session can re-authenticate (as the same or a different account) instead of
+  // being trapped in a redirect loop.
   if (
     (token as unknown as Record<string, unknown>).mfaEnabled === true &&
     (token as unknown as Record<string, unknown>).mfaVerified !== true &&
-    pathname !== '/verify-2fa' &&
     pathname !== cfg.loginPath
   ) {
-    const mfaUrl = new URL('/verify-2fa', req.url);
-    mfaUrl.searchParams.set('callbackUrl', pathname);
-    return NextResponse.redirect(mfaUrl);
+    return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
   // Worker-specific: force onboarding if no org

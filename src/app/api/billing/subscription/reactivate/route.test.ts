@@ -39,6 +39,7 @@ vi.mock('@/lib/audit', () => ({ audit: vi.fn(), getClientContext: () => ({}) }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  maskEmail: (email: string) => email,
 }));
 
 // ---------------------------------------------------------------------------
@@ -50,7 +51,7 @@ import { POST } from './route';
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const ADMIN_USER = { role: 'admin', organizationId: 'org-1' };
+const ADMIN_USER = { role: 'owner', organizationId: 'org-1' };
 
 const CANCEL_SCHEDULED_SUB = {
   id: 'sub-row-1',
@@ -58,14 +59,35 @@ const CANCEL_SCHEDULED_SUB = {
   stripeSubscriptionId: 'sub_x',
   status: 'active',
   cancelAtPeriodEnd: true,
+  stripeScheduleId: null,
+  scheduledEffectiveAt: null,
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   // Session carries the `role` claim so the F-012 guardApiSession check
   // (auth + MFA + admin role, read from session claims) passes by default.
-  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'admin' } });
+  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
+});
+
+describe('POST /api/billing/subscription/reactivate — scheduled-change guard', () => {
+  it('returns 409 and does not touch Stripe when a plan change is pending', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue({
+      ...CANCEL_SCHEDULED_SUB,
+      stripeScheduleId: 'sub_sched_1',
+      scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+    });
+
+    const res = await POST();
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toMatch(/pending plan change/i);
+    expect(body.error).toMatch(/cancel it first/i);
+    expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
+    expect(prismaMock.subscription.update).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/billing/subscription/reactivate', () => {
@@ -146,7 +168,7 @@ describe('POST /api/billing/subscription/reactivate', () => {
   });
 
   it('returns 404 when the user has no organization', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ role: 'admin', organizationId: null });
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: null } });
 
     const res = await POST();
     const body = await res.json();
@@ -168,7 +190,7 @@ describe('POST /api/billing/subscription/reactivate', () => {
   });
 
   it('returns 401/403 (guard-rejected) when the session role is not admin', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-2', role: 'worker' } });
+    mockAuth.mockResolvedValue({ user: { id: 'user-2', role: 'nurse' } });
 
     const res = await POST();
 
@@ -187,5 +209,44 @@ describe('POST /api/billing/subscription/reactivate', () => {
     expect(res.status).toBe(500);
     expect(body.error).toMatch(/internal server error/i);
     expect(prismaMock.subscription.update).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RBAC: billing.* is reserved for owner + finance. Regression guard for the
+// isAdminRole → authorize('billing.edit') migration.
+// ---------------------------------------------------------------------------
+describe('POST /api/billing/subscription/reactivate — RBAC (billing.edit registry enforcement)', () => {
+  it.each(['supervisor', 'hr', 'clinical_director'])(
+    'denies role=%s with 403 and never touches Stripe or the subscription row',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-x', role, organizationId: 'org-1' } });
+
+      const res = await POST();
+      const body = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(body).toEqual({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' });
+      expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
+      expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows role=finance through to the normal reactivate path', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
+    });
+    prismaMock.subscription.findUnique.mockResolvedValue(CANCEL_SCHEDULED_SUB);
+    // A prior test in this file (Stripe-throws) leaves `mockRejectedValue` set
+    // on this mock — vi.clearAllMocks() clears call history, not the queued
+    // implementation — so this test must reset it explicitly.
+    stripeMock.subscriptions.update.mockResolvedValue({});
+
+    const res = await POST();
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.subscriptions.update).toHaveBeenCalledWith('sub_x', {
+      cancel_at_period_end: false,
+    });
   });
 });

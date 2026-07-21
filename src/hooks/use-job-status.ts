@@ -178,17 +178,19 @@ export function useJobStatus<T>({
     };
 
     start();
+
+    // Own the teardown here so a StrictMode simulated-unmount both stops the
+    // timer and clears the single-start guard — otherwise the guard stays
+    // latched `true` and the re-setup early-returns, leaving polling dead in
+    // dev. In production this fires only on genuine unmount or a retry()/enabled
+    // change, so the start-once-then-poll behavior is unchanged.
+    return () => {
+      stopPolling();
+      hasStartedRef.current = false;
+    };
     // Re-run only when polling is (re-)enabled or retry() bumps the nonce; the
     // guard above keeps ordinary re-renders from restarting an active poll.
   }, [enabled, startNonce, stopPolling]);
-
-  // Clear any active poll timer on unmount to avoid leaks. Kept separate from
-  // the polling effect so ordinary re-renders don't interrupt polling.
-  useEffect(() => {
-    return () => {
-      stopPolling();
-    };
-  }, [stopPolling]);
 
   const retry = useCallback(() => {
     stopPolling();

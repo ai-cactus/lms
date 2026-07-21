@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,13 +11,34 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, Alert } from '@/components/ui';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { updateStaffDetails } from '@/app/actions/staff';
 import { useRouter } from 'next/navigation';
 import { UserRole } from '@/generated/prisma/enums';
+import {
+  DEFAULT_SELF_SERVE_WORKER_ROLE,
+  ROLE_CHANGE_ACTOR_ROLES,
+  GRANTABLE_ROLES,
+  groupRolesForSelect,
+  getRoleDisplayName,
+} from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 
 interface EditStaffModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** The current admin's role — determines whether the role field is editable. */
+  viewerRole: Role;
+  /** The current admin's user id — used to block self re-roling. */
+  viewerUserId: string;
   staff: {
     id: string;
     name: string;
@@ -27,15 +48,40 @@ interface EditStaffModalProps {
   };
 }
 
-export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModalProps) {
+export default function EditStaffModal({
+  isOpen,
+  onClose,
+  viewerRole,
+  viewerUserId,
+  staff,
+}: EditStaffModalProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [role, setRole] = useState<UserRole>('worker');
+  const [role, setRole] = useState<UserRole>(DEFAULT_SELF_SERVE_WORKER_ROLE);
   const [jobTitle, setJobTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const router = useRouter();
+
+  // The role field is editable only when the viewer may re-role this target:
+  // an Owner/Supervisor, acting on someone other than themselves, whose current
+  // role is one the viewer can grant (owner is grantable to no one). Mirrors the
+  // server's `canChangeRole` guard so the UI never offers a change the server denies.
+  const roleFieldEditable =
+    ROLE_CHANGE_ACTOR_ROLES.includes(viewerRole) &&
+    staff.id !== viewerUserId &&
+    GRANTABLE_ROLES[viewerRole].includes(staff.role);
+
+  const roleGroups = useMemo(() => groupRolesForSelect(viewerRole), [viewerRole]);
+
+  const roleReadOnlyReason = !ROLE_CHANGE_ACTOR_ROLES.includes(viewerRole)
+    ? "Only an Owner or Supervisor can change a staff member's role."
+    : staff.id === viewerUserId
+      ? 'You cannot change your own role.'
+      : "This person's role can't be changed here.";
+
+  const roleChanged = roleFieldEditable && role !== staff.role;
 
   useEffect(() => {
     if (isOpen && staff) {
@@ -43,7 +89,7 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
       const nameParts = staff.name.split(' ');
       setFirstName(nameParts[0] || '');
       setLastName(nameParts.slice(1).join(' ') || '');
-      setRole(staff.role || 'worker');
+      setRole(staff.role);
       setJobTitle(staff.jobTitle || '');
       setMessage(null);
       setErrors({});
@@ -140,6 +186,44 @@ export default function EditStaffModal({ isOpen, onClose, staff }: EditStaffModa
               disabled
               className="bg-background-secondary text-text-secondary"
             />
+          </Field>
+
+          <Field label="Role">
+            {roleFieldEditable ? (
+              <>
+                <Select value={role} onValueChange={(value) => setRole(value as UserRole)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roleGroups.map((group) => (
+                      <SelectGroup key={group.label}>
+                        <SelectLabel className="uppercase tracking-wide">{group.label}</SelectLabel>
+                        {group.roles.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {roleChanged && (
+                  <p className="mt-1 text-xs text-warning">
+                    Changing this person&apos;s role will sign them out of all active sessions.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <Input
+                  value={getRoleDisplayName(staff.role as Role)}
+                  disabled
+                  className="bg-background-secondary text-text-secondary"
+                />
+                <p className="mt-1 text-xs text-text-secondary">{roleReadOnlyReason}</p>
+              </>
+            )}
           </Field>
 
           <Field label="Job Title">

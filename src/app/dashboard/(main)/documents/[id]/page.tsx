@@ -6,6 +6,7 @@ import { ArrowLeft, Download } from 'lucide-react';
 import PdfViewer from '@/components/dashboard/documents/PdfViewerDynamic';
 import { getDocumentSignedUrl } from '@/app/actions/storage';
 import { logger } from '@/lib/logger';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import { deriveDocumentStatus, DOCUMENT_STATUS_LABELS } from '@/lib/documents/status';
 
 export default async function DocumentViewerPage({ params }: { params: Promise<{ id: string }> }) {
@@ -15,6 +16,7 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
   const doc = await prisma.document.findUnique({
     where: { id },
     include: {
+      user: { select: { organizationId: true } },
       versions: {
         include: {
           phiReport: true,
@@ -25,7 +27,15 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
     },
   });
 
-  if (!doc || doc.userId !== session?.user?.id) {
+  // Org-scoped Document Hub: any org admin may view any document uploaded within
+  // their organization. A cross-org document — or any access by a non-admin — is
+  // treated as not found so existence is never leaked.
+  if (
+    !doc ||
+    !session?.user?.id ||
+    !isAdminRole(session.user.role) ||
+    doc.user.organizationId !== session.user.organizationId
+  ) {
     notFound();
   }
 

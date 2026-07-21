@@ -235,7 +235,7 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
             <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
           </label>
           <button
-            className="flex items-center text-sm font-medium text-primary hover:underline"
+            className="flex items-center text-sm font-medium text-primary hover:underline cursor-pointer"
             onClick={downloadTemplate}
           >
             Download sample .csv template
@@ -277,7 +277,6 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
           </div>
         )}
 
-        {/* Result feedback */}
         {result && (
           <div className="mb-4 flex flex-col gap-2">
             {result.success.length > 0 && (

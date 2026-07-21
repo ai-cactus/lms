@@ -82,8 +82,7 @@ export default function WorkerOnboardingPage() {
 
   return (
     <div className="flex min-h-screen bg-background-secondary">
-      {/* Left Side - Form */}
-      <div className="flex w-full flex-col items-center justify-center bg-background p-6 md:p-12 lg:w-1/2">
+      <div className="relative z-10 flex w-full flex-col items-center justify-center bg-background p-6 md:p-12 lg:w-1/2">
         <div className="w-full max-w-[480px]">
           <Logo size="md" />
 
@@ -221,15 +220,13 @@ export default function WorkerOnboardingPage() {
         </div>
       </div>
 
-      {/* Right Side - Hero Image */}
-      <div className="relative hidden w-1/2 bg-background-secondary lg:block">
+      <div className="relative z-0 hidden w-1/2 overflow-hidden bg-background-secondary lg:block">
         <Image
           src="/images/login-bg.png"
           alt="Theraptly Training"
           fill
           className="object-cover"
           priority
-          quality={100}
         />
 
         <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-black/80 to-transparent p-16 text-white">

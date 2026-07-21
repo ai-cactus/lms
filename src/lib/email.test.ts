@@ -33,7 +33,8 @@ vi.mock('@/lib/logger', () => ({
 
 // ─── Module under test ────────────────────────────────────────────────────────
 
-import { sendInviteEmail, sendPartnerApplicationEmail } from './email';
+import { sendInviteEmail, sendPartnerApplicationEmail, sendMfaOtpEmail } from './email';
+import { OTP_EXPIRY_MINUTES } from './mfa';
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
@@ -91,12 +92,94 @@ describe('email delivery tracking (F-021)', () => {
 });
 
 /**
+ * QA ISSUE 5 regression: sendInviteEmail() previously interpolated the raw DB
+ * role slug straight into the email body ("...join their team as a
+ * behavioral_health_technician.", "...as a hr." — also a grammar miss). It now
+ * converts the slug to the same human-readable label the in-app UI uses via
+ * getRoleDisplayName(), and phrases it as "as: <Label>" to sidestep the a/an
+ * article problem across role names.
+ */
+describe('sendInviteEmail — role label rendering (QA ISSUE 5)', () => {
+  it('renders a multi-word role slug as its human-readable label, not the raw slug', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-3' });
+
+    await sendInviteEmail(
+      'user@test.com',
+      'https://app/invite',
+      'Acme',
+      'behavioral_health_technician',
+    );
+
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).not.toContain('behavioral_health_technician');
+    expect(html).toContain('Behavioral Health Technician');
+  });
+
+  it('renders the "as: <Label>" phrasing rather than the old "as a <role>" grammar', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-4' });
+
+    await sendInviteEmail('user@test.com', 'https://app/invite', 'Acme', 'hr');
+
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).toContain('as: <strong>HR</strong>');
+    expect(html).not.toContain('as a <strong>hr</strong>');
+  });
+
+  it('falls back to the raw value for an unrecognised role slug rather than throwing', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-5' });
+
+    const result = await sendInviteEmail(
+      'user@test.com',
+      'https://app/invite',
+      'Acme',
+      'some_future_role',
+    );
+
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).toContain('some_future_role');
+  });
+});
+
+/**
  * Unit tests for sendPartnerApplicationEmail (partners feature). Mocked at
  * the same transporter boundary as the rest of this file — no real mail is
  * sent. Focused on the contract the /partners application form relies on:
  * inbox precedence, reply-to wiring, subject formatting, and HTML-escaping
  * of every applicant-supplied field.
  */
+/**
+ * OTP expiry copy-drift regression (see mfa.test.ts): the template used to
+ * hardcode "15 minutes" while mfa.ts enforced a 10-minute window. It now
+ * interpolates OTP_EXPIRY_MINUTES so the copy can never silently drift from
+ * the actual enforced expiry again.
+ */
+describe('sendMfaOtpEmail — expiry copy is single-sourced from OTP_EXPIRY_MINUTES', () => {
+  it('embeds the current OTP_EXPIRY_MINUTES value in the email body', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-otp' });
+
+    await sendMfaOtpEmail('user@test.com', '123456');
+
+    expect(mockSendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: expect.stringContaining(`Code expires in ${OTP_EXPIRY_MINUTES} minutes.`),
+      }),
+    );
+    // Regression pin: the old hardcoded value must never reappear.
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).not.toMatch(/15 minutes/);
+  });
+
+  it('embeds the OTP code in the email body', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-otp-2' });
+
+    await sendMfaOtpEmail('user@test.com', '654321');
+
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).toContain('654321');
+  });
+});
+
 describe('sendPartnerApplicationEmail', () => {
   const ORIGINAL_ENV = { ...process.env };
 

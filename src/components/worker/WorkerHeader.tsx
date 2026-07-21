@@ -16,6 +16,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useNotifications } from '@/components/notifications/useNotifications';
+import { clearSiblingSessionCookie } from '@/app/actions/session-bridge';
 
 interface HeaderProps {
   userEmail: string;
@@ -67,10 +68,16 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
   };
 
   const handleConfirmLogout = async () => {
+    // Also drop a bridged Manage (admin) session so an admin who switched into
+    // Learn mode is fully signed out. Best-effort — never block the real signOut.
+    try {
+      await clearSiblingSessionCookie('worker');
+    } catch {
+      // Swallow — the primary signOut below is what matters.
+    }
     await signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/login` });
   };
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -88,7 +95,7 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
 
   return (
     <>
-      <header className="flex h-16 items-center justify-between border-b border-[#e2e8f0] bg-white px-4 lg:h-20 lg:justify-end lg:px-10">
+      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[#e2e8f0] bg-white px-4 lg:h-20 lg:justify-end lg:px-10">
         {/* Hamburger — visible only on <lg */}
         <button
           className="flex size-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-lg border-none bg-[#f7fafc] text-[#4a5568] transition-colors hover:bg-[#edf2f7] lg:hidden"
@@ -177,7 +184,6 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
         </div>
       </header>
 
-      {/* Logout Confirmation Dialog */}
       <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           <DialogHeader className="items-center text-center">

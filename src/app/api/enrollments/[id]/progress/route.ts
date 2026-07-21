@@ -28,7 +28,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const { progress } = parsedBody.data;
 
-    // Verify enrollment belongs to user
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
     });
@@ -53,7 +52,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return NextResponse.json({ success: true, message: 'Progress already ahead' });
     }
 
-    // Determine new status
     let newStatus = enrollment.status;
     if (newProgress < 100) {
       newStatus = 'in_progress';
@@ -66,7 +64,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       newStatus = 'lessons_complete';
     }
 
-    // Update progress
     await prisma.enrollment.update({
       where: { id: enrollmentId },
       data: {

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { generateSingleQuestion } from '@/app/actions/quiz-ai';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { QuizQuestion } from '@/types/quiz';
 import { CourseWizardData } from '@/types/course';
@@ -92,13 +93,21 @@ export default function Step6QuizReview({
     }
   };
 
-  // Count archetypes for summary
   const archetypeCounts: Record<string, number> = {};
   questions.forEach((q) => {
     if (q.archetype) {
       archetypeCounts[q.archetype] = (archetypeCounts[q.archetype] || 0) + 1;
     }
   });
+
+  // Requested vs. generated: the wizard blocks publishing until at least one
+  // question exists (CourseWizard.isNextDisabled). Explain that block inline, and
+  // surface a partial fill (fewer than requested) as a non-blocking warning that
+  // mirrors the server-side assessCourseQuality copy.
+  const requestedCount = parseInt(data.quizQuestionCount ?? '', 10) || 0;
+  const showEmptyBanner = questions.length === 0;
+  const showPartialBanner =
+    questions.length > 0 && requestedCount > 0 && questions.length < requestedCount;
 
   return (
     <div className="relative z-50 flex w-full min-h-0 max-w-[800px] flex-1 flex-col items-center">
@@ -110,7 +119,18 @@ export default function Step6QuizReview({
       </p>
 
       <div className="flex h-0 w-full min-h-0 flex-[1_1_auto] flex-col overflow-y-auto pr-2 pb-10">
-        {/* Header Row */}
+        {showEmptyBanner && (
+          <Alert variant="error" title="No quiz questions were generated" className="mb-6 shrink-0">
+            AI didn&apos;t generate the requested number of quiz questions. Add questions manually
+            below or go back a step to retry generation.
+          </Alert>
+        )}
+        {showPartialBanner && (
+          <Alert variant="warning" title="Fewer questions than requested" className="mb-6 shrink-0">
+            The quiz has only {questions.length} of the {requestedCount} requested questions. You
+            can add more manually below, or go back a step to retry generation.
+          </Alert>
+        )}
         <div className="mb-6 flex shrink-0 items-center justify-between">
           <div className="flex flex-col">
             <div className="mb-1 text-lg font-bold text-foreground">Editable quiz questions</div>
@@ -120,7 +140,6 @@ export default function Step6QuizReview({
           </div>
         </div>
 
-        {/* Flat Question List */}
         <div className="flex flex-col gap-5">
           {questions.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-background-secondary p-10 text-center italic text-text-tertiary">
@@ -250,7 +269,6 @@ export default function Step6QuizReview({
                     ))}
                   </div>
 
-                  {/* Embedded Explanation (Always Visible) */}
                   {q.explanation && (
                     <div className="mt-3 px-4 py-3 bg-[#F7FAFC] rounded-lg border border-[#E2E8F0] text-[13px] leading-relaxed">
                       <div className="font-semibold text-[#38A169] mb-1.5 flex items-start gap-1.5">
@@ -279,7 +297,6 @@ export default function Step6QuizReview({
           )}
         </div>
 
-        {/* Add Question Section */}
         {!isAdding ? (
           <Button variant="outline" onClick={() => setIsAdding(true)} className="w-full">
             + Add New Question

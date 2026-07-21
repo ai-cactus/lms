@@ -47,7 +47,6 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
 
   return (
     <div className="flex min-w-0 max-w-full flex-1 flex-col rounded-xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
-      {/* Header */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h3 className="text-lg font-bold text-[#1a202c]">My Courses</h3>
         <div className="w-full sm:w-80">
@@ -140,7 +139,6 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
         </TableBody>
       </Table>
 
-      {/* View All Link */}
       <div className="mt-4 flex justify-end">
         <Link
           href="/dashboard/courses"

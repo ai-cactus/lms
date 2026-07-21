@@ -20,6 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { RowActionsMenu } from '@/components/ui';
 import {
   Search,
@@ -57,12 +67,18 @@ interface DocumentVersionEntry {
   phiReport?: { hasPHI: boolean } | null;
 }
 
+interface DocumentUploader {
+  email: string;
+  profile: { firstName: string | null; lastName: string | null } | null;
+}
+
 interface DocumentRow {
   id: string;
   filename: string;
   mimeType: string;
   size: number;
   updatedAt: Date | string;
+  user?: DocumentUploader | null;
   versions: DocumentVersionEntry[];
 }
 
@@ -90,6 +106,15 @@ function getFileIcon(mimeType: string, filename: string) {
       )}
     />
   );
+}
+
+function uploaderLabel(user: DocumentUploader | null | undefined): string {
+  if (!user) return '—';
+  const fullName = [user.profile?.firstName, user.profile?.lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  return fullName || user.email;
 }
 
 function StatusBadge({ status }: { status: DocumentLifecycleStatus }) {
@@ -197,13 +222,11 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  // Rename modal
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
-  // Search
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -234,15 +257,10 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
     router.push(`/dashboard/documents/${docId}`);
   };
 
-  const handleDelete = (docId: string, filename: string) => {
-    if (
-      !confirm(
-        `Delete "${filename}"?\n\nThis will permanently remove the file from storage and cannot be undone.`,
-      )
-    ) {
-      return;
-    }
-
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return;
+    const docId = deleteTarget.id;
+    setDeleteTarget(null);
     setDeletingId(docId);
     setDeleteError(null);
 
@@ -275,7 +293,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
 
   return (
     <>
-      {/* Rename modal */}
       {renameTarget && (
         <RenameModal
           docId={renameTarget.id}
@@ -285,15 +302,39 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
         />
       )}
 
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove &ldquo;{deleteTarget?.name}&rdquo; and all its versions
+              from storage. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={handleConfirmDelete}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {deleteError && (
         <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600" role="alert">
           ⚠️ {deleteError}
         </p>
       )}
 
-      {/* Card */}
       <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
-        {/* Search */}
         <div className="mb-6 w-full sm:w-[380px]">
           <Input
             className="h-11"
@@ -309,11 +350,11 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
           />
         </div>
 
-        {/* Table */}
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
               <TableHead>Document Name</TableHead>
+              <TableHead className="hidden lg:table-cell">Uploaded By</TableHead>
               <TableHead className="hidden sm:table-cell">Date Uploaded</TableHead>
               <TableHead className="hidden md:table-cell">Status</TableHead>
               <TableHead className="text-right">Action</TableHead>
@@ -335,7 +376,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                     onClick={() => handleRowClick(doc.id)}
                     className="cursor-pointer"
                   >
-                    {/* Document name */}
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#f1f5f9]">
@@ -351,7 +391,10 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                       </div>
                     </TableCell>
 
-                    {/* Date */}
+                    <TableCell className="text-[#6b7280] whitespace-nowrap hidden lg:table-cell">
+                      {uploaderLabel(doc.user)}
+                    </TableCell>
+
                     <TableCell className="text-[#6b7280] whitespace-nowrap hidden sm:table-cell">
                       {new Date(doc.updatedAt).toLocaleDateString('en-US', {
                         month: 'short',
@@ -360,7 +403,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                       })}
                     </TableCell>
 
-                    {/* Status */}
                     <TableCell className="hidden md:table-cell">
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge status={status} />
@@ -376,7 +418,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                       </div>
                     </TableCell>
 
-                    {/* Action – RowActionsMenu */}
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <RowActionsMenu
                         actions={[
@@ -396,7 +437,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                             variant: 'destructive',
                             separatorBefore: true,
                             disabled: hasCourse || isDeleting,
-                            onSelect: () => handleDelete(doc.id, doc.filename),
+                            onSelect: () => setDeleteTarget({ id: doc.id, name: doc.filename }),
                           },
                         ]}
                       />
@@ -406,7 +447,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
               })
             ) : (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={4} className="text-center p-[60px] text-slate-500">
+                <TableCell colSpan={5} className="text-center p-[60px] text-slate-500">
                   <div className="flex flex-col items-center gap-3">
                     <FileX2 className="size-16 text-slate-300" />
                     <p className="text-base font-semibold text-[#2D3748]">
@@ -424,7 +465,6 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
           </TableBody>
         </Table>
 
-        {/* Pagination */}
         {totalEntries > 0 && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
             <span className="text-sm text-[#718096]">

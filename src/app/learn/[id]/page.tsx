@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
 import { useParams, useRouter } from 'next/navigation';
 import { Menu, AlertCircle } from 'lucide-react';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -219,7 +220,7 @@ export default function LearnPage() {
   // True when the LAST lesson is a video lesson whose watch-gate has not yet been met.
   // Admins bypass; non-video courses are unaffected (returns false).
   const isVideoQuizGateBlocked = () => {
-    if (!course || userData?.role === 'admin') return false;
+    if (!course || isAdminRole(userData?.role)) return false;
     const lastLesson = course.lessons[course.lessons.length - 1];
     if (!lastLesson?.videoStorageUri) return false;
     return !isQuizUnlocked(watchedPct);
@@ -235,7 +236,7 @@ export default function LearnPage() {
       if (!quizResults && isVideoQuizGateBlocked()) {
         return;
       }
-      if (quizUnlocked || quizResults || userData?.role === 'admin') {
+      if (quizUnlocked || quizResults || isAdminRole(userData?.role)) {
         setIsQuizActive(true);
         setQuizStep(quizResults ? 'review' : 'intro');
         setActiveIndex(index);
@@ -248,7 +249,7 @@ export default function LearnPage() {
     }
 
     // Standard Lesson Selection
-    if (index <= highestUnlockedIndex || userData?.role === 'admin') {
+    if (index <= highestUnlockedIndex || isAdminRole(userData?.role)) {
       setIsQuizActive(false);
       setActiveIndex(index);
     }
@@ -279,7 +280,7 @@ export default function LearnPage() {
       }
       updateProgress(course.lessons.length - 1);
 
-      if (quizUnlocked || userData?.role === 'admin') {
+      if (quizUnlocked || isAdminRole(userData?.role)) {
         setIsQuizActive(true);
         setQuizStep(quizResults ? 'review' : 'intro');
         setActiveIndex(course.lessons.length);
@@ -308,7 +309,6 @@ export default function LearnPage() {
     if (!course?.quiz || !enrollment) return;
 
     try {
-      // Start attempt on backend
       await fetch(`/api/quiz/${course.quiz.id}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -369,7 +369,6 @@ export default function LearnPage() {
           quizResultsData?: QuizResultsData;
         };
 
-        // Map lesson data to include moduleIndex
         if (data.course.lessons) {
           data.course.lessons = data.course.lessons.map((l: Lesson, i: number) => ({
             ...l,
@@ -452,8 +451,13 @@ export default function LearnPage() {
           setIsQuizActive(false);
           setQuizUnlocked(true);
           setHighestUnlockedIndex(lessonCount - 1);
-        } else if (data.enrollment?.status === 'locked' || (hasQuizAttempt && !activeAttempt)) {
-          // Locked or has submitted quiz (not completed/attested yet): show quiz review
+        } else if (
+          data.enrollment?.status === 'locked' ||
+          (hasQuizAttempt && !activeAttempt && data.enrollment?.score != null)
+        ) {
+          // Locked or has a submitted (scored) quiz not yet completed/attested: show quiz review.
+          // Gate on score != null so a retaken enrollment (score reset to null) is NOT trapped
+          // here — the review screen is only for submitted attempts.
           const resultsData: QuizResultsData = data.quizResultsData || {
             passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
             score: data.enrollment.score || 0,
@@ -471,6 +475,15 @@ export default function LearnPage() {
           setQuizStep('review');
           setQuizUnlocked(true);
           setHighestUnlockedIndex(lessonCount - 1);
+        } else if (hasQuizAttempt && !activeAttempt) {
+          // Retake pending: retakeQuiz() reset enrollment.score to null and left the completed
+          // attempts immutable, creating no draft. Land on the quiz START screen (intro) so the
+          // worker sees "Attempt N of M" + Start Quiz (which calls /start to append the new draft).
+          setQuizUnlocked(true);
+          setHighestUnlockedIndex(lessonCount - 1);
+          setActiveIndex(lessonCount);
+          setIsQuizActive(true);
+          setQuizStep('intro');
         } else if (data.enrollment?.progress > 0) {
           const savedProgress = data.enrollment.progress;
           const restoredIndex = Math.min(
@@ -532,7 +545,7 @@ export default function LearnPage() {
   // Admins opening a VIDEO course get a clean read-only review: the course
   // video + an answer-key walkthrough of the quiz + an Assign action. (Text
   // courses keep the existing editable admin flow below.)
-  if (userData?.role === 'admin' && course.lessons.some((l) => l.videoStorageUri)) {
+  if (isAdminRole(userData?.role) && course.lessons.some((l) => l.videoStorageUri)) {
     const reviewVideoLesson = course.lessons.find((l) => l.videoStorageUri) ?? null;
     return (
       <AdminCourseReview
@@ -572,17 +585,23 @@ export default function LearnPage() {
   // For video lessons, the quiz stays locked until the watch-gate is met.
   // Admins bypass the gate; text lessons keep their existing (non-video) gating.
   const isVideoGateBlocked =
-    isVideoLesson && userData?.role !== 'admin' && !isQuizUnlocked(watchedPct);
+    isVideoLesson && !isAdminRole(userData?.role) && !isQuizUnlocked(watchedPct);
 
-  const isQuizLocked = isQuizActive && quizStep === 'active' && userData?.role !== 'admin';
+  const isQuizLocked = isQuizActive && quizStep === 'active' && !isAdminRole(userData?.role);
 
   const railUnlockedIndex =
-    quizUnlocked || quizResults || userData?.role === 'admin'
+    quizUnlocked || quizResults || isAdminRole(userData?.role)
       ? course?.lessons.length || 9999
       : highestUnlockedIndex;
 
   // Whether to show the shared rail + topbar (quiz views only)
   const showSharedLayout = isQuizIndex || (quizStep === 'review' && quizResults);
+
+  // Attempt counters derive from the (unsorted) quizAttempts array: completed
+  // attempts have timeTaken !== null; at most one in-progress draft has null.
+  const completedAttemptCount =
+    enrollment?.quizAttempts?.filter((a) => a.timeTaken !== null).length ?? 0;
+  const activeDraftAttempt = enrollment?.quizAttempts?.find((a) => a.timeTaken === null);
 
   return (
     <div className="flex flex-row-reverse max-md:flex-col h-screen w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a]">
@@ -595,7 +614,7 @@ export default function LearnPage() {
           quiz={course.quiz}
           onExitClick={() => {
             if (!isQuizLocked) {
-              router.push(userData?.role === 'admin' ? '/dashboard/courses' : '/worker');
+              router.push(isAdminRole(userData?.role) ? '/dashboard/courses' : '/worker');
             }
           }}
           disableNav={isQuizLocked}
@@ -681,7 +700,7 @@ export default function LearnPage() {
                 hideActions={
                   enrollment?.status === 'completed' || enrollment?.status === 'attested'
                 }
-                showAttestation={userData?.role === 'worker' && quizResults.passed}
+                showAttestation={isWorkerRole(userData?.role) && quizResults.passed}
                 userRole={userData?.role}
                 organizationName={userData?.organizationName}
                 onAttestSuccess={() => {
@@ -702,7 +721,7 @@ export default function LearnPage() {
               />
             </div>
           ) : isQuizIndex ? (
-            userData?.role === 'admin' ? (
+            isAdminRole(userData?.role) ? (
               <div style={{ overflow: 'auto', height: '100%', padding: '24px 0' }}>
                 <AdminQuizEditor
                   courseId={courseId}
@@ -795,9 +814,7 @@ export default function LearnPage() {
                                   }}
                                 >
                                   Attempt{' '}
-                                  {enrollment?.quizAttempts?.[0]?.attemptCount
-                                    ? enrollment.quizAttempts[0].attemptCount + 1
-                                    : 1}{' '}
+                                  {Math.min(completedAttemptCount + 1, course.quiz.allowedAttempts)}{' '}
                                   of {course.quiz.allowedAttempts}
                                 </span>
                               )}
@@ -827,7 +844,7 @@ export default function LearnPage() {
                             <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-text-muted">
                               Question {currentQuestionIndex + 1} of {course.quiz.questions.length}
                               {course.quiz.allowedAttempts &&
-                                ` | Attempt ${enrollment?.quizAttempts?.[0]?.attemptCount ?? 1} of ${course.quiz.allowedAttempts}`}
+                                ` | Attempt ${activeDraftAttempt?.attemptCount ?? completedAttemptCount + 1} of ${course.quiz.allowedAttempts}`}
                             </span>
                             <span className="text-[11px] font-semibold text-text-muted">
                               {Math.floor(timeLeft / 60)}:
@@ -938,7 +955,7 @@ export default function LearnPage() {
               onSelectModule={(index) => {
                 if (index === course.lessons.length) {
                   handleRailSelect(index);
-                } else if (index <= highestUnlockedIndex || userData?.role === 'admin') {
+                } else if (index <= highestUnlockedIndex || isAdminRole(userData?.role)) {
                   setIsQuizActive(false);
                   setActiveIndex(index);
                   // Scroll to the module in article view
@@ -976,7 +993,7 @@ export default function LearnPage() {
                   id={`module-${idx}`}
                   style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}
                 >
-                  {userData?.role === 'admin' ? (
+                  {isAdminRole(userData?.role) ? (
                     <AdminLessonEditor
                       lesson={{
                         ...lesson,
@@ -1058,7 +1075,7 @@ export default function LearnPage() {
       </div>
 
       {/* Modals */}
-      {showQuizGateModal && userData?.role !== 'admin' && (
+      {showQuizGateModal && !isAdminRole(userData?.role) && (
         <div
           className="fixed left-0 top-0 z-[100] flex h-full w-full items-center justify-center bg-black/50 backdrop-blur-[4px] animate-in fade-in duration-200"
           onClick={() => setShowQuizGateModal(false)}

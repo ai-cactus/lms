@@ -31,7 +31,6 @@ export default function BillingGateModal({ title, description, onClose }: Billin
         aria-describedby="billing-gate-desc"
       >
         <DialogHeader className="items-center text-center">
-          {/* Illustration */}
           <div className="mb-2 flex size-24 items-center justify-center rounded-full bg-primary/10">
             <Lock className="size-12 text-primary" aria-hidden="true" />
           </div>

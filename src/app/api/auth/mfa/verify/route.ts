@@ -1,20 +1,20 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { verifyUserMfaCode } from '@/app/actions/mfa';
-import { redeemMfaChallenge } from '@/lib/mfa-challenge';
-import { markSessionMfaVerified } from '@/lib/session-mfa';
+import { peekMfaChallenge, redeemMfaChallenge } from '@/lib/mfa-challenge';
+import { stampSessionMfaVerified } from '@/lib/auth/mfa-session-stamp';
 import { logger } from '@/lib/logger';
-import { decode, encode } from 'next-auth/jwt';
 
 /**
  * POST /api/auth/mfa/verify
  *
- * Verifies a TOTP or recovery code during the MFA login challenge.
+ * Verifies an email OTP or recovery code during the MFA login challenge.
  * Expects: { challenge, code }
  *
- * The challenge token is a short-lived, single-use Redis key that was
- * created during the login flow and binds the MFA verification to a
- * specific login attempt — preventing unauthenticated brute-force attacks.
+ * The challenge token is a short-lived, single-use Redis key created during the
+ * login flow that binds the MFA verification to a specific login attempt. It is
+ * PEEKED (not consumed) up front so a wrong code cannot burn it (Issue 1); it is
+ * only redeemed once verification AND the session stamp both succeed.
  */
 export async function POST(req: Request) {
   try {
@@ -25,15 +25,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Challenge token and code are required' }, { status: 400 });
     }
 
-    // Redeem the challenge token (single-use — deleted after retrieval)
-    const challengeData = await redeemMfaChallenge(challenge);
+    // Peek (non-destructive): a wrong code below must NOT consume the challenge
+    // (Issue 1). Redemption happens only after the whole flow succeeds.
+    const challengeData = await peekMfaChallenge(challenge);
     if (!challengeData) {
       return NextResponse.json({ error: 'Invalid or expired challenge' }, { status: 401 });
     }
 
     const { userId, role } = challengeData;
 
-    // Verify the user exists and has MFA enabled
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, mfaEnabled: true },
@@ -44,101 +44,60 @@ export async function POST(req: Request) {
     }
 
     const result = await verifyUserMfaCode(userId, code);
-
     if (!result.valid) {
-      logger.warn({ msg: 'MFA verification failed during login', userId });
+      logger.warn({ msg: '[mfa] Verification failed during login', userId });
       return NextResponse.json(
         { error: result.error || 'Invalid verification code' },
         { status: 401 },
       );
     }
 
-    // Stamp mfaVerifiedAt for backward compat (legacy sessions)
-    await prisma.user.update({
-      where: { id: userId },
-      data: { mfaVerifiedAt: new Date() },
-    });
-
-    // Create the response object early so we can attach cookies to it
-    const response = NextResponse.json({
-      success: true,
-      role,
-    });
-
-    // Per-session MFA verification: decode the JWT from the session cookie
-    // to get the sessionId claim, then mark this specific session as verified in Redis.
-    try {
-      const cookieHeader = req.headers.get('cookie') || '';
-      const isAdmin = cookieHeader.includes('admin.session-token');
-      const isWorker = cookieHeader.includes('worker.session-token');
-      const cookieMatch = isAdmin
-        ? cookieHeader.match(/(?:__Secure-)?admin\.session-token=([^;]+)/)
-        : isWorker
-          ? cookieHeader.match(/(?:__Secure-)?worker\.session-token=([^;]+)/)
-          : null;
-
-      if (cookieMatch?.[1]) {
-        const salt = isAdmin
-          ? process.env.NODE_ENV === 'production'
-            ? '__Secure-admin.session-token'
-            : 'admin.session-token'
-          : process.env.NODE_ENV === 'production'
-            ? '__Secure-worker.session-token'
-            : 'worker.session-token';
-
-        const decoded = await decode({
-          token: decodeURIComponent(cookieMatch[1]),
-          secret: process.env.NEXTAUTH_SECRET!,
-          salt,
-        });
-
-        if (decoded?.sessionId) {
-          await markSessionMfaVerified(userId, decoded.sessionId as string);
-
-          // Fix 2FA Loop: The proxy middleware reads `token.mfaVerified` directly
-          // from the cookie payload. We MUST re-encode and update the session cookie
-          // here so that the next request (to /dashboard) knows MFA is verified.
-          decoded.mfaVerified = true;
-
-          const newToken = await encode({
-            token: decoded,
-            secret: process.env.NEXTAUTH_SECRET!,
-            salt,
-          });
-
-          const cookieName = isAdmin
-            ? process.env.NODE_ENV === 'production'
-              ? '__Secure-admin.session-token'
-              : 'admin.session-token'
-            : process.env.NODE_ENV === 'production'
-              ? '__Secure-worker.session-token'
-              : 'worker.session-token';
-
-          const maxAge = parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '60', 10) * 60;
-
-          response.cookies.set(cookieName, newToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge,
-          });
-        }
-      }
-    } catch (decodeError) {
-      // Non-fatal: if we can't decode, the legacy mfaVerifiedAt stamp above
-      // will be picked up by sessions still using the old JWT callback logic.
-      logger.warn({
-        msg: 'Could not decode session cookie for per-session MFA stamp',
-        error: String(decodeError),
+    // Stamp the session BEFORE redeeming the challenge. The instance comes from
+    // the challenge's recorded role (authoritative), never from the Cookie
+    // header. If stamping fails we return a hard error and leave the challenge
+    // alive so the user can request a fresh code and retry — never a false
+    // {success:true} (Issue 2).
+    const stamp = await stampSessionMfaVerified(userId, role);
+    if (!stamp.ok) {
+      logger.error({
+        msg: '[mfa] Session stamp failed during login',
+        userId,
+        reason: stamp.reason,
       });
+      return NextResponse.json(
+        { error: 'Could not complete verification. Please try again.' },
+        { status: 500 },
+      );
     }
 
-    logger.info({ msg: 'MFA verification successful during login', userId });
+    // Challenge fully consumed only now that the session is verified.
+    await redeemMfaChallenge(challenge);
 
+    // Backward compat (decision: keep this write): legacy sessions may still
+    // read mfaVerifiedAt. Best-effort — the session is already verified in Redis
+    // and the cookie mirror, so a failure here must not fail the request.
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { mfaVerifiedAt: new Date() },
+      });
+    } catch (err) {
+      logger.warn({ msg: '[mfa] mfaVerifiedAt backfill failed (non-fatal)', userId, err });
+    }
+
+    const response = NextResponse.json({ success: true, role });
+    response.cookies.set(stamp.cookieName, stamp.newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: stamp.maxAge,
+    });
+
+    logger.info({ msg: '[mfa] Verification successful during login', userId });
     return response;
   } catch (error) {
-    logger.error({ msg: 'MFA verify error', error: String(error) });
+    logger.error({ msg: '[mfa] Verify error', err: error });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

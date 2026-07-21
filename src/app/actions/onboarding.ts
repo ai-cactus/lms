@@ -21,6 +21,15 @@ export async function createOrganization(prevState: State, formData: FormData): 
     return { error: 'Not authenticated' };
   }
 
+  // One organisation per user — a user already in an org cannot create another.
+  const existingMembership = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { organizationId: true },
+  });
+  if (existingMembership?.organizationId) {
+    return { error: 'You already belong to an organization and cannot create another.' };
+  }
+
   const validatedFields = createOrgSchema.safeParse({
     name: formData.get('name'),
   });
@@ -40,7 +49,6 @@ export async function createOrganization(prevState: State, formData: FormData): 
 
   try {
     await prisma.$transaction(async (tx) => {
-      // Check for existing organization
       const existingOrg = await tx.organization.findFirst({
         where: {
           name: {
@@ -56,7 +64,6 @@ export async function createOrganization(prevState: State, formData: FormData): 
         );
       }
 
-      // Create Organization
       const org = await tx.organization.create({
         data: {
           name,
@@ -66,12 +73,22 @@ export async function createOrganization(prevState: State, formData: FormData): 
         },
       });
 
-      // Update User
+      // Every organisation starts with one facility; the founder is attached to it.
+      const facility = await tx.facility.create({
+        data: {
+          organizationId: org.id,
+          name,
+        },
+      });
+
+      // Update User — the founder of a new organisation becomes its `owner`.
       await tx.user.update({
         where: { id: session.user.id },
         data: {
           organizationId: org.id,
-          role: 'admin',
+          facilityId: facility.id,
+          role: 'owner',
+          roleAssignedAt: new Date(),
         },
       });
     });

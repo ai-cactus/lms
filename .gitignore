@@ -69,5 +69,10 @@ docs/Reminders_and_Escalations.csv
 # QA report exports (PDF copies of the gitignored qa-reports/) — kept locally, never committed
 docs/Theraptly-LMS-Production-QA-Report.pdf
 docs/*QA-Report*.pdf
+
+# Playwright MCP run artifacts
+.playwright-mcp/
 # Analysis report PDF renderings (generated from docs/analysis/*.md) — kept locally, never committed
 docs/analysis/pdf/
+testing_stages.jpeg
+Theraptly_LMS_QA_Test_Cases.docx

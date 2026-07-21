@@ -63,6 +63,7 @@ export type EnrollmentMinAggregateOutputType = {
   lockedAt: Date | null
   retakeOf: string | null
   retakeReason: string | null
+  renewedFrom: string | null
   assignmentId: string | null
   accessAt: Date | null
   dueAt: Date | null
@@ -85,6 +86,7 @@ export type EnrollmentMaxAggregateOutputType = {
   lockedAt: Date | null
   retakeOf: string | null
   retakeReason: string | null
+  renewedFrom: string | null
   assignmentId: string | null
   accessAt: Date | null
   dueAt: Date | null
@@ -107,6 +109,7 @@ export type EnrollmentCountAggregateOutputType = {
   lockedAt: number
   retakeOf: number
   retakeReason: number
+  renewedFrom: number
   assignmentId: number
   accessAt: number
   dueAt: number
@@ -143,6 +146,7 @@ export type EnrollmentMinAggregateInputType = {
   lockedAt?: true
   retakeOf?: true
   retakeReason?: true
+  renewedFrom?: true
   assignmentId?: true
   accessAt?: true
   dueAt?: true
@@ -165,6 +169,7 @@ export type EnrollmentMaxAggregateInputType = {
   lockedAt?: true
   retakeOf?: true
   retakeReason?: true
+  renewedFrom?: true
   assignmentId?: true
   accessAt?: true
   dueAt?: true
@@ -187,6 +192,7 @@ export type EnrollmentCountAggregateInputType = {
   lockedAt?: true
   retakeOf?: true
   retakeReason?: true
+  renewedFrom?: true
   assignmentId?: true
   accessAt?: true
   dueAt?: true
@@ -296,6 +302,7 @@ export type EnrollmentGroupByOutputType = {
   lockedAt: Date | null
   retakeOf: string | null
   retakeReason: string | null
+  renewedFrom: string | null
   assignmentId: string | null
   accessAt: Date | null
   dueAt: Date | null
@@ -341,6 +348,7 @@ export type EnrollmentWhereInput = {
   lockedAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
   retakeOf?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   retakeReason?: Prisma.StringNullableFilter<"Enrollment"> | string | null
+  renewedFrom?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   assignmentId?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   accessAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
   dueAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
@@ -370,6 +378,7 @@ export type EnrollmentOrderByWithRelationInput = {
   lockedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   retakeOf?: Prisma.SortOrderInput | Prisma.SortOrder
   retakeReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  renewedFrom?: Prisma.SortOrderInput | Prisma.SortOrder
   assignmentId?: Prisma.SortOrderInput | Prisma.SortOrder
   accessAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dueAt?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -402,6 +411,7 @@ export type EnrollmentWhereUniqueInput = Prisma.AtLeast<{
   lockedAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
   retakeOf?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   retakeReason?: Prisma.StringNullableFilter<"Enrollment"> | string | null
+  renewedFrom?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   assignmentId?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   accessAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
   dueAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
@@ -431,6 +441,7 @@ export type EnrollmentOrderByWithAggregationInput = {
   lockedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   retakeOf?: Prisma.SortOrderInput | Prisma.SortOrder
   retakeReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  renewedFrom?: Prisma.SortOrderInput | Prisma.SortOrder
   assignmentId?: Prisma.SortOrderInput | Prisma.SortOrder
   accessAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dueAt?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -461,6 +472,7 @@ export type EnrollmentScalarWhereWithAggregatesInput = {
   lockedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Enrollment"> | Date | string | null
   retakeOf?: Prisma.StringNullableWithAggregatesFilter<"Enrollment"> | string | null
   retakeReason?: Prisma.StringNullableWithAggregatesFilter<"Enrollment"> | string | null
+  renewedFrom?: Prisma.StringNullableWithAggregatesFilter<"Enrollment"> | string | null
   assignmentId?: Prisma.StringNullableWithAggregatesFilter<"Enrollment"> | string | null
   accessAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Enrollment"> | Date | string | null
   dueAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Enrollment"> | Date | string | null
@@ -481,6 +493,7 @@ export type EnrollmentCreateInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
@@ -509,6 +522,7 @@ export type EnrollmentUncheckedCreateInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -533,6 +547,7 @@ export type EnrollmentUpdateInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
@@ -561,6 +576,7 @@ export type EnrollmentUncheckedUpdateInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -587,6 +603,7 @@ export type EnrollmentCreateManyInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -607,6 +624,7 @@ export type EnrollmentUpdateManyMutationInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
@@ -628,6 +646,7 @@ export type EnrollmentUncheckedUpdateManyInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -660,6 +679,7 @@ export type EnrollmentCountOrderByAggregateInput = {
   lockedAt?: Prisma.SortOrder
   retakeOf?: Prisma.SortOrder
   retakeReason?: Prisma.SortOrder
+  renewedFrom?: Prisma.SortOrder
   assignmentId?: Prisma.SortOrder
   accessAt?: Prisma.SortOrder
   dueAt?: Prisma.SortOrder
@@ -688,6 +708,7 @@ export type EnrollmentMaxOrderByAggregateInput = {
   lockedAt?: Prisma.SortOrder
   retakeOf?: Prisma.SortOrder
   retakeReason?: Prisma.SortOrder
+  renewedFrom?: Prisma.SortOrder
   assignmentId?: Prisma.SortOrder
   accessAt?: Prisma.SortOrder
   dueAt?: Prisma.SortOrder
@@ -710,6 +731,7 @@ export type EnrollmentMinOrderByAggregateInput = {
   lockedAt?: Prisma.SortOrder
   retakeOf?: Prisma.SortOrder
   retakeReason?: Prisma.SortOrder
+  renewedFrom?: Prisma.SortOrder
   assignmentId?: Prisma.SortOrder
   accessAt?: Prisma.SortOrder
   dueAt?: Prisma.SortOrder
@@ -927,6 +949,7 @@ export type EnrollmentCreateWithoutUserInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
@@ -953,6 +976,7 @@ export type EnrollmentUncheckedCreateWithoutUserInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -1008,6 +1032,7 @@ export type EnrollmentScalarWhereInput = {
   lockedAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
   retakeOf?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   retakeReason?: Prisma.StringNullableFilter<"Enrollment"> | string | null
+  renewedFrom?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   assignmentId?: Prisma.StringNullableFilter<"Enrollment"> | string | null
   accessAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
   dueAt?: Prisma.DateTimeNullableFilter<"Enrollment"> | Date | string | null
@@ -1028,6 +1053,7 @@ export type EnrollmentCreateWithoutCourseInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
@@ -1054,6 +1080,7 @@ export type EnrollmentUncheckedCreateWithoutCourseInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -1104,6 +1131,7 @@ export type EnrollmentCreateWithoutAssignmentInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
   course: Prisma.CourseCreateNestedOneWithoutEnrollmentsInput
@@ -1131,6 +1159,7 @@ export type EnrollmentUncheckedCreateWithoutAssignmentInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedCreateNestedManyWithoutEnrollmentInput
@@ -1180,6 +1209,7 @@ export type EnrollmentCreateWithoutCertificateInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
@@ -1207,6 +1237,7 @@ export type EnrollmentUncheckedCreateWithoutCertificateInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -1246,6 +1277,7 @@ export type EnrollmentUpdateWithoutCertificateInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
@@ -1273,6 +1305,7 @@ export type EnrollmentUncheckedUpdateWithoutCertificateInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1296,6 +1329,7 @@ export type EnrollmentCreateWithoutReminderLogsInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
@@ -1323,6 +1357,7 @@ export type EnrollmentUncheckedCreateWithoutReminderLogsInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -1362,6 +1397,7 @@ export type EnrollmentUpdateWithoutReminderLogsInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
@@ -1389,6 +1425,7 @@ export type EnrollmentUncheckedUpdateWithoutReminderLogsInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1412,6 +1449,7 @@ export type EnrollmentCreateWithoutReminderNudgesInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
@@ -1439,6 +1477,7 @@ export type EnrollmentUncheckedCreateWithoutReminderNudgesInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -1478,6 +1517,7 @@ export type EnrollmentUpdateWithoutReminderNudgesInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
@@ -1505,6 +1545,7 @@ export type EnrollmentUncheckedUpdateWithoutReminderNudgesInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1528,6 +1569,7 @@ export type EnrollmentCreateWithoutQuizAttemptsInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
   assignment?: Prisma.CourseAssignmentCreateNestedOneWithoutEnrollmentsInput
@@ -1555,6 +1597,7 @@ export type EnrollmentUncheckedCreateWithoutQuizAttemptsInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -1594,6 +1637,7 @@ export type EnrollmentUpdateWithoutQuizAttemptsInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
@@ -1621,6 +1665,7 @@ export type EnrollmentUncheckedUpdateWithoutQuizAttemptsInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1645,6 +1690,7 @@ export type EnrollmentCreateManyUserInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -1665,6 +1711,7 @@ export type EnrollmentUpdateWithoutUserInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
@@ -1691,6 +1738,7 @@ export type EnrollmentUncheckedUpdateWithoutUserInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1716,6 +1764,7 @@ export type EnrollmentUncheckedUpdateManyWithoutUserInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1737,6 +1786,7 @@ export type EnrollmentCreateManyCourseInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   assignmentId?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
@@ -1757,6 +1807,7 @@ export type EnrollmentUpdateWithoutCourseInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   assignment?: Prisma.CourseAssignmentUpdateOneWithoutEnrollmentsNestedInput
@@ -1783,6 +1834,7 @@ export type EnrollmentUncheckedUpdateWithoutCourseInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1808,6 +1860,7 @@ export type EnrollmentUncheckedUpdateManyWithoutCourseInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   assignmentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1830,6 +1883,7 @@ export type EnrollmentCreateManyAssignmentInput = {
   lockedAt?: Date | string | null
   retakeOf?: string | null
   retakeReason?: string | null
+  renewedFrom?: string | null
   accessAt?: Date | string | null
   dueAt?: Date | string | null
 }
@@ -1849,6 +1903,7 @@ export type EnrollmentUpdateWithoutAssignmentInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   course?: Prisma.CourseUpdateOneRequiredWithoutEnrollmentsNestedInput
@@ -1876,6 +1931,7 @@ export type EnrollmentUncheckedUpdateWithoutAssignmentInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   quizAttempts?: Prisma.QuizAttemptUncheckedUpdateManyWithoutEnrollmentNestedInput
@@ -1901,6 +1957,7 @@ export type EnrollmentUncheckedUpdateManyWithoutAssignmentInput = {
   lockedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   retakeOf?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   retakeReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  renewedFrom?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   accessAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dueAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
@@ -1971,6 +2028,7 @@ export type EnrollmentSelect<ExtArgs extends runtime.Types.Extensions.InternalAr
   lockedAt?: boolean
   retakeOf?: boolean
   retakeReason?: boolean
+  renewedFrom?: boolean
   assignmentId?: boolean
   accessAt?: boolean
   dueAt?: boolean
@@ -2001,6 +2059,7 @@ export type EnrollmentSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ex
   lockedAt?: boolean
   retakeOf?: boolean
   retakeReason?: boolean
+  renewedFrom?: boolean
   assignmentId?: boolean
   accessAt?: boolean
   dueAt?: boolean
@@ -2026,6 +2085,7 @@ export type EnrollmentSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ex
   lockedAt?: boolean
   retakeOf?: boolean
   retakeReason?: boolean
+  renewedFrom?: boolean
   assignmentId?: boolean
   accessAt?: boolean
   dueAt?: boolean
@@ -2051,12 +2111,13 @@ export type EnrollmentSelectScalar = {
   lockedAt?: boolean
   retakeOf?: boolean
   retakeReason?: boolean
+  renewedFrom?: boolean
   assignmentId?: boolean
   accessAt?: boolean
   dueAt?: boolean
 }
 
-export type EnrollmentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "courseId" | "status" | "progress" | "videoPositionSeconds" | "score" | "startedAt" | "completedAt" | "attestedAt" | "attestationSignature" | "attestationRole" | "assignedByAdminId" | "lockedAt" | "retakeOf" | "retakeReason" | "assignmentId" | "accessAt" | "dueAt", ExtArgs["result"]["enrollment"]>
+export type EnrollmentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "courseId" | "status" | "progress" | "videoPositionSeconds" | "score" | "startedAt" | "completedAt" | "attestedAt" | "attestationSignature" | "attestationRole" | "assignedByAdminId" | "lockedAt" | "retakeOf" | "retakeReason" | "renewedFrom" | "assignmentId" | "accessAt" | "dueAt", ExtArgs["result"]["enrollment"]>
 export type EnrollmentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   assignment?: boolean | Prisma.Enrollment$assignmentArgs<ExtArgs>
   course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>
@@ -2106,6 +2167,7 @@ export type $EnrollmentPayload<ExtArgs extends runtime.Types.Extensions.Internal
     lockedAt: Date | null
     retakeOf: string | null
     retakeReason: string | null
+    renewedFrom: string | null
     assignmentId: string | null
     accessAt: Date | null
     dueAt: Date | null
@@ -2555,6 +2617,7 @@ export interface EnrollmentFieldRefs {
   readonly lockedAt: Prisma.FieldRef<"Enrollment", 'DateTime'>
   readonly retakeOf: Prisma.FieldRef<"Enrollment", 'String'>
   readonly retakeReason: Prisma.FieldRef<"Enrollment", 'String'>
+  readonly renewedFrom: Prisma.FieldRef<"Enrollment", 'String'>
   readonly assignmentId: Prisma.FieldRef<"Enrollment", 'String'>
   readonly accessAt: Prisma.FieldRef<"Enrollment", 'DateTime'>
   readonly dueAt: Prisma.FieldRef<"Enrollment", 'DateTime'>

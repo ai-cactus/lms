@@ -3,6 +3,8 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
+import { authorize } from '@/lib/rbac/authorize';
+import { apiError } from '@/lib/api-response';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
@@ -13,37 +15,45 @@ import { headers } from 'next/headers';
 export async function POST() {
   try {
     const session = await auth();
-    // F-012: enforce authentication + MFA step-up + admin role at the data
-    // layer, consistent with the shared guard used across billing routes.
-    const denied = guardApiSession(session, { role: 'admin' });
+    // F-012: enforce authentication + MFA step-up at the data layer. RBAC (the
+    // billing permission) is enforced by authorize() below against the registry.
+    const denied = guardApiSession(session);
     if (denied) return denied;
-    // The guard guarantees an authenticated session past this point; narrow the
-    // id for the DB lookup (guardApiSession does not narrow the session type).
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const authResult = await authorize('billing.edit');
+    if (!authResult.ok) return authResult.response;
+    const { ctx } = authResult;
+
+    if (!ctx.organizationId) {
+      return apiError('No organization found', 404);
     }
+    const organizationId = ctx.organizationId;
 
     const stripe = getStripeClient();
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true },
-    });
-
-    if (!user || user.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    if (!user.organizationId) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
-
     const subscription = await prisma.subscription.findUnique({
-      where: { organizationId: user.organizationId },
+      where: { organizationId },
     });
 
     if (!subscription) {
       return NextResponse.json({ error: 'No active subscription found' }, { status: 404 });
+    }
+
+    // A pending plan-change schedule wraps the subscription; mutating it while a
+    // schedule is active would conflict with the Schedule API, so require the
+    // scheduled change to be cancelled first.
+    if (subscription.stripeScheduleId) {
+      const when = subscription.scheduledEffectiveAt
+        ? new Date(subscription.scheduledEffectiveAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })
+        : 'the end of your billing period';
+      return NextResponse.json(
+        { error: `You have a pending plan change scheduled for ${when}. Cancel it first.` },
+        { status: 409 },
+      );
     }
 
     if (!subscription.cancelAtPeriodEnd) {
@@ -70,21 +80,21 @@ export async function POST() {
     });
 
     await prisma.subscription.update({
-      where: { organizationId: user.organizationId },
+      where: { organizationId },
       data: { cancelAtPeriodEnd: false },
     });
 
     logger.info({
       msg: '[POST /api/billing/subscription/reactivate] Cancellation cleared',
-      organizationId: user.organizationId,
+      organizationId,
     });
 
     // F-001: record the sensitive billing mutation on the authorized path.
     await audit({
       action: 'billing.subscription.reactivate',
-      actorId: session.user.id,
-      actorRole: user.role,
-      organizationId: user.organizationId,
+      actorId: ctx.userId,
+      actorRole: ctx.role,
+      organizationId,
       targetType: 'subscription',
       targetId: subscription.id,
       ...getClientContext(await headers()),

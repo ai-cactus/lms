@@ -11,6 +11,9 @@ import AvailableCoursesTable from '@/components/dashboard/courses/AvailableCours
 import StatusTrackerOverview from '@/components/dashboard/status-tracker/StatusTrackerOverview';
 import { listAvailableVideoCourses } from '@/app/actions/offering';
 import { hasActiveBilling } from '@/lib/billing';
+import { isWorkerRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import type { Role } from '@/types/next-auth';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
 import { BookOpen, Users, Activity } from 'lucide-react';
@@ -22,7 +25,7 @@ export default async function DashboardPage() {
   if (!session?.user) redirect('/login');
 
   const role = session.user.role;
-  if (role === 'worker') redirect('/worker');
+  if (isWorkerRole(role)) redirect('/worker');
 
   // Fetch billing status alongside dashboard data so the Create Course button
   // can apply the same billing gate as the Courses list page.
@@ -42,11 +45,14 @@ export default async function DashboardPage() {
 
   const hasBilling = hasActiveBilling(user?.organization?.subscription);
 
-  // Status Tracker overview (admin-only page; workers are already redirected).
-  // Fetched after the user lookup since it needs the resolved organizationId.
-  const statusTracker = user?.organizationId
-    ? await getStatusTrackerSummaryForOrg(user.organizationId)
-    : { overdueCount: 0, hardEscalationCount: 0, rows: [] };
+  // Status Tracker overview — gated on roster-wide assignment visibility so
+  // finance (an admin-tier role) never sees worker-training metrics. Fetched
+  // after the user lookup since it needs the resolved organizationId.
+  const canSeeStatusTracker = can(dbRoleToRoleKey(role as Role), 'assignment.read');
+  const statusTracker =
+    canSeeStatusTracker && user?.organizationId
+      ? await getStatusTrackerSummaryForOrg(user.organizationId)
+      : { overdueCount: 0, hardEscalationCount: 0, rows: [] };
 
   // Serialize Date across the server/client boundary (same pattern as the full page).
   const statusTrackerRows = statusTracker.rows.map((row) => ({
@@ -57,14 +63,12 @@ export default async function DashboardPage() {
     daysOverdue: row.daysOverdue,
   }));
 
-  // Calculate real metrics from courses data
   const totalCourses = stats?.totalCourses || 0;
   const totalStaffAssigned = stats?.totalStaffAssigned || 0;
   const averageGrade = stats?.averageGrade || 0;
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 px-5 py-6 sm:px-8 xl:gap-8 xl:px-10">
-      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4 max-sm:flex-col">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold text-[#1a202c] xl:text-[28px]">Dashboard</h1>
@@ -73,9 +77,7 @@ export default async function DashboardPage() {
         <DashboardCreateCourseButton hasBilling={hasBilling} />
       </div>
 
-      {/* Metrics Options */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-        {/* Total Courses - Green */}
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#ECFDF5]">
           <div>
             <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#10B981]">
@@ -86,7 +88,6 @@ export default async function DashboardPage() {
           <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{totalCourses}</p>
         </div>
 
-        {/* Total Staff - Blue */}
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#EEF2FF]">
           <div>
             <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#4730F7]">
@@ -97,7 +98,6 @@ export default async function DashboardPage() {
           <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{totalStaffAssigned}</p>
         </div>
 
-        {/* Average Grade - Red */}
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#FEF2F2]">
           <div>
             <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#EF4444]">
@@ -109,24 +109,22 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Charts */}
       <DashboardCharts stats={stats} />
 
-      {/* My Courses Table */}
       <MyCoursesTable courses={courses} maxItems={5} />
 
       {/* Available Video Courses (global catalog to offer from) */}
       <AvailableCoursesTable courses={availableVideoCourses} />
 
-      {/* Status Tracker overview — overdue counts + top overdue workers */}
-      <StatusTrackerOverview
-        overdueCount={statusTracker.overdueCount}
-        hardEscalationCount={statusTracker.hardEscalationCount}
-        hardThresholdDays={HARD_THRESHOLD_DAYS}
-        rows={statusTrackerRows}
-      />
+      {canSeeStatusTracker && (
+        <StatusTrackerOverview
+          overdueCount={statusTracker.overdueCount}
+          hardEscalationCount={statusTracker.hardEscalationCount}
+          hardThresholdDays={HARD_THRESHOLD_DAYS}
+          rows={statusTrackerRows}
+        />
+      )}
 
-      {/* Empty State Modal */}
       <DashboardEmptyState totalCourses={totalCourses} />
     </div>
   );

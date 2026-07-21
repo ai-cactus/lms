@@ -128,7 +128,6 @@ export async function getAllUsers(options: {
   const roleFilter = options.roleFilter || '';
   const orgFilter = options.orgFilter || '';
 
-  // Build where clause
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {};
   if (roleFilter) {

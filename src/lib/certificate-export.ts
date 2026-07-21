@@ -50,7 +50,6 @@ export async function exportCertificatePdf(node: HTMLElement, filename: string):
     },
   });
 
-  // A4 landscape in millimetres.
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();

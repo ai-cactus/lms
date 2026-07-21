@@ -76,7 +76,8 @@ const ORG_ID = 'org-1';
 function setupAdminSession() {
   mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
   mockWorkerAuth.mockResolvedValue(null);
-  mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'admin' });
+  // After RBAC migration: 'admin' is retired; use 'owner' which is an admin role.
+  mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'owner' });
 }
 
 beforeEach(() => {
@@ -165,7 +166,7 @@ describe('listAvailableVideoCourses', () => {
   it('throws No organization when user has no organizationId', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: null, role: 'admin' });
+    mockUserFindUnique.mockResolvedValue({ organizationId: null, role: 'owner' });
 
     await expect(listAvailableVideoCourses()).rejects.toThrow('No organization');
   });
@@ -173,7 +174,7 @@ describe('listAvailableVideoCourses', () => {
   it('throws Forbidden when user role is not admin', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'worker' });
+    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'nurse' });
 
     await expect(listAvailableVideoCourses()).rejects.toThrow('Forbidden');
   });
@@ -250,7 +251,7 @@ describe('offerCourseToOrg', () => {
   it('throws Forbidden when caller has worker role', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'worker' });
+    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'nurse' });
 
     await expect(offerCourseToOrg('c1')).rejects.toThrow('Forbidden');
     expect(mockOrgCourseOfferingUpsert).not.toHaveBeenCalled();
@@ -338,7 +339,7 @@ describe('withdrawOffering', () => {
   it('throws Forbidden when caller has worker role', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'worker' });
+    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'nurse' });
 
     await expect(withdrawOffering('o1')).rejects.toThrow('Forbidden');
     expect(mockOrgCourseOfferingDelete).not.toHaveBeenCalled();

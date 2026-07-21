@@ -40,8 +40,6 @@ type StageConfig = {
   channels: string[];
 };
 
-// ─── Hoisted mock references ──────────────────────────────────────────────────
-
 const {
   prismaMock,
   mockDispatchLadderStage,
@@ -50,13 +48,18 @@ const {
   mockResolveEscalationRecipients,
   mockRunRetentionPurge,
   mockLoggerError,
+  mockCreateEnrollmentForUser,
+  mockCreateNotification,
+  mockSendCourseLaunchEmail,
 } = vi.hoisted(() => {
   const prismaMock = {
-    enrollment: { findMany: vi.fn() },
-    reminderLog: { findMany: vi.fn() },
+    enrollment: { findMany: vi.fn(), create: vi.fn() },
+    reminderLog: { findMany: vi.fn(), create: vi.fn() },
     quizAttempt: { findMany: vi.fn() },
     notification: { updateMany: vi.fn() },
     emailMessage: { findMany: vi.fn() },
+    courseAssignment: { findMany: vi.fn() },
+    user: { findMany: vi.fn() },
   };
   const mockDispatchLadderStage = vi.fn();
   const mockDispatchNudge = vi.fn();
@@ -64,6 +67,9 @@ const {
   const mockResolveEscalationRecipients = vi.fn();
   const mockRunRetentionPurge = vi.fn();
   const mockLoggerError = vi.fn();
+  const mockCreateEnrollmentForUser = vi.fn();
+  const mockCreateNotification = vi.fn();
+  const mockSendCourseLaunchEmail = vi.fn();
   return {
     prismaMock,
     mockDispatchLadderStage,
@@ -72,10 +78,11 @@ const {
     mockResolveEscalationRecipients,
     mockRunRetentionPurge,
     mockLoggerError,
+    mockCreateEnrollmentForUser,
+    mockCreateNotification,
+    mockSendCourseLaunchEmail,
   };
 });
-
-// ─── Module mocks ─────────────────────────────────────────────────────────────
 
 vi.mock('@/lib/prisma', () => ({ default: prismaMock, prisma: prismaMock }));
 
@@ -94,6 +101,24 @@ vi.mock('@/lib/retention', () => ({
   runRetentionPurge: mockRunRetentionPurge,
 }));
 
+// Role-target reconcile pre-pass delegates per-user enrollment creation to the
+// shared helper (its own internals — cross-tenant guard, dueAt computation,
+// idempotency — are covered by create.test.ts); here we only assert the
+// pre-pass calls it with the right holder/context.
+vi.mock('@/lib/enrollment/create', () => ({
+  createEnrollmentForUser: mockCreateEnrollmentForUser,
+}));
+
+// Renewal re-trigger pre-pass notifies + emails directly (not via createEnrollmentForUser).
+vi.mock('@/app/actions/notifications', () => ({
+  createNotification: mockCreateNotification,
+  notifyOrganizationAdmins: vi.fn(),
+}));
+
+vi.mock('@/lib/email', () => ({
+  sendCourseLaunchEmail: mockSendCourseLaunchEmail,
+}));
+
 vi.mock('@/lib/logger', () => ({
   logger: {
     info: vi.fn(),
@@ -103,11 +128,7 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
-// ─── Module under test ────────────────────────────────────────────────────────
-
 import { runReminderSweep, resolveOnCompletion } from './sweep';
-
-// ─── Shared dates ─────────────────────────────────────────────────────────────
 
 /**
  * noon UTC June 15 = 08:00 EDT — local date is "2024-06-15" in America/New_York.
@@ -125,8 +146,6 @@ const DUE_AT_TARGET_YESTERDAY = new Date('2024-06-28T12:00:00Z');
 
 // dueAt that makes FRIENDLY_REMINDER target 3 days ago (daysSinceTarget = 3).
 const DUE_AT_TARGET_3_DAYS_AGO = new Date('2024-06-26T12:00:00Z');
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Assignment slice as selected by the Track A query (null when the enrollment has no CourseAssignment). */
 type AssignmentSlice = { reminderStages: StageConfig[] } | null;
@@ -147,7 +166,7 @@ function makeTrackAEnrollment(
       id: `user-${id}`,
       email: `worker-${id}@test.com`,
       profile: { fullName: `Worker ${id}` },
-      organization: { timezone: null }, // → DEFAULT_TZ (America/New_York)
+      facility: { timezone: null } as { timezone: string | null } | null, // → DEFAULT_TZ (America/New_York)
     },
   };
 }
@@ -181,8 +200,6 @@ const BASE_OPTS = {
   dryRun: false,
 };
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks();
   // Safe defaults: empty result sets (both tracks empty)
@@ -191,6 +208,20 @@ beforeEach(() => {
   prismaMock.quizAttempt.findMany.mockResolvedValue([]);
   prismaMock.notification.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.emailMessage.findMany.mockResolvedValue([]); // retry pre-pass: no failed rows
+  // Role-target reconcile + renewal re-trigger pre-passes share this mock (each
+  // filters on a different `where` clause) — [] ⇒ both are a clean no-op by default.
+  prismaMock.courseAssignment.findMany.mockResolvedValue([]);
+  prismaMock.user.findMany.mockResolvedValue([]);
+  prismaMock.enrollment.create.mockResolvedValue({ id: 'new-enrollment-1' });
+  prismaMock.reminderLog.create.mockResolvedValue({ id: 'log-1' });
+  mockCreateEnrollmentForUser.mockResolvedValue({
+    status: 'enrolled',
+    email: 'holder@test.com',
+    userId: 'holder-1',
+    enrollmentId: 'enrollment-1',
+  });
+  mockCreateNotification.mockResolvedValue(undefined);
+  mockSendCourseLaunchEmail.mockResolvedValue(undefined);
   mockDispatchLadderStage.mockResolvedValue({ sent: true, reason: 'sent' });
   mockDispatchNudge.mockResolvedValue({ sent: true, reason: 'sent' });
   mockRetryReminderEmail.mockResolvedValue(true);
@@ -203,8 +234,6 @@ beforeEach(() => {
   });
   delete process.env.RETENTION_PURGE_ENABLED;
 });
-
-// ─── Track A — deadline ladder ────────────────────────────────────────────────
 
 describe('runReminderSweep — Track A (deadline ladder)', () => {
   it('dispatches only FRIENDLY_REMINDER when dueAt is exactly 14 days out (catchUpDays=0)', async () => {
@@ -226,8 +255,49 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     );
     expect(summary.scanned).toBe(1);
     expect(summary.ladderSent).toBe(1);
-    expect(summary.skipped).toBe(4); // URGENT, DAY_OF, GRACE, HARD all skip
+    expect(summary.skipped).toBe(5); // URGENT, DAY_OF, GRACE, HARD, ADMIN_PRE_DEADLINE all skip
     expect(summary.errors).toBe(0);
+  });
+
+  it('reads timezone from the worker facility (Org/Facility split) — regression guard', async () => {
+    // Non-default timezone on facility so a fallback-to-DEFAULT_TZ bug (e.g.
+    // reverting to enrollment.user.organization.timezone, which no longer
+    // exists on the select) cannot masquerade as a pass. If the code read
+    // organization.timezone instead, this field is absent from the mock
+    // entirely, so `?? DEFAULT_TZ` would silently kick in and the assertion
+    // below would fail (America/New_York !== America/Los_Angeles).
+    const enrollment = makeTrackAEnrollment('e1');
+    enrollment.user.facility = { timezone: 'America/Los_Angeles' };
+
+    prismaMock.enrollment.findMany.mockResolvedValueOnce([enrollment]).mockResolvedValueOnce([]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    expect(mockDispatchLadderStage).toHaveBeenCalledWith(
+      expect.objectContaining({ timezone: 'America/Los_Angeles' }),
+    );
+
+    // Structural guard: the query must select facility.timezone, not
+    // organization.timezone — Organization no longer has a timezone column.
+    const call = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(call.select.user.select.facility).toEqual({ select: { timezone: true } });
+    expect(call.select.user.select.organization).toBeUndefined();
+  });
+
+  it('falls back to DEFAULT_TZ when the worker has no facility (facility: null)', async () => {
+    const enrollment = makeTrackAEnrollment('e1');
+    // Models a worker who has not been attached to a facility yet.
+    enrollment.user.facility = null;
+
+    prismaMock.enrollment.findMany.mockResolvedValueOnce([enrollment]).mockResolvedValueOnce([]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    expect(mockDispatchLadderStage).toHaveBeenCalledWith(
+      expect.objectContaining({ timezone: 'America/New_York' }),
+    );
   });
 
   it('skips a stage that already has a ReminderLog entry (sentSet dedup)', async () => {
@@ -243,8 +313,8 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
 
     expect(mockDispatchLadderStage).not.toHaveBeenCalled();
     expect(summary.ladderSent).toBe(0);
-    // All 5 SWEEP_STAGES skipped (FRIENDLY due to sentSet; others not yet due)
-    expect(summary.skipped).toBe(5);
+    // All 6 ladder stages skipped (FRIENDLY due to sentSet; others not yet due)
+    expect(summary.skipped).toBe(6);
   });
 
   it('skips a stage when the assignment config marks it disabled (enabled:false)', async () => {
@@ -264,7 +334,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     const summary = await runReminderSweep(BASE_OPTS);
 
     expect(mockDispatchLadderStage).not.toHaveBeenCalled();
-    expect(summary.skipped).toBe(5); // FRIENDLY disabled + 4 not-due
+    expect(summary.skipped).toBe(6); // FRIENDLY disabled + 5 not-due (incl. ADMIN_PRE_DEADLINE)
     expect(summary.ladderSent).toBe(0);
   });
 
@@ -292,7 +362,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
 
     expect(mockDispatchLadderStage).not.toHaveBeenCalled();
     expect(summary.ladderSent).toBe(0);
-    expect(summary.skipped).toBe(5);
+    expect(summary.skipped).toBe(6);
   });
 
   it('is idempotent: re-running with the same logs skips all stages (sends=0)', async () => {
@@ -311,7 +381,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
 
     const run2 = await runReminderSweep(BASE_OPTS);
     expect(run2.ladderSent).toBe(0);
-    expect(run2.skipped).toBe(5);
+    expect(run2.skipped).toBe(6);
   });
 
   it('isolates per-enrollment errors: one throw increments errors, the other enrollment still fires', async () => {
@@ -358,7 +428,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     );
     expect(summary.scanned).toBe(1);
     expect(summary.ladderSent).toBe(1);
-    expect(summary.skipped).toBe(4); // URGENT, DAY_OF, GRACE, HARD all skip
+    expect(summary.skipped).toBe(5); // URGENT, DAY_OF, GRACE, HARD, ADMIN_PRE_DEADLINE all skip
     expect(summary.errors).toBe(0);
   });
 
@@ -386,8 +456,6 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     expect(summary.ladderSent).toBe(0);
   });
 });
-
-// ─── Track B — quiz nudges ────────────────────────────────────────────────────
 
 describe('runReminderSweep — Track B (quiz nudges)', () => {
   function makeAttempt(enrollmentId: string, score: number, attemptCount: number) {
@@ -535,7 +603,7 @@ describe('runReminderSweep — email retry pre-pass', () => {
         user: {
           email: 'worker-e1@test.com',
           profile: { fullName: 'Worker e1' },
-          organization: { timezone: null },
+          facility: { timezone: null },
         },
       },
     };
@@ -631,6 +699,358 @@ describe('runReminderSweep — retention purge pre-pass', () => {
 
     expect(mockRunRetentionPurge).not.toHaveBeenCalled();
     expect(summary.retentionPurged).toBeNull();
+  });
+});
+
+// ─── Role-target reconcile pre-pass (Issue #4 / TC-016 backstop) ─────────────
+//
+// courseAssignment.findMany is shared by this pre-pass (where.targetRole) and
+// the renewal pre-pass (where.renewalCycle) — route by which key is present so
+// each test only has to supply the fixture it cares about.
+
+function wireCourseAssignmentFindMany(opts: { roleTarget?: unknown[]; renewal?: unknown[] } = {}) {
+  const { roleTarget = [], renewal = [] } = opts;
+  prismaMock.courseAssignment.findMany.mockImplementation(
+    (args: { where: Record<string, unknown> }) => {
+      if ('targetRole' in args.where) return Promise.resolve(roleTarget);
+      if ('renewalCycle' in args.where) return Promise.resolve(renewal);
+      throw new Error(`Unexpected courseAssignment.findMany args: ${JSON.stringify(args)}`);
+    },
+  );
+}
+
+function makeRoleTargetAssignment(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'assignment-role-1',
+    organizationId: 'org-1',
+    courseId: 'course-role-1',
+    targetRole: 'nurse',
+    dueWindowDays: 14,
+    course: { title: 'Role Course' },
+    organization: { name: 'Acme Corp' },
+    ...overrides,
+  };
+}
+
+function makeRoleHolder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'holder-1',
+    email: 'holder@test.com',
+    organizationId: 'org-1',
+    role: 'nurse',
+    roleAssignedAt: new Date('2024-06-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+describe('runReminderSweep — role-target reconcile pre-pass', () => {
+  it('enrolls a role-holder missing an enrollment, with the deadline window counted from roleAssignedAt', async () => {
+    wireCourseAssignmentFindMany({ roleTarget: [makeRoleTargetAssignment()] });
+    prismaMock.user.findMany.mockResolvedValue([makeRoleHolder()]);
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([]) // existing-enrollments check for role-target holders: none
+      .mockResolvedValueOnce([]) // Track A
+      .mockResolvedValueOnce([]); // Track B
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledExactlyOnceWith(
+      { email: 'holder@test.com' },
+      expect.objectContaining({
+        courseId: 'course-role-1',
+        organizationId: 'org-1',
+        assignmentId: 'assignment-role-1',
+        scheduleAt: new Date('2024-06-01T00:00:00Z'), // roleAssignedAt
+        assignmentDueAt: null, // role-target assignments never carry an absolute dueAt
+        assignmentWindowDays: 14,
+      }),
+    );
+    expect(summary.roleTargetEnrolled).toBe(1);
+  });
+
+  it('skips a holder who already has an enrollment for the targeted course (idempotent second run)', async () => {
+    wireCourseAssignmentFindMany({ roleTarget: [makeRoleTargetAssignment()] });
+    prismaMock.user.findMany.mockResolvedValue([makeRoleHolder()]);
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([{ userId: 'holder-1', courseId: 'course-role-1' }]) // already enrolled
+      .mockResolvedValueOnce([]) // Track A
+      .mockResolvedValueOnce([]); // Track B
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+    expect(summary.roleTargetEnrolled).toBe(0);
+  });
+
+  it('only enrolls holders matching the assignment org+role (no cross-org, no other-role leakage)', async () => {
+    wireCourseAssignmentFindMany({ roleTarget: [makeRoleTargetAssignment()] }); // targets org-1/nurse
+    prismaMock.user.findMany.mockResolvedValue([
+      makeRoleHolder({ id: 'holder-1', email: 'nurse@test.com' }), // org-1 nurse — matches
+      makeRoleHolder({ id: 'holder-2', email: 'other-org@test.com', organizationId: 'org-2' }), // wrong org
+      makeRoleHolder({ id: 'holder-3', email: 'wrong-role@test.com', role: 'front_desk_admin' }), // wrong role
+    ]);
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledExactlyOnceWith(
+      { email: 'nurse@test.com' },
+      expect.anything(),
+    );
+  });
+
+  it('does not run the role-target reconcile pre-pass in dry-run mode', async () => {
+    wireCourseAssignmentFindMany({ roleTarget: [makeRoleTargetAssignment()] });
+
+    await runReminderSweep({ ...BASE_OPTS, dryRun: true });
+
+    expect(prismaMock.courseAssignment.findMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Renewal re-trigger pre-pass (Issue #6 / TC-019) ──────────────────────────
+
+function makeRenewalAssignment(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'assignment-renewal-1',
+    courseId: 'course-renewal-1',
+    organizationId: 'org-1',
+    renewalCycle: 'annual',
+    course: { title: 'Renewal Course' },
+    organization: { name: 'Acme Corp' },
+    ...overrides,
+  };
+}
+
+function makeRenewalCandidate(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'completed-enrollment-1',
+    userId: 'user-1',
+    courseId: 'course-renewal-1',
+    completedAt: new Date('2023-01-01T12:00:00Z'), // well past a 365-day annual cycle by NOW
+    assignmentId: 'assignment-renewal-1',
+    user: { email: 'worker@test.com', profile: { fullName: 'Worker One' } },
+    ...overrides,
+  };
+}
+
+describe('runReminderSweep — renewal re-trigger pre-pass', () => {
+  it('creates a renewal enrollment once the cycle has elapsed, with renewedFrom, reset progress, and the correct dueAt', async () => {
+    // Role-target pre-pass short-circuits without querying enrollment.findMany at
+    // all (no role-target assignments), so the queue below starts at the renewal
+    // pre-pass's own two calls, then Track A, then Track B.
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeRenewalCandidate()]) // renewal candidates
+      .mockResolvedValueOnce([]) // newer-enrollment guard: no newer starts
+      .mockResolvedValueOnce([]) // Track A
+      .mockResolvedValueOnce([]); // Track B
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: 'user-1',
+          courseId: 'course-renewal-1',
+          status: 'enrolled',
+          progress: 0,
+          assignmentId: 'assignment-renewal-1',
+          renewedFrom: 'completed-enrollment-1',
+          dueAt: new Date('2024-01-01T12:00:00Z'), // completedAt + 365 days
+        }),
+      }),
+    );
+    expect(summary.renewalsCreated).toBe(1);
+  });
+
+  it('creates the renewal exactly at dueAt − RENEWAL_LEAD_DAYS (14d before the deadline), keeping dueAt = completedAt + cycle', async () => {
+    // completedAt 2023-06-30 → annual dueAt 2024-06-29; lead window opens 14d
+    // earlier, on 2024-06-15 == NOW. So the pre-deadline ladder (−14/−7/−3) can
+    // fire against the renewal, while the deadline itself is unchanged.
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeRenewalCandidate({ completedAt: new Date('2023-06-30T12:00:00Z') }),
+      ])
+      .mockResolvedValueOnce([]) // newer-enrollment guard: no newer starts
+      .mockResolvedValueOnce([]) // Track A
+      .mockResolvedValueOnce([]); // Track B
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          renewedFrom: 'completed-enrollment-1',
+          dueAt: new Date('2024-06-29T12:00:00Z'), // completedAt + 365 days (deadline unchanged)
+        }),
+      }),
+    );
+    expect(summary.renewalsCreated).toBe(1);
+  });
+
+  it('does NOT create the renewal one day before the lead window opens', async () => {
+    // completedAt 2023-07-01 → annual dueAt 2024-06-30; lead window opens
+    // 2024-06-16, one day after NOW (2024-06-15) → not yet eligible.
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeRenewalCandidate({ completedAt: new Date('2023-07-01T12:00:00Z') }),
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(summary.renewalsCreated).toBe(0);
+  });
+
+  it('remains idempotent when created early: a second run skips (the renewal started after the completion)', async () => {
+    // First run created the renewal at the lead window; on the next sweep the
+    // candidate is still terminal but the renewal's startedAt (== creation time,
+    // after completedAt) trips the newer-enrollment guard → no second renewal.
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeRenewalCandidate({ completedAt: new Date('2023-06-30T12:00:00Z') }),
+      ])
+      .mockResolvedValueOnce([
+        {
+          userId: 'user-1',
+          courseId: 'course-renewal-1',
+          startedAt: new Date('2024-06-15T12:00:00Z'),
+        },
+      ])
+      .mockResolvedValueOnce([]) // Track A
+      .mockResolvedValueOnce([]); // Track B
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(summary.renewalsCreated).toBe(0);
+  });
+
+  it('is idempotent: a second run creates nothing once the renewal already exists (newer-enrollment guard)', async () => {
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeRenewalCandidate()]) // renewal candidates (still terminal)
+      .mockResolvedValueOnce([
+        // The renewal created on the first run started AFTER the original completion.
+        {
+          userId: 'user-1',
+          courseId: 'course-renewal-1',
+          startedAt: new Date('2024-01-01T12:00:00Z'),
+        },
+      ])
+      .mockResolvedValueOnce([]) // Track A
+      .mockResolvedValueOnce([]); // Track B
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(summary.renewalsCreated).toBe(0);
+  });
+
+  it('suppresses renewal when an existing (active) enrollment already supersedes the completed one', async () => {
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeRenewalCandidate()])
+      .mockResolvedValueOnce([
+        // A manual re-enroll/active retake started after the completion.
+        {
+          userId: 'user-1',
+          courseId: 'course-renewal-1',
+          startedAt: new Date('2023-06-01T00:00:00Z'),
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(summary.renewalsCreated).toBe(0);
+  });
+
+  it('does not renew a candidate whose cycle has not yet elapsed', async () => {
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeRenewalCandidate({ completedAt: new Date('2024-06-01T12:00:00Z') }), // completed 2 weeks ago; annual cycle far from elapsed
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(summary.renewalsCreated).toBe(0);
+  });
+
+  it('does not run the renewal re-trigger pre-pass in dry-run mode', async () => {
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+
+    await runReminderSweep({ ...BASE_OPTS, dryRun: true });
+
+    // Only whatever the (also-dry-run-skipped) role-target pre-pass would have
+    // called — the renewal query itself must never fire.
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Dry-run accuracy (Issue #12): wouldSend vs skipped ───────────────────────
+
+describe('runReminderSweep — dry-run tally accuracy', () => {
+  it('tallies a dry-run dispatch into wouldSend, not skipped, and never increments ladderSent', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeTrackAEnrollment('e1')]) // Track A
+      .mockResolvedValueOnce([]); // Track B
+    prismaMock.reminderLog.findMany.mockResolvedValue([]);
+    mockDispatchLadderStage.mockResolvedValue({ sent: false, reason: 'dry-run' });
+
+    const summary = await runReminderSweep({ ...BASE_OPTS, dryRun: true });
+
+    // Exactly the one stage whose target date matches today (FRIENDLY_REMINDER,
+    // per DUE_AT_FIRES_TODAY) reaches dispatchLadderStage; the rest of the ladder
+    // is skipped on date-mismatch alone, so `skipped` is intentionally not
+    // asserted here — only the classification of the DISPATCHED stage's result.
+    expect(summary.wouldSend).toBe(1);
+    expect(summary.ladderSent).toBe(0);
+  });
+
+  it('a genuinely skipped (non-dry-run) dispatch still tallies into skipped, not wouldSend', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeTrackAEnrollment('e1')])
+      .mockResolvedValueOnce([]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([]);
+    mockDispatchLadderStage.mockResolvedValue({ sent: false, reason: 'no-recipients' });
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(summary.wouldSend).toBe(0);
+    expect(summary.ladderSent).toBe(0);
+    expect(mockDispatchLadderStage).toHaveBeenCalledOnce();
+  });
+
+  it('a real (non-dry-run) sent dispatch tallies into ladderSent, never wouldSend', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeTrackAEnrollment('e1')])
+      .mockResolvedValueOnce([]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([]);
+    mockDispatchLadderStage.mockResolvedValue({ sent: true, reason: 'sent' });
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(summary.ladderSent).toBe(1);
+    expect(summary.wouldSend).toBe(0);
   });
 });
 

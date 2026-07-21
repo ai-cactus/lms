@@ -7,7 +7,6 @@ export interface BillingPlan {
   name: string;
   staffMin: number;
   staffMax: number | null; // null = unlimited
-  monthlyPrice: number; // base monthly price in USD
   description: string;
   features: string[];
   featuresLabel: string;
@@ -28,7 +27,6 @@ export const BILLING_PLANS: BillingPlan[] = [
     name: 'Starter',
     staffMin: 1,
     staffMax: 10,
-    monthlyPrice: 99,
     description: '1-10 staff',
     featuresLabel: 'INCLUDES',
     features: ['Staff training records', 'Policy-linked training', 'Auditor pack export'],
@@ -44,7 +42,6 @@ export const BILLING_PLANS: BillingPlan[] = [
     name: 'Professional',
     staffMin: 11,
     staffMax: 50,
-    monthlyPrice: 149,
     description: '11-50 staff',
     featuresLabel: 'EVERYTHING IN STARTER PLUS',
     features: ['Advanced analytics', 'Priority processing'],
@@ -60,7 +57,6 @@ export const BILLING_PLANS: BillingPlan[] = [
     name: 'Enterprise',
     staffMin: 51,
     staffMax: null,
-    monthlyPrice: 0,
     description: '51+ staff',
     featuresLabel: 'INCLUDES',
     features: [
@@ -77,19 +73,6 @@ export const BILLING_PLANS: BillingPlan[] = [
     isEnterprise: true,
   },
 ];
-
-// Discounts per billing cycle
-export const CYCLE_DISCOUNTS: Record<BillingCycle, number> = {
-  monthly: 0,
-  quarterly: 0.1, // -10%
-  yearly: 0.25, // -25%
-};
-
-// Calculate the effective monthly price for a given plan and cycle
-export function getEffectiveMonthlyPrice(plan: BillingPlan, cycle: BillingCycle): number {
-  const discount = CYCLE_DISCOUNTS[cycle];
-  return Math.round(plan.monthlyPrice * (1 - discount));
-}
 
 /**
  * Returns whether an organization with the given staff count
