@@ -5,6 +5,7 @@ import { Award, Check, Download } from 'lucide-react';
 import CertificateModal from './CertificateModal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import { formatCertificateId } from '@/lib/certificate-id';
 
 interface CertificateData {
@@ -103,9 +104,7 @@ export default function CertificateCardList({
       </div>
 
       {certificates.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-background-secondary p-12 text-center text-text-secondary">
-          No certificates available.
-        </div>
+        <EmptyTableState message="No certificates available." />
       ) : (
         <div className="flex flex-col gap-3">
           {certificates.map((cert) => (

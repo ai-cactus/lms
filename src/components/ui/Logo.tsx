@@ -1,4 +1,7 @@
-import React from 'react';
+'use client';
+
+import { FC } from 'react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const VARIANT_CLASS = {
@@ -7,19 +10,23 @@ const VARIANT_CLASS = {
   blue: 'text-primary',
 } as const;
 
-interface LogoProps {
+interface Props {
   size?: 'sm' | 'md' | 'lg';
   showText?: boolean;
   variant?: 'light' | 'dark' | 'blue';
   className?: string;
+  causeRedirect?: boolean;
 }
 
-export default function Logo({
+const Logo: FC<Props> = ({
   size = 'md',
   showText = true,
   variant = 'blue',
   className = '',
-}: LogoProps) {
+  causeRedirect,
+}) => {
+  const router = useRouter();
+
   const sizes = {
     sm: { icon: 24, fontSize: 20 },
     md: { icon: 32, fontSize: 28 },
@@ -31,10 +38,15 @@ export default function Logo({
   return (
     <div
       className={cn(
-        'inline-flex select-none items-center gap-2',
+        'inline-flex select-none items-center gap-2 cursor-pointer w-max',
         VARIANT_CLASS[variant],
         className,
       )}
+      onClick={() => {
+        if (causeRedirect) {
+          router.push('/');
+        }
+      }}
     >
       <svg
         width={icon}
@@ -57,4 +69,6 @@ export default function Logo({
       )}
     </div>
   );
-}
+};
+
+export default Logo;

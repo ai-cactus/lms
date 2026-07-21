@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import { getStandardManualHistory } from '@/app/actions/standard-manual';
 import { logger } from '@/lib/logger';
 
@@ -219,7 +220,7 @@ export default function StandardManualPage() {
           {isLoadingHistory ? (
             <p className="text-sm text-[#64748b]">Loading history&hellip;</p>
           ) : history.length === 0 ? (
-            <p className="text-sm text-[#64748b]">No manuals uploaded yet.</p>
+            <EmptyTableState message="No manuals uploaded yet." />
           ) : (
             <div className="flex flex-col">
               {history.map((manual) => (

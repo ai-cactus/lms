@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useState, useEffect, useTransition } from 'react';
 import { Search, Download, GraduationCap } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Table,
   TableBody,
@@ -65,17 +66,14 @@ export default function AuditorCoursesTab() {
           <p className="text-sm text-text-tertiary">Loading courses&hellip;</p>
         </div>
       ) : courses.length === 0 ? (
-        <div className="px-5 py-16 text-center">
-          <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-primary/10">
-            <GraduationCap className="size-10 text-primary" aria-hidden="true" />
-          </div>
-          <p className="mb-1.5 text-base font-semibold text-foreground">No courses found.</p>
-          <p className="text-sm text-text-tertiary">
-            {search
+        <EmptyTableState
+          message="No courses found."
+          subMessage={
+            search
               ? 'No courses match your search.'
-              : 'No published courses in your organization yet.'}
-          </p>
-        </div>
+              : 'No published courses in your organization yet.'
+          }
+        />
       ) : (
         <div className="overflow-x-auto">
           <Table className="min-w-[600px]">

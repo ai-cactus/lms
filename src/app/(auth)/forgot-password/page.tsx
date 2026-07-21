@@ -7,7 +7,6 @@ import { Logo } from '@/components/ui';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/field';
-import { AuthShell } from '@/components/auth/AuthShell';
 import { sendPasswordResetLink } from '@/app/actions/auth';
 
 export default function ForgotPasswordPage() {
@@ -50,70 +49,76 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <AuthShell>
-      <Logo size="md" />
-
-      {!isSubmitted ? (
-        <>
-          <div className="w-full text-left">
-            <h1 className="mb-2 text-2xl font-semibold text-foreground">Reset your password</h1>
-            <p className="text-sm leading-relaxed text-text-secondary">
-              Enter your email address and we&apos;ll send you a link to reset your password.
+    <div className="flex flex-col w-full h-full justify-center items-center 2xl:w-max 2xl:items-end py-10 md:px-15 px-5">
+      <div className="flex flex-col w-full gap-10">
+        <div className="flex flex-col gap-5">
+          <Logo size="md" causeRedirect />
+          {!isSubmitted && (
+            <div className="w-full text-left flex flex-col gap-1">
+              <h1 className="text-headline-3 font-semibold font-headline leading-8 text-text-bold">
+                Reset your password
+              </h1>
+              <p className="text-base leading-6 font-text text-text-neutral">
+                Enter your email address and we&apos;ll send you a link to reset your password.
+              </p>
+            </div>
+          )}
+        </div>
+        {!isSubmitted ? (
+          <>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-8">
+              <div className="flex flex-col gap-5">
+                <Field label="Email" error={fieldError || error}>
+                  <Input
+                    type="email"
+                    name="email"
+                    placeholder="Enter your email address"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (fieldError) setFieldError('');
+                    }}
+                    autoComplete="email"
+                    startIcon={<Mail aria-hidden="true" />}
+                  />
+                </Field>
+              </div>
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full"
+                loading={loading}
+                disabled={!email.trim()}
+              >
+                Send Reset Link
+              </Button>
+            </form>
+            <p className="text-sm text-text-title font-medium leading-5 text-center">
+              <Link href="/login" className="font-semibold text-primary hover:underline">
+                Back to Login
+              </Link>
             </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
-            <Field label="Email" error={fieldError || error}>
-              <Input
-                type="email"
-                name="email"
-                placeholder="Enter your email address"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (fieldError) setFieldError('');
-                }}
-                autoComplete="email"
-                startIcon={<Mail aria-hidden="true" />}
-              />
-            </Field>
-
-            <Button
-              type="submit"
-              size="lg"
-              className="w-full"
-              loading={loading}
-              disabled={!email.trim()}
-            >
-              Send Reset Link
+          </>
+        ) : (
+          <div className="flex w-full flex-col items-center gap-4 rounded-xl border border-border bg-background-secondary p-6 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-success/15 text-success">
+              <MailCheck className="size-6" aria-hidden="true" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground">Check your email</h3>
+            <p className="text-sm leading-relaxed text-text-secondary">
+              If an account exists for {email}, we have sent a password reset link.
+            </p>
+            <Button variant="outline" className="mt-2 w-full" onClick={() => setIsSubmitted(false)}>
+              Try another email
             </Button>
-
             <div className="mt-2 flex w-full justify-center">
               <Link href="/login" className="text-sm font-semibold text-primary hover:underline">
                 Back to Login
               </Link>
             </div>
-          </form>
-        </>
-      ) : (
-        <div className="flex w-full flex-col items-center gap-4 rounded-xl border border-border bg-background-secondary p-6 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-success/15 text-success">
-            <MailCheck className="size-6" aria-hidden="true" />
           </div>
-          <h3 className="text-lg font-semibold text-foreground">Check your email</h3>
-          <p className="text-sm leading-relaxed text-text-secondary">
-            If an account exists for {email}, we have sent a password reset link.
-          </p>
-          <Button variant="outline" className="mt-2 w-full" onClick={() => setIsSubmitted(false)}>
-            Try another email
-          </Button>
-          <div className="mt-2 flex w-full justify-center">
-            <Link href="/login" className="text-sm font-semibold text-primary hover:underline">
-              Back to Login
-            </Link>
-          </div>
-        </div>
-      )}
-    </AuthShell>
+        )}
+      </div>
+    </div>
   );
 }

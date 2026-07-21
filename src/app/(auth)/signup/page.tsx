@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Lock } from 'lucide-react';
+import { Mail, Lock } from 'lucide-react';
 import { signIn } from 'next-auth/react';
 import { Logo } from '@/components/ui';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,6 @@ import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AuthShell } from '@/components/auth/AuthShell';
 import { signup } from '@/app/actions/auth';
 import { validatePassword } from '@/lib/password-policy';
 import { logger } from '@/lib/logger';
@@ -123,146 +122,147 @@ export default function SignupPage() {
   };
 
   return (
-    <AuthShell>
-      <Logo size="md" />
-
-      <div className="w-full text-left">
-        <h1 className="mb-2 text-2xl font-semibold text-foreground">Create a new account</h1>
-        <p className="text-sm leading-relaxed text-text-secondary">
-          Create a new account to get started.
+    <div className="flex flex-col w-full h-full justify-center items-center 2xl:w-max 2xl:items-end py-10 md:px-15 px-5">
+      <div className="flex flex-col h-full w-full gap-10">
+        <div className="flex flex-col gap-5">
+          <Logo size="md" causeRedirect />
+          <div className="w-full text-left flex flex-col gap-1">
+            <h1 className="text-headline-3 font-semibold font-headline leading-8 text-text-bold">
+              Create a new account
+            </h1>
+            <p className="text-base leading-6 font-text text-text-neutral">
+              Create a new account to get started.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-9">
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full gap-3 rounded-full"
+            onClick={handleMicrosoftSignup}
+            loading={isMicrosoftLoading}
+            disabled={isMicrosoftLoading}
+          >
+            <Image src="/icons/microsoft.svg" alt="Microsoft" width={20} height={20} />
+            <span className="font-semibold text-text-title leading-5 text-sm font-text">
+              Sign up with Microsoft
+            </span>
+          </Button>
+          <div className="flex w-full items-center gap-3">
+            <span className="h-px flex-1 bg-tertiary" />
+            <span className="text-xs text-text-neutral font-text">or continue with email</span>
+            <span className="h-px flex-1 bg-tertiary" />
+          </div>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-8">
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Field label="First Name" error={errors.firstName}>
+                  <Input
+                    type="text"
+                    name="firstName"
+                    placeholder="Enter your first name"
+                    value={formData.firstName}
+                    onChange={handleChange}
+                    autoComplete="given-name"
+                  />
+                </Field>
+                <Field label="Last Name" error={errors.lastName}>
+                  <Input
+                    type="text"
+                    name="lastName"
+                    placeholder="Enter your last name"
+                    value={formData.lastName}
+                    onChange={handleChange}
+                    autoComplete="family-name"
+                  />
+                </Field>
+              </div>
+              <Field label="Email" error={errors.email}>
+                <Input
+                  type="email"
+                  name="email"
+                  placeholder="Enter your email address"
+                  value={formData.email}
+                  onChange={handleChange}
+                  autoComplete="email"
+                  startIcon={<Mail aria-hidden="true" />}
+                />
+              </Field>
+              <Field label="Password" error={errors.password}>
+                <PasswordInput
+                  name="password"
+                  placeholder="Create a password (min. 12 characters)"
+                  value={formData.password}
+                  onChange={handleChange}
+                  autoComplete="new-password"
+                  startIcon={<Lock aria-hidden="true" />}
+                />
+              </Field>
+              <PasswordStrengthIndicator password={formData.password} />
+              <Field label="Confirm Password" error={errors.confirmPassword}>
+                <PasswordInput
+                  name="confirmPassword"
+                  placeholder="Confirm your password"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  autoComplete="new-password"
+                  startIcon={<Lock aria-hidden="true" />}
+                />
+              </Field>
+              <div className="flex w-full flex-col gap-1">
+                <label className="flex items-start gap-2 text-sm text-text-secondary">
+                  <Checkbox
+                    name="agreeTerms"
+                    checked={formData.agreeTerms}
+                    onCheckedChange={(checked) => {
+                      setFormData((prev) => ({ ...prev, agreeTerms: checked === true }));
+                      if (errors.agreeTerms) setErrors((prev) => ({ ...prev, agreeTerms: '' }));
+                    }}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    I agree to the Theraptly{' '}
+                    <Link href="/terms" className="font-medium text-primary hover:underline">
+                      Terms of Service
+                    </Link>{' '}
+                    and{' '}
+                    <Link href="/privacy" className="font-medium text-primary hover:underline">
+                      Privacy Policy
+                    </Link>
+                  </span>
+                </label>
+                {errors.agreeTerms && (
+                  <span className="text-sm text-error">{errors.agreeTerms}</span>
+                )}
+              </div>
+            </div>
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              loading={isFormLoading}
+              disabled={
+                isFormLoading ||
+                !formData.firstName.trim() ||
+                !formData.lastName.trim() ||
+                !formData.email ||
+                !formData.password ||
+                !formData.confirmPassword ||
+                !formData.agreeTerms
+              }
+            >
+              Create Account
+            </Button>
+          </form>
+        </div>
+        <p className="text-sm text-text-title font-medium leading-5 text-center pb-9">
+          Already have an account?{' '}
+          <Link href="/login" className="font-semibold text-primary hover:underline">
+            Login
+          </Link>
         </p>
       </div>
-
-      <Button
-        type="button"
-        variant="secondary"
-        className="w-full gap-3 rounded-full"
-        onClick={handleMicrosoftSignup}
-        loading={isMicrosoftLoading}
-        disabled={isMicrosoftLoading}
-      >
-        <Image src="/icons/microsoft.svg" alt="Microsoft" width={20} height={20} />
-        <span>Sign up with Microsoft</span>
-      </Button>
-
-      <div className="flex w-full items-center gap-3 text-xs text-text-tertiary">
-        <span className="h-px flex-1 bg-border" />
-        <span>or continue with email</span>
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
-        <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="First Name" error={errors.firstName}>
-            <Input
-              type="text"
-              name="firstName"
-              placeholder="Enter your first name"
-              value={formData.firstName}
-              onChange={handleChange}
-              autoComplete="given-name"
-              startIcon={<User aria-hidden="true" />}
-            />
-          </Field>
-          <Field label="Last Name" error={errors.lastName}>
-            <Input
-              type="text"
-              name="lastName"
-              placeholder="Enter your last name"
-              value={formData.lastName}
-              onChange={handleChange}
-              autoComplete="family-name"
-              startIcon={<User aria-hidden="true" />}
-            />
-          </Field>
-        </div>
-
-        <Field label="Email" error={errors.email}>
-          <Input
-            type="email"
-            name="email"
-            placeholder="Enter your email address"
-            value={formData.email}
-            onChange={handleChange}
-            autoComplete="email"
-            startIcon={<Mail aria-hidden="true" />}
-          />
-        </Field>
-
-        <Field label="Password" error={errors.password}>
-          <PasswordInput
-            name="password"
-            placeholder="Create a password (min. 12 characters)"
-            value={formData.password}
-            onChange={handleChange}
-            autoComplete="new-password"
-            startIcon={<Lock aria-hidden="true" />}
-          />
-        </Field>
-
-        <PasswordStrengthIndicator password={formData.password} />
-
-        <Field label="Confirm Password" error={errors.confirmPassword}>
-          <PasswordInput
-            name="confirmPassword"
-            placeholder="Confirm your password"
-            value={formData.confirmPassword}
-            onChange={handleChange}
-            autoComplete="new-password"
-            startIcon={<Lock aria-hidden="true" />}
-          />
-        </Field>
-
-        <div className="flex w-full flex-col gap-1">
-          <label className="flex items-start gap-2 text-sm text-text-secondary">
-            <Checkbox
-              name="agreeTerms"
-              checked={formData.agreeTerms}
-              onCheckedChange={(checked) => {
-                setFormData((prev) => ({ ...prev, agreeTerms: checked === true }));
-                if (errors.agreeTerms) setErrors((prev) => ({ ...prev, agreeTerms: '' }));
-              }}
-              className="mt-0.5"
-            />
-            <span>
-              I agree to the Theraptly{' '}
-              <Link href="/terms" className="font-medium text-primary hover:underline">
-                Terms of Service
-              </Link>{' '}
-              and{' '}
-              <Link href="/privacy" className="font-medium text-primary hover:underline">
-                Privacy Policy
-              </Link>
-            </span>
-          </label>
-          {errors.agreeTerms && <span className="text-sm text-error">{errors.agreeTerms}</span>}
-        </div>
-
-        <Button
-          type="submit"
-          size="lg"
-          className="w-full"
-          loading={isFormLoading}
-          disabled={
-            isFormLoading ||
-            !formData.firstName.trim() ||
-            !formData.lastName.trim() ||
-            !formData.email ||
-            !formData.password ||
-            !formData.confirmPassword ||
-            !formData.agreeTerms
-          }
-        >
-          Create Account
-        </Button>
-      </form>
-
-      <p className="text-sm text-text-secondary">
-        Already have an account?{' '}
-        <Link href="/login" className="font-semibold text-primary hover:underline">
-          Login
-        </Link>
-      </p>
-    </AuthShell>
+    </div>
   );
 }

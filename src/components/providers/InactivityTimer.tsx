@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useRef, useState, FC } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 
-interface InactivityTimerProps {
+interface Props {
   /** Minutes of inactivity before auto-logout. Must match server-side config. */
   timeoutMinutes?: number;
   /** Minutes before expiry to show the warning modal. Default: 2 */
@@ -21,10 +21,10 @@ interface InactivityTimerProps {
  * The server-side JWT callback is the authoritative enforcer — this component
  * is a UX enhancement that gives users a chance to extend their session.
  */
-export default function InactivityTimer({
+export const InactivityTimer: FC<Props> = ({
   timeoutMinutes = parseInt(process.env.NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES || '60', 10),
   warningMinutes = 2,
-}: InactivityTimerProps) {
+}) => {
   const { data: session, update } = useSession();
   const [showWarning, setShowWarning] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(0);
@@ -253,4 +253,6 @@ export default function InactivityTimer({
       </div>
     </div>
   );
-}
+};
+
+export default InactivityTimer;

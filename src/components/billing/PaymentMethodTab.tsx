@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, Loader2, AlertTriangle, Check, CreditCard } from 'lucide-react';
+import { Plus, Loader2, AlertTriangle, Check } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Dialog,
   DialogContent,
@@ -204,12 +205,7 @@ export default function PaymentMethodTab() {
         </>
       )}
 
-      {paymentMethods.length === 0 && (
-        <div className="py-12 text-center text-text-tertiary">
-          <CreditCard className="mx-auto mb-2 size-10 text-text-tertiary" aria-hidden="true" />
-          <p>No payment methods on file.</p>
-        </div>
-      )}
+      {paymentMethods.length === 0 && <EmptyTableState message="No payment methods on file." />}
 
       {/* ===== Remove Confirmation Modal ===== */}
       <Dialog

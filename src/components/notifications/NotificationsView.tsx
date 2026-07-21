@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, BellOff, Settings2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Settings2, Trash2 } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import { getNotificationPreferences, setNotificationPreference } from '@/app/actions/notifications';
 import NotificationItem from '@/components/notifications/NotificationItem';
 import { useNotifications } from '@/components/notifications/useNotifications';
@@ -160,19 +161,12 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
         {isLoading ? (
           <div className="px-5 py-16 text-center text-sm text-[#a0aec0]">Loading…</div>
         ) : notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-5 py-16 text-center">
-            <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-[#f7fafc] text-[#cbd5e0]">
-              <BellOff className="size-9" />
-            </div>
-            <h2 className="m-0 mb-1 text-lg font-semibold text-[#4a5568]">
-              You&apos;re all caught up!
-            </h2>
-            <p className="m-0 text-sm text-[#a0aec0]">
-              {typeFilter
-                ? 'No notifications of this type.'
-                : 'New notifications will appear here.'}
-            </p>
-          </div>
+          <EmptyTableState
+            message="You're all caught up!"
+            subMessage={
+              typeFilter ? 'No notifications of this type.' : 'New notifications will appear here.'
+            }
+          />
         ) : (
           <>
             <div className="flex flex-col divide-y divide-[#edf2f7]">

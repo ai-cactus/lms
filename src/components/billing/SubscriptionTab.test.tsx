@@ -227,7 +227,7 @@ describe('SubscriptionTab — plan-switch confirmation dialog (hasLiveSubscripti
 
     const dialog = await screen.findByRole('dialog');
     expect(screen.getByText('Confirm your plan change')).toBeInTheDocument();
-    expect(dialog).toHaveTextContent(/runs until Aug 17, 2026/i);
+    expect(dialog).toHaveTextContent(/runs until August 17, 2026/i);
     expect(dialog).toHaveTextContent(/no charge today/i);
     expect(dialog).toHaveTextContent(/new Starter plan starts then/i);
     // The preview call happens BEFORE any checkout call.
@@ -499,7 +499,7 @@ describe('SubscriptionTab — scheduled-change banner', () => {
     });
 
     expect(screen.getByText('Plan change scheduled')).toBeInTheDocument();
-    expect(screen.getByText(/Changing to Starter on Aug 17, 2026/i)).toBeInTheDocument();
+    expect(screen.getByText(/Changing to Starter on August 17, 2026/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel scheduled change' })).toBeInTheDocument();
   });
 

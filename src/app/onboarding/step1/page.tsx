@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { PhoneInput } from '@/components/ui';
@@ -199,7 +198,7 @@ export default function OnboardingStep1() {
               render={({ field }) => (
                 <Field label="Number of Staff" required error={getError('staffCount')}>
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="h-14 w-full rounded-[10px]">
+                    <SelectTrigger className="h-14 w-full rounded-[10px] px-3 py-2">
                       <SelectValue placeholder="Select an option" />
                     </SelectTrigger>
                     <SelectContent>
@@ -252,7 +251,7 @@ export default function OnboardingStep1() {
               render={({ field }) => (
                 <Field label="Country" required error={getError('country')}>
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="h-14 w-full rounded-[10px]">
+                    <SelectTrigger className="h-14 w-full rounded-[10px] px-3 py-2">
                       <SelectValue placeholder="Select an option" />
                     </SelectTrigger>
                     <SelectContent>
@@ -328,7 +327,7 @@ export default function OnboardingStep1() {
               control={control}
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-14 w-full rounded-[10px]">
+                  <SelectTrigger className="h-14 w-full rounded-[10px] px-3 py-2">
                     <SelectValue placeholder="Select an option" />
                   </SelectTrigger>
                   <SelectContent>

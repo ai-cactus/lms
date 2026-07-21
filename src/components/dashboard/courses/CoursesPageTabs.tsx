@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback } from 'react';
+import { useCallback } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import CoursesListClient from '@/components/dashboard/courses/CoursesListClient';
