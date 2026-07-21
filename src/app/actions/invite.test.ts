@@ -473,6 +473,30 @@ describe('createInvites() — existing member and pending-invite rows', () => {
     expect(row?.message).toMatch(/already has an account/i);
   });
 
+  // Re-invite lifecycle: an org-less existing account (e.g. a removed staff
+  // member) must NOT be treated as "already has an account" — it falls
+  // through and is re-invited like a brand-new address, to be relinked on
+  // accept (src/app/api/invite/accept/route.ts).
+  it('re-invites an org-less existing account (removed user) instead of skipping it as "exists"', async () => {
+    mockUserFindMany.mockResolvedValue([{ email: 'removed@acme.com', organizationId: null }]);
+
+    const result = await createInvites([item('removed@acme.com', 'nurse')]);
+
+    expect(result.success).toBe(true);
+    const row = result.results.find((r) => r.email === 'removed@acme.com');
+    expect(row?.status).toBe('sent');
+    expect(mockInviteCreateMany).toHaveBeenCalledTimes(1);
+    const inserted = mockInviteCreateMany.mock.calls[0][0].data[0];
+    expect(inserted.email).toBe('removed@acme.com');
+    expect(inserted.role).toBe('nurse');
+    expect(mockSendInviteEmail).toHaveBeenCalledWith(
+      'removed@acme.com',
+      expect.stringContaining('/join/'),
+      'Acme Corp',
+      expect.any(String),
+    );
+  });
+
   it('resends the invite email for an email with an existing pending invite, without duplicating the DB row', async () => {
     mockInviteFindMany.mockResolvedValue([
       { email: 'pending@acme.com', token: 'existing-token-123' },

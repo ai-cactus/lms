@@ -8,6 +8,7 @@ import { callVertexAI } from '@/lib/ai-client';
 import { logger } from '@/lib/logger';
 import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
 import { guardApiSession } from '@/lib/auth-guard';
+import { hasActiveBilling } from '@/lib/billing';
 const submitQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
   answers: z.array(
@@ -116,7 +117,16 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
-      include: { course: true },
+      include: {
+        course: true,
+        user: {
+          select: {
+            organization: {
+              select: { subscription: { select: { status: true, pausedAt: true } } },
+            },
+          },
+        },
+      },
     });
 
     if (!enrollment) {
@@ -129,6 +139,22 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     ) {
       return NextResponse.json(
         { error: 'Enrollment does not belong to active sessions' },
+        { status: 403 },
+      );
+    }
+
+    // Billing gate (defense in depth): the layout blocks the portal when the org
+    // lacks active billing; this stops a direct POST from submitting an attempt.
+    if (!hasActiveBilling(enrollment.user?.organization?.subscription)) {
+      logger.warn({
+        msg: '[quiz] Submit blocked — organization lacks active billing',
+        enrollmentId,
+      });
+      return NextResponse.json(
+        {
+          error:
+            'Your organization’s training access is paused. Please contact your administrator.',
+        },
         { status: 403 },
       );
     }

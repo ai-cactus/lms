@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { isAdminRole } from '@/lib/rbac/role-utils';
-import { auth } from '@/auth';
+import { authorize } from '@/lib/rbac/authorize';
+import { apiError } from '@/lib/api-response';
 import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
 import { logger } from '@/lib/logger';
@@ -11,28 +11,18 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authResult = await authorize('billing.read');
+    if (!authResult.ok) return authResult.response;
+    const { ctx } = authResult;
+
+    if (!ctx.organizationId) {
+      return apiError('No organization found', 404);
     }
 
     const stripe = getStripeClient();
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    if (!user.organizationId) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
-
     const organization = await prisma.organization.findUnique({
-      where: { id: user.organizationId },
+      where: { id: ctx.organizationId },
       select: { stripeCustomerId: true },
     });
 

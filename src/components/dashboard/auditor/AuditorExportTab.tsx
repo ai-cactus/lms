@@ -3,9 +3,11 @@
 import { FileText, Download, Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useExportJobs } from './ExportJobsProvider';
+import { useAuditFilter, toRangeInput } from './AuditFilterProvider';
 
 export default function AuditorExportTab() {
   const { jobs, startExport, downloadJob } = useExportJobs();
+  const { range } = useAuditFilter();
 
   // Most recent jobs first.
   const recent = [...jobs].reverse();
@@ -31,7 +33,9 @@ export default function AuditorExportTab() {
         <Button
           className="mt-5"
           disabled={!!activeOrg}
-          onClick={() => startExport({ scope: 'org', label: 'Organization report' })}
+          onClick={() =>
+            startExport({ scope: 'org', label: 'Organization report', ...toRangeInput(range) })
+          }
         >
           {activeOrg ? (
             <>

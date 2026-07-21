@@ -11,7 +11,8 @@ import { deleteFile } from '@/lib/storage';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
@@ -35,6 +36,17 @@ export async function uploadDocument(
   }
 
   const userId = session.user.id;
+
+  // Registry gate: only roles granted `document.create` may upload (e.g. Finance
+  // has no document access — it must not be able to seed the Document Hub).
+  if (!can(dbRoleToRoleKey(session.user.role), 'document.create')) {
+    logger.warn({
+      msg: '[doc] Upload denied — missing document.create',
+      userId,
+      role: session.user.role,
+    });
+    return { error: 'You do not have permission to upload documents.' };
+  }
 
   const file = formData.get('file') as File;
   if (!file) {
@@ -238,10 +250,14 @@ export async function uploadDocument(
 
 export async function getDocuments() {
   const session = await auth();
-  // Org-scoped Document Hub: any org admin sees every document uploaded within
-  // their organization. isAdminRole is defense-in-depth (mirrors enrollUsers);
+  // Org-scoped Document Hub: any role granted `document.read` sees every document
+  // uploaded within their organization. The registry gate is defense-in-depth;
   // the tenancy boundary is the uploader's organizationId.
-  if (!session?.user?.id || !session.user.organizationId || !isAdminRole(session.user.role)) {
+  if (
+    !session?.user?.id ||
+    !session.user.organizationId ||
+    !can(dbRoleToRoleKey(session.user.role), 'document.read')
+  ) {
     return [];
   }
 
@@ -273,12 +289,17 @@ export async function deleteDocument(
   if (!session?.user?.id || !session.user.organizationId) {
     return { error: 'Not authenticated' };
   }
-  if (!isAdminRole(session.user.role)) {
+  if (!can(dbRoleToRoleKey(session.user.role), 'document.delete')) {
+    logger.warn({
+      msg: '[doc] Delete denied — missing document.delete',
+      userId: session.user.id,
+      role: session.user.role,
+    });
     return { error: 'Document not found' };
   }
 
   // Verify the document belongs to the caller's organization before any
-  // destructive operation. Any org admin may delete any org document; a
+  // destructive operation. Any authorized role may delete any org document; a
   // cross-org document is reported as not found — never leak its existence.
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
@@ -345,7 +366,12 @@ export async function renameDocument(
   if (!session?.user?.id || !session.user.organizationId) {
     return { error: 'Not authenticated' };
   }
-  if (!isAdminRole(session.user.role)) {
+  if (!can(dbRoleToRoleKey(session.user.role), 'document.edit')) {
+    logger.warn({
+      msg: '[doc] Rename denied — missing document.edit',
+      userId: session.user.id,
+      role: session.user.role,
+    });
     return { error: 'Document not found' };
   }
 

@@ -35,6 +35,7 @@ vi.mock('@/lib/audit', () => ({ audit: mockAudit, getClientContext: () => ({}) }
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  maskEmail: (email: string) => email,
 }));
 
 // ---------------------------------------------------------------------------
@@ -60,7 +61,7 @@ const PAUSED_SUB = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
+  mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
 });
 
@@ -133,5 +134,63 @@ describe('POST /api/billing/subscription/resume — normal path (no pending sche
 
     expect(res.status).toBe(401);
     expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RBAC: billing.* is reserved for owner + finance in the permission registry.
+// Regression guard for the isAdminRole → authorize('billing.edit') migration —
+// Supervisor/HR/Clinical Director previously passed isAdminRole and could
+// reach this route; they must now 403 with no Stripe data touched.
+// ---------------------------------------------------------------------------
+describe('POST /api/billing/subscription/resume — RBAC (billing.edit registry enforcement)', () => {
+  it.each(['supervisor', 'hr', 'clinical_director'])(
+    'denies role=%s with 403 and never touches Stripe or the subscription row',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-x', role, organizationId: 'org-1' } });
+
+      const res = await POST();
+      const body = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(body).toEqual({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' });
+      expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
+      expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows role=finance through to the normal resume path', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
+    });
+    prismaMock.subscription.findUnique.mockResolvedValue(PAUSED_SUB);
+    stripeMock.subscriptions.update.mockResolvedValue({});
+
+    const res = await POST();
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.subscriptions.update).toHaveBeenCalledWith('sub_x', {
+      pause_collection: null,
+    });
+  });
+
+  it('still enforces the MFA step-up guard ahead of the billing permission check', async () => {
+    mockAuth.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        role: 'owner',
+        organizationId: 'org-1',
+        mfaEnabled: true,
+        mfaVerified: false,
+      },
+    });
+
+    const res = await POST();
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body.error).toBe('MFA_REQUIRED');
+    expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
+    expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
   });
 });

@@ -172,7 +172,17 @@ export async function updateProfile(data: {
   }
 
   try {
-    const fullName = `${data.first_name} ${data.last_name}`.trim();
+    // Server-side name validation (client is not a trust boundary). Mirror the
+    // accept-invite zod bounds: non-empty after trim, max 100 characters.
+    const firstName = data.first_name?.trim() ?? '';
+    const lastName = data.last_name?.trim() ?? '';
+    if (!firstName || !lastName) {
+      return { success: false, error: 'First and last name are required.' };
+    }
+    if (firstName.length > 100 || lastName.length > 100) {
+      return { success: false, error: 'Name is too long (maximum 100 characters).' };
+    }
+    const fullName = `${firstName} ${lastName}`;
 
     if (!session.user.id) {
       logger.warn({ msg: '[user] updateProfile: user ID missing', email: session.user.email });
@@ -185,8 +195,8 @@ export async function updateProfile(data: {
         id: session.user.id,
       },
       update: {
-        firstName: data.first_name,
-        lastName: data.last_name,
+        firstName,
+        lastName,
         fullName: fullName,
         companyName: data.company_name,
         jobTitle: data.jobTitle,
@@ -196,8 +206,8 @@ export async function updateProfile(data: {
       create: {
         id: session.user.id,
         email: session.user.email,
-        firstName: data.first_name,
-        lastName: data.last_name,
+        firstName,
+        lastName,
         fullName: fullName,
         companyName: data.company_name,
         jobTitle: data.jobTitle,

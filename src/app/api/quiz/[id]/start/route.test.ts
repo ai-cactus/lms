@@ -49,7 +49,14 @@ function makeReq(body: unknown): NextRequest {
   return { json: vi.fn().mockResolvedValue(body) } as unknown as NextRequest;
 }
 
-const ENROLLMENT = { id: 'enr-1', userId: 'user-1', courseId: 'course-1', status: 'in_progress' };
+const ENROLLMENT = {
+  id: 'enr-1',
+  userId: 'user-1',
+  courseId: 'course-1',
+  status: 'in_progress',
+  // Active billing so the defense-in-depth gate lets the attempt through.
+  user: { organization: { subscription: { status: 'active', pausedAt: null } } },
+};
 const WORKER_SESSION = { user: { id: 'user-1', role: 'worker' } };
 
 beforeEach(() => {
@@ -114,6 +121,49 @@ describe('POST /api/quiz/[id]/start — enrollment guards', () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe('QUIZ_LOCKED_MAX_ATTEMPTS');
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TC-041-B defense in depth: the worker-portal layout blocks the whole
+// portal when the org lacks active billing, but a direct POST to this route
+// bypasses that render-time gate — the route must independently check
+// hasActiveBilling() before allowing a quiz attempt to start.
+// ---------------------------------------------------------------------------
+describe('POST /api/quiz/[id]/start — billing gate (TC-041-B defense in depth)', () => {
+  it('403s and never starts a transaction when the subscription is paused', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      user: {
+        organization: { subscription: { status: 'active', pausedAt: new Date('2026-06-01') } },
+      },
+    });
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toMatch(/training access is paused/i);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('403s when the org has no subscription row at all', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      user: { organization: { subscription: null } },
+    });
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('allows the attempt to start when billing is active', async () => {
+    const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.$transaction).toHaveBeenCalled();
   });
 });
 
