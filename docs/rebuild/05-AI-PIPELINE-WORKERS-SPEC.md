@@ -74,7 +74,7 @@ Store results in `Job.result`; the wizard polls `GET /generation-jobs/:id`.
 
 ## 8. Environment (worker)
 
-`GOOGLE_PROJECT_ID`, `GOOGLE_LOCATION`, ADC/service-account creds; `REDIS_URL`; `V46_GENERATION_TIMEOUT_MS`; reminder cron config `REMINDER_SWEEP_ENABLED/CRON/DRY_RUN`, `REMINDER_CATCHUP_DAYS`, `REMINDER_NUDGE_INTERVAL_DAYS`, `REMINDER_DEFAULT_DUE_WINDOW_DAYS`; `VIDEO_SWEEP_ENABLED/CRON/GRACE_PERIOD_HOURS`, `MAX_VIDEO_UPLOAD_BYTES`; storage (`GCP_BUCKET_NAME`, `GCS_KEY_BASE64`, MinIO vars); SMTP (`SMTP_*`/`ZOHO_*`); `DATABASE_URL`; `NODE_OPTIONS` (`--max-old-space-size`, `--expose-gc` required by the manual-indexer GC path). Validate all at boot (F-042).
+`GOOGLE_PROJECT_ID`, `GOOGLE_LOCATION`, ADC/service-account creds; `REDIS_URL`; `V46_GENERATION_TIMEOUT_MS`; reminder cron config `REMINDER_SWEEP_ENABLED/CRON/DRY_RUN`, `REMINDER_CATCHUP_DAYS`, `REMINDER_NUDGE_INTERVAL_DAYS`, `REMINDER_DEFAULT_DUE_WINDOW_DAYS`; `VIDEO_SWEEP_ENABLED/CRON/GRACE_PERIOD_HOURS/MAX_DELETES/DRY_RUN` (sweeper is opt-in — `VIDEO_SWEEP_ENABLED` must be exactly `true`, else disabled), `MAX_VIDEO_UPLOAD_BYTES`; storage (`GCP_BUCKET_NAME`, `GCS_KEY_BASE64`, MinIO vars); SMTP (`SMTP_*`/`ZOHO_*`); `DATABASE_URL`; `NODE_OPTIONS` (`--max-old-space-size`, `--expose-gc` required by the manual-indexer GC path). Validate all at boot (F-042).
 
 ## 9. Reused code
 
