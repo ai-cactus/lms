@@ -30,10 +30,10 @@ import {
   XCircle,
   ChevronLeft,
   ChevronRight,
-  Users,
   Send,
   Copy,
 } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import { cn } from '@/lib/utils';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
@@ -438,19 +438,12 @@ export default function StaffListClient({
                 </TableRow>
               ))
             ) : (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={4} className="text-center p-[60px] text-text-secondary">
-                  <div className="flex flex-col items-center gap-3">
-                    <Users className="size-16 text-text-secondary/40" />
-                    <p className="text-base font-semibold text-foreground">
-                      No staff members found
-                    </p>
-                    <p className="text-sm text-text-secondary">
-                      Get started by adding a new staff member to your organization.
-                    </p>
-                  </div>
-                </TableCell>
-              </TableRow>
+              <EmptyTableState
+                message="No staff members found"
+                subMessage="Get started by adding a new staff member to your organization."
+                colSpan={4}
+                asTableRow
+              />
             )}
           </TableBody>
         </Table>

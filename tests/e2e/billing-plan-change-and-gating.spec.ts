@@ -238,7 +238,7 @@ test.describe('Billing — plan-switch confirmation (Defect A / Issue 3 classifi
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText('Confirm your plan change')).toBeVisible();
-    await expect(dialog).toContainText(/runs until Aug 17, 2026/i);
+    await expect(dialog).toContainText(/runs until August 17, 2026/i);
     await expect(dialog).toContainText(/no charge today/i);
     expect(checkoutCalls).toHaveLength(0);
 
@@ -329,7 +329,7 @@ test.describe('Billing — scheduled-change banner (Issue 3)', () => {
       await page.goto('/dashboard/billing?tab=subscription');
 
       await expect(page.getByText('Plan change scheduled')).toBeVisible();
-      await expect(page.getByText(/Changing to Starter on Aug 17, 2026/i)).toBeVisible();
+      await expect(page.getByText(/Changing to Starter on August 17, 2026/i)).toBeVisible();
 
       const cancelButton = page.getByRole('button', { name: 'Cancel scheduled change' });
       await expect(cancelButton).toBeVisible();

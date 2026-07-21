@@ -78,7 +78,7 @@ export default function AuthHeroSlider() {
   }, [page, paginate]);
 
   return (
-    <div className="relative m-4 ml-0 hidden flex-1 overflow-hidden rounded-3xl bg-[#f7fafc] lg:block">
+    <div className="relative hidden h-full lg:w-1/2 xl:w-197.75 2xl:w-1/2 overflow-hidden rounded-3xl bg-[#f7fafc] lg:block">
       <AnimatePresence initial={false} custom={direction}>
         <motion.div
           key={page}
@@ -127,7 +127,7 @@ export default function AuthHeroSlider() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.3 }}
-            className="pointer-events-auto max-w-[540px] text-white"
+            className="pointer-events-auto max-w-135 text-white"
           >
             <h2 className="mb-2.5 text-[32px] font-semibold leading-[1.3]">
               {slides[imageIndex].title}

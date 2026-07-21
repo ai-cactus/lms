@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Search, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import EmptyTableState from '@/components/ui/EmptyTableState';

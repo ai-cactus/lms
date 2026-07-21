@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Mail, ChevronDown, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 
 const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'support@theraptly.com';
 
@@ -92,12 +93,11 @@ export default function HelpCenterContent() {
       <section>
         <h2 className="mb-4 text-base font-semibold text-foreground">Frequently asked questions</h2>
         {filteredFaq.length === 0 ? (
-          <div className="rounded-xl border border-border bg-background p-8 text-center">
-            <p className="text-sm font-semibold text-foreground">No results found</p>
-            <p className="mt-1.5 text-sm text-text-secondary">
-              We couldn&apos;t find anything matching &ldquo;{query.trim()}&rdquo;. Try a different
-              search, or email our support team above.
-            </p>
+          <div className="rounded-xl border border-border bg-background">
+            <EmptyTableState
+              message="No results found"
+              subMessage={`We couldn't find anything matching "${query.trim()}". Try a different search, or email our support team above.`}
+            />
           </div>
         ) : (
           <div className="flex flex-col gap-3">

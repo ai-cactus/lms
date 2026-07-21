@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import type { VideoCourseAvailabilityRow } from '@/app/actions/offering';
 import { Search } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import VideoCourseCard from './VideoCourseCard';
 
 interface AvailableCoursesClientProps {
@@ -47,14 +48,14 @@ export default function AvailableCoursesClient({ courses }: AvailableCoursesClie
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-border bg-white p-10 text-center">
-          <p className="text-sm font-medium text-foreground">No video courses available yet.</p>
-          <p className="mt-1 text-sm text-text-secondary">
-            {searchQuery.trim()
+        <EmptyTableState
+          message="No video courses available yet."
+          subMessage={
+            searchQuery.trim()
               ? 'Try adjusting your search.'
-              : 'Global video courses will appear here once published.'}
-          </p>
-        </div>
+              : 'Global video courses will appear here once published.'
+          }
+        />
       )}
     </div>
   );

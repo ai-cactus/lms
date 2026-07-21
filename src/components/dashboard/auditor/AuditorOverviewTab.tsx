@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { GraduationCap, UserPlus, CheckCircle2, Info, Download } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Table,
   TableBody,
@@ -124,15 +125,10 @@ export default function AuditorOverviewTab({
         </div>
 
         {courses.length === 0 ? (
-          <div className="px-5 py-16 text-center">
-            <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-primary/10">
-              <GraduationCap className="size-10 text-primary" aria-hidden="true" />
-            </div>
-            <p className="mb-1.5 text-base font-semibold text-foreground">No course yet.</p>
-            <p className="text-sm text-text-tertiary">
-              Courses will appear here once staff finish assigned courses.
-            </p>
-          </div>
+          <EmptyTableState
+            message="No course yet."
+            subMessage="Courses will appear here once staff finish assigned courses."
+          />
         ) : (
           <div className="overflow-x-auto">
             <Table className="min-w-[600px]">

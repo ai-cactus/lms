@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
-import { ArrowRight, ShieldCheck } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Table,
   TableBody,
@@ -68,17 +69,12 @@ export default function StatusTrackerOverview({
       </div>
 
       {topRows.length === 0 ? (
-        /* Empty state — slim card, section header stays visible. */
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-background p-5">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success/10">
-            <ShieldCheck className="size-5 text-success" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              All caught up — no overdue training
-            </p>
-            <p className="text-sm text-text-tertiary">No worker has training past its deadline.</p>
-          </div>
+        /* Empty state — section header stays visible. */
+        <div className="rounded-xl border border-border bg-background">
+          <EmptyTableState
+            message="All caught up — no overdue training"
+            subMessage="No worker has training past its deadline."
+          />
         </div>
       ) : (
         <div className="flex flex-col gap-4">

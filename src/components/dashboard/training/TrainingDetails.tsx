@@ -35,6 +35,7 @@ import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 import { Badge } from '@/components/ui/badge';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import { courseTypeLabel, courseTypeBadgeVariant } from '@/lib/video/course-type-label';
 import { CourseWithRelations } from '@/types/course';
 
@@ -344,11 +345,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                   </TableRow>
                 ))}
                 {filteredEnrollments.length === 0 && (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={4} className="text-center text-slate-500 p-6">
-                      No staff enrolled yet.
-                    </TableCell>
-                  </TableRow>
+                  <EmptyTableState message="No staff enrolled yet." colSpan={4} asTableRow />
                 )}
               </TableBody>
             </Table>
@@ -356,9 +353,7 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         ) : (
           <div className="space-y-4">
             {enrollments.filter((e) => e.certificate).length === 0 ? (
-              <div className="text-center text-slate-500 p-6">
-                No certificates have been issued for this course yet.
-              </div>
+              <EmptyTableState message="No certificates have been issued for this course yet." />
             ) : (
               <Table>
                 <TableHeader>
