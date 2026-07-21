@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import { logger } from '@/lib/logger';
 
 interface UserDetailClientProps {
@@ -261,7 +262,7 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
               </TableBody>
             </Table>
           ) : (
-            <div className="text-sm text-text-tertiary">No courses created</div>
+            <EmptyTableState message="No courses created" />
           )}
         </div>
 
@@ -324,7 +325,7 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
               </TableBody>
             </Table>
           ) : (
-            <div className="text-sm text-text-tertiary">No enrollments</div>
+            <EmptyTableState message="No enrollments" />
           )}
         </div>
 
@@ -357,7 +358,7 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
               </TableBody>
             </Table>
           ) : (
-            <div className="text-sm text-text-tertiary">No documents</div>
+            <EmptyTableState message="No documents" />
           )}
         </div>
       </div>

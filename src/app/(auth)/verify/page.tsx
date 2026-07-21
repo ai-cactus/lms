@@ -1,22 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Mail } from 'lucide-react';
 import { Logo } from '@/components/ui';
 import { Button } from '@/components/ui/button';
-import { AuthShell } from '@/components/auth/AuthShell';
 
-function StatusFallback() {
-  return (
-    <div className="flex w-full flex-col items-center gap-6 text-center">
-      <Logo size="md" />
-      <p className="text-sm text-text-secondary">Loading...</p>
-    </div>
-  );
-}
-
-function VerifyContent() {
+export default function VerifyTokenPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
@@ -61,33 +50,24 @@ function VerifyContent() {
   if (!token) return null;
 
   return (
-    <div className="flex w-full flex-col items-center gap-6 text-center">
-      <Logo size="md" />
-      <div className="flex size-16 items-center justify-center rounded-full bg-primary/15 text-primary">
-        <Mail className="size-8" aria-hidden="true" />
+    <div className="flex flex-col w-full h-full justify-center items-center 2xl:w-max 2xl:items-end py-10 md:px-15 px-5">
+      <div className="flex flex-col w-full gap-10">
+        <div className="flex flex-col gap-5">
+          <Logo size="md" causeRedirect />
+        </div>
+        <div className="flex flex-col gap-9">
+          <div>
+            <h1 className="mb-2 text-2xl font-semibold text-foreground">Welcome to Theraptly</h1>
+            <p className="text-base leading-6 font-text text-text-neutral">
+              Click the button below to verify your email address and complete your registration.
+            </p>
+          </div>
+          <Button size="lg" className="w-full" onClick={handleVerify} loading={isVerifying}>
+            Verify Email Address
+          </Button>
+        </div>
+        {error && <p className="text-sm text-error font-medium leading-5 text-center">{error}</p>}
       </div>
-      <div>
-        <h1 className="mb-2 text-2xl font-semibold text-foreground">Welcome to Theraptly</h1>
-        <p className="text-sm leading-relaxed text-text-secondary">
-          Click the button below to verify your email address and complete your registration.
-        </p>
-      </div>
-
-      <Button size="lg" className="w-full" onClick={handleVerify} loading={isVerifying}>
-        Verify Email Address
-      </Button>
-
-      {error && <p className="text-sm text-error">{error}</p>}
     </div>
-  );
-}
-
-export default function VerifyTokenPage() {
-  return (
-    <AuthShell>
-      <Suspense fallback={<StatusFallback />}>
-        <VerifyContent />
-      </Suspense>
-    </AuthShell>
   );
 }

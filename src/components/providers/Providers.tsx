@@ -1,9 +1,11 @@
 'use client';
 
+import { FC } from 'react';
 import { Toaster } from 'sonner';
 import { ModalProvider } from '@/components/ui/legacy/ModalContext';
+import { WithChildren } from '@/types/react';
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export const Providers: FC<WithChildren> = ({ children }) => {
   return (
     <ModalProvider>
       {children}
@@ -12,4 +14,4 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <Toaster richColors position="top-right" />
     </ModalProvider>
   );
-}
+};

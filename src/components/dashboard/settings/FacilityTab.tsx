@@ -125,7 +125,7 @@ export default function FacilityTab({ facility, planName }: FacilityTabProps) {
               control={control}
               render={({ field }) => (
                 <Select value={field.value || undefined} onValueChange={field.onChange}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="h-14 w-full">
                     <SelectValue placeholder="Select facility type" />
                   </SelectTrigger>
                   <SelectContent>

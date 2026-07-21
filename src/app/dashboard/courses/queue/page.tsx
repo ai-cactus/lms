@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { auth } from '@/auth';
 import { JobStatusBadge } from '@/components/jobs/JobStatusBadge';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import prisma from '@/lib/prisma';
 
 // F-028: the Job table grows without bound, so the queue is paginated instead of
@@ -51,7 +52,7 @@ export default async function QueuePage(props: QueuePageProps) {
             <JobStatusBadge status={job.status} />
           </div>
         ))}
-        {pageJobs.length === 0 && <p className="text-gray-500">No active jobs.</p>}
+        {pageJobs.length === 0 && <EmptyTableState message="No active jobs." />}
       </div>
 
       {(page > 1 || hasNextPage) && (

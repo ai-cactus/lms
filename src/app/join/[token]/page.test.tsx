@@ -30,7 +30,10 @@ const { prismaMock, mockNotFound, mockLogger } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('next/navigation', () => ({ notFound: mockNotFound }));
+vi.mock('next/navigation', () => ({
+  notFound: mockNotFound,
+  useRouter: () => ({ push: vi.fn() }),
+}));
 vi.mock('@/lib/logger', () => ({ logger: mockLogger }));
 vi.mock('@/app/join/[token]/JoinPageClient', () => ({
   default: ({ invite, orgName }: { invite: { id: string }; orgName: string }) => (

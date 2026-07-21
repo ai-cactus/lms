@@ -254,18 +254,18 @@ export default function OnboardingStep5() {
                       }}
                     >
                       <SelectTrigger
-                        className="h-14 w-full rounded-[10px]"
+                        className="h-14 w-full rounded-[10px] *:data-[slot=select-value]:min-w-0"
                         aria-invalid={!!errors.invites?.[index]?.role}
                       >
-                        {field.value ? (
-                          <span className="text-foreground">
-                            {ROLE_NAME_BY_VALUE.get(field.value as Role) ?? field.value}
-                          </span>
-                        ) : (
-                          <SelectValue placeholder="Select role" />
-                        )}
+                        <SelectValue placeholder="Select role">
+                          {field.value ? (
+                            <span className="min-w-0 truncate text-foreground">
+                              {ROLE_NAME_BY_VALUE.get(field.value as Role) ?? field.value}
+                            </span>
+                          ) : null}
+                        </SelectValue>
                       </SelectTrigger>
-                      <SelectContent className="max-w-[320px]">
+                      <SelectContent className="max-w-[320px] p-1">
                         {WORKER_ROLE_OPTIONS.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             <span className="font-medium text-foreground">{option.name}</span>

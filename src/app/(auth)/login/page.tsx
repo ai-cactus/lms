@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useActionState, useEffect, Suspense } from 'react';
+import React, { useState, useActionState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -11,12 +11,11 @@ import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Alert } from '@/components/ui/alert';
-import { AuthShell } from '@/components/auth/AuthShell';
 import { authenticate } from '@/app/actions/auth';
 import { signIn } from 'next-auth/react';
 import { logger, maskEmail } from '@/lib/logger';
 
-function LoginForm() {
+export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const joined = searchParams.get('joined');
@@ -124,128 +123,113 @@ function LoginForm() {
   }, [state, router]);
 
   return (
-    <AuthShell>
-      <Logo size="md" />
-
-      <div className="w-full text-left">
-        <h1 className="mb-2 text-2xl font-semibold text-foreground">Log in to your account</h1>
-        <p className="text-sm leading-relaxed text-text-secondary">
-          Log in to your workspace and get back to what matters.
+    <div className="flex flex-col w-full h-full justify-center items-center 2xl:w-max 2xl:items-end py-10 md:px-15 px-5">
+      <div className="flex flex-col w-full gap-10">
+        <div className="flex flex-col gap-5">
+          <Logo size="md" causeRedirect />
+          <div className="w-full text-left flex flex-col gap-1">
+            <h1 className="text-headline-3 font-semibold font-headline leading-8 text-text-bold">
+              Log in to your account
+            </h1>
+            <p className="text-base leading-6 font-text text-text-neutral">
+              Log in to your workspace and get back to what matters.
+            </p>
+          </div>
+        </div>
+        {joined && (
+          <Alert variant="success" className="w-full" title="Account created successfully!">
+            Please log in.
+          </Alert>
+        )}
+        {searchParams.get('verified') && (
+          <Alert variant="success" className="w-full" title="Email verified successfully!">
+            Please log in to continue to your account.
+          </Alert>
+        )}
+        {oauthError === 'AccessDenied' && (
+          <Alert variant="error" className="w-full" title="Access Denied">
+            You do not have authorization to log in with this role.
+          </Alert>
+        )}
+        {oauthError === 'AccessRevoked' && (
+          <Alert variant="error" className="w-full" title="Access Removed">
+            Your access to this organization has been removed. Please contact your administrator.
+          </Alert>
+        )}
+        {inactiveReason === 'inactive' && (
+          <Alert variant="warning" className="w-full" title="Session Expired">
+            You were logged out due to inactivity. Please log in again.
+          </Alert>
+        )}
+        <div className="flex flex-col gap-9">
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full gap-3 rounded-full"
+            onClick={handleMicrosoftLogin}
+            loading={isMicrosoftLoading}
+            disabled={isMicrosoftLoading}
+          >
+            <Image src="/icons/microsoft.svg" alt="Microsoft" width={20} height={20} />
+            <span className="font-semibold text-text-title leading-5 text-sm font-text">
+              Log In with Microsoft
+            </span>
+          </Button>
+          <div className="flex w-full items-center gap-3">
+            <span className="h-px flex-1 bg-tertiary" />
+            <span className="text-xs text-text-neutral font-text">or continue with email</span>
+            <span className="h-px flex-1 bg-tertiary" />
+          </div>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-8">
+            <div className="flex flex-col gap-5">
+              <Field label="Email" error={errors.email}>
+                <Input
+                  type="email"
+                  name="email"
+                  placeholder="Enter your email address"
+                  value={formData.email}
+                  onChange={handleChange}
+                  autoComplete="email"
+                  startIcon={<Mail aria-hidden="true" />}
+                />
+              </Field>
+              <Field label="Password" error={errors.password}>
+                <PasswordInput
+                  name="password"
+                  placeholder="Enter your password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  autoComplete="current-password"
+                  startIcon={<Lock aria-hidden="true" />}
+                />
+              </Field>
+              <div className="flex justify-end">
+                <Link
+                  href="/forgot-password"
+                  className="text-sm font-semibold text-primary hover:underline"
+                >
+                  Forgot your password?
+                </Link>
+              </div>
+            </div>
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              loading={isPending}
+              disabled={!formData.email || !formData.password}
+            >
+              Log In
+            </Button>
+          </form>
+        </div>
+        <p className="text-sm text-text-title font-medium leading-5 text-center">
+          Don&apos;t have an account?{' '}
+          <Link href="/signup" className="font-semibold text-primary hover:underline">
+            Sign Up
+          </Link>
         </p>
       </div>
-
-      {joined && (
-        <Alert variant="success" className="w-full" title="Account created successfully!">
-          Please log in.
-        </Alert>
-      )}
-
-      {searchParams.get('verified') && (
-        <Alert variant="success" className="w-full" title="Email verified successfully!">
-          Please log in to continue to your account.
-        </Alert>
-      )}
-
-      {oauthError === 'AccessDenied' && (
-        <Alert variant="error" className="w-full" title="Access Denied">
-          You do not have authorization to log in with this role.
-        </Alert>
-      )}
-
-      {oauthError === 'AccessRevoked' && (
-        <Alert variant="error" className="w-full" title="Access Removed">
-          Your access to this organization has been removed. Please contact your administrator.
-        </Alert>
-      )}
-
-      {inactiveReason === 'inactive' && (
-        <Alert variant="warning" className="w-full" title="Session Expired">
-          You were logged out due to inactivity. Please log in again.
-        </Alert>
-      )}
-
-      <Button
-        variant="secondary"
-        type="button"
-        className="w-full gap-3 rounded-full"
-        onClick={handleMicrosoftLogin}
-        loading={isMicrosoftLoading}
-      >
-        <Image src="/icons/microsoft.svg" alt="Microsoft" width={20} height={20} />
-        <span>Log In with Microsoft</span>
-      </Button>
-
-      <div className="flex w-full items-center gap-3 text-xs text-text-tertiary">
-        <span className="h-px flex-1 bg-border" />
-        <span>or continue with email</span>
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
-        <Field label="Email" error={errors.email}>
-          <Input
-            type="email"
-            name="email"
-            placeholder="Enter your email address"
-            value={formData.email}
-            onChange={handleChange}
-            autoComplete="email"
-            startIcon={<Mail aria-hidden="true" />}
-          />
-        </Field>
-
-        <Field label="Password" error={errors.password}>
-          <PasswordInput
-            name="password"
-            placeholder="Enter your password"
-            value={formData.password}
-            onChange={handleChange}
-            autoComplete="current-password"
-            startIcon={<Lock aria-hidden="true" />}
-          />
-        </Field>
-
-        <div className="-mt-2 flex w-full justify-end">
-          <Link
-            href="/forgot-password"
-            className="text-sm font-semibold text-primary hover:underline"
-          >
-            Forgot your password?
-          </Link>
-        </div>
-
-        <Button
-          type="submit"
-          size="lg"
-          className="w-full"
-          loading={isPending}
-          disabled={!formData.email || !formData.password}
-        >
-          Log in
-        </Button>
-      </form>
-
-      <p className="text-sm text-text-secondary">
-        Don&apos;t have an account?{' '}
-        <Link href="/signup" className="font-semibold text-primary hover:underline">
-          Sign Up
-        </Link>
-      </p>
-    </AuthShell>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense
-      fallback={
-        <AuthShell>
-          <Logo size="md" />
-          <p className="text-sm text-text-secondary">Loading...</p>
-        </AuthShell>
-      }
-    >
-      <LoginForm />
-    </Suspense>
+    </div>
   );
 }

@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { RowActionsMenu } from '@/components/ui';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Search,
   Eye,
@@ -40,7 +41,6 @@ import {
   ChevronRight,
   CheckCircle2,
   FileText,
-  FileX2,
   ShieldAlert,
 } from 'lucide-react';
 import { cn, formatFileSize } from '@/lib/utils';
@@ -446,21 +446,14 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                 );
               })
             ) : (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={5} className="text-center p-[60px] text-slate-500">
-                  <div className="flex flex-col items-center gap-3">
-                    <FileX2 className="size-16 text-slate-300" />
-                    <p className="text-base font-semibold text-[#2D3748]">
-                      {searchQuery ? 'No documents match your search.' : 'No documents found.'}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {searchQuery
-                        ? 'Try a different search term.'
-                        : 'Upload a document to get started.'}
-                    </p>
-                  </div>
-                </TableCell>
-              </TableRow>
+              <EmptyTableState
+                message={searchQuery ? 'No documents match your search.' : 'No documents found.'}
+                subMessage={
+                  searchQuery ? 'Try a different search term.' : 'Upload a document to get started.'
+                }
+                colSpan={5}
+                asTableRow
+              />
             )}
           </TableBody>
         </Table>

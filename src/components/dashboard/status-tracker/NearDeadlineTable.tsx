@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { CalendarClock } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Table,
   TableBody,
@@ -62,17 +62,10 @@ export default function NearDeadlineTable({ rows }: Props) {
       </div>
 
       {rows.length === 0 ? (
-        <div className="px-5 py-16 text-center">
-          <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-primary/10">
-            <CalendarClock className="size-10 text-primary" aria-hidden="true" />
-          </div>
-          <p className="mb-1.5 text-base font-semibold text-foreground">
-            Nothing due in the next 7 days
-          </p>
-          <p className="text-sm text-text-tertiary">
-            No worker has training approaching its deadline.
-          </p>
-        </div>
+        <EmptyTableState
+          message="Nothing due in the next 7 days"
+          subMessage="No worker has training approaching its deadline."
+        />
       ) : (
         <div className="overflow-x-auto">
           <Table className="min-w-[760px]">
