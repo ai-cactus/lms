@@ -52,7 +52,7 @@ function isBillingCycle(value: string | null | undefined): value is BillingCycle
 
 function formatLongDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
+    month: 'long',
     day: 'numeric',
     year: 'numeric',
   });
