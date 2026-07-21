@@ -61,7 +61,8 @@ export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabili
 
   const courses = await prisma.course.findMany({
     where: { type: 'video', isGlobal: true, status: 'published' },
-    orderBy: { createdAt: 'desc' },
+    // Upload order (oldest first) — the catalog reads chronologically.
+    orderBy: { createdAt: 'asc' },
     include: {
       lessons: {
         include: {
