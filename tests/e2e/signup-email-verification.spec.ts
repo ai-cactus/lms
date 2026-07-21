@@ -484,6 +484,6 @@ test.describe('Signup: email-based user story', () => {
     await page.goto('/verify-email');
     await expect(page.getByText(/check your email/i)).toBeVisible();
     await expect(page.getByText(/expires in 24 hours/i)).toBeVisible();
-    await expect(page.getByRole('button', { name: /resend email/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /resend verification email/i })).toBeVisible();
   });
 });
