@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import type { VideoCourseAvailabilityRow } from '@/app/actions/offering';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import VideoCourseCard from './VideoCourseCard';
 
 interface AvailableCoursesTableProps {
@@ -23,7 +24,7 @@ export default function AvailableCoursesTable({ courses }: AvailableCoursesTable
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-sm text-text-secondary">No video courses available yet.</p>
+        <EmptyTableState message="No video courses available yet." />
       ) : (
         <div className="flex flex-col gap-4">
           {rows.map((course) => (

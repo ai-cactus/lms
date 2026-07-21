@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layers, Clock, AlertCircle } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 
 function formatCategory(category: string): string {
   return category
@@ -179,13 +180,13 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
             );
           })
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 py-[60px] text-[#94a3b8]">
-            <p className="text-sm">
-              {activeTab === 'active'
+          <EmptyTableState
+            message={
+              activeTab === 'active'
                 ? 'No active courses. All your courses are completed!'
-                : 'No completed courses yet.'}
-            </p>
-          </div>
+                : 'No completed courses yet.'
+            }
+          />
         )}
       </div>
     </section>

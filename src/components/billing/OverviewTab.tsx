@@ -16,6 +16,7 @@ import {
   BadgePercent,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import { getPauseState } from '@/lib/billing';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
@@ -429,7 +430,7 @@ export default function OverviewTab({ onChangeTab, refreshKey }: Props) {
           </>
         ) : (
           <>
-            <p className="mb-3 text-sm text-text-secondary">No payment method on file.</p>
+            <EmptyTableState message="No payment method on file." />
             <button className={planLinkClass} onClick={() => onChangeTab('payment-method')}>
               Add payment method
               <ChevronRight className="size-3.5" aria-hidden="true" />
@@ -446,7 +447,7 @@ export default function OverviewTab({ onChangeTab, refreshKey }: Props) {
           </button>
         </div>
         {recentInvoices.length === 0 ? (
-          <p className="text-sm text-text-secondary">No invoices yet.</p>
+          <EmptyTableState message="No invoices yet." />
         ) : (
           <>
             {recentInvoices.map((inv) => (

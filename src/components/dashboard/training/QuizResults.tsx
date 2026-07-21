@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Pencil, Star, Check, X, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import CircularProgress from '@/components/ui/CircularProgress';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import AttestationModal from './AttestationModal';
 import BadgeSuccessModal from './BadgeSuccessModal';
 import { isWorkerRole } from '@/lib/rbac/role-utils';
@@ -183,7 +184,7 @@ export default function QuizResults({
       <div className="flex flex-col gap-6">
         <h2 className="mb-6 text-xl font-bold text-foreground">Answers</h2>
         {questions.length === 0 ? (
-          <p className="p-5 text-text-muted">No questions available.</p>
+          <EmptyTableState message="No questions available." />
         ) : (
           questions.map((q, index) => (
             <div key={q.id} className="mb-8">

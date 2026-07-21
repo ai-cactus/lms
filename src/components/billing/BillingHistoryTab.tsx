@@ -11,6 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import { cn } from '@/lib/utils';
 
 interface Invoice {
@@ -129,11 +130,7 @@ export default function BillingHistoryTab() {
           </TableHeader>
           <TableBody>
             {invoices.length === 0 ? (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={6} className="p-10 text-center text-text-tertiary">
-                  No invoices found.
-                </TableCell>
-              </TableRow>
+              <EmptyTableState message="No invoices found." colSpan={6} asTableRow />
             ) : (
               invoices.map((inv) => (
                 <TableRow key={inv.id}>

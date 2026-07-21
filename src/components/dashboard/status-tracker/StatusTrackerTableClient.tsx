@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ShieldCheck } from 'lucide-react';
+import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Table,
   TableBody,
@@ -149,19 +149,14 @@ export default function StatusTrackerTableClient({ rows }: Props) {
       </div>
 
       {filteredRows.length === 0 ? (
-        <div className="px-5 py-16 text-center">
-          <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-success/10">
-            <ShieldCheck className="size-10 text-success" aria-hidden="true" />
-          </div>
-          <p className="mb-1.5 text-base font-semibold text-foreground">
-            No overdue training — your team is compliant
-          </p>
-          <p className="text-sm text-text-tertiary">
-            {rows.length === 0
+        <EmptyTableState
+          message="No overdue training — your team is compliant"
+          subMessage={
+            rows.length === 0
               ? 'No worker has training past its deadline.'
-              : 'No overdue training matches your filters.'}
-          </p>
-        </div>
+              : 'No overdue training matches your filters.'
+          }
+        />
       ) : (
         <Table className="min-w-[760px]">
           <TableHeader>
