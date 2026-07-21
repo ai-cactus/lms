@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import { Suspense } from 'react';
 import { isAdminRole } from '@/lib/rbac/role-utils';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
