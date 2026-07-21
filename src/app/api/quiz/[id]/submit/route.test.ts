@@ -88,7 +88,13 @@ function makeAnswers(n: number, correctCount: number) {
   }));
 }
 
-const ENROLLMENT = { id: 'enr-1', userId: 'user-1', courseId: 'course-1' };
+const ENROLLMENT = {
+  id: 'enr-1',
+  userId: 'user-1',
+  courseId: 'course-1',
+  // Active billing so the defense-in-depth gate lets the attempt through.
+  user: { organization: { subscription: { status: 'active', pausedAt: null } } },
+};
 
 function makeQuiz(overrides: Record<string, unknown> = {}) {
   return {
@@ -155,6 +161,55 @@ describe('POST /api/quiz/[id]/submit — auth', () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe('Enrollment does not belong to active sessions');
     expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TC-041-B defense in depth: the worker-portal layout blocks the whole
+// portal when the org lacks active billing, but a direct POST to this route
+// bypasses that render-time gate — the route must independently check
+// hasActiveBilling() before allowing a quiz submission to be recorded.
+// ---------------------------------------------------------------------------
+describe('POST /api/quiz/[id]/submit — billing gate (TC-041-B defense in depth)', () => {
+  it('403s and never opens a transaction when the subscription is paused', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      user: {
+        organization: { subscription: { status: 'active', pausedAt: new Date('2026-06-01') } },
+      },
+    });
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 1) }), {
+      params,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toMatch(/training access is paused/i);
+    expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
+  });
+
+  it('403s when the org has no subscription row at all', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      user: { organization: { subscription: null } },
+    });
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 1) }), {
+      params,
+    });
+
+    expect(res.status).toBe(403);
+    expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
+  });
+
+  it('allows the submission to proceed when billing is active', async () => {
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2) }), {
+      params,
+    });
+
+    expect(res.status).toBe(200);
+    expect(txMock.quizAttempt.create).toHaveBeenCalled();
   });
 });
 

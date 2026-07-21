@@ -199,6 +199,14 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
     const existingUserMap = new Map(existingUsers.map((u) => [u.email, u]));
     const existingInviteMap = new Map(existingInvites.map((i) => [i.email, i]));
 
+    // Accounts already tied to an organization cannot be (re-)invited: same-org is
+    // already a member, a different org must not be poached. Org-less accounts
+    // (e.g. a removed user) are NOT blocked — they are re-invited like a fresh
+    // address and relinked on accept. This set drives the email-send skip below.
+    const blockedUserEmails = new Set(
+      existingUsers.filter((u) => u.organizationId !== null).map((u) => u.email),
+    );
+
     const newInvitesData: {
       email: string;
       token: string;
@@ -216,7 +224,9 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
     // Pre-process emails to determine what action is needed
     for (const email of emails) {
       const existingUser = existingUserMap.get(email);
-      if (existingUser) {
+      // Only accounts already bound to an org short-circuit; an org-less existing
+      // account falls through to be re-invited (and relinked on accept).
+      if (existingUser && existingUser.organizationId !== null) {
         if (existingUser.organizationId === organizationId) {
           results.push({ email, status: 'exists', message: 'User is already a member.' });
         } else {
@@ -232,7 +242,7 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
       // Already has a pending invite — will be re-sent below
       if (existingInviteMap.has(email)) continue;
 
-      // Brand new invite
+      // Brand new invite (or a re-invite for an org-less existing account)
       const token = crypto.randomUUID();
       const inviteData = {
         email,
@@ -260,7 +270,7 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
 
     // Send / resend emails concurrently
     const emailPromises = emails.map(async (email) => {
-      if (existingUserMap.has(email)) return; // Already handled above
+      if (blockedUserEmails.has(email)) return; // Already handled above (member/other-org)
 
       const roleDisplayName = getRoleDisplayName(emailRoleMap.get(email) as UserRole);
 
@@ -283,7 +293,7 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
 
     emailResults.forEach((result, index) => {
       const email = emails[index];
-      if (existingUserMap.has(email)) return; // Skip — already pushed to results
+      if (blockedUserEmails.has(email)) return; // Skip — already pushed to results
 
       if (result.status === 'fulfilled') {
         if (result.value) results.push(result.value as InviteResultItem);

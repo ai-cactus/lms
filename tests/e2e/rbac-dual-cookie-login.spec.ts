@@ -86,6 +86,29 @@ async function seedActiveUser(email: string, password: string, role: UserRole): 
        VALUES ($1, $2, 'Dual', 'Cookie', 'Dual Cookie', NOW(), NOW())`,
       [userId, email],
     );
+    // An active subscription is required so a worker-role fixture here isn't
+    // blocked by the worker billing gate (TC-041-B) — a missing subscription
+    // row is treated as inactive billing, which is unrelated to this spec's
+    // cookie-clearing behavior.
+    const subNow = new Date();
+    const subPeriodEnd = new Date(subNow);
+    subPeriodEnd.setFullYear(subPeriodEnd.getFullYear() + 1);
+    await client.query(
+      `INSERT INTO subscriptions (
+         id, organization_id, stripe_subscription_id, stripe_price_id, plan,
+         billing_cycle, status, current_period_start, current_period_end,
+         cancel_at_period_end, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, 'professional'::"SubscriptionPlan", 'yearly'::"SubscriptionBillingCycle",
+         'active'::"SubscriptionStatus", $5, $6, false, NOW(), NOW())`,
+      [
+        crypto.randomUUID(),
+        orgId,
+        `sub_e2e_${crypto.randomBytes(6).toString('hex')}`,
+        `price_e2e_${crypto.randomBytes(6).toString('hex')}`,
+        subNow,
+        subPeriodEnd,
+      ],
+    );
 
     return { userId, orgId, facilityId };
   } finally {
@@ -96,6 +119,7 @@ async function seedActiveUser(email: string, password: string, role: UserRole): 
 async function cleanup(seeded: Seeded): Promise<void> {
   const client = await db();
   try {
+    await client.query(`DELETE FROM subscriptions WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM profiles WHERE id = $1`, [seeded.userId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [seeded.orgId]);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { authorize } from '@/lib/rbac/authorize';
+import { apiError } from '@/lib/api-response';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
@@ -42,30 +43,21 @@ function isPaymentFailure(err: unknown): boolean {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-    // F-012: enforce authentication + MFA step-up + admin role at the data
-    // layer, consistent with the shared guard used across billing routes.
-    const denied = guardApiSession(session, { role: 'admin' });
+    // F-012: enforce authentication + MFA step-up at the data layer. RBAC (the
+    // billing permission) is enforced by authorize() below against the registry.
+    const denied = guardApiSession(session);
     if (denied) return denied;
-    // The guard guarantees an authenticated session past this point; narrow the
-    // id for the DB lookup (guardApiSession does not narrow the session type).
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const authResult = await authorize('billing.create');
+    if (!authResult.ok) return authResult.response;
+    const { ctx } = authResult;
+
+    if (!ctx.organizationId) {
+      return apiError('No organization found', 404);
     }
+    const organizationId = ctx.organizationId;
 
     const stripe = getStripeClient();
-
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    if (!user.organizationId) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
-    }
 
     const body = (await request.json()) as { planKey: string; billingCycle: BillingCycle };
     const { planKey, billingCycle } = body;
@@ -88,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     const organization = await prisma.organization.findUnique({
-      where: { id: user.organizationId },
+      where: { id: organizationId },
       select: {
         name: true,
         primaryEmail: true,
@@ -115,11 +107,11 @@ export async function POST(request: NextRequest) {
       const customer = await stripe.customers.create({
         name: organization.name,
         email: organization.primaryEmail ?? undefined,
-        metadata: { organizationId: user.organizationId },
+        metadata: { organizationId },
       });
       customerId = customer.id;
       await prisma.organization.update({
-        where: { id: user.organizationId },
+        where: { id: organizationId },
         data: { stripeCustomerId: customerId },
       });
     }
@@ -133,7 +125,7 @@ export async function POST(request: NextRequest) {
     // over the single subscription row, see THER-010). We only fall through to
     // Checkout when there is no live subscription to modify.
     const existingSubscription = await prisma.subscription.findUnique({
-      where: { organizationId: user.organizationId },
+      where: { organizationId },
       select: {
         id: true,
         status: true,
@@ -155,7 +147,6 @@ export async function POST(request: NextRequest) {
       !!existingSubscription.stripeSubscriptionId;
 
     if (existingSubscription && hasLiveSubscription) {
-      const organizationId = user.organizationId;
       // Retrieve the live subscription to find the item whose price we swap.
       const liveSub = await stripe.subscriptions.retrieve(
         existingSubscription.stripeSubscriptionId,
@@ -205,8 +196,8 @@ export async function POST(request: NextRequest) {
           });
           await audit({
             action: 'billing.subscription.checkout',
-            actorId: session.user.id,
-            actorRole: user.role,
+            actorId: ctx.userId,
+            actorRole: ctx.role,
             organizationId,
             targetType: 'subscription',
             targetId: existingSubscription.id,
@@ -316,8 +307,8 @@ export async function POST(request: NextRequest) {
         });
         await audit({
           action: 'billing.subscription.checkout',
-          actorId: session.user.id,
-          actorRole: user.role,
+          actorId: ctx.userId,
+          actorRole: ctx.role,
           organizationId,
           targetType: 'subscription',
           targetId: existingSubscription.id,
@@ -401,8 +392,8 @@ export async function POST(request: NextRequest) {
       });
       await audit({
         action: 'billing.subscription.checkout',
-        actorId: session.user.id,
-        actorRole: user.role,
+        actorId: ctx.userId,
+        actorRole: ctx.role,
         organizationId,
         targetType: 'subscription',
         targetId: existingSubscription.id,
@@ -426,13 +417,13 @@ export async function POST(request: NextRequest) {
       success_url: `${appUrl}/dashboard/billing?tab=overview&checkout=success`,
       cancel_url: `${appUrl}/dashboard/billing?tab=subscription`,
       metadata: {
-        organizationId: user.organizationId,
+        organizationId,
         planKey,
         billingCycle,
       },
       subscription_data: {
         metadata: {
-          organizationId: user.organizationId,
+          organizationId,
           planKey,
           billingCycle,
         },
@@ -441,7 +432,7 @@ export async function POST(request: NextRequest) {
 
     logger.info({
       msg: '[billing] Created Checkout session for new subscription',
-      organizationId: user.organizationId,
+      organizationId,
       planKey,
       billingCycle,
     });
@@ -449,9 +440,9 @@ export async function POST(request: NextRequest) {
     // F-001: record the sensitive billing action (new subscription checkout).
     await audit({
       action: 'billing.subscription.checkout',
-      actorId: session.user.id,
-      actorRole: user.role,
-      organizationId: user.organizationId,
+      actorId: ctx.userId,
+      actorRole: ctx.role,
+      organizationId,
       targetType: 'subscription',
       metadata: { planKey, billingCycle, mode: 'checkout' },
       ...getClientContext(request.headers),

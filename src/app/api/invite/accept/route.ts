@@ -93,9 +93,14 @@ export async function POST(req: Request) {
 
     const existingUser = await prisma.user.findUnique({
       where: { email: invite.email },
+      select: { id: true, organizationId: true },
     });
 
-    if (existingUser) {
+    // An account already bound to an organization cannot accept a new invite. An
+    // org-less account (e.g. a removed user) IS allowed through and relinked into
+    // the inviting org below — the emailed token proves control of the address,
+    // the same trust model as a password-reset link.
+    if (existingUser && existingUser.organizationId !== null) {
       return NextResponse.json({ error: 'User with this email already exists' }, { status: 400 });
     }
 
@@ -112,6 +117,8 @@ export async function POST(req: Request) {
       });
     }
 
+    const fullName = `${firstName} ${lastName}`;
+
     const newUser = await prisma.$transaction(async (tx) => {
       // F-022: re-check seat availability INSIDE the transaction so a seat that
       // filled between invite issuance and acceptance (concurrent accepts, or
@@ -120,24 +127,39 @@ export async function POST(req: Request) {
       // source; a no-op for unlimited plans / no active subscription.
       await assertSeatAvailable(invite.organizationId, { seatsNeeded: 1, client: tx });
 
-      const user = await tx.user.create({
-        data: {
-          email: invite.email,
-          emailVerified: true,
-          password: hashedPassword,
-          organizationId: invite.organizationId,
-          facilityId: facility?.id ?? null,
-          role: invite.role,
-          profile: {
-            create: {
-              firstName,
-              lastName,
-              fullName: `${firstName} ${lastName}`,
-              email: invite.email,
+      // Relink an org-less account (removed user rejoining): reset its org,
+      // facility, role, credentials and verification, and upsert the profile —
+      // equivalent to a fresh join for an address whose control was just proven.
+      const user = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              emailVerified: true,
+              password: hashedPassword,
+              organizationId: invite.organizationId,
+              facilityId: facility?.id ?? null,
+              role: invite.role,
+              profile: {
+                upsert: {
+                  create: { firstName, lastName, fullName, email: invite.email },
+                  update: { firstName, lastName, fullName, email: invite.email },
+                },
+              },
             },
-          },
-        },
-      });
+          })
+        : await tx.user.create({
+            data: {
+              email: invite.email,
+              emailVerified: true,
+              password: hashedPassword,
+              organizationId: invite.organizationId,
+              facilityId: facility?.id ?? null,
+              role: invite.role,
+              profile: {
+                create: { firstName, lastName, fullName, email: invite.email },
+              },
+            },
+          });
 
       await tx.invite.update({
         where: { id: invite.id },
