@@ -1,5 +1,5 @@
 /**
- * Unit tests for listFiles() in storage/index.ts.
+ * Unit tests for listFiles() and listFilesForActiveBackend() in storage/index.ts.
  *
  * index.ts memoises GCS init behind module-level singletons (_gcs, _gcsInitialised).
  * vi.resetModules() is used before each test to flush those singletons so every
@@ -9,6 +9,9 @@
  * Covered:
  *   - GCS configured and list() throws → MinIO results are still returned; warn logged
  *   - GCS not configured (constructor throws) → only MinIO results; no extra warn
+ *   - listFilesForActiveBackend: GCS active → only GCS listed, MinIO not queried
+ *   - listFilesForActiveBackend: GCS unavailable → MinIO listed
+ *   - listFilesForActiveBackend: list failure → rethrows (never resolves [])
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -165,5 +168,75 @@ describe('listFiles — GCS not configured (constructor throws)', () => {
     // GCS being unconfigured. Only the provider-unavailable warn should appear.
     const warnMessages = mockLoggerWarn.mock.calls.map((call) => (call[0] as { msg: string }).msg);
     expect(warnMessages.every((m) => !m.includes('GCS list failed'))).toBe(true);
+  });
+});
+
+describe('listFilesForActiveBackend', () => {
+  it('lists only GCS when GCS is the active backend — MinIO is never queried', async () => {
+    const gcsItem: StorageListItem = {
+      storageUri: 'gcs://my-bucket/system/videos/gcs.mp4',
+      createdAt: new Date('2024-01-01'),
+    };
+    MockGCSProvider.mockImplementation(function (this: Record<string, unknown>) {
+      this.list = mockGCSList;
+    });
+    mockGCSList.mockResolvedValue([gcsItem]);
+    mockMinioList.mockResolvedValue([
+      { storageUri: 'minio://lms-documents/system/videos/minio.mp4', createdAt: new Date() },
+    ]);
+
+    const { listFilesForActiveBackend } = await import('@/lib/storage/index');
+    const result = await listFilesForActiveBackend('system/videos/');
+
+    expect(result).toEqual([gcsItem]);
+    expect(mockMinioList).not.toHaveBeenCalled();
+  });
+
+  it('falls back to MinIO when GCS is unavailable (constructor throws)', async () => {
+    MockGCSProvider.mockImplementation(function () {
+      throw new Error('GCP_BUCKET_NAME is not configured — GCS provider unavailable');
+    });
+    const minioItem: StorageListItem = {
+      storageUri: 'minio://lms-documents/system/videos/fallback.mp4',
+      createdAt: new Date('2024-06-01'),
+    };
+    mockMinioList.mockResolvedValue([minioItem]);
+
+    const { listFilesForActiveBackend } = await import('@/lib/storage/index');
+    const result = await listFilesForActiveBackend('system/videos/');
+
+    expect(result).toEqual([minioItem]);
+    expect(mockGCSList).not.toHaveBeenCalled();
+  });
+
+  it('rethrows when the active backend list() fails — never resolves []', async () => {
+    MockGCSProvider.mockImplementation(function (this: Record<string, unknown>) {
+      this.list = mockGCSList;
+    });
+    mockGCSList.mockRejectedValue(new Error('GCS list failed: permission denied'));
+
+    const { listFilesForActiveBackend } = await import('@/lib/storage/index');
+
+    await expect(listFilesForActiveBackend('system/videos/')).rejects.toThrow(
+      'GCS list failed: permission denied',
+    );
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: expect.stringContaining('Active-backend list failed'),
+      }),
+    );
+  });
+
+  it('rethrows when MinIO (the active backend) list() fails', async () => {
+    MockGCSProvider.mockImplementation(function () {
+      throw new Error('GCP_BUCKET_NAME is not configured — GCS provider unavailable');
+    });
+    mockMinioList.mockRejectedValue(new Error('MinIO connection refused'));
+
+    const { listFilesForActiveBackend } = await import('@/lib/storage/index');
+
+    await expect(listFilesForActiveBackend('system/videos/')).rejects.toThrow(
+      'MinIO connection refused',
+    );
   });
 });

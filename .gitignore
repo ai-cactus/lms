@@ -74,5 +74,7 @@ docs/*QA-Report*.pdf
 .playwright-mcp/
 # Analysis report PDF renderings (generated from docs/analysis/*.md) — kept locally, never committed
 docs/analysis/pdf/
+# One-off diagnosis report exports — kept locally, never committed
+platform-speed-diagnosis-*.pdf
 testing_stages.jpeg
 Theraptly_LMS_QA_Test_Cases.docx
