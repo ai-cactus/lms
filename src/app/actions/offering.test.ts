@@ -105,6 +105,8 @@ describe('listAvailableVideoCourses', () => {
     });
     // The offerings include must filter by the caller's org
     expect(callArg.include.offerings.where.organizationId).toBe(ORG_ID);
+    // Catalog lists in upload order (oldest first), not latest-first
+    expect(callArg.orderBy).toEqual({ createdAt: 'asc' });
   });
 
   it('marks isOffered true when an offering row exists for the org', async () => {
