@@ -46,6 +46,9 @@ next-env.d.ts
 
 #files
 /src/generated/prisma
+# Prisma client output (prisma/schema.prisma → ../generated/prisma); regenerated
+# locally, in CI (npx prisma generate per job) and in the Dockerfile — never committed
+/generated/prisma
 production/
 
 AGENT.md
