@@ -283,7 +283,10 @@ export default function ShareCourseModal({ isOpen, onClose, courseId }: ShareCou
               <Alert variant="success">Enrolled: {result.success.join(', ')}</Alert>
             )}
             {result.newInvited.length > 0 && (
-              <Alert variant="info">Invited &amp; Enrolled: {result.newInvited.join(', ')}</Alert>
+              <Alert variant="info">
+                Invite sent — they&apos;ll be enrolled when they join:{' '}
+                {result.newInvited.join(', ')}
+              </Alert>
             )}
             {result.alreadyEnrolled.length > 0 && (
               <Alert variant="warning">Already enrolled: {result.alreadyEnrolled.join(', ')}</Alert>

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronDown, Users, X } from 'lucide-react';
+import { Check, ChevronDown, Clock, Users, X } from 'lucide-react';
 import { RenewalCycle, ReminderStage } from '@/generated/prisma/enums';
 import { ALL_ROLES, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
@@ -71,6 +71,8 @@ interface AssignPublishClientProps {
   existingSettings?: CourseAssignmentSettings | null;
   /** Current headcount per role in the org, so role mode can preview enrollment. */
   roleHolderCounts?: Record<string, number>;
+  /** Emails assigned this course that haven't accepted their invite yet. */
+  pendingInvitedEmails?: string[];
 }
 
 /** Format a stored deadline/schedule Date as the `YYYY-MM-DD` DatePicker expects. */
@@ -84,6 +86,7 @@ export default function AssignPublishClient({
   courseStatus,
   existingSettings = null,
   roleHolderCounts = {},
+  pendingInvitedEmails = [],
 }: AssignPublishClientProps) {
   const router = useRouter();
 
@@ -373,6 +376,31 @@ export default function AssignPublishClient({
           </div>
         </div>
 
+        {pendingInvitedEmails.length > 0 && (
+          <div className="mt-6 rounded-lg border border-border bg-background-secondary p-4">
+            <div className="flex items-center gap-2">
+              <Clock className="size-4 shrink-0 text-text-secondary" aria-hidden="true" />
+              <h3 className="text-sm font-semibold text-foreground">
+                Pending invites for this course
+              </h3>
+            </div>
+            <p className="mt-1 text-xs text-text-secondary">
+              These people were assigned this course but haven&apos;t accepted their invite yet.
+              They&apos;ll be enrolled automatically once they join.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {pendingInvitedEmails.map((email) => (
+                <span
+                  key={email}
+                  className="rounded bg-background px-2 py-1 text-[13px] font-medium text-foreground"
+                >
+                  {email}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="my-6 h-px bg-border" />
 
         <SettingRow
@@ -518,7 +546,8 @@ export default function AssignPublishClient({
             </span>
             <h2 className="text-xl font-bold text-foreground">Course Assigned Successfully</h2>
             <p className="text-sm text-text-secondary">
-              Workers have been assigned and are now enrolled in this course.
+              Existing workers are now enrolled. Anyone who hasn&apos;t joined yet will be enrolled
+              when they accept their invite.
             </p>
             <div className="mt-4 flex w-full flex-col gap-3">
               <Button onClick={() => router.push('/dashboard')}>Back to Dashboard</Button>
