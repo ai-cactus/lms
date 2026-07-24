@@ -68,6 +68,7 @@ model Course {
   modules                     CourseModule[]
   quiz                        Quiz?
   assignments                 CourseAssignment[]
+  inviteCourseAssignments     InviteCourseAssignment[]
 
   @@index([createdBy])
   @@index([status])

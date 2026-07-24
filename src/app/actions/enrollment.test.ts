@@ -15,7 +15,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { prismaMock, mockAdminAuth, mockWorkerAuth } = vi.hoisted(() => {
   const prismaMock = {
     course: { findUnique: vi.fn() },
-    user: { findUnique: vi.fn(), create: vi.fn() },
+    // user.create is unused by the product code post fix/worker-invite (the
+    // invite branch no longer creates an account) — kept as a harmless mock so
+    // pre-existing "no account was created" regression assertions still hold.
+    // user.count / invite.count back getSeatUsage's own usage accounting.
+    user: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), count: vi.fn() },
     profile: { upsert: vi.fn() },
     orgCourseOffering: { findUnique: vi.fn(), upsert: vi.fn() },
     courseAssignment: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
@@ -24,6 +28,13 @@ const { prismaMock, mockAdminAuth, mockWorkerAuth } = vi.hoisted(() => {
     // Added in facility split: enrollUsers looks up facilityId for new users.
     facility: { findFirst: vi.fn() },
     reminderLog: { create: vi.fn() },
+    // Seat gate (F-022): enrollUsers now calls getSeatUsage(organizationId, ...)
+    // unconditionally when the caller has an org — organization.findUnique
+    // resolving null (default below) makes getSeatUsage return staffMax: null,
+    // a no-op, so tests not focused on the seat gate need no further mocking.
+    organization: { findUnique: vi.fn() },
+    invite: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    inviteCourseAssignment: { upsert: vi.fn() },
   };
   const mockAdminAuth = vi.fn();
   const mockWorkerAuth = vi.fn();
@@ -122,6 +133,10 @@ describe('enrollUsers — course-ownership guard', () => {
     // Default: admin auth returns a valid session; worker auth returns null.
     mockAdminAuth.mockResolvedValue(adminSession);
     mockWorkerAuth.mockResolvedValue(null);
+
+    // Seat gate (F-022): no active subscription on this org → getSeatUsage
+    // returns staffMax: null, a no-op — tests below aren't focused on it.
+    prismaMock.organization.findUnique.mockResolvedValue(null);
 
     // Default: no existing enrollment (so we reach the create path).
     prismaMock.enrollment.findFirst.mockResolvedValue(null);
@@ -345,6 +360,7 @@ describe('enrollUsers — CSV role mapping (entry.role "admin" → DB role "supe
     vi.clearAllMocks();
     mockAdminAuth.mockResolvedValue(adminSession);
     mockWorkerAuth.mockResolvedValue(null);
+    prismaMock.organization.findUnique.mockResolvedValue(null);
     prismaMock.course.findUnique.mockResolvedValue(ownCourse);
     prismaMock.enrollment.findFirst.mockResolvedValue(null);
     prismaMock.enrollment.create.mockResolvedValue({});
@@ -355,55 +371,175 @@ describe('enrollUsers — CSV role mapping (entry.role "admin" → DB role "supe
     // assignments in these fixtures, so it's a no-op.
     prismaMock.courseAssignment.findMany.mockResolvedValue([]);
     prismaMock.facility.findFirst.mockResolvedValue(null);
+    // fix/worker-invite: an unknown email is now invited (not account-created).
+    prismaMock.invite.findFirst.mockResolvedValue(null);
+    prismaMock.inviteCourseAssignment.upsert.mockResolvedValue({});
   });
 
-  it('maps CSV role "admin" to DB role "supervisor" for a newly-created user', async () => {
+  it('maps CSV role "admin" to the invite role "supervisor" for an unknown email', async () => {
     prismaMock.user.findUnique
       .mockResolvedValueOnce(adminUser) // currentUser fetch
-      .mockResolvedValueOnce(null); // no existing user with this email → create path
-    prismaMock.user.create.mockResolvedValue({
-      id: 'new-user-1',
+      .mockResolvedValueOnce(null); // no existing user with this email → invite path
+    prismaMock.invite.create.mockResolvedValue({
+      id: 'invite-1',
+      token: 'tok-1',
       email: 'newadmin@example.com',
-      profile: null,
     });
 
-    await enrollUsers('own-course-001', [
+    const result = await enrollUsers('own-course-001', [
       { email: 'newadmin@example.com', firstName: 'New', lastName: 'Admin', role: 'admin' },
     ]);
 
-    expect(prismaMock.user.create).toHaveBeenCalledWith(
+    expect(prismaMock.invite.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ role: 'supervisor' }) }),
     );
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
+    expect(result.newInvited).toContain('newadmin@example.com');
   });
 
-  it('maps CSV role "worker" to DB role "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE) for a newly-created user', async () => {
+  it('maps CSV role "worker" to the invite role "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE) for an unknown email', async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(null);
-    prismaMock.user.create.mockResolvedValue({
-      id: 'new-user-2',
+    prismaMock.invite.create.mockResolvedValue({
+      id: 'invite-2',
+      token: 'tok-2',
       email: 'newworker@example.com',
-      profile: null,
     });
 
     await enrollUsers('own-course-001', [{ email: 'newworker@example.com', role: 'worker' }]);
 
-    expect(prismaMock.user.create).toHaveBeenCalledWith(
+    expect(prismaMock.invite.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ role: 'front_desk_admin' }) }),
     );
   });
 
-  it('defaults to DB role "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE) when the CSV role column is omitted', async () => {
+  it('defaults the invite role to "front_desk_admin" (DEFAULT_SELF_SERVE_WORKER_ROLE) when the CSV role column is omitted', async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(null);
-    prismaMock.user.create.mockResolvedValue({
-      id: 'new-user-3',
+    prismaMock.invite.create.mockResolvedValue({
+      id: 'invite-3',
+      token: 'tok-3',
       email: 'norole@example.com',
-      profile: null,
     });
 
     await enrollUsers('own-course-001', [{ email: 'norole@example.com' }]);
 
-    expect(prismaMock.user.create).toHaveBeenCalledWith(
+    expect(prismaMock.invite.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ role: 'front_desk_admin' }) }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fix/worker-invite: unified invite flow — an unknown/org-less email is
+// invited (not account-created), and the batch is gated by the org's plan
+// seat limit (only genuinely NEW emails cost a seat).
+// ---------------------------------------------------------------------------
+
+describe('enrollUsers — unified invite flow (fix/worker-invite)', () => {
+  const ownCourse = {
+    id: 'own-course-001',
+    title: 'My Training',
+    createdBy: ADMIN_ID,
+    isGlobal: false,
+    type: 'document',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAdminAuth.mockResolvedValue(adminSession);
+    mockWorkerAuth.mockResolvedValue(null);
+    prismaMock.course.findUnique.mockResolvedValue(ownCourse);
+    prismaMock.enrollment.findFirst.mockResolvedValue(null);
+    prismaMock.enrollment.create.mockResolvedValue({});
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
+    prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
+    prismaMock.courseAssignment.findMany.mockResolvedValue([]);
+    prismaMock.facility.findFirst.mockResolvedValue(null);
+    prismaMock.invite.findFirst.mockResolvedValue(null);
+    prismaMock.invite.create.mockResolvedValue({
+      id: 'invite-x',
+      token: 'tok-x',
+      email: 'new@example.com',
+    });
+    prismaMock.inviteCourseAssignment.upsert.mockResolvedValue({});
+    prismaMock.invite.findMany.mockResolvedValue([]);
+    prismaMock.user.findMany.mockResolvedValue([]);
+  });
+
+  it('maps an "invited" outcome into the newInvited result bucket, unchanged UI contract', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue(null); // no seat limit to enforce
+    prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(null);
+
+    const result = await enrollUsers('own-course-001', [{ email: 'new@example.com' }]);
+
+    expect(result.newInvited).toEqual(['new@example.com']);
+    expect(result.success).toHaveLength(0);
+    expect(result.failed).toHaveLength(0);
+  });
+
+  it('rejects overflow emails into failed once the plan seat limit is reached, without creating an invite for them', async () => {
+    // Active subscription on a staffMax: 10 plan, already at capacity.
+    prismaMock.organization.findUnique.mockResolvedValue({
+      subscription: { plan: 'starter', status: 'active' },
+    });
+    prismaMock.user.count.mockResolvedValue(10); // 10 active workers already
+    prismaMock.invite.count.mockResolvedValue(0);
+    // Only ONE queued value: the seat-rejected entry never reaches
+    // createEnrollmentForUser's own user.findUnique lookup (it `continue`s
+    // straight to `failed` before that call) — queuing a second value here
+    // would leak into the NEXT test (vi.clearAllMocks() does not clear a
+    // mockResolvedValueOnce queue, only mockReset()/resetAllMocks() does).
+    prismaMock.user.findUnique.mockResolvedValueOnce(adminUser);
+
+    const result = await enrollUsers('own-course-001', [{ email: 'overflow@example.com' }]);
+
+    expect(result.failed).toContain('overflow@example.com');
+    expect(result.newInvited).toHaveLength(0);
+    expect(prismaMock.invite.create).not.toHaveBeenCalled();
+  });
+
+  it('does not consume a seat for an email that already belongs to an existing org member', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      subscription: { plan: 'starter', status: 'active' },
+    });
+    prismaMock.user.count.mockResolvedValue(9); // 1 seat remaining
+    prismaMock.invite.count.mockResolvedValue(0);
+    // Seat-gate's own dedup query: this email already belongs to a member.
+    prismaMock.user.findMany.mockResolvedValue([{ email: 'existing-member@example.com' }]);
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(adminUser) // currentUser fetch
+      .mockResolvedValueOnce({
+        id: 'member-1',
+        email: 'existing-member@example.com',
+        organizationId: ORG_ID,
+        profile: null,
+      }); // createEnrollmentForUser's own lookup
+
+    const result = await enrollUsers('own-course-001', [{ email: 'existing-member@example.com' }]);
+
+    // Not rejected as an overflow — the seat-gate treats it as "known".
+    expect(result.failed).not.toContain('existing-member@example.com');
+    expect(result.success).toContain('existing-member@example.com');
+  });
+
+  it('does not consume a seat for an email with an already-pending invite', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      subscription: { plan: 'starter', status: 'active' },
+    });
+    prismaMock.user.count.mockResolvedValue(10); // no room for a NEW seat
+    prismaMock.invite.count.mockResolvedValue(0);
+    // Seat-gate's own dedup query: this email already has a pending invite.
+    prismaMock.invite.findMany.mockResolvedValue([{ email: 'already-pending@example.com' }]);
+    prismaMock.user.findUnique.mockResolvedValueOnce(adminUser).mockResolvedValueOnce(null);
+    prismaMock.invite.create.mockResolvedValue({
+      id: 'invite-y',
+      token: 'tok-y',
+      email: 'already-pending@example.com',
+    });
+
+    const result = await enrollUsers('own-course-001', [{ email: 'already-pending@example.com' }]);
+
+    expect(result.failed).not.toContain('already-pending@example.com');
+    expect(result.newInvited).toContain('already-pending@example.com');
   });
 });
 
@@ -437,6 +573,7 @@ describe('enrollUsers — billing gate (Defect B)', () => {
     vi.clearAllMocks();
     mockAdminAuth.mockResolvedValue(adminSession);
     mockWorkerAuth.mockResolvedValue(null);
+    prismaMock.organization.findUnique.mockResolvedValue(null);
     prismaMock.course.findUnique.mockResolvedValue(ownCourse);
     prismaMock.enrollment.findFirst.mockResolvedValue(null);
     prismaMock.enrollment.create.mockResolvedValue({});

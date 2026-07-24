@@ -12,7 +12,7 @@ import { can } from '@/lib/rbac/permissions';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
-import type { UserRole } from '@/generated/prisma/enums';
+import type { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
 import { enrollUsers, type AssignmentSettingsInput } from '@/app/actions/enrollment';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { logger } from '@/lib/logger';
@@ -567,7 +567,12 @@ export async function removeStaff(userId: string) {
       },
     });
 
-    if (!admin || !can(dbRoleToRoleKey(admin.role), 'user.delete') || !admin.organization) {
+    if (
+      !admin ||
+      !can(dbRoleToRoleKey(admin.role), 'user.delete') ||
+      !admin.organizationId ||
+      !admin.organization
+    ) {
       throw new Error('Insufficient permissions or organization not found');
     }
 
@@ -590,13 +595,35 @@ export async function removeStaff(userId: string) {
 
     const staffName = staffUser.profile?.fullName || staffUser.email;
 
-    // Disconnect the user from the organization. Bump sessionVersion in the
-    // same write so any live session is invalidated on its next JWT decode
-    // (F-059 kill-switch), locking the removed user out immediately.
-    await prisma.user.update({
-      where: { id: userId },
-      data: { organizationId: null, sessionVersion: { increment: 1 } },
-    });
+    // Drop in-flight training on removal so a re-invite yields a clean slate.
+    // Only the "active" statuses (the F-053 partial-index set) are deleted —
+    // cascading their ReminderLog / ReminderNudge / QuizAttempt rows. Terminal
+    // statuses (completed, attested, locked, failed, retry_requested) and their
+    // certificates are retained for compliance history.
+    const ACTIVE_ENROLLMENT_STATUSES: EnrollmentStatus[] = [
+      'enrolled',
+      'assigned',
+      'in_progress',
+      'lessons_complete',
+    ];
+
+    // Single transaction: unlink the user (bumping sessionVersion so any live
+    // session is invalidated on its next JWT decode — F-059 kill-switch), drop
+    // the in-flight enrollments, and expire any pending invite for this email in
+    // the org so a live `/join` token can't immediately re-add the person.
+    const [droppedEnrollments] = await prisma.$transaction([
+      prisma.enrollment.deleteMany({
+        where: { userId, status: { in: ACTIVE_ENROLLMENT_STATUSES } },
+      }),
+      prisma.user.update({
+        where: { id: userId },
+        data: { organizationId: null, sessionVersion: { increment: 1 } },
+      }),
+      prisma.invite.updateMany({
+        where: { email: staffUser.email, organizationId: admin.organizationId, status: 'pending' },
+        data: { status: 'expired' },
+      }),
+    ]);
 
     // F-001: record the sensitive mutation on the authorized, successful path.
     await audit({
@@ -606,6 +633,7 @@ export async function removeStaff(userId: string) {
       organizationId: admin.organizationId ?? undefined,
       targetType: 'user',
       targetId: userId,
+      metadata: { droppedEnrollmentCount: droppedEnrollments.count },
       ...getClientContext(await headers()),
     });
 

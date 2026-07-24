@@ -11,27 +11,54 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockFindUnique, mockUpdate, mockCheckRateLimit, mockAudit, mockCookieStore, mockCookies } =
-  vi.hoisted(() => {
-    const mockCookieStore = {
-      has: vi.fn().mockReturnValue(false),
-      delete: vi.fn(),
-      set: vi.fn(),
-    };
-    return {
-      mockFindUnique: vi.fn(),
-      mockUpdate: vi.fn(),
-      mockCheckRateLimit: vi.fn(),
-      mockAudit: vi.fn(),
-      mockCookieStore,
-      mockCookies: vi.fn(() => Promise.resolve(mockCookieStore)),
-    };
-  });
+const {
+  mockFindUnique,
+  mockUpdate,
+  mockCheckRateLimit,
+  mockAudit,
+  mockCookieStore,
+  mockCookies,
+  mockInviteFindFirst,
+  mockInviteUpdate,
+  mockFacilityFindFirst,
+  mockUserCreate,
+  mockProfileFindUnique,
+  mockProfileCreate,
+  mockEnrollUserForRoleTargets,
+  mockEnrollInviteCourses,
+} = vi.hoisted(() => {
+  const mockCookieStore = {
+    has: vi.fn().mockReturnValue(false),
+    delete: vi.fn(),
+    set: vi.fn(),
+  };
+  return {
+    mockFindUnique: vi.fn(),
+    mockUpdate: vi.fn(),
+    mockCheckRateLimit: vi.fn(),
+    mockAudit: vi.fn(),
+    mockCookieStore,
+    mockCookies: vi.fn(() => Promise.resolve(mockCookieStore)),
+    mockInviteFindFirst: vi.fn(),
+    mockInviteUpdate: vi.fn(),
+    mockFacilityFindFirst: vi.fn(),
+    mockUserCreate: vi.fn(),
+    mockProfileFindUnique: vi.fn(),
+    mockProfileCreate: vi.fn(),
+    mockEnrollUserForRoleTargets: vi.fn(),
+    mockEnrollInviteCourses: vi.fn(),
+  };
+});
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: { user: { findUnique: mockFindUnique, update: mockUpdate } },
-  default: { user: { findUnique: mockFindUnique, update: mockUpdate } },
-}));
+vi.mock('@/lib/prisma', () => {
+  const prisma = {
+    user: { findUnique: mockFindUnique, update: mockUpdate, create: mockUserCreate },
+    invite: { findFirst: mockInviteFindFirst, update: mockInviteUpdate },
+    facility: { findFirst: mockFacilityFindFirst },
+    profile: { findUnique: mockProfileFindUnique, create: mockProfileCreate },
+  };
+  return { prisma, default: prisma };
+});
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
 vi.mock('@/lib/audit', () => ({ audit: mockAudit, getClientContext: vi.fn(() => ({})) }));
 vi.mock('next/headers', () => ({ cookies: mockCookies }));
@@ -39,6 +66,15 @@ vi.mock('bcryptjs', () => ({
   default: { compare: vi.fn().mockResolvedValue(true), hash: vi.fn().mockResolvedValue('hash') },
   compare: vi.fn().mockResolvedValue(true),
   hash: vi.fn().mockResolvedValue('hash'),
+}));
+// Live auto-enroll hooks are exercised by their own suites (role-targets has
+// none dedicated yet; invite-courses.test.ts covers enrollInviteCourses) —
+// this file asserts only that the OAuth signIn callback CALLS them correctly.
+vi.mock('@/lib/enrollment/role-targets', () => ({
+  enrollUserForRoleTargets: mockEnrollUserForRoleTargets,
+}));
+vi.mock('@/lib/enrollment/invite-courses', () => ({
+  enrollInviteCourses: mockEnrollInviteCourses,
 }));
 
 import { adminConfig } from '@/auth';
@@ -81,6 +117,14 @@ beforeEach(() => {
   mockUpdate.mockResolvedValue({});
   mockCookieStore.has.mockReturnValue(false);
   mockCookies.mockImplementation(() => Promise.resolve(mockCookieStore));
+  mockInviteFindFirst.mockResolvedValue(null);
+  mockInviteUpdate.mockResolvedValue({});
+  mockFacilityFindFirst.mockResolvedValue({ id: 'facility-1' });
+  mockUserCreate.mockResolvedValue({});
+  mockProfileFindUnique.mockResolvedValue({ fullName: 'OAuth Person' });
+  mockProfileCreate.mockResolvedValue({});
+  mockEnrollUserForRoleTargets.mockResolvedValue(undefined);
+  mockEnrollInviteCourses.mockResolvedValue(undefined);
 });
 
 const freshUserBase = {
@@ -381,5 +425,105 @@ describe('ISSUE 4 — signIn callback clears the sibling session cookie', () => 
     });
 
     expect(result).toBe(true);
+  });
+});
+
+/**
+ * fix/worker-invite: the OAuth (Microsoft Entra ID) signIn callback's two
+ * pending-invite branches — a brand-new OAuth user and an org-less existing
+ * OAuth user (a removed staffer) rejoining — now call enrollInviteCourses
+ * right after enrollUserForRoleTargets, so any course parked on the accepted
+ * invite (see src/lib/enrollment/create.test.ts's invite branch) is
+ * materialised into a real enrollment at OAuth sign-in time too, not only via
+ * the credentials /api/invite/accept route.
+ */
+describe('OAuth signIn callback — pending-invite auto-enroll hooks (fix/worker-invite)', () => {
+  const oauthAccount = { provider: 'microsoft-entra-id' };
+
+  it('a brand-new OAuth user joining via a pending invite triggers role-target AND invite-course auto-enroll', async () => {
+    mockFindUnique.mockResolvedValueOnce(null); // no existing dbUser
+    mockInviteFindFirst.mockResolvedValue({
+      id: 'invite-1',
+      organizationId: 'org-1',
+      role: 'nurse',
+    });
+    mockUserCreate.mockResolvedValue({ id: 'new-user-1', organizationId: 'org-1', role: 'nurse' });
+
+    const signIn = getSignIn(workerConfig);
+    const result = await signIn({
+      user: { id: undefined, email: 'newhire@acme.com', name: 'New Hire' },
+      account: oauthAccount,
+    });
+
+    expect(result).toBe(true);
+    expect(mockInviteUpdate).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'invite-1' },
+      data: { status: 'accepted' },
+    });
+    expect(mockEnrollUserForRoleTargets).toHaveBeenCalledExactlyOnceWith('new-user-1', 'org-1');
+    expect(mockEnrollInviteCourses).toHaveBeenCalledExactlyOnceWith('new-user-1', 'invite-1');
+  });
+
+  it('does NOT call either auto-enroll hook for a brand-new OAuth user with no pending invite (no org to enroll into)', async () => {
+    mockFindUnique.mockResolvedValueOnce(null);
+    mockInviteFindFirst.mockResolvedValue(null);
+    mockUserCreate.mockResolvedValue({
+      id: 'new-user-2',
+      organizationId: null,
+      role: 'front_desk_admin',
+    });
+
+    const signIn = getSignIn(workerConfig);
+    const result = await signIn({
+      user: { id: undefined, email: 'founder@acme.com', name: 'Founder' },
+      account: oauthAccount,
+    });
+
+    expect(result).toBe(true);
+    expect(mockEnrollUserForRoleTargets).not.toHaveBeenCalled();
+    expect(mockEnrollInviteCourses).not.toHaveBeenCalled();
+  });
+
+  it('relinks an org-less existing OAuth user (a removed staffer) via a pending invite and materialises its parked courses', async () => {
+    mockFindUnique.mockResolvedValueOnce({
+      id: 'removed-user-1',
+      organizationId: null,
+      role: 'nurse',
+    });
+    mockInviteFindFirst.mockResolvedValue({
+      id: 'invite-2',
+      organizationId: 'org-2',
+      role: 'nurse',
+    });
+    mockUpdate.mockResolvedValue({ id: 'removed-user-1', organizationId: 'org-2', role: 'nurse' });
+
+    const signIn = getSignIn(workerConfig);
+    const result = await signIn({
+      user: { id: undefined, email: 'removed@acme.com', name: 'Removed Staffer' },
+      account: oauthAccount,
+    });
+
+    expect(result).toBe(true);
+    expect(mockEnrollUserForRoleTargets).toHaveBeenCalledExactlyOnceWith('removed-user-1', 'org-2');
+    expect(mockEnrollInviteCourses).toHaveBeenCalledExactlyOnceWith('removed-user-1', 'invite-2');
+  });
+
+  it('does not call enrollInviteCourses for an existing OAuth user with no pending invite (ordinary re-login)', async () => {
+    mockFindUnique.mockResolvedValueOnce({
+      id: 'existing-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
+    });
+    mockInviteFindFirst.mockResolvedValue(null);
+
+    const signIn = getSignIn(workerConfig);
+    const result = await signIn({
+      user: { id: undefined, email: 'person@acme.com', name: 'Person' },
+      account: oauthAccount,
+    });
+
+    expect(result).toBe(true);
+    expect(mockEnrollUserForRoleTargets).not.toHaveBeenCalled();
+    expect(mockEnrollInviteCourses).not.toHaveBeenCalled();
   });
 });

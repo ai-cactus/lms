@@ -13,7 +13,7 @@ import type { StaffEntry } from '@/types/enrollment';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
 import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
-import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
+import { getSeatUsage } from '@/lib/seat-limits';
 
 export interface AssignmentSettingsInput {
   scheduleAt?: string | Date | null;
@@ -199,9 +199,10 @@ export async function getAvailableUsers() {
  * Each entry must include an email address and may optionally include
  * firstName, lastName, and role — all sourced from the CSV upload.
  *
- * - Existing users: enrolled immediately and notified.
- * - New users: account is created (with profile hydrated from CSV fields),
- *   a temporary password is issued, and a course invite email is sent.
+ * - Existing org members: enrolled immediately and notified.
+ * - Unknown / org-less emails: sent a `/join` invite with the course parked on
+ *   it (no account created) — enrolled when they accept. Overflow past the plan's
+ *   seat limit is rejected into `failed`.
  */
 export async function enrollUsers(
   courseId: string,
@@ -351,11 +352,70 @@ export async function enrollUsers(
     enrolledByUserId: session.user.id,
   };
 
-  // Brand-new accounts created here gain a role, so they must also pick up any
-  // OTHER role-target assignments for that role in the org (live auto-enroll).
-  const newlyInvitedUserIds: string[] = [];
+  // Seat gate (F-022): an unknown / org-less email consumes a plan seat when it
+  // becomes a pending invite, so reject the batch's overflow up front — the same
+  // accounting createInvites uses (active workers + non-expired pending invites,
+  // only brand-new emails cost a seat). Existing members and already-pending
+  // emails don't consume a new seat. No-op for unlimited / unenforced plans.
+  const seatRejectedEmails = new Set<string>();
+  if (organizationId) {
+    const usage = await getSeatUsage(organizationId, { includePendingInvites: true });
+    if (usage.staffMax !== null) {
+      const normalizedEmails = staffEntries.map((e) => e.email.toLowerCase().trim());
+      const [existingMembers, existingPending] = await Promise.all([
+        prisma.user.findMany({
+          where: { email: { in: normalizedEmails }, organizationId },
+          select: { email: true },
+        }),
+        prisma.invite.findMany({
+          where: {
+            email: { in: normalizedEmails },
+            organizationId,
+            status: 'pending',
+            expiresAt: { gt: new Date() },
+          },
+          select: { email: true },
+        }),
+      ]);
+
+      const known = new Set([
+        ...existingMembers.map((u) => u.email.toLowerCase()),
+        ...existingPending.map((i) => i.email.toLowerCase()),
+      ]);
+
+      let remaining = Math.max(0, usage.staffMax - usage.current);
+      for (const email of normalizedEmails) {
+        if (known.has(email)) continue; // existing member / pending — no new seat
+        if (remaining > 0) {
+          // Reserve a seat; add to `known` so a repeated email in the batch costs
+          // only one seat.
+          remaining -= 1;
+          known.add(email);
+        } else {
+          seatRejectedEmails.add(email);
+        }
+      }
+
+      if (seatRejectedEmails.size > 0) {
+        logger.warn({
+          msg: '[enrollment] Course assignment seat limit reached — invites rejected',
+          organizationId,
+          plan: usage.planName,
+          staffMax: usage.staffMax,
+          current: usage.current,
+          rejectedCount: seatRejectedEmails.size,
+        });
+      }
+    }
+  }
 
   for (const entry of staffEntries) {
+    const normalizedEmail = entry.email.toLowerCase().trim();
+    if (seatRejectedEmails.has(normalizedEmail)) {
+      results.failed.push(normalizedEmail);
+      continue;
+    }
+
     const outcome = await createEnrollmentForUser(entry, enrollmentContext);
     switch (outcome.status) {
       case 'failed':
@@ -364,19 +424,14 @@ export async function enrollUsers(
       case 'alreadyEnrolled':
         results.alreadyEnrolled.push(outcome.email);
         break;
-      case 'newInvited':
+      case 'invited':
+        // Role targets fire at accept time (enrollUserForRoleTargets in the accept
+        // paths), so no eager role-target enrollment is needed here.
         results.newInvited.push(outcome.email);
-        newlyInvitedUserIds.push(outcome.userId);
         break;
       case 'enrolled':
         results.success.push(outcome.email);
         break;
-    }
-  }
-
-  if (organizationId) {
-    for (const newUserId of newlyInvitedUserIds) {
-      await enrollUserForRoleTargets(newUserId, organizationId);
     }
   }
 
@@ -580,7 +635,9 @@ export async function assignCourseToRole(
   const results = { enrolled: 0, alreadyEnrolled: 0, failed: 0 };
   for (const holder of holders) {
     const outcome = await createEnrollmentForUser({ email: holder.email }, enrollmentContext);
-    if (outcome.status === 'enrolled' || outcome.status === 'newInvited') results.enrolled += 1;
+    // Role holders are always existing org members, so `invited` is unreachable
+    // here; count it defensively alongside `enrolled` if it ever occurs.
+    if (outcome.status === 'enrolled' || outcome.status === 'invited') results.enrolled += 1;
     else if (outcome.status === 'alreadyEnrolled') results.alreadyEnrolled += 1;
     else results.failed += 1;
   }

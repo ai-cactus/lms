@@ -334,7 +334,9 @@ async function runRoleTargetReconcilePrePass(
           };
 
           const outcome = await createEnrollmentForUser({ email: holder.email }, ctx);
-          if (outcome.status === 'enrolled' || outcome.status === 'newInvited') {
+          // Holders are always existing org members, so `invited` is unreachable
+          // here; count it defensively alongside `enrolled` if it ever occurs.
+          if (outcome.status === 'enrolled' || outcome.status === 'invited') {
             summary.roleTargetEnrolled += 1;
           }
           // Guard against re-processing the same pair within this run.
