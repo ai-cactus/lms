@@ -276,6 +276,11 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
 
       const existingInvite = existingInviteMap.get(email);
       if (existingInvite) {
+        // Refresh the expiry so a resend never carries a nearly-expired token.
+        await prisma.invite.update({
+          where: { id: existingInvite.id },
+          data: { expiresAt },
+        });
         const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/join/${existingInvite.token}`;
         await sendInviteEmail(email, inviteLink, org.name, roleDisplayName);
         return { email, status: 'resent' as const, message: 'Invitation resent.' };

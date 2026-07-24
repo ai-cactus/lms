@@ -1,5 +1,4 @@
 import prisma from '@/lib/prisma';
-import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/app/actions/notifications';
@@ -32,23 +31,27 @@ export interface CreateEnrollmentContext {
 }
 
 /**
- * Outcome of enrolling one staff entry. `newInvited` = a brand-new account was
- * created (and received the invite email, so it is not double-emailed the launch
- * notice); `enrolled` = a pre-existing user newly enrolled (received the launch
- * email with the real due date).
+ * Outcome of enrolling one staff entry. `invited` = the email had no org account
+ * (unknown, or a previously-removed org-less user) so no user/enrollment was
+ * created — a `/join` invite was sent and the course parked on it, to be enrolled
+ * when the invite is accepted; `enrolled` = a pre-existing org member newly
+ * enrolled (received the launch email with the real due date).
  */
 export type EnrollmentOutcome =
   | { status: 'failed'; email: string }
   | { status: 'alreadyEnrolled'; email: string }
-  | { status: 'newInvited'; email: string; userId: string; enrollmentId: string }
+  | { status: 'invited'; email: string }
   | { status: 'enrolled'; email: string; userId: string; enrollmentId: string };
 
 /**
- * Create a single enrollment for one staff entry under an existing assignment
- * context: resolve or create the user, write the enrollment with its computed
- * deadline, seed the `INITIAL_LAUNCH` reminder log, notify the worker in-app, and
- * send the launch email (existing users only). Never throws for an individual
- * entry — a failure is reported via the returned {@link EnrollmentOutcome}.
+ * Assign a course to one staff entry under an existing assignment context.
+ *
+ * For a pre-existing org member: write the enrollment with its computed deadline,
+ * seed the `INITIAL_LAUNCH` reminder log, notify the worker in-app, and send the
+ * launch email. For an unknown or org-less email: send a `/join` invite and park
+ * the course on it (materialised into an enrollment on accept) rather than
+ * creating an account. Never throws for an individual entry — a failure is
+ * reported via the returned {@link EnrollmentOutcome}.
  */
 export async function createEnrollmentForUser(
   entry: StaffEntry,
@@ -68,13 +71,10 @@ export async function createEnrollmentForUser(
   // CSV supplies a coarse "admin" / "worker" token. Map "admin" to the RBAC
   // successor `supervisor` (facility admin); everything else becomes the default
   // self-serve worker role.
-  const userRole: UserRole = entry.role === 'admin' ? 'supervisor' : DEFAULT_SELF_SERVE_WORKER_ROLE;
-
-  const bcrypt = await import('bcryptjs');
   const crypto = await import('crypto');
   const { sendCourseInviteEmail, sendCourseLaunchEmail } = await import('@/lib/email');
 
-  let user = await prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { email: normalizedEmail },
     include: { profile: true },
   });
@@ -99,73 +99,104 @@ export async function createEnrollmentForUser(
     return { status: 'failed', email: normalizedEmail };
   }
 
-  let wasInvited = false;
-
-  if (!user) {
-    try {
-      const tempPassword = crypto.randomBytes(8).toString('hex');
-      const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_COST);
-
-      user = await prisma.user.create({
-        data: {
-          email: normalizedEmail,
-          password: hashedPassword,
-          role: userRole,
-          emailVerified: true,
-          organizationId: ctx.organizationId,
-          facilityId: ctx.facilityId,
-          // Hydrate profile immediately so the worker's name is visible
-          // throughout the app without requiring them to edit their profile.
-          profile:
-            firstName || lastName
-              ? {
-                  create: {
-                    email: normalizedEmail,
-                    firstName: firstName ?? null,
-                    lastName: lastName ?? null,
-                    fullName: fullName ?? null,
-                  },
-                }
-              : undefined,
-        },
-        include: { profile: true },
+  // Unknown email, or an existing account with no org (e.g. previously removed
+  // staff): do NOT create/enroll a user. Send a `/join` invite and park the
+  // course on it — the enrollment is materialised when the invite is accepted
+  // (see enrollInviteCourses). Unifies the assign flow with the staff-invite
+  // flow; no premature accounts, no temporary passwords.
+  if (!user || user.organizationId === null) {
+    if (!ctx.organizationId) {
+      // No org to attach an invite to — the standalone assign / wizard paths
+      // always have one, so this only guards a misconfigured caller.
+      logger.warn({
+        msg: '[enrollment] Cannot invite for course assignment — no organization in context',
+        email: maskEmail(normalizedEmail),
+        courseId: ctx.courseId,
       });
-      wasInvited = true;
+      return { status: 'failed', email: normalizedEmail };
+    }
+
+    // CSV supplies a coarse "admin" / "worker" token. Map "admin" to the RBAC
+    // successor `supervisor` (facility admin); everything else becomes the
+    // default self-serve worker role.
+    const inviteRole: UserRole =
+      entry.role === 'admin' ? 'supervisor' : DEFAULT_SELF_SERVE_WORKER_ROLE;
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    try {
+      // Reuse the org's outstanding pending invite for this email (refreshing its
+      // expiry and keeping its token) so a second course assignment adds to the
+      // same invite rather than issuing a competing token; otherwise create one.
+      const existingInvite = await prisma.invite.findFirst({
+        where: { email: normalizedEmail, organizationId: ctx.organizationId, status: 'pending' },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const invite = existingInvite
+        ? await prisma.invite.update({
+            where: { id: existingInvite.id },
+            data: { expiresAt },
+          })
+        : await prisma.invite.create({
+            data: {
+              email: normalizedEmail,
+              token: crypto.randomUUID(),
+              organizationId: ctx.organizationId,
+              role: inviteRole,
+              expiresAt,
+              invitedBy: ctx.enrolledByUserId,
+              status: 'pending',
+            },
+          });
+
+      await prisma.inviteCourseAssignment.upsert({
+        where: { inviteId_courseId: { inviteId: invite.id, courseId: ctx.courseId } },
+        update: {},
+        create: { inviteId: invite.id, courseId: ctx.courseId },
+      });
 
       logger.info({
-        msg: '[enrollment] New user created via CSV invite',
-        userId: user.id,
-        role: userRole,
-        hasProfile: !!(firstName || lastName),
+        msg: '[enrollment] Course assignment parked on invite',
+        inviteId: invite.id,
         courseId: ctx.courseId,
+        reused: !!existingInvite,
+        enrolledBy: ctx.enrolledByUserId,
       });
 
       try {
+        // Same link shape as createInvites — NEXT_PUBLIC_APP_URL, no staging fallback.
+        const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/join/${invite.token}`;
         await sendCourseInviteEmail(
           normalizedEmail,
-          tempPassword,
+          inviteLink,
           ctx.courseTitle,
           ctx.organizationName,
         );
       } catch (emailErr) {
-        // The account exists; a failed invite email must not fail the enrollment.
+        // The invite exists; a failed email must not fail the whole assignment.
         logger.error({
-          msg: '[enrollment] Failed to send invite email',
-          userId: user.id,
+          msg: '[enrollment] Failed to send course invite email',
+          inviteId: invite.id,
           err: emailErr,
         });
       }
-    } catch (createErr) {
+
+      return { status: 'invited', email: normalizedEmail };
+    } catch (inviteErr) {
       logger.error({
-        msg: '[enrollment] Failed to create user',
+        msg: '[enrollment] Failed to create course invite',
         email: maskEmail(normalizedEmail),
-        err: createErr,
+        err: inviteErr,
       });
       return { status: 'failed', email: normalizedEmail };
     }
-  } else if (firstName || lastName) {
-    // Existing user: opportunistically backfill blank profile name fields from
-    // the CSV without overwriting anything already set.
+  }
+
+  // Existing org member: opportunistically backfill blank profile name fields
+  // from the CSV without overwriting anything already set.
+  if (firstName || lastName) {
     const profile = user.profile;
     if (!profile?.fullName && fullName) {
       await prisma.profile.upsert({
@@ -248,26 +279,24 @@ export async function createEnrollmentForUser(
     metadata: { courseId: ctx.courseId },
   });
 
-  // Send the Stage 1 launch email only to pre-existing users — new users already
-  // received the invite email with their temporary credentials, and the launch
-  // email is itself the "New Required Training Assigned" notice.
-  if (!wasInvited) {
-    const recipientName = user.profile?.fullName || fullName || 'there';
-    try {
-      await sendCourseLaunchEmail(
-        normalizedEmail,
-        recipientName,
-        ctx.courseTitle,
-        ctx.organizationName,
-        computedDueAt,
-      );
-    } catch (emailErr) {
-      logger.error({
-        msg: '[enrollment] Failed to send course launch email',
-        userId: user.id,
-        err: emailErr,
-      });
-    }
+  // This path is only reached for a pre-existing org member, so the Stage 1
+  // launch email always sends here (invited addresses returned earlier with the
+  // `/join` invite email instead).
+  const recipientName = user.profile?.fullName || fullName || 'there';
+  try {
+    await sendCourseLaunchEmail(
+      normalizedEmail,
+      recipientName,
+      ctx.courseTitle,
+      ctx.organizationName,
+      computedDueAt,
+    );
+  } catch (emailErr) {
+    logger.error({
+      msg: '[enrollment] Failed to send course launch email',
+      userId: user.id,
+      err: emailErr,
+    });
   }
 
   logger.info({
@@ -277,7 +306,10 @@ export async function createEnrollmentForUser(
     enrolledBy: ctx.enrolledByUserId,
   });
 
-  return wasInvited
-    ? { status: 'newInvited', email: normalizedEmail, userId: user.id, enrollmentId: enrollment.id }
-    : { status: 'enrolled', email: normalizedEmail, userId: user.id, enrollmentId: enrollment.id };
+  return {
+    status: 'enrolled',
+    email: normalizedEmail,
+    userId: user.id,
+    enrollmentId: enrollment.id,
+  };
 }

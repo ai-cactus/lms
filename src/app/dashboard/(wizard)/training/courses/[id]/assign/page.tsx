@@ -61,6 +61,30 @@ export default async function AssignCoursePage(props: PageProps) {
     getRoleHolderCounts(),
   ]);
 
+  // Surface emails that were assigned this course but haven't joined yet, so an
+  // admin can see the assignment isn't lost. Scoped strictly to the caller's org
+  // via the parked invite; expired/accepted invites are excluded.
+  const pendingInvitedEmails = me.organizationId
+    ? Array.from(
+        new Set(
+          (
+            await prisma.inviteCourseAssignment.findMany({
+              where: {
+                courseId: course.id,
+                invite: {
+                  organizationId: me.organizationId,
+                  status: 'pending',
+                  expiresAt: { gt: new Date() },
+                },
+              },
+              select: { invite: { select: { email: true } } },
+              orderBy: { createdAt: 'desc' },
+            })
+          ).map((row) => row.invite.email),
+        ),
+      )
+    : [];
+
   return (
     <AssignPublishClient
       courseId={course.id}
@@ -68,6 +92,7 @@ export default async function AssignCoursePage(props: PageProps) {
       courseStatus={course.status}
       existingSettings={existingSettings}
       roleHolderCounts={roleHolderCounts}
+      pendingInvitedEmails={pendingInvitedEmails}
     />
   );
 }

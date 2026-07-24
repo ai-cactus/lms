@@ -49,6 +49,11 @@ vi.mock('@/lib/prisma', () => {
     // Added in facility split: enrollUsers resolves facilityId for new users.
     facility: { findFirst: vi.fn().mockResolvedValue(null) },
     reminderLog: { create: mockReminderLogCreate },
+    // Seat gate (F-022): enrollUsers now calls getSeatUsage(organizationId, ...)
+    // unconditionally when the caller has an org. No subscription on this org
+    // → getSeatUsage returns staffMax: null, a no-op — none of these tests are
+    // focused on the seat gate itself (see enrollment.test.ts for that).
+    organization: { findUnique: vi.fn().mockResolvedValue(null) },
   };
   return { prisma, default: prisma };
 });
