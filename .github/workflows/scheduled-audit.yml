@@ -1,0 +1,106 @@
+name: Scheduled Dependency Audit
+
+# The CI audit job only runs when a PR happens to be open, so an advisory
+# published between merges goes unnoticed. This scheduled run closes that gap:
+# it audits the lockfile daily and keeps exactly one open tracking issue while
+# high/critical advisories exist (commenting fresh output on later runs) so a
+# failing cron run is actionable instead of silent.
+on:
+  schedule:
+    # Daily, 05:30 UTC — before the workday, after most advisory-DB updates.
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    name: npm audit (high+)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      # Reads package-lock.json and queries the advisory DB — no install needed.
+      # Mirrors the CI gate (Job 6 in ci.yml): non-zero exit on HIGH or CRITICAL.
+      - name: Run npm audit (high+)
+        id: audit
+        run: |
+          set +e
+          npm audit --audit-level=high | tee audit-output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update tracking issue
+        if: steps.audit.outputs.exit_code != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const TITLE = 'Scheduled npm audit: high/critical advisories detected';
+            const MAX_BODY = 6000;
+
+            let output = fs.readFileSync('audit-output.txt', 'utf8');
+            if (output.length > MAX_BODY) {
+              output = output.slice(0, MAX_BODY) + '\n… (truncated — run `npm audit` locally for the full report)';
+            }
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `Scheduled audit found high/critical advisories on \`${context.ref.replace('refs/heads/', '')}\` (${new Date().toISOString().slice(0, 10)}).`,
+              '',
+              '```',
+              output.trim(),
+              '```',
+              '',
+              `Run: ${runUrl}`,
+              '',
+              'Remediate on a `bugfix/npm-audit-*` branch (see prior audit PRs for the pattern); this issue auto-updates daily while advisories remain and can be closed once `npm audit --audit-level=high` exits 0.',
+            ].join('\n');
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 100,
+            });
+            const existing = issues.find((i) => i.title === TITLE);
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+              return;
+            }
+
+            const { data: created } = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: TITLE,
+              body,
+            });
+            // Labels are best-effort: don't fail the run if they don't exist.
+            try {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: created.number,
+                labels: ['security', 'dependencies'],
+              });
+            } catch (err) {
+              core.warning(`Could not apply labels: ${err.message}`);
+            }
+
+      # Surface the failure state on the workflow run itself as well.
+      - name: Fail run when advisories are present
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
