@@ -19,7 +19,9 @@
     "prisma:generate": "prisma generate"
   },
   "overrides": {
-    "sharp": "^0.35.0"
+    "sharp": "^0.35.0",
+    "find-my-way": "^9.7.0",
+    "postcss": "^8.5.12"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
