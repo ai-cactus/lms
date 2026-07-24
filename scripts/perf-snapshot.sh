@@ -18,7 +18,7 @@ set -euo pipefail
 
 LABEL="${1:?usage: perf-snapshot.sh <label> [base-url]}"
 BASE="${2:-https://training.theraptly.com}"
-URLS=(/ /login /forgot-password /dashboard /worker)
+URLS=(/ /login /forgot-password /signup /partners /request-demo /dashboard /worker)
 ASSET_PROBE="/_next/static/"   # resolved to a real chunk below, if possible
 RUNS=3
 OUTDIR="perf-results"
