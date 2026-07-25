@@ -84,3 +84,6 @@ platform-speed-*.md
 perf-results/
 testing_stages.jpeg
 Theraptly_LMS_QA_Test_Cases.docx
+
+# Stray Chrome temp profiles from Lighthouse runs on Windows/WSL (literal "C:\..." dir names)
+/C:*
