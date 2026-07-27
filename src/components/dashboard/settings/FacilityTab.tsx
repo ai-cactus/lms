@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { updateFacility } from '@/app/actions/organization';
+import { cn } from '@/lib/utils';
 import type { SettingsFacility } from './SettingsClient';
 
 interface FacilityTabProps {
@@ -37,6 +38,9 @@ interface FacilityFormValues {
   name: string;
   type: string;
 }
+
+const FACILITY_CONTROL_CLASS = 'h-12 rounded-xl border-[1.5px] border-[#e5e7ea] px-4 text-[15px]';
+const FACILITY_FIELD_CLASS = 'gap-2 [&>label]:text-[13px] [&>label]:text-[#475367]';
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -61,7 +65,7 @@ export default function FacilityTab({ facility, planName }: FacilityTabProps) {
 
   if (!facility) {
     return (
-      <div className="rounded-xl border border-border bg-background p-6 text-sm text-text-secondary">
+      <div className="rounded-2xl border border-[#eceef2] bg-background p-6 text-sm text-[#667085]">
         No facility is attached to this organization yet.
       </div>
     );
@@ -85,9 +89,9 @@ export default function FacilityTab({ facility, planName }: FacilityTabProps) {
 
   return (
     <div className="flex flex-col">
-      <div className="mb-6 flex flex-col gap-1">
-        <h2 className="text-lg font-semibold text-foreground">Facility profile</h2>
-        <p className="text-sm text-text-secondary">
+      <div className="mb-5 flex flex-col gap-1">
+        <h2 className="text-lg font-semibold text-[#101928]">Facility profile</h2>
+        <p className="text-sm text-[#667085]">
           Update the active facility&apos;s name and type. These appear across the workspace and in
           the facility switcher.
         </p>
@@ -95,37 +99,45 @@ export default function FacilityTab({ facility, planName }: FacilityTabProps) {
 
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="flex flex-col gap-6 rounded-xl border border-border bg-background p-6"
+        className="flex flex-col gap-5 rounded-2xl border border-[#eceef2] bg-background p-6"
       >
-        <div className="flex items-center gap-4 border-b border-border pb-6">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-semibold text-primary">
+        <div className="flex items-center gap-4">
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-[#e0e7ff] text-lg font-bold text-[#4338ca]">
             {initials(facility.name)}
           </div>
-          <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-text-secondary">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-[11px] font-bold tracking-[0.66px] text-[#98a2b3] uppercase">
               Active facility
             </span>
-            <span className="truncate text-base font-semibold text-foreground">
-              {facility.name}
-            </span>
+            <span className="truncate text-base font-semibold text-[#101928]">{facility.name}</span>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Facility name" required error={errors.name?.message}>
+        <div className="h-px w-full bg-[#f0f2f5]" />
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <Field
+            label="Facility name"
+            required
+            error={errors.name?.message}
+            className={FACILITY_FIELD_CLASS}
+          >
             <Input
+              className={FACILITY_CONTROL_CLASS}
               placeholder="Enter facility name"
               {...register('name', { required: 'Facility name is required' })}
             />
           </Field>
 
-          <Field label="Facility type">
+          <Field label="Facility type" className={FACILITY_FIELD_CLASS}>
             <Controller
               name="type"
               control={control}
               render={({ field }) => (
                 <Select value={field.value || undefined} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-14 w-full">
+                  <SelectTrigger
+                    className={cn(FACILITY_CONTROL_CLASS, 'w-full justify-between [&_svg]:size-5')}
+                  >
                     <SelectValue placeholder="Select facility type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -141,10 +153,10 @@ export default function FacilityTab({ facility, planName }: FacilityTabProps) {
           </Field>
         </div>
 
-        <div className="flex items-center justify-between gap-3 rounded-lg bg-background-secondary px-4 py-3">
-          <div className="flex flex-col">
-            <span className="text-xs font-medium text-text-secondary">Subscription plan</span>
-            <span className="text-sm font-semibold text-foreground">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-[#f9fafb] px-4 py-3.5">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[13px] font-medium text-[#475367]">Subscription plan</span>
+            <span className="text-[15px] font-semibold text-[#101928]">
               {planName || 'No active plan'}
             </span>
           </div>
@@ -155,10 +167,11 @@ export default function FacilityTab({ facility, planName }: FacilityTabProps) {
 
         {message && <Alert variant={message.type}>{message.text}</Alert>}
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <Button
             variant="outline"
             type="button"
+            className="rounded-xl border-[#e4e7ec] font-semibold text-[#475367]"
             onClick={() => {
               reset();
               setMessage(null);
@@ -167,7 +180,12 @@ export default function FacilityTab({ facility, planName }: FacilityTabProps) {
           >
             Cancel
           </Button>
-          <Button type="submit" loading={isSubmitting} disabled={!isDirty}>
+          <Button
+            type="submit"
+            className="rounded-xl font-semibold"
+            loading={isSubmitting}
+            disabled={!isDirty}
+          >
             Save changes
           </Button>
         </div>
