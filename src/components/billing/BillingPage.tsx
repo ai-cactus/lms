@@ -13,6 +13,18 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'payment-method', label: 'Payment Method' },
 ];
 
+const MANAGE_SUBTITLE =
+  'Manage your subscription plans, update payment methods, and download your previous invoices.';
+
+const TAB_HEADINGS: Record<Tab, { title: string; subtitle: string }> = {
+  overview: { title: 'Billing', subtitle: 'Manage your billing and payment details' },
+  'billing-history': { title: 'Billing History', subtitle: MANAGE_SUBTITLE },
+  subscription: { title: 'Subscription', subtitle: MANAGE_SUBTITLE },
+  // The Payment Method tab renders its own header so the "Add Payment Method"
+  // action can sit inline with the title, as in the design.
+  'payment-method': { title: 'Payment Method', subtitle: MANAGE_SUBTITLE },
+};
+
 import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 // SubscriptionTab is imported statically (not via next/dynamic) so its content —
@@ -22,6 +34,7 @@ import dynamic from 'next/dynamic';
 // BillingPausedBanner, whose resume handler refreshes in place without leaving
 // the tab; a fast click landed there instead of the subscription action.
 import SubscriptionTab from './SubscriptionTab';
+import BillingPageHeader from './BillingPageHeader';
 
 const OverviewTab = dynamic(() => import('./OverviewTab'), { ssr: false });
 const BillingHistoryTab = dynamic(() => import('./BillingHistoryTab'), { ssr: false });
@@ -82,25 +95,18 @@ export default function BillingPage({
   };
 
   return (
-    <div className="min-h-full bg-background-secondary px-4 py-6 md:px-10 md:py-8">
-      <div className="mb-6">
-        <h1 className="mb-1 text-2xl font-bold text-foreground">Billing &amp; Subscription</h1>
-        <p className="text-sm text-text-secondary">
-          Manage your subscription plan, billing history, and payment methods.
-        </p>
-      </div>
-
-      <div className="mb-7 flex gap-0 overflow-x-auto border-b border-border" role="tablist">
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
+      <div className="mb-8 flex gap-0 overflow-x-auto border-b border-[#e2e8f0]" role="tablist">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             role="tab"
             aria-selected={activeTab === tab.key}
             className={cn(
-              'cursor-pointer whitespace-nowrap border-b-2 px-5 py-3 text-sm font-medium transition-colors',
+              '-mb-px cursor-pointer border-b-2 px-5 pb-3 text-[15px] leading-[22px] font-medium whitespace-nowrap transition-colors',
               activeTab === tab.key
                 ? 'border-primary text-primary'
-                : 'border-transparent text-text-secondary hover:text-primary',
+                : 'border-transparent text-[#667085] hover:text-primary',
             )}
             onClick={() => handleTabChange(tab.key)}
           >
@@ -108,6 +114,15 @@ export default function BillingPage({
           </button>
         ))}
       </div>
+
+      {activeTab !== 'payment-method' && (
+        <div className="mb-10">
+          <BillingPageHeader
+            title={TAB_HEADINGS[activeTab].title}
+            subtitle={TAB_HEADINGS[activeTab].subtitle}
+          />
+        </div>
+      )}
 
       {activeTab === 'overview' && (
         <OverviewTab onChangeTab={handleTabChange} refreshKey={overviewRefreshKey} />

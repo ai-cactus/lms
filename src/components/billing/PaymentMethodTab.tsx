@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, Loader2, AlertTriangle, Check } from 'lucide-react';
+import { Plus, Loader2, AlertTriangle, Check, MapPin, Trash2 } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import BillingPageHeader from './BillingPageHeader';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +38,17 @@ type ModalState =
   | { type: 'none' }
   | { type: 'confirm-delete'; pm: PaymentMethod }
   | { type: 'delete-success'; pmLabel: string };
+
+const brandBoxClass =
+  'flex h-[32px] w-[48px] shrink-0 items-center justify-center rounded-[4px] border border-[#e2e8f0] bg-[#f8fafc] text-[10px] font-bold tracking-[0.5px] text-[#475569] uppercase';
+
+function brandLabel(brand: string): string {
+  return brand.charAt(0).toUpperCase() + brand.slice(1);
+}
+
+function hasBillingAddress(pm: PaymentMethod): boolean {
+  return Boolean(pm.billingDetails.name || pm.billingDetails.address?.line1);
+}
 
 export default function PaymentMethodTab() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -145,53 +157,103 @@ export default function PaymentMethodTab() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
-        <div>
-          <h2 className="text-[22px] font-bold text-foreground">Payment Method</h2>
-          <p className="mt-1 text-sm text-text-secondary">
-            Manage your subscription plans, update payment methods, and download your previous
-            invoices.
-          </p>
-        </div>
-        <Button
-          id="add-payment-method-btn"
-          loading={portalLoading}
-          disabled={portalLoading}
-          onClick={() => void handleOpenPortal()}
-        >
-          {!portalLoading && <Plus className="size-4" aria-hidden="true" />}
-          {portalLoading ? 'Opening portal...' : 'Add Payment Method'}
-        </Button>
+      <div className="mb-10">
+        <BillingPageHeader
+          title="Payment Method"
+          subtitle="Manage your subscription plans, update payment methods, and download your previous invoices."
+          action={
+            <Button
+              id="add-payment-method-btn"
+              loading={portalLoading}
+              disabled={portalLoading}
+              onClick={() => void handleOpenPortal()}
+            >
+              {!portalLoading && <Plus className="size-4" aria-hidden="true" />}
+              {portalLoading ? 'Opening portal...' : 'Add Payment Method'}
+            </Button>
+          }
+        />
       </div>
 
       {(actionError || portalError) && (
-        <div className="mb-4 rounded-lg border border-error/40 bg-error/10 px-4 py-2.5 text-[13px] text-error">
+        <div className="mb-4 rounded-[8px] border border-error/40 bg-error/10 px-4 py-2.5 text-[13px] text-error">
           {actionError ?? portalError}
         </div>
       )}
 
       {primaryMethod && (
-        <>
-          <p className="mb-3 text-xs font-bold uppercase tracking-[0.6px] text-text-tertiary">
-            Primary Method
-          </p>
-          <div className="mb-7 flex flex-col gap-3">
-            <PaymentMethodCard
-              pm={primaryMethod}
-              onRemove={() => setModal({ type: 'confirm-delete', pm: primaryMethod })}
-              onSetDefault={() => void handleSetDefault(primaryMethod.id)}
-              actionLoading={actionLoading}
-            />
+        <div className="mb-10 flex flex-col gap-8 rounded-[12px] border border-[#e2e8f0] bg-white p-[25px] shadow-[0px_1px_1px_0px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-4">
+              <div className={brandBoxClass}>{primaryMethod.brand.slice(0, 4)}</div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-[16px] leading-[24px] font-semibold text-[#0f172a]">
+                    {brandLabel(primaryMethod.brand)} •••• {primaryMethod.last4}
+                  </p>
+                  <span className="rounded-[4px] bg-[#edeffe] px-1.5 py-0.5 text-[10px] leading-[15px] font-bold tracking-[0.5px] text-primary uppercase">
+                    Default
+                  </span>
+                </div>
+                <span className="text-[14px] leading-[20px] text-[#64748b]">
+                  Expires {String(primaryMethod.expMonth).padStart(2, '0')}/{primaryMethod.expYear}
+                </span>
+              </div>
+            </div>
+            <button
+              className="h-9 cursor-pointer rounded-[8px] border border-[#e2e8f0] px-[17px] text-[14px] leading-[20px] font-medium text-[#dc2626] transition-colors hover:bg-[#fef2f2] disabled:opacity-50"
+              disabled={actionLoading}
+              onClick={() => setModal({ type: 'confirm-delete', pm: primaryMethod })}
+              aria-label={`Remove ${brandLabel(primaryMethod.brand)} ending in ${primaryMethod.last4}`}
+            >
+              Remove
+            </button>
           </div>
-        </>
+
+          {hasBillingAddress(primaryMethod) && (
+            <div className="flex flex-col gap-3 border-t border-[#f1f5f9] pt-[25px]">
+              <p className="text-[14px] leading-[20px] font-bold text-[#0f172a]">Billing Address</p>
+              <div className="flex items-start gap-4">
+                <MapPin className="mt-0.5 size-4 shrink-0 text-[#64748b]" aria-hidden="true" />
+                <address className="text-[14px] leading-[22.75px] text-[#475569] not-italic">
+                  {primaryMethod.billingDetails.name && (
+                    <>
+                      {primaryMethod.billingDetails.name}
+                      <br />
+                    </>
+                  )}
+                  {primaryMethod.billingDetails.address?.line1 && (
+                    <>
+                      {primaryMethod.billingDetails.address.line1}
+                      <br />
+                    </>
+                  )}
+                  {primaryMethod.billingDetails.address?.city && (
+                    <>
+                      {primaryMethod.billingDetails.address.city}
+                      {primaryMethod.billingDetails.address.state
+                        ? `, ${primaryMethod.billingDetails.address.state}`
+                        : ''}
+                      {primaryMethod.billingDetails.address.postal_code
+                        ? `, ${primaryMethod.billingDetails.address.postal_code}`
+                        : ''}
+                      <br />
+                    </>
+                  )}
+                  {primaryMethod.billingDetails.address?.country}
+                </address>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {otherMethods.length > 0 && (
         <>
-          <p className="mb-3 text-xs font-bold uppercase tracking-[0.6px] text-text-tertiary">
+          <h2 className="mb-4 text-[20px] leading-[28px] font-bold text-[#0f172a]">
             Other Methods
-          </p>
-          <div className="mb-7 flex flex-col gap-3">
+          </h2>
+          <div className="mb-10 flex flex-col gap-3">
             {otherMethods.map((pm) => (
               <PaymentMethodCard
                 key={pm.id}
@@ -313,30 +375,28 @@ interface PaymentMethodCardProps {
 }
 
 function PaymentMethodCard({ pm, onRemove, onSetDefault, actionLoading }: PaymentMethodCardProps) {
-  const brandLabel = pm.brand.charAt(0).toUpperCase() + pm.brand.slice(1);
+  const label = brandLabel(pm.brand);
 
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-border bg-background px-5 py-4">
-      <div className="flex h-8 w-[50px] shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-bold uppercase tracking-[0.5px] text-primary">
-        {pm.brand.slice(0, 4)}
-      </div>
-      <div className="flex-1">
-        <p className="text-sm font-medium text-foreground">
-          {brandLabel} •••• {pm.last4}
+    <div className="flex items-center gap-4 rounded-[12px] border border-[#e2e8f0] bg-[#f8fafc] px-6 py-4">
+      <div className={brandBoxClass}>{pm.brand.slice(0, 4)}</div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[14px] leading-[20px] font-semibold text-[#0f172a]">
+          {label} •••• {pm.last4}
           {pm.isDefault && (
-            <span className="ml-2 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            <span className="ml-2 rounded-[4px] bg-[#edeffe] px-1.5 py-0.5 text-[10px] leading-[15px] font-bold tracking-[0.5px] text-primary uppercase">
               Default
             </span>
           )}
         </p>
-        <span className="text-xs text-text-secondary">
+        <span className="text-[12px] leading-[16px] text-[#64748b]">
           Expires {String(pm.expMonth).padStart(2, '0')}/{pm.expYear}
         </span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-4">
         {!pm.isDefault && (
           <button
-            className="rounded-md px-2.5 py-1.5 text-[13px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+            className="cursor-pointer rounded-[8px] text-[13px] leading-[20px] font-medium text-primary hover:underline disabled:opacity-50"
             disabled={actionLoading}
             onClick={onSetDefault}
           >
@@ -344,12 +404,12 @@ function PaymentMethodCard({ pm, onRemove, onSetDefault, actionLoading }: Paymen
           </button>
         )}
         <button
-          className="rounded-md px-2.5 py-1.5 text-[13px] font-medium text-error hover:bg-error/10 disabled:opacity-50"
+          className="flex cursor-pointer items-center justify-center rounded-[8px] p-1.5 text-[#dc2626] transition-colors hover:bg-[#fef2f2] disabled:opacity-50"
           disabled={actionLoading}
           onClick={onRemove}
-          aria-label={`Remove ${brandLabel} ending in ${pm.last4}`}
+          aria-label={`Remove ${label} ending in ${pm.last4}`}
         >
-          Remove
+          <Trash2 className="size-4" aria-hidden="true" />
         </button>
       </div>
     </div>

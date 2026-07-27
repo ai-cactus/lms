@@ -15,9 +15,16 @@
  * server-action denial coverage — this spec verifies the UI-level and
  * full-stack browser behavior instead of re-testing the pure gate logic).
  *
+ * NOTE: the staff profile header was reworked to the Figma design and now
+ * carries a single action — "Assign Course". Edit Profile, Remove Staff and
+ * the manager select no longer exist on that page, so the profile-level
+ * assertions below cover only Assign Course. `updateStaffDetails`,
+ * `removeStaff` and `setStaffManager` remain gated and unit-covered in
+ * `src/app/actions/staff.test.ts`; the roster-list "Remove Staff" affordance
+ * is still asserted here.
+ *
  * Scenarios:
- *   - Finance / Clinical Director: no Edit Profile / Remove Staff / Assign
- *     Course on a staff profile; manager select disabled with a caption; no
+ *   - Finance / Clinical Director: no Assign Course on a staff profile; no
  *     row-level Remove Staff action in the staff list; no kebab at all on a
  *     pending-invite row (no invite.edit/invite.delete).
  *   - HR: retains every affordance above (regression against the coarse
@@ -161,7 +168,13 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
       const targetEmail = uid('target-nurse');
       const inviteEmail = uid('pending-invite');
 
-      const seeded = await seedScenario(role, viewerEmail, viewerPassword, targetEmail, inviteEmail);
+      const seeded = await seedScenario(
+        role,
+        viewerEmail,
+        viewerPassword,
+        targetEmail,
+        inviteEmail,
+      );
       try {
         await loginAs(page, viewerEmail, viewerPassword);
         await page.goto('/dashboard/staff');
@@ -170,9 +183,7 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
         // "Add Workers" is gone (no invite.create) — established regression coverage
         // (rbac-invite-roles / StaffListClient.test.tsx); re-asserted here as a
         // sanity check that this is the same view-only seed.
-        await expect(
-          page.getByRole('button', { name: /add workers?/i }),
-        ).not.toBeVisible();
+        await expect(page.getByRole('button', { name: /add staff/i })).not.toBeVisible();
 
         // Pending-invite row: neither invite.edit nor invite.edit/delete are held,
         // so the kebab itself must not render at all for that row.
@@ -198,15 +209,8 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
         // behavior — a direct nav decouples it from list/HMR timing.
         await page.goto(`/dashboard/staff/${seeded.targetId}`);
 
-        await expect(page.getByRole('button', { name: 'Edit Profile' })).not.toBeVisible();
-        await expect(page.getByRole('button', { name: 'Remove Staff' })).not.toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Assign Course' })).not.toBeVisible();
-
-        const managerSelect = page.getByLabel('Assign manager');
-        await expect(managerSelect).toBeDisabled();
-        await expect(
-          page.getByText(/view only.*can.t change this staff member.s manager/i),
-        ).toBeVisible();
       } finally {
         await cleanupScenario(seeded);
       }
@@ -228,7 +232,7 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await expect(page.getByRole('button', { name: /add workers?/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /add staff/i })).toBeVisible();
 
       const inviteRow = page.locator('tr', { hasText: inviteEmail });
       const inviteRowMenuBtn = inviteRow.getByRole('button', { name: 'Row actions' });
@@ -260,13 +264,7 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
       // direct nav decouples it from the list's own click/HMR timing.
       await page.goto(`/dashboard/staff/${seeded.targetId}`);
 
-      await expect(page.getByRole('button', { name: 'Edit Profile' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
-      // Same registry gap as above.
-      await expect(page.getByRole('button', { name: 'Remove Staff' })).toBeVisible();
-
-      const managerSelect = page.getByLabel('Assign manager');
-      await expect(managerSelect).toBeEnabled();
     } finally {
       await cleanupScenario(seeded);
     }
@@ -305,8 +303,6 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
       // direct nav decouples it from the list's own click/HMR timing.
       await page.goto(`/dashboard/staff/${seeded.targetId}`);
 
-      await expect(page.getByRole('button', { name: 'Edit Profile' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Remove Staff' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
     } finally {
       await cleanupScenario(seeded);

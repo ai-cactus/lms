@@ -9,9 +9,6 @@ import type { Role } from '@/types/next-auth';
 import StatusTrackerTableClient, {
   type StatusTrackerRowView,
 } from '@/components/dashboard/status-tracker/StatusTrackerTableClient';
-import NearDeadlineTable, {
-  type NearDeadlineRowView,
-} from '@/components/dashboard/status-tracker/NearDeadlineTable';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,52 +43,54 @@ export default async function StatusTrackerPage() {
         nearDeadline: { count: 0, rows: [] },
       };
 
-  // Serialize Date across the server/client boundary.
-  const rows: StatusTrackerRowView[] = summary.rows.map((row) => ({
-    ...row,
-    dueAt: row.dueAt.toISOString(),
-  }));
-
-  const nearDeadlineRows: NearDeadlineRowView[] = summary.nearDeadline.rows.map((row) => ({
-    ...row,
-    dueAt: row.dueAt.toISOString(),
-  }));
+  // Overdue first (most overdue first), then at-risk (soonest due first) — both
+  // orderings come from the server query; Date is serialized for the client.
+  const rows: StatusTrackerRowView[] = [
+    ...summary.rows.map((row) => ({
+      enrollmentId: row.enrollmentId,
+      userId: row.userId,
+      workerName: row.workerName,
+      workerEmail: row.workerEmail,
+      courseId: row.courseId,
+      courseTitle: row.courseTitle,
+      dueAt: row.dueAt.toISOString(),
+      daysOverdue: row.daysOverdue,
+      daysUntilDue: null,
+    })),
+    ...summary.nearDeadline.rows.map((row) => ({
+      enrollmentId: row.enrollmentId,
+      userId: row.userId,
+      workerName: row.workerName,
+      workerEmail: row.workerEmail,
+      courseId: row.courseId,
+      courseTitle: row.courseTitle,
+      dueAt: row.dueAt.toISOString(),
+      daysOverdue: null,
+      daysUntilDue: row.daysUntilDue,
+    })),
+  ];
 
   return (
-    <div>
-      <div className="mb-7">
-        <h1 className="mb-1 text-[28px] font-bold text-foreground">Status Tracker</h1>
-        <p className="text-sm text-text-tertiary">
-          Workers with training past its deadline, plus training coming due in the next 7 days.
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
+      <header className="mb-[30px] flex flex-col gap-[5px]">
+        <p className="text-sm leading-tight font-medium">
+          <span className="text-[#a0aec0]">Trainings / </span>
+          <span className="text-[#2d3748]">Status Tracker</span>
         </p>
-      </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="min-w-0 flex-1 text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
+            Status Tracker
+          </h1>
+          {rows.length > 0 && (
+            <span className="inline-flex shrink-0 items-center gap-[7px] rounded-full bg-[#fee4e2] px-[14px] py-1.5 text-[13px] font-semibold whitespace-nowrap text-[#b42318] sm:text-[14.4px]">
+              <span aria-hidden="true" className="size-[7px] shrink-0 rounded-full bg-[#d92d20]" />
+              {rows.length} at risk
+            </span>
+          )}
+        </div>
+      </header>
 
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-background p-5">
-          <p className="text-sm text-text-secondary">Overdue training</p>
-          <p className="mt-1 text-2xl font-bold text-foreground">{summary.overdueCount}</p>
-        </div>
-        <div className="rounded-xl border border-border bg-background p-5">
-          <p className="text-sm text-text-secondary">Hard escalations</p>
-          <p
-            className={[
-              'mt-1 text-2xl font-bold',
-              summary.hardEscalationCount > 0 ? 'text-error' : 'text-foreground',
-            ].join(' ')}
-          >
-            {summary.hardEscalationCount}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border bg-background p-5">
-          <p className="text-sm text-text-secondary">Due in next 7 days</p>
-          <p className="mt-1 text-2xl font-bold text-foreground">{summary.nearDeadline.count}</p>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-6">
-        <StatusTrackerTableClient rows={rows} />
-        <NearDeadlineTable rows={nearDeadlineRows} />
-      </div>
+      <StatusTrackerTableClient rows={rows} />
     </div>
   );
 }

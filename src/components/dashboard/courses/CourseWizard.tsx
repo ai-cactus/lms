@@ -14,6 +14,14 @@ import ConfirmPublishModal from './ConfirmPublishModal';
 import ReviewWarningsModal from './ReviewWarningsModal';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import PhiErrorModal from './PhiErrorModal';
 import { createFullCourse, publishCourse } from '@/app/actions/course';
 import { analyzeStoredDocument } from '@/app/actions/course-ai';
@@ -583,19 +591,51 @@ export default function CourseWizard() {
     return false;
   };
 
+  // Figma gives each step its own content column: the single-field intro step sits
+  // in a narrower, lower-hanging column than the two-column form steps.
+  // Max widths include the 20px gutter so the inner column lands on the Figma
+  // measure (880 / 1080 / 1200) at 1440px.
+  const contentColumnClass =
+    currentStep === 1
+      ? 'max-w-[920px] flex-1 justify-between pt-14 pb-[60px] md:pt-[170px] md:pb-[70px]'
+      : currentStep === 6 || currentStep === 7
+        ? 'max-w-[1240px] pt-10 pb-[60px] md:pt-[90px]'
+        : 'max-w-[1120px] pt-10 pb-[60px] md:pt-[90px]';
+
+  const navRow = (
+    <div className="flex w-full shrink-0 items-center justify-between gap-4">
+      <Button
+        variant="outline"
+        onClick={handleBack}
+        disabled={isPublishing}
+        className="h-[52px] rounded-[12px] border-[1.5px] border-[#d2d5db] px-8 text-base font-semibold tracking-[0.36px] text-[#454353] md:h-[56px] md:px-10 md:text-[18px]"
+      >
+        Back
+      </Button>
+      <Button
+        variant="default"
+        onClick={handleNext}
+        disabled={isNextDisabled() || isGenerating || isPublishing || isAnalyzing || isScanningPhi}
+        loading={isGenerating || isPublishing || isAnalyzing || isScanningPhi}
+        className="h-[52px] rounded-[12px] px-8 text-base font-semibold tracking-[0.36px] md:h-[56px] md:px-10 md:text-[18px]"
+      >
+        {currentStep === totalSteps ? 'Publish Course' : 'Next Step'}
+      </Button>
+    </div>
+  );
+
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-background font-body">
-      <header className="relative flex h-20 w-full shrink-0 border-b border-border bg-background max-md:px-4">
-        <div className="relative flex w-[250px] items-center justify-center border-r border-border max-md:mr-4 max-md:w-auto max-md:border-r-0">
+      <header className="flex h-[72px] w-full shrink-0 items-stretch border-b border-black/10 bg-background md:h-[106px]">
+        <div className="flex w-[140px] shrink-0 items-center justify-center border-r border-black/10 px-2 md:w-[218px]">
           <Logo variant="blue" size="md" />
         </div>
-        <div className="flex flex-1 items-center justify-between px-10 max-md:px-0">
-          <span className="text-base font-medium text-[#2d3748] max-md:mr-auto max-md:text-sm">
+        <div className="flex flex-1 items-center justify-between gap-4 pl-4 pr-5 md:pl-[30px] md:pr-[60px]">
+          <span className="truncate text-sm font-medium tracking-[0.38px] text-[#3e3e3e] md:text-[19px]">
             Step {currentStep} of {totalSteps}
           </span>
           <Button
             variant="ghost"
-            size="sm"
             onClick={() => {
               if (currentStep > 1) {
                 setShowExitConfirm(true);
@@ -603,19 +643,23 @@ export default function CourseWizard() {
                 router.push('/dashboard/courses');
               }
             }}
+            className="h-auto px-2 py-1 text-base font-bold tracking-[0.4px] text-[#0d0d12] md:text-[20px]"
           >
             Exit
           </Button>
         </div>
-        <div
-          className="absolute bottom-0 left-0 z-10 h-1 bg-primary transition-[width] duration-300 ease-[ease]"
-          style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-        />
       </header>
 
-      <main className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-5 pt-10 pb-1.5 max-md:px-4 max-md:pt-6">
+      <div className="h-1.5 w-full shrink-0 bg-[#dbdbdb] md:h-2">
+        <div
+          className="h-full rounded-r-[210px] bg-primary transition-[width] duration-300 ease-[ease]"
+          style={{ width: `${(currentStep / totalSteps) * 100}%` }}
+        />
+      </div>
+
+      <main className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
         {showResumeBanner && (
-          <div className="bg-[#EBF4FF] border border-[#BEE3F8] rounded-lg p-4 mb-6 flex justify-between items-center">
+          <div className="mx-auto mt-6 flex w-full max-w-[1080px] items-center justify-between gap-4 rounded-lg border border-[#BEE3F8] bg-[#EBF4FF] p-4">
             <div>
               <h3 className="m-0 mb-1 text-base text-[#2B6CB0]">Resume your draft?</h3>
               <p className="m-0 text-sm text-[#2C5282]">
@@ -662,34 +706,31 @@ export default function CourseWizard() {
           </div>
         )}
 
-        {renderStep()}
+        {currentStep === 5 ? (
+          <>
+            {renderStep()}
+            {!isGenerating && (
+              <div className="mx-auto flex w-full max-w-[1400px] shrink-0 flex-col gap-3 px-5 py-6">
+                {publishError && (
+                  <div className="rounded-md bg-[#fed7d7] px-4 py-2.5 text-center text-sm text-[#e53e3e]">
+                    {publishError}
+                  </div>
+                )}
+                {navRow}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className={`mx-auto flex w-full flex-col gap-14 px-5 ${contentColumnClass}`}>
+            {renderStep()}
 
-        {(!isGenerating || currentStep !== 5) && (
-          <div
-            className={`flex w-full shrink-0 justify-between px-5 z-20 mt-4 mb-4 transition-[max-width] duration-300 ease-[ease] max-md:mt-8 max-md:mb-8 max-md:px-0 ${
-              currentStep === 5 ? 'max-w-[1400px]' : 'max-w-[800px]'
-            }`}
-          >
             {publishError && (
-              <div className="mb-3 rounded-md bg-[#fed7d7] px-4 py-2.5 text-center text-sm text-[#e53e3e]">
+              <div className="rounded-md bg-[#fed7d7] px-4 py-2.5 text-center text-sm text-[#e53e3e]">
                 {publishError}
               </div>
             )}
-            <div className="flex w-full justify-between">
-              <Button variant="secondary" onClick={handleBack} disabled={isPublishing}>
-                Back
-              </Button>
-              <Button
-                variant="default"
-                onClick={handleNext}
-                disabled={
-                  isNextDisabled() || isGenerating || isPublishing || isAnalyzing || isScanningPhi
-                }
-                loading={isGenerating || isPublishing || isAnalyzing || isScanningPhi}
-              >
-                {currentStep === totalSteps ? 'Publish Course' : 'Next Step'}
-              </Button>
-            </div>
+
+            {navRow}
           </div>
         )}
 
@@ -722,74 +763,6 @@ export default function CourseWizard() {
           isPublishing={isPublishing}
         />
 
-        {currentStep === 2 && (
-          <div className="flex flex-col items-center text-center py-6 mt-4 bg-[#FAFCFE] rounded-xl border border-dashed border-[#E2E8F0] w-full max-w-[800px]">
-            {/* Icon Layer from PhiErrorModal */}
-            <div className="relative w-[120px] h-[120px] mb-6">
-              <svg
-                width="100"
-                height="100"
-                viewBox="0 0 100 100"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <rect x="20" y="15" width="60" height="70" rx="4" fill="#F1F5F9" />
-                <rect
-                  x="20"
-                  y="15"
-                  width="60"
-                  height="70"
-                  rx="4"
-                  stroke="#E2E8F0"
-                  strokeWidth="2"
-                />
-                <line
-                  x1="30"
-                  y1="30"
-                  x2="70"
-                  y2="30"
-                  stroke="#CBD5E0"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <line
-                  x1="30"
-                  y1="40"
-                  x2="70"
-                  y2="40"
-                  stroke="#CBD5E0"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <line
-                  x1="30"
-                  y1="50"
-                  x2="70"
-                  y2="50"
-                  stroke="#CBD5E0"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-
-              <div className="absolute bottom-0 left-[-10px] [filter:drop-shadow(0px_10px_15px_rgba(0,0,0,0.1))]">
-                <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
-                  <circle cx="25" cy="25" r="20" fill="white" stroke="#4C6EF5" strokeWidth="4" />
-                  <path d="M40 40L55 55" stroke="#4C6EF5" strokeWidth="6" strokeLinecap="round" />
-                  <path d="M18 25H32" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
-                  <path d="M18 18H28" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
-                  <path d="M18 32H24" stroke="#4C6EF5" strokeWidth="3" strokeLinecap="round" />
-                </svg>
-              </div>
-            </div>
-
-            <h2 className="text-xl font-bold text-[#1A202C] mb-3">We care about your privacy!</h2>
-            <p className="text-[15px] text-[#4A5568] max-w-[500px] leading-relaxed mb-0">
-              Ensure that any document you upload does NOT contain personal health information.
-            </p>
-          </div>
-        )}
-
         <PhiErrorModal
           isOpen={showPhiError}
           onClose={() => setShowPhiError(false)}
@@ -798,19 +771,27 @@ export default function CourseWizard() {
         />
 
         {showExitConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
-            <div className="bg-white w-[90%] max-w-[420px] rounded-2xl p-6 shadow-[0_20px_25px_-5px_rgba(0,0,0,0.1)]">
-              <h2 className="text-lg font-semibold text-[#1A202C] mb-3">Exit course creation?</h2>
-              <p className="text-sm text-[#4A5568] mb-6 leading-relaxed">
-                You have unsaved progress. If you exit now, your work will be lost.
-              </p>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" size="sm" onClick={() => setShowExitConfirm(false)}>
+          <Dialog open onOpenChange={(open) => !open && setShowExitConfirm(false)}>
+            <DialogContent className="rounded-[16px] p-6 sm:max-w-[420px]">
+              <DialogHeader>
+                <DialogTitle className="text-lg font-semibold text-[#0d0d12]">
+                  Exit course creation?
+                </DialogTitle>
+                <DialogDescription className="text-[15px] leading-relaxed text-[#4A5568]">
+                  You have unsaved progress. If you exit now, your work will be lost.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="mt-3 gap-3 sm:justify-end">
+                <Button
+                  variant="outline"
+                  className="h-[44px] rounded-[10px] border-[1.5px] border-[#e5e7ea] px-6 font-semibold text-[#454353]"
+                  onClick={() => setShowExitConfirm(false)}
+                >
                   Cancel
                 </Button>
                 <Button
                   variant="default"
-                  size="sm"
+                  className="h-[44px] rounded-[10px] px-6 font-semibold"
                   onClick={() => {
                     sessionStorage.removeItem(DRAFT_KEY);
                     router.push('/dashboard/courses');
@@ -818,9 +799,9 @@ export default function CourseWizard() {
                 >
                   Exit
                 </Button>
-              </div>
-            </div>
-          </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         )}
       </main>
     </div>

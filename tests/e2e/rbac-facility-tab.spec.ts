@@ -132,7 +132,7 @@ test.describe('"Your Facility" tab — visibility per role', () => {
     try {
       await loginAndGoToProfile(page, email, 'Owne!r99xP');
       // The tab should be visible — ProfileForm renders tabs as <button> elements (no role="tab")
-      await expect(page.getByRole('button', { name: /your facility/i })).toBeVisible({
+      await expect(page.getByRole('tab', { name: /your facility/i })).toBeVisible({
         timeout: 10000,
       });
     } finally {
@@ -145,7 +145,7 @@ test.describe('"Your Facility" tab — visibility per role', () => {
     const seeded = await seedWithRole('supervisor', email, 'Sup3rv!s0r');
     try {
       await loginAndGoToProfile(page, email, 'Sup3rv!s0r');
-      await expect(page.getByRole('button', { name: /your facility/i })).toBeVisible({
+      await expect(page.getByRole('tab', { name: /your facility/i })).toBeVisible({
         timeout: 10000,
       });
     } finally {
@@ -158,7 +158,7 @@ test.describe('"Your Facility" tab — visibility per role', () => {
     const seeded = await seedWithRole('hr', email, 'Hr!Pass99x');
     try {
       await loginAndGoToProfile(page, email, 'Hr!Pass99x');
-      await expect(page.getByRole('button', { name: /your facility/i })).toBeVisible({
+      await expect(page.getByRole('tab', { name: /your facility/i })).toBeVisible({
         timeout: 10000,
       });
     } finally {
@@ -185,7 +185,7 @@ test.describe('"Your Facility" tab — read-only content', () => {
       await loginAndGoToProfile(page, email, 'Owne!r99xP');
 
       // Click the "Your Facility" tab — ProfileForm renders tabs as <button> elements (no role="tab")
-      await page.getByRole('button', { name: /your facility/i }).click();
+      await page.getByRole('tab', { name: /your facility/i }).click();
       await page.waitForLoadState('networkidle');
 
       // PhoneInput renders <input type="tel"> — there is no htmlFor/id link so

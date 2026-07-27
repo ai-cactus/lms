@@ -1,10 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Award, Check, Download } from 'lucide-react';
+import { Award, Calendar, Check, Download } from 'lucide-react';
 import CertificateModal from './CertificateModal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { formatCertificateId } from '@/lib/certificate-id';
 
@@ -79,24 +86,32 @@ export default function CertificateCardList({
     <div className="mx-auto w-full max-w-[1200px]">
       <div className="mb-6 flex flex-col items-start justify-between gap-4 md:flex-row md:gap-0">
         <div>
-          <h1 className="m-0 mb-1 text-2xl font-bold text-foreground">{title}</h1>
-          <p className="m-0 text-sm text-text-secondary">{description}</p>
+          <h1 className="m-0 mb-1 text-2xl font-semibold tracking-[-0.5px] text-foreground md:text-[31.5px] md:leading-[40px]">
+            {title}
+          </h1>
+          <p className="m-0 text-sm text-[#525252] md:text-lg">{description}</p>
         </div>
         {showExport && (
-          <div className="flex items-center gap-3">
-            <div>
-              <select className="cursor-pointer rounded-md border border-border bg-white px-3 py-2 text-sm text-text-secondary outline-none">
-                <option>Last 7 days</option>
-                <option>Last 30 days</option>
-                <option>All time</option>
-              </select>
-            </div>
+          <div className="flex items-center gap-2.5">
+            <Select defaultValue="7">
+              <SelectTrigger
+                aria-label="Filter certificates by date range"
+                className="h-[41px] w-[159px] justify-start gap-2 rounded-[8px] border-[#d6d6d6] bg-white px-3 text-base font-medium text-[#514346] shadow-none [&>svg:last-child]:ml-auto [&>svg:last-child]:size-[18px]"
+              >
+                <Calendar className="size-[18px] text-[#514346]" aria-hidden="true" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">Last 7 days</SelectItem>
+                <SelectItem value="30">Last 30 days</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
+              </SelectContent>
+            </Select>
             <Button
-              variant="outline"
-              className="flex items-center gap-2 bg-white"
+              className="h-[41px] gap-2 rounded-[12px] text-[15.5px] font-semibold has-[>svg]:px-6"
               onClick={handleExportAll}
             >
-              <Download className="size-4" />
+              <Download className="size-[18px]" />
               Export
             </Button>
           </div>
@@ -110,8 +125,17 @@ export default function CertificateCardList({
           {certificates.map((cert) => (
             <div
               key={cert.id}
-              className="flex cursor-pointer flex-col items-start justify-between gap-4 rounded-xl border border-border bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:border-border hover:shadow-md sm:flex-row sm:items-center sm:gap-0 sm:px-6 sm:py-5"
+              role="button"
+              tabIndex={0}
+              aria-label={`View certificate for ${cert.course.title}`}
+              className="flex cursor-pointer flex-col items-start justify-between gap-4 rounded-xl border border-border bg-white p-4 shadow-sm transition-all hover:-translate-y-px hover:border-border hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:flex-row sm:items-center sm:gap-0 sm:px-6 sm:py-5"
               onClick={() => setSelectedCertId(cert.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedCertId(cert.id);
+                }
+              }}
             >
               <div className="flex items-center gap-5">
                 <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">

@@ -21,14 +21,14 @@ export default function StatusTrackerAlertBanner({ hardEscalationCount }: Props)
 
   return (
     <div
-      className="mb-6 flex flex-col items-start gap-3 border-b border-error/30 bg-error/10 px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-8"
+      className="mx-auto mb-6 flex w-full max-w-[1400px] flex-col items-start gap-3 rounded-[12px] border border-[#fda29b] bg-[#fef3f2] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
       role="alert"
     >
       <div className="flex items-start gap-2.5">
-        <ShieldAlert className="mt-0.5 size-5 shrink-0 text-error" aria-hidden="true" />
+        <ShieldAlert className="mt-0.5 size-5 shrink-0 text-[#d92d20]" aria-hidden="true" />
         <div className="text-sm">
-          <p className="font-semibold text-foreground">Training overdue — action needed</p>
-          <p className="text-text-secondary">
+          <p className="font-semibold text-[#912018]">Training overdue — action needed</p>
+          <p className="text-[#b42318]">
             {hardEscalationCount} {workerWord} training overdue by 7+ days and need attention.
           </p>
         </div>
@@ -36,7 +36,7 @@ export default function StatusTrackerAlertBanner({ hardEscalationCount }: Props)
 
       <Link
         href="/dashboard/status-tracker"
-        className="inline-flex shrink-0 items-center gap-1.5 self-stretch rounded-lg bg-error px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-error/90 sm:self-auto"
+        className="inline-flex shrink-0 items-center gap-1.5 self-stretch rounded-[8px] bg-[#d92d20] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#b42318] sm:self-auto"
       >
         Open status tracker
         <ArrowRight className="size-4" aria-hidden="true" />

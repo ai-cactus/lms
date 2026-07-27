@@ -231,7 +231,7 @@ test.describe.serial('2FA consolidation: the money test — exactly one challeng
     await page.goto('/dashboard/profile');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: /two factor auth/i }).click();
+    await page.getByRole('tab', { name: /two factor auth/i }).click();
     await page.getByRole('button', { name: /set up 2fa/i }).click();
     await expect(page.getByRole('heading', { name: /check your email/i })).toBeVisible({
       timeout: 15000,

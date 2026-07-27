@@ -7,18 +7,14 @@ import MyCoursesTable from '@/components/dashboard/MyCoursesTable';
 import { getDashboardData } from '@/app/actions/course';
 import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
 import DashboardCreateCourseButton from '@/components/dashboard/DashboardCreateCourseButton';
-import AvailableCoursesTable from '@/components/dashboard/courses/AvailableCoursesTable';
 import StatusTrackerOverview from '@/components/dashboard/status-tracker/StatusTrackerOverview';
-import { listAvailableVideoCourses } from '@/app/actions/offering';
 import { hasActiveBilling } from '@/lib/billing';
 import { isWorkerRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
-import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
-import { BookOpen, Users, Activity } from 'lucide-react';
-
-const HARD_THRESHOLD_DAYS = REMINDER_STAGE_DEFAULTS.HARD_ESCALATION.offsetDays;
+import Link from 'next/link';
+import { BookOpen, Users, BadgeCheck } from 'lucide-react';
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -29,7 +25,7 @@ export default async function DashboardPage() {
 
   // Fetch billing status alongside dashboard data so the Create Course button
   // can apply the same billing gate as the Courses list page.
-  const [{ courses, stats }, user, availableVideoCourses] = await Promise.all([
+  const [{ courses, stats }, user] = await Promise.all([
     getDashboardData(),
     prisma.user.findUnique({
       where: { id: session.user.id },
@@ -40,7 +36,6 @@ export default async function DashboardPage() {
         },
       },
     }),
-    listAvailableVideoCourses().catch(() => []),
   ]);
 
   const hasBilling = hasActiveBilling(user?.organization?.subscription);
@@ -52,78 +47,115 @@ export default async function DashboardPage() {
   const statusTracker =
     canSeeStatusTracker && user?.organizationId
       ? await getStatusTrackerSummaryForOrg(user.organizationId)
-      : { overdueCount: 0, hardEscalationCount: 0, rows: [] };
+      : { overdueCount: 0, hardEscalationCount: 0, rows: [], nearDeadline: { count: 0, rows: [] } };
 
-  // Serialize Date across the server/client boundary (same pattern as the full page).
-  const statusTrackerRows = statusTracker.rows.map((row) => ({
-    enrollmentId: row.enrollmentId,
-    workerName: row.workerName,
-    courseTitle: row.courseTitle,
-    dueAt: row.dueAt.toISOString(),
-    daysOverdue: row.daysOverdue,
-  }));
+  // Merge overdue + due-soon rows (same order as the full Status Tracker page:
+  // most-overdue first, then soonest-due) and serialize Date across the
+  // server/client boundary.
+  const statusTrackerRows = [
+    ...statusTracker.rows.map((row) => ({
+      enrollmentId: row.enrollmentId,
+      userId: row.userId,
+      workerName: row.workerName,
+      workerEmail: row.workerEmail,
+      courseId: row.courseId,
+      courseTitle: row.courseTitle,
+      dueAt: row.dueAt.toISOString(),
+      daysOverdue: row.daysOverdue,
+      daysUntilDue: null,
+    })),
+    ...statusTracker.nearDeadline.rows.map((row) => ({
+      enrollmentId: row.enrollmentId,
+      userId: row.userId,
+      workerName: row.workerName,
+      workerEmail: row.workerEmail,
+      courseId: row.courseId,
+      courseTitle: row.courseTitle,
+      dueAt: row.dueAt.toISOString(),
+      daysOverdue: null,
+      daysUntilDue: row.daysUntilDue,
+    })),
+  ];
 
   const totalCourses = stats?.totalCourses || 0;
   const totalStaffAssigned = stats?.totalStaffAssigned || 0;
   const averageGrade = stats?.averageGrade || 0;
 
+  const summaryCards = [
+    {
+      label: 'Total Courses',
+      value: String(totalCourses),
+      icon: BookOpen,
+      surface: 'border-[#9be3c2] bg-[#e9f9f2]',
+      iconSurface: 'bg-[#16a34a]',
+    },
+    {
+      label: 'Total Staff Assigned',
+      value: String(totalStaffAssigned),
+      icon: Users,
+      surface: 'border-[#9ba7e3] bg-[#e9ecf9]',
+      iconSurface: 'bg-[#162ea3]',
+    },
+    {
+      label: 'Average Grade',
+      value: `${averageGrade}%`,
+      icon: BadgeCheck,
+      surface: 'border-[#e39b9b] bg-[#f9e9e9]',
+      iconSurface: 'bg-[#cd1515]',
+    },
+  ];
+
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 px-5 py-6 sm:px-8 xl:gap-8 xl:px-10">
-      <div className="flex flex-wrap items-start justify-between gap-4 max-sm:flex-col">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold text-[#1a202c] xl:text-[28px]">Dashboard</h1>
-          <p className="text-base text-[#718096]">Here is an overview of your courses</p>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-[30px]">
+      <div className="flex flex-col gap-[5px] px-1 py-0.5">
+        <p className="text-xs font-medium md:text-sm">
+          <Link href="/dashboard" className="text-[#a0aec0] hover:underline">
+            Home
+          </Link>
+          <span className="text-[#a0aec0]"> / </span>
+          <span className="text-[#2d3748]">Training</span>
+        </p>
+        <div className="flex flex-col gap-[5px] px-1 py-0.5">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.88px] text-[#272b30] md:text-[28px] md:tracking-[-1.12px] xl:text-[33.5px] xl:leading-[44px] xl:tracking-[-1.34px]">
+              Dashboard
+            </h1>
+            <DashboardCreateCourseButton hasBilling={hasBilling} />
+          </div>
+          <p className="text-sm leading-[28px] text-[#525252] md:text-base xl:text-lg">
+            Here is an overview of your courses
+          </p>
         </div>
-        <DashboardCreateCourseButton hasBilling={hasBilling} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#ECFDF5]">
-          <div>
-            <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#10B981]">
-              <BookOpen className="size-6" />
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+        {summaryCards.map(({ label, value, icon: Icon, surface, iconSurface }) => (
+          <div
+            key={label}
+            className={`flex flex-col gap-[18px] overflow-hidden rounded-[22px] border p-4 md:gap-[31px] md:p-6 ${surface}`}
+          >
+            <div
+              className={`flex size-9 shrink-0 items-center justify-center rounded-[10px] text-white shadow-[0px_3.9px_3.064px_0px_rgba(0,0,0,0.02)] md:size-[50px] md:rounded-[13px] ${iconSurface}`}
+            >
+              <Icon className="size-[18px] md:size-[25px]" aria-hidden="true" />
             </div>
-            <p className="mb-1 text-sm font-semibold text-[#4a5568]">Total Courses</p>
-          </div>
-          <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{totalCourses}</p>
-        </div>
-
-        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#EEF2FF]">
-          <div>
-            <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#4730F7]">
-              <Users className="size-6" />
+            <div className="flex flex-col gap-[7px]">
+              <p className="text-[13px] font-semibold leading-4 tracking-[-0.16px] text-[#6f767e] md:text-base">
+                {label}
+              </p>
+              <p className="text-[22px] font-bold leading-[1.4] text-[#262626] md:text-[30.5px]">
+                {value}
+              </p>
             </div>
-            <p className="mb-1 text-sm font-semibold text-[#4a5568]">Total Staff Assigned</p>
           </div>
-          <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{totalStaffAssigned}</p>
-        </div>
-
-        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl p-6 shadow-sm bg-[#FEF2F2]">
-          <div>
-            <div className="mb-6 flex size-12 items-center justify-center rounded-xl text-white bg-[#EF4444]">
-              <Activity className="size-6" />
-            </div>
-            <p className="mb-1 text-sm font-semibold text-[#4a5568]">Average Grade</p>
-          </div>
-          <p className="text-[28px] font-bold text-[#1a202c] xl:text-4xl">{averageGrade}%</p>
-        </div>
+        ))}
       </div>
 
       <DashboardCharts stats={stats} />
 
       <MyCoursesTable courses={courses} maxItems={5} />
 
-      {/* Available Video Courses (global catalog to offer from) */}
-      <AvailableCoursesTable courses={availableVideoCourses} />
-
-      {canSeeStatusTracker && (
-        <StatusTrackerOverview
-          overdueCount={statusTracker.overdueCount}
-          hardEscalationCount={statusTracker.hardEscalationCount}
-          hardThresholdDays={HARD_THRESHOLD_DAYS}
-          rows={statusTrackerRows}
-        />
-      )}
+      {canSeeStatusTracker && <StatusTrackerOverview rows={statusTrackerRows} />}
 
       <DashboardEmptyState totalCourses={totalCourses} />
     </div>

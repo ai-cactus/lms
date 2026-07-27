@@ -123,7 +123,7 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add workers?/i }).first().click();
+      await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
       // Step 1 — email entry.
@@ -189,7 +189,7 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add workers?/i }).first().click();
+      await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
       await page.getByPlaceholder(/enter emails separated by/i).fill(`${emailA}, ${emailB}`);
@@ -259,7 +259,7 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add workers?/i }).first().click();
+      await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
       await page.getByPlaceholder(/enter emails separated by/i).fill(email);
       await page.getByRole('button', { name: /^continue$/i }).click();

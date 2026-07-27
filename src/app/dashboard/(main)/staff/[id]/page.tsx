@@ -18,11 +18,5 @@ export default async function StaffProfilePage({ params }: PageProps) {
     notFound();
   }
 
-  return (
-    <StaffProfileClient
-      staff={staff}
-      viewerRole={session.user.role}
-      viewerUserId={session.user.id}
-    />
-  );
+  return <StaffProfileClient staff={staff} viewerRole={session.user.role} />;
 }

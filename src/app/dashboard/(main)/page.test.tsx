@@ -20,7 +20,6 @@ const {
   mockAuth,
   prismaMock,
   mockGetDashboardData,
-  mockListAvailableVideoCourses,
   mockGetStatusTrackerSummaryForOrg,
   mockHasActiveBilling,
   mockRedirect,
@@ -28,7 +27,6 @@ const {
   mockAuth: vi.fn(),
   prismaMock: { user: { findUnique: vi.fn() } },
   mockGetDashboardData: vi.fn(),
-  mockListAvailableVideoCourses: vi.fn(),
   mockGetStatusTrackerSummaryForOrg: vi.fn(),
   mockHasActiveBilling: vi.fn(() => false),
   mockRedirect: vi.fn(() => {
@@ -40,9 +38,6 @@ vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
 vi.mock('@/app/actions/course', () => ({ getDashboardData: mockGetDashboardData }));
-vi.mock('@/app/actions/offering', () => ({
-  listAvailableVideoCourses: mockListAvailableVideoCourses,
-}));
 vi.mock('@/lib/reminders/status-tracker', () => ({
   getStatusTrackerSummaryForOrg: mockGetStatusTrackerSummaryForOrg,
 }));
@@ -61,9 +56,6 @@ vi.mock('@/components/dashboard/DashboardEmptyState', () => ({
 }));
 vi.mock('@/components/dashboard/DashboardCreateCourseButton', () => ({
   default: () => <button type="button">Create course</button>,
-}));
-vi.mock('@/components/dashboard/courses/AvailableCoursesTable', () => ({
-  default: () => <div data-testid="available-courses" />,
 }));
 
 const mockStatusTrackerOverview = vi.fn<(props: unknown) => JSX.Element>(() => (
@@ -84,7 +76,6 @@ beforeEach(() => {
     courses: [],
     stats: { totalCourses: 0, totalStaffAssigned: 0, averageGrade: 0 },
   });
-  mockListAvailableVideoCourses.mockResolvedValue([]);
   mockHasActiveBilling.mockReturnValue(false);
 });
 
@@ -97,9 +88,7 @@ describe('DashboardPage — Status Tracker data wiring', () => {
 
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
     expect(screen.getByTestId('status-tracker-overview')).toBeInTheDocument();
-    expect(mockStatusTrackerOverview).toHaveBeenCalledWith(
-      expect.objectContaining({ overdueCount: 0, hardEscalationCount: 0, rows: [] }),
-    );
+    expect(mockStatusTrackerOverview).toHaveBeenCalledWith(expect.objectContaining({ rows: [] }));
   });
 
   it('falls back to a zeroed summary when the user lookup itself is null', async () => {
@@ -109,9 +98,7 @@ describe('DashboardPage — Status Tracker data wiring', () => {
     render(element);
 
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
-    expect(mockStatusTrackerOverview).toHaveBeenCalledWith(
-      expect.objectContaining({ overdueCount: 0, hardEscalationCount: 0, rows: [] }),
-    );
+    expect(mockStatusTrackerOverview).toHaveBeenCalledWith(expect.objectContaining({ rows: [] }));
   });
 
   it('fetches the summary for the resolved organizationId and serializes dueAt to an ISO string', async () => {
@@ -136,6 +123,22 @@ describe('DashboardPage — Status Tracker data wiring', () => {
           managerName: null,
         },
       ],
+      nearDeadline: {
+        count: 1,
+        rows: [
+          {
+            enrollmentId: 'e2',
+            userId: 'u2',
+            workerName: 'Bob',
+            workerEmail: 'bob@test.com',
+            courseId: 'c2',
+            courseTitle: 'OSHA Refresher',
+            dueAt: new Date('2024-06-05T00:00:00.000Z'),
+            daysUntilDue: 3,
+            status: 'assigned',
+          },
+        ],
+      },
     });
 
     const element = await DashboardPage();
@@ -144,15 +147,25 @@ describe('DashboardPage — Status Tracker data wiring', () => {
     expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith('org-42');
     expect(mockStatusTrackerOverview).toHaveBeenCalledWith(
       expect.objectContaining({
-        overdueCount: 2,
-        hardEscalationCount: 1,
         rows: [
           expect.objectContaining({
             enrollmentId: 'e1',
+            userId: 'u1',
             workerName: 'Alice',
+            workerEmail: 'alice@test.com',
             courseTitle: 'HIPAA Basics',
             dueAt: '2024-06-01T00:00:00.000Z',
             daysOverdue: 9,
+            daysUntilDue: null,
+          }),
+          expect.objectContaining({
+            enrollmentId: 'e2',
+            userId: 'u2',
+            workerName: 'Bob',
+            courseTitle: 'OSHA Refresher',
+            dueAt: '2024-06-05T00:00:00.000Z',
+            daysOverdue: null,
+            daysUntilDue: 3,
           }),
         ],
       }),

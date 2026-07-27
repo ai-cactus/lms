@@ -11,11 +11,11 @@ export default async function WorkerCertificatesPage() {
   const certificates = await getWorkerCertificates();
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-[1068px] py-8 px-4 sm:px-6 lg:px-8">
       <CertificateCardList
         certificates={certificates}
         title="Certificates"
-        description="Here's a quick summary of your earned certificates."
+        description="Certificates you have earned will be displayed here"
       />
     </div>
   );

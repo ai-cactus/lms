@@ -1,9 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Clock } from 'lucide-react';
+import { Clock, X } from 'lucide-react';
 
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -12,6 +11,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  wizardControlClass,
+  wizardInputClass,
+  wizardLabelClass,
+  wizardRowClass,
+  wizardSubtitleClass,
+  wizardTitleClass,
+} from './wizardFormClasses';
 
 import { CourseWizardData } from '@/types/course';
 
@@ -22,31 +29,32 @@ interface Step3DetailsProps {
 
 export default function Step3Details({ data, onChange }: Step3DetailsProps) {
   return (
-    <div className="relative z-50 flex w-full max-w-[800px] flex-col items-center transition-[max-width] duration-300">
-      <h2 className="mb-5 shrink-0 text-center font-heading text-[32px] font-bold tracking-[-0.5px] text-foreground">
-        Course Details
-      </h2>
-      <p className="mb-[30px] max-w-[600px] shrink-0 text-center text-base leading-[1.5] text-text-secondary">
-        Start by uploading the policy or compliance document you want to turn into a course. This
-        will help you analyze and generate lessons and quizzes automatically.
-      </p>
+    <div className="flex w-full flex-col gap-10 md:gap-14">
+      <div className="flex flex-col items-center gap-3">
+        <h2 className={wizardTitleClass}>Course Details</h2>
+        <p className={wizardSubtitleClass}>
+          Start by uploading the policy or compliance document you want to turn into a course. This
+          will help you analyze and generate lessons and quizzes automatically.
+        </p>
+      </div>
 
-      <div className="w-full flex-1 overflow-y-auto pb-10">
-        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
-          <label className="text-sm font-medium text-text-muted">Course Title</label>
-          <Input
+      <div className="flex w-full flex-col gap-6">
+        <div className={wizardRowClass}>
+          <label className={wizardLabelClass}>Course Title</label>
+          <input
             name="title"
+            className={wizardInputClass}
             value={data.title}
             onChange={(e) => onChange('title', e.target.value)}
             placeholder="Enter course title"
           />
         </div>
 
-        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-start gap-5">
-          <label className="pt-3 text-sm font-medium text-text-muted">Short Description</label>
+        <div className={`${wizardRowClass} md:items-start`}>
+          <label className={`${wizardLabelClass} md:pt-4`}>Short Description</label>
           <textarea
             name="description"
-            className="min-h-[120px] w-full resize-y rounded-lg border border-border px-4 py-3 font-[inherit] text-base text-[#2d3748] transition-all duration-200 ease-in-out outline-none focus:border-[#2d4ddd] focus:shadow-[0_0_0_3px_rgba(45,77,221,0.1)]"
+            className={`${wizardInputClass} min-h-[136px] resize-y py-4 leading-6`}
             value={data.description}
             onChange={(e) => onChange('description', e.target.value)}
             placeholder="Enter short description"
@@ -54,17 +62,17 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
         </div>
 
         {/* Estimated Duration (AI-generated, read-only) */}
-        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
-          <label className="text-sm font-medium text-text-muted">Estimated Duration</label>
+        <div className={wizardRowClass}>
+          <label className={wizardLabelClass}>Estimated Duration</label>
           <div
-            className={`flex items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3.5 py-2.5 text-sm ${
-              data.duration ? 'text-[#2D3748]' : 'text-[#A0AEC0]'
+            className={`${wizardControlClass} flex items-center gap-2 bg-bg-secondary ${
+              data.duration ? 'text-[#0a0a0a]' : 'text-[#979797]'
             }`}
           >
             {data.duration ? (
               <>
-                <Clock className="size-4 text-primary" aria-hidden="true" />~{data.duration} mins
-                <span className="ml-1 text-xs text-text-muted">(Estimate)</span>
+                <Clock className="size-5 text-primary" aria-hidden="true" />~{data.duration} mins
+                <span className="ml-1 text-sm text-[#666d80]">(Estimate)</span>
               </>
             ) : (
               'Will be estimated after document analysis'
@@ -72,10 +80,10 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
           </div>
         </div>
 
-        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
-          <label className="text-sm font-medium text-text-muted">No of Notes / Slides</label>
+        <div className={wizardRowClass}>
+          <label className={wizardLabelClass}>No of Notes / Slides</label>
           <Select value={data.notesCount} onValueChange={(val) => onChange('notesCount', val)}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className={wizardControlClass}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -86,23 +94,26 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
             </SelectContent>
           </Select>
         </div>
+      </div>
 
-        <hr className="my-10 border-0 border-t border-t-[#EDF2F7]" />
+      <hr className="w-full border-0 border-t border-t-[#e5e7ea]" />
 
-        <h3 className="mb-6 text-xl font-bold text-foreground">Learning Objectives</h3>
+      <div className="flex w-full flex-col gap-6">
+        <h3 className="text-xl font-bold text-foreground md:text-[24px]">Learning Objectives</h3>
 
-        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-start gap-5">
-          <label className="pt-3 text-sm font-medium text-text-muted">
+        <div className={`${wizardRowClass} md:items-start`}>
+          <label className={`${wizardLabelClass} md:pt-4`}>
             Objectives
-            <span className="ml-2 text-xs font-normal text-text-muted">(Minimum 3 required)</span>
+            <span className="ml-2 text-sm font-normal text-[#979797]">(Minimum 3 required)</span>
           </label>
           <div className="flex w-full flex-col gap-3">
             {data.objectives.map((obj: string, index: number) => (
-              <div key={index} className="mb-2 flex gap-2">
-                <div className="flex h-10 w-6 items-center justify-center font-semibold text-text-muted">
+              <div key={index} className="flex items-center gap-2">
+                <div className="flex w-6 shrink-0 justify-center text-base font-semibold text-[#666d80]">
                   {index + 1}.
                 </div>
-                <Input
+                <input
+                  className={wizardInputClass}
                   value={obj}
                   onChange={(e) => {
                     const newObjectives = [...data.objectives];
@@ -113,17 +124,17 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                 />
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="icon"
                   onClick={() => {
                     const newObjectives = data.objectives.filter(
                       (_: string, i: number) => i !== index,
                     );
                     onChange('objectives', newObjectives);
                   }}
-                  className="text-error"
+                  className="shrink-0 text-error"
                   title="Remove Objective"
                 >
-                  ✕
+                  <X className="size-5" aria-hidden="true" />
                 </Button>
               </div>
             ))}
@@ -132,7 +143,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
               onClick={() => {
                 onChange('objectives', [...data.objectives, '']);
               }}
-              className="mt-2 w-full border-dashed"
+              className="mt-2 h-[52px] w-full rounded-[12px] border-[1.5px] border-dashed border-[#d2d5db] text-base font-semibold text-[#454353] md:h-[56px]"
             >
               + Add Objective
             </Button>

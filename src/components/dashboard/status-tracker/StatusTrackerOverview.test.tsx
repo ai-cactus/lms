@@ -2,52 +2,42 @@
  * Unit tests for the admin-dashboard Status Tracker overview widget.
  *
  * StatusTrackerOverview is purely presentational (no data fetching) but owns
- * two pieces of real logic worth guarding directly:
+ * real logic worth guarding directly:
  *   - top-5 slicing of the (already server-sorted) rows array
- *   - the "All caught up" empty state vs. the summary+table branch
- *   - the hard-escalation color threshold (>= hardThresholdDays)
+ *   - the "All caught up" empty state vs. the table branch
+ *   - the "N at risk" pill count and the overdue/due-soon status badges
  */
 import { render, screen, within } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
-import StatusTrackerOverview, { type StatusTrackerOverviewRow } from './StatusTrackerOverview';
+import StatusTrackerOverview from './StatusTrackerOverview';
+import type { StatusTrackerRowView } from './StatusTrackerTableClient';
 
-function makeRow(overrides: Partial<StatusTrackerOverviewRow> = {}): StatusTrackerOverviewRow {
+function makeRow(overrides: Partial<StatusTrackerRowView> = {}): StatusTrackerRowView {
   return {
     enrollmentId: 'e1',
+    userId: 'u1',
     workerName: 'Worker One',
+    workerEmail: 'worker.one@test.com',
+    courseId: 'c1',
     courseTitle: 'HIPAA Basics',
     dueAt: '2024-06-01T00:00:00.000Z',
     daysOverdue: 3,
+    daysUntilDue: null,
     ...overrides,
   };
 }
 
 describe('StatusTrackerOverview', () => {
   it('renders the "All caught up" empty state when there are no rows', () => {
-    render(
-      <StatusTrackerOverview
-        overdueCount={0}
-        hardEscalationCount={0}
-        hardThresholdDays={7}
-        rows={[]}
-      />,
-    );
+    render(<StatusTrackerOverview rows={[]} />);
 
     expect(screen.getByText('All caught up — no overdue training')).toBeInTheDocument();
-    // The summary chips and table are not rendered in the empty state.
-    expect(screen.queryByText('Overdue training')).not.toBeInTheDocument();
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText(/at risk/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /view all/i })).not.toBeInTheDocument();
   });
 
-  it('always renders the "View all" link to the full status-tracker page', () => {
-    render(
-      <StatusTrackerOverview
-        overdueCount={0}
-        hardEscalationCount={0}
-        hardThresholdDays={7}
-        rows={[]}
-      />,
-    );
+  it('renders the "View all" link to the full status-tracker page when rows exist', () => {
+    render(<StatusTrackerOverview rows={[makeRow()]} />);
 
     expect(screen.getByRole('link', { name: /view all/i })).toHaveAttribute(
       'href',
@@ -55,93 +45,57 @@ describe('StatusTrackerOverview', () => {
     );
   });
 
-  it('renders only the top 5 rows even when more are supplied', () => {
+  it('renders only the top 5 rows even when more are supplied, but counts all in the pill', () => {
     const rows = Array.from({ length: 8 }, (_, i) =>
       makeRow({ enrollmentId: `e${i}`, workerName: `Worker ${i}`, daysOverdue: 8 - i }),
     );
 
-    render(
-      <StatusTrackerOverview
-        overdueCount={8}
-        hardEscalationCount={2}
-        hardThresholdDays={7}
-        rows={rows}
-      />,
-    );
+    render(<StatusTrackerOverview rows={rows} />);
 
     const table = screen.getByRole('table');
     const dataRows = within(table).getAllByRole('row').slice(1); // drop header row
     expect(dataRows).toHaveLength(5);
-    // The first 5 (most-overdue, already sorted by the caller) are the ones shown.
-    expect(within(table).getByText('Worker 0')).toBeInTheDocument();
-    expect(within(table).getByText('Worker 4')).toBeInTheDocument();
-    expect(within(table).queryByText('Worker 5')).not.toBeInTheDocument();
+    // The first 5 (most-overdue, already sorted by the caller) are the ones
+    // shown. Names appear twice per row (visible cell + the View link's
+    // sr-only suffix), so assert on presence/absence rather than uniqueness.
+    expect(within(table).getAllByText('Worker 0').length).toBeGreaterThan(0);
+    expect(within(table).getAllByText('Worker 4').length).toBeGreaterThan(0);
+    expect(within(table).queryAllByText('Worker 5')).toHaveLength(0);
+    expect(screen.getByText('8 at risk')).toBeInTheDocument();
   });
 
-  it('displays the overdue and hard-escalation summary counts', () => {
+  it('shows an overdue badge for overdue rows and a due-soon badge for near-deadline rows', () => {
     render(
       <StatusTrackerOverview
-        overdueCount={12}
-        hardEscalationCount={4}
-        hardThresholdDays={7}
-        rows={[makeRow()]}
-      />,
-    );
-
-    expect(screen.getByText('12')).toBeInTheDocument();
-    expect(screen.getByText('4')).toBeInTheDocument();
-    expect(screen.getByText('Hard escalations (7+ days)')).toBeInTheDocument();
-  });
-
-  it('applies the error color to the hard-escalation count only when > 0', () => {
-    const { rerender } = render(
-      <StatusTrackerOverview
-        overdueCount={5}
-        hardEscalationCount={0}
-        hardThresholdDays={7}
-        rows={[makeRow()]}
-      />,
-    );
-    expect(screen.getByText('0')).not.toHaveClass('text-error');
-
-    rerender(
-      <StatusTrackerOverview
-        overdueCount={5}
-        hardEscalationCount={3}
-        hardThresholdDays={7}
-        rows={[makeRow()]}
-      />,
-    );
-    expect(screen.getByText('3')).toHaveClass('text-error');
-  });
-
-  it('marks a row as a hard escalation once daysOverdue crosses the threshold (>=)', () => {
-    render(
-      <StatusTrackerOverview
-        overdueCount={2}
-        hardEscalationCount={1}
-        hardThresholdDays={7}
         rows={[
-          makeRow({ enrollmentId: 'hard', workerName: 'Hard Worker', daysOverdue: 7 }),
-          makeRow({ enrollmentId: 'soft', workerName: 'Soft Worker', daysOverdue: 6 }),
+          makeRow({ enrollmentId: 'o', workerName: 'Olivia Overdue', daysOverdue: 3 }),
+          makeRow({
+            enrollmentId: 'n',
+            workerName: 'Nadia Nearing',
+            daysOverdue: null,
+            daysUntilDue: 2,
+          }),
         ]}
       />,
     );
 
-    expect(screen.getByText('7 days')).toHaveClass('text-error');
-    expect(screen.getByText('6 days')).not.toHaveClass('text-error');
+    expect(screen.getAllByText('Overdue by 3 days').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Due in 2 days').length).toBeGreaterThan(0);
+  });
+
+  it("links each row's View action to the staff profile", () => {
+    render(<StatusTrackerOverview rows={[makeRow({ userId: 'u42' })]} />);
+
+    const staffLink = screen
+      .getAllByRole('link')
+      .find((link) => link.getAttribute('href') === '/dashboard/staff/u42');
+    expect(staffLink).toBeDefined();
+    expect(staffLink).toHaveTextContent(/view/i);
   });
 
   it('singularizes "day" for a row that is exactly 1 day overdue', () => {
-    render(
-      <StatusTrackerOverview
-        overdueCount={1}
-        hardEscalationCount={0}
-        hardThresholdDays={7}
-        rows={[makeRow({ daysOverdue: 1 })]}
-      />,
-    );
+    render(<StatusTrackerOverview rows={[makeRow({ daysOverdue: 1 })]} />);
 
-    expect(screen.getByText('1 day')).toBeInTheDocument();
+    expect(screen.getAllByText('Overdue by 1 day').length).toBeGreaterThan(0);
   });
 });
