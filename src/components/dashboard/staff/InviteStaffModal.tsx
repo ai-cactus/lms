@@ -344,7 +344,7 @@ export default function InviteStaffModal({
         if (!open) handleClose();
       }}
     >
-      <DialogContent className="sm:max-w-lg" showCloseButton={step !== 'success'}>
+      <DialogContent className="sm:max-w-[596px]" showCloseButton={step !== 'success'}>
         {step === 'input' && (
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1">

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -12,39 +12,18 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import { RowActionsMenu } from '@/components/ui';
 import Link from 'next/link';
 import Image from 'next/image';
-import EditStaffModal from './EditStaffModal';
-import { UserRole } from '@/generated/prisma/enums';
 import AssignUserCourseModal from './AssignUserCourseModal';
 import AssignRetakeModal from '../training/AssignRetakeModal';
-import RemoveStaffModal from './RemoveStaffModal';
+import CertificateModal from '../training/CertificateModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
-import {
-  getEnrollmentQuizResult,
-  getAssignableManagers,
-  setStaffManager,
-} from '@/app/actions/staff';
+import { getEnrollmentQuizResult } from '@/app/actions/staff';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 import { getAdminWorkerCertificates } from '@/app/actions/certificate';
-import CertificateCardList from '../training/CertificateCardList';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Alert } from '@/components/ui';
-
-type WorkerCertificate = Awaited<ReturnType<typeof getAdminWorkerCertificates>>[number];
-type AssignableManager = Awaited<ReturnType<typeof getAssignableManagers>>[number];
-
-// Radix Select cannot use an empty string as an item value, so we map the
-// "no manager" option to a sentinel and translate it back to null on submit.
-const NO_MANAGER_VALUE = 'none';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import {
@@ -57,9 +36,15 @@ import {
   Clock,
   Lock,
   Check,
+  BadgeCheck,
+  Award,
+  ClipboardList,
   RotateCcw,
+  Plus,
   Search,
 } from 'lucide-react';
+
+type WorkerCertificate = Awaited<ReturnType<typeof getAdminWorkerCertificates>>[number];
 
 interface StaffProfileClientProps {
   staff: {
@@ -68,10 +53,7 @@ interface StaffProfileClientProps {
       name: string;
       email: string;
       avatarUrl: string | null;
-      role: string;
       jobTitle: string;
-      managerId: string | null;
-      managerName: string | null;
     };
     stats: {
       totalCourses: number;
@@ -89,6 +71,7 @@ interface StaffProfileClientProps {
       score: number;
       passingScore: number;
       difficulty?: string;
+      dueAt: string | null;
       quizAttempts?: {
         id: string;
         attemptCount: number;
@@ -98,23 +81,86 @@ interface StaffProfileClientProps {
     }[];
   };
   viewerRole: Role;
-  viewerUserId: string;
 }
 
-export default function StaffProfileClient({
-  staff,
-  viewerRole,
-  viewerUserId,
-}: StaffProfileClientProps) {
+const headCls = 'h-10 px-[18px] text-[15.5px] font-medium tracking-[0.31px] text-[#666d80]';
+const cellCls = 'h-[71px] px-5 text-[17.5px] font-medium tracking-[0.35px] text-[#0d0d12]';
+const statusPillCls =
+  'inline-flex h-[30px] items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold whitespace-nowrap';
+const cardCls =
+  'flex min-w-0 flex-col gap-6 rounded-[17px] border border-[#dfe1e6] bg-white p-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] md:px-[21px] md:pt-[21px] md:pb-4';
+const cardTitleCls =
+  'text-base leading-[1.5] font-semibold tracking-[0.4px] text-[#0d0d12] md:text-xl';
+const searchInputCls =
+  'h-9 rounded-[8.5px] border-[#dfe1e6] pl-9 text-[15px] shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] placeholder:text-[#a4abb8]';
+const rowLinkCls = 'h-auto p-0 text-[15.5px] font-medium';
+
+/**
+ * Mirrors `AT_RISK_WINDOW_DAYS` in `src/lib/reminders/status-tracker.ts` — a
+ * deadline flagged red here is the same one the Status Tracker calls "at risk".
+ * Duplicated rather than imported because that module pulls in Prisma.
+ */
+const DUE_SOON_WINDOW_DAYS = 7;
+
+/**
+ * Pins a fixed timeZone so the server (UTC) and the browser (local) render the
+ * same string — otherwise React reports a hydration mismatch (#418).
+ */
+function formatDate(value: Date | string): string {
+  return new Date(value).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function isDueUrgent(dueAt: string): boolean {
+  const msUntilDue = new Date(dueAt).getTime() - Date.now();
+  return msUntilDue <= DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+}
+
+const STAT_CARDS = [
+  {
+    key: 'totalCourses',
+    label: 'Total Courses Assigned',
+    icon: BookOpen,
+    card: 'border-[#9ba7e3] bg-[#e9ecf9]',
+    badge: 'bg-[#162ea3]',
+  },
+  {
+    key: 'completedCourses',
+    label: 'Courses Completed',
+    icon: CheckCircle2,
+    card: 'border-[#9be3c2] bg-[#e9f9f2]',
+    badge: 'bg-[#16a34a]',
+  },
+  {
+    key: 'failedCourses',
+    label: 'Failed / Retake Needed',
+    icon: AlertTriangle,
+    card: 'border-[#e39b9b] bg-[#f9e9e9]',
+    badge: 'bg-[#cd1515]',
+  },
+  {
+    key: 'activeCourses',
+    label: 'Active / Due Soon',
+    icon: Clock,
+    card: 'border-[#e3cf9b] bg-[#fffad5]',
+    badge: 'bg-[#db8e00]',
+  },
+] as const;
+
+export default function StaffProfileClient({ staff, viewerRole }: StaffProfileClientProps) {
   const { user, stats, enrollments } = staff;
 
-  // Roster-management affordances hinge on the viewer's role: view-only roles
-  // (Finance, Clinical Director) can read a profile but see no mutating controls.
-  // The server actions enforce the same gates — this only hides dead-end UI.
+  // Assigning a course is a roster mutation: view-only roles (Finance, Clinical
+  // Director) can read a profile but must not see the affordance. The server
+  // action enforces the same gate — this only hides dead-end UI.
   const canEdit = can(dbRoleToRoleKey(viewerRole), 'user.edit');
-  const canDelete = can(dbRoleToRoleKey(viewerRole), 'user.delete');
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [certificateSearchQuery, setCertificateSearchQuery] = useState('');
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
     id: string;
@@ -140,71 +186,22 @@ export default function StaffProfileClient({
     organizationName?: string;
   } | null>(null);
   const [loadingEnrollmentId, setLoadingEnrollmentId] = useState<string | null>(null);
-  const [showRemoveModal, setShowRemoveModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'courses' | 'certificates'>('courses');
   const [certificates, setCertificates] = useState<WorkerCertificate[]>([]);
-  const [loadingCerts, setLoadingCerts] = useState(false);
+  const [loadingCerts, setLoadingCerts] = useState(true);
+  const [viewingCertificateId, setViewingCertificateId] = useState<string | null>(null);
 
-  const [managers, setManagers] = useState<AssignableManager[]>([]);
-  const [loadingManagers, setLoadingManagers] = useState(false);
-  const [managerId, setManagerId] = useState<string>(user.managerId ?? NO_MANAGER_VALUE);
-  const [savingManager, setSavingManager] = useState(false);
-  const [managerMessage, setManagerMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
-
-  React.useEffect(() => {
-    setLoadingManagers(true);
-    getAssignableManagers()
+  useEffect(() => {
+    setLoadingCerts(true);
+    getAdminWorkerCertificates(user.id)
       .then((res) => {
-        setManagers(res.filter((m) => m.id !== user.id));
-        setLoadingManagers(false);
+        setCertificates(res);
+        setLoadingCerts(false);
       })
       .catch((err) => {
-        logger.error({ msg: 'Failed to fetch assignable managers', err });
-        setLoadingManagers(false);
+        logger.error({ msg: '[staff] Failed to fetch certificates', err });
+        setLoadingCerts(false);
       });
   }, [user.id]);
-
-  const handleManagerChange = async (value: string) => {
-    const previous = managerId;
-    const nextManagerId = value === NO_MANAGER_VALUE ? null : value;
-    setManagerId(value);
-    setSavingManager(true);
-    setManagerMessage(null);
-
-    try {
-      const result = await setStaffManager(user.id, nextManagerId);
-      if (result.success) {
-        setManagerMessage({ type: 'success', text: 'Manager updated successfully' });
-      } else {
-        setManagerId(previous);
-        setManagerMessage({ type: 'error', text: result.error || 'Failed to update manager' });
-      }
-    } catch (err) {
-      logger.error({ msg: 'Error updating manager', err });
-      setManagerId(previous);
-      setManagerMessage({ type: 'error', text: 'An unexpected error occurred' });
-    } finally {
-      setSavingManager(false);
-    }
-  };
-
-  React.useEffect(() => {
-    if (activeTab === 'certificates' && certificates.length === 0) {
-      setLoadingCerts(true);
-      getAdminWorkerCertificates(user.id)
-        .then((res) => {
-          setCertificates(res);
-          setLoadingCerts(false);
-        })
-        .catch((err) => {
-          logger.error({ msg: 'Failed to fetch certificates', err });
-          setLoadingCerts(false);
-        });
-    }
-  }, [activeTab, user.id, certificates.length]);
 
   const handleViewResult = async (enrollmentId: string) => {
     setLoadingEnrollmentId(enrollmentId);
@@ -214,7 +211,7 @@ export default function StaffProfileClient({
         setViewingResult({ ...result, enrollmentId });
       }
     } catch (err) {
-      logger.error({ msg: 'Error loading result', err });
+      logger.error({ msg: '[staff] Error loading result', err });
     } finally {
       setLoadingEnrollmentId(null);
     }
@@ -224,366 +221,438 @@ export default function StaffProfileClient({
     e.courseName.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  return (
-    <div className="mx-auto w-full max-w-[1400px]">
-      <Link
-        href="/dashboard/staff"
-        className="mb-6 inline-flex items-center gap-2 text-sm text-[#718096] hover:text-[#4a5568]"
-      >
-        <ArrowLeft className="size-4" />
-        Go Back
-        <span className="text-[#cbd5e0]">/</span>
-        Staff Details
-        <span className="text-[#cbd5e0]">/</span>
-        <span className="font-medium text-primary">Staff Profile</span>
-      </Link>
+  const filteredCertificates = certificates.filter((c) =>
+    c.course.title.toLowerCase().includes(certificateSearchQuery.toLowerCase()),
+  );
 
-      <div className="mb-8 flex items-start justify-between gap-4 max-md:flex-col">
-        <div className="flex gap-6">
-          <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1a202c] text-white">
+  return (
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-[30px]">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <Link
+          href="/dashboard/staff"
+          className="inline-flex items-center gap-3 font-medium text-[#667185] transition-colors hover:text-[#0d0d12]"
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-[6px] border border-[#e4e7ec] bg-white">
+            <ArrowLeft className="size-3.5 text-[#1e2635]" aria-hidden="true" />
+          </span>
+          Go Back
+        </Link>
+        <nav aria-label="Breadcrumb" className="flex items-center gap-2">
+          <Link
+            href="/dashboard/staff"
+            className="font-medium text-[#667185] transition-colors hover:text-[#0d0d12]"
+          >
+            Staff Details
+          </Link>
+          <span aria-hidden="true" className="text-[#98a2b3]">
+            /
+          </span>
+          <span aria-current="page" className="font-medium text-primary">
+            Staff Profile
+          </span>
+        </nav>
+      </div>
+
+      <div className="flex flex-col gap-9 rounded-[17px] bg-white p-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] md:p-[21px]">
+        <div className="flex flex-col gap-6 md:flex-row md:items-center md:gap-[26px]">
+          <div className="flex size-[110px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1a202c] text-white md:size-[141px]">
             {user.avatarUrl ? (
               <Image
                 src={user.avatarUrl}
-                alt={user.name}
-                width={80}
-                height={80}
+                alt=""
+                width={141}
+                height={141}
                 className="size-full object-cover"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-[28px] font-semibold">
+              <span className="text-[40px] font-semibold md:text-[48px]">
                 {(user.name.charAt(0) || 'U').toUpperCase()}
-              </div>
+              </span>
             )}
           </div>
-          <div className="flex flex-col justify-center">
-            <h1 className="mb-1 text-2xl font-bold text-[#1a202c]">{user.name}</h1>
-            <div className="mb-3 flex items-center gap-2 text-sm text-[#718096]">
-              <User className="size-3.5" />
-              {user.email}
-            </div>
-            <div className="inline-block w-fit rounded bg-[#e6fffa] px-3 py-1 text-xs font-semibold text-[#2c7a7b]">
-              {user.jobTitle || 'Direct Support Professional (DSP)'}
+
+          <div className="flex min-w-0 flex-1 flex-col gap-6 lg:flex-row lg:items-center lg:gap-8">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <h1 className="text-[24px] leading-[1.2] font-semibold tracking-[-0.56px] text-[#101928] md:text-[28px]">
+                {user.name}
+              </h1>
+              <div className="flex items-center gap-2.5 text-[14px] leading-5 text-[#475467]">
+                <User className="size-[19px] shrink-0" aria-hidden="true" />
+                <span className="truncate">{user.email}</span>
+              </div>
+              <span className="w-fit rounded-[6px] bg-[#eafdf5] px-[12.4px] py-[5px] text-[12.4px] leading-[20.667px] font-semibold text-[#59904b]">
+                {user.jobTitle || 'Direct Support Professional (DSP)'}
+              </span>
             </div>
 
-            <div className="mt-4 flex flex-col gap-1.5">
-              <label
-                htmlFor="staff-manager-select"
-                className="text-xs font-medium text-text-secondary"
+            {canEdit && (
+              <Button
+                onClick={() => setIsAssignModalOpen(true)}
+                className="h-12 shrink-0 gap-2 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
               >
-                Manager
-              </label>
-              <Select
-                value={managerId}
-                onValueChange={handleManagerChange}
-                disabled={loadingManagers || savingManager || !canEdit}
-              >
-                <SelectTrigger
-                  id="staff-manager-select"
-                  className="h-10 w-full sm:w-[260px]"
-                  aria-label="Assign manager"
-                >
-                  <SelectValue
-                    placeholder={loadingManagers ? 'Loading managers...' : 'Select a manager'}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_MANAGER_VALUE}>No manager</SelectItem>
-                  {managers.map((manager) => (
-                    <SelectItem key={manager.id} value={manager.id}>
-                      {manager.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!canEdit && (
-                <p className="text-xs text-text-secondary">
-                  View only — you can&apos;t change this staff member&apos;s manager.
-                </p>
-              )}
-              {managerMessage && (
-                <Alert
-                  variant={managerMessage.type === 'success' ? 'success' : 'error'}
-                  className="mt-1 w-full sm:w-[260px]"
-                >
-                  {managerMessage.text}
-                </Alert>
-              )}
-            </div>
+                <Plus className="size-[25px]" />
+                Assign Course
+              </Button>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-start gap-3">
-          {canEdit && (
-            <Button variant="outline" onClick={() => setIsEditModalOpen(true)}>
-              Edit Profile
-            </Button>
-          )}
-          {canDelete && (
-            <Button
-              variant="outline"
-              onClick={() => setShowRemoveModal(true)}
-              className="border-red-600 text-red-600 hover:bg-red-50 hover:text-red-700"
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-7">
+          {STAT_CARDS.map(({ key, label, icon: Icon, card, badge }) => (
+            <div
+              key={key}
+              className={cn(
+                'flex h-[81px] items-center gap-4 rounded-[12.5px] border px-[19px] py-3',
+                card,
+              )}
             >
-              Remove Staff
-            </Button>
-          )}
-          {canEdit && <Button onClick={() => setIsAssignModalOpen(true)}>Assign Course</Button>}
-        </div>
-      </div>
-
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#bee3f8] bg-[#ebf8ff]">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2b6cb0]">
-            <BookOpen className="size-5" />
-          </div>
-          <div className="flex flex-col">
-            <span className="mb-1 text-[13px] text-[#4a5568]">Total Courses Assigned</span>
-            <span className="text-xl font-bold text-[#1a202c]">{stats.totalCourses}</span>
-          </div>
-        </div>
-
-        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#c6f6d5] bg-[#f0fff4]">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2f855a]">
-            <CheckCircle2 className="size-5" />
-          </div>
-          <div className="flex flex-col">
-            <span className="mb-1 text-[13px] text-[#4a5568]">Courses Completed</span>
-            <span className="text-xl font-bold text-[#1a202c]">{stats.completedCourses}</span>
-          </div>
-        </div>
-
-        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fed7d7] bg-[#fff5f5]">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#c53030]">
-            <AlertTriangle className="size-5" />
-          </div>
-          <div className="flex flex-col">
-            <span className="mb-1 text-[13px] text-[#4a5568]">Failed / Retake Needed</span>
-            <span className="text-xl font-bold text-[#1a202c]">{stats.failedCourses}</span>
-          </div>
-        </div>
-
-        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fefcbf] bg-[#fffff0]">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#d69e2e]">
-            <Clock className="size-5" />
-          </div>
-          <div className="flex flex-col">
-            <span className="mb-1 text-[13px] text-[#4a5568]">Active / Due Soon</span>
-            <span className="text-xl font-bold text-[#1a202c]">{stats.activeCourses}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 rounded-xl border border-[#e2e8f0] bg-white p-5">
-        <div className="flex gap-6 border-b border-[#E2E8F0] mb-6">
-          <button
-            onClick={() => setActiveTab('courses')}
-            className={cn(
-              'cursor-pointer border-b-2 py-3 text-sm font-semibold',
-              activeTab === 'courses'
-                ? 'border-primary text-[#2D3748]'
-                : 'border-transparent text-[#718096]',
-            )}
-          >
-            Courses
-          </button>
-          <button
-            onClick={() => setActiveTab('certificates')}
-            className={cn(
-              'cursor-pointer border-b-2 py-3 text-sm font-semibold',
-              activeTab === 'certificates'
-                ? 'border-primary text-[#2D3748]'
-                : 'border-transparent text-[#718096]',
-            )}
-          >
-            Certificates Issued
-          </button>
-        </div>
-
-        {activeTab === 'courses' ? (
-          <>
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Input
-                  className="h-11 w-full sm:w-[250px]"
-                  placeholder="Search for courses..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  startIcon={<Search aria-hidden="true" />}
-                />
+              <span
+                className={cn(
+                  'flex size-[35px] shrink-0 items-center justify-center rounded-[9px] text-white',
+                  badge,
+                )}
+              >
+                <Icon className="size-[17.5px]" aria-hidden="true" />
+              </span>
+              <div className="flex min-w-0 flex-col gap-[7px]">
+                <span className="text-[13.5px] leading-[14.4px] font-medium tracking-[-0.13px] text-[#6f767e]">
+                  {label}
+                </span>
+                <span className="text-[21px] leading-none font-bold text-[#262626]">
+                  {stats[key]}
+                </span>
               </div>
             </div>
+          ))}
+        </div>
+      </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent border-0 ">
-                  <TableHead style={{ width: '40%' }}>Name</TableHead>
-                  <TableHead style={{ width: '30%' }} className="hidden md:table-cell">
-                    Progress
-                  </TableHead>
-                  <TableHead style={{ width: '15%' }} className="hidden sm:table-cell">
-                    Quiz Status
-                  </TableHead>
-                  <TableHead style={{ width: '15%' }}></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEnrollments.map((enrollment) => (
-                  <TableRow key={enrollment.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-[#2d3748] text-white">
-                          <BookOpen className="size-5" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-[#1a202c]">
-                              {enrollment.courseName}
-                            </span>
-                          </div>
-                          <span className="text-xs text-[#718096]">
-                            {enrollment.difficulty || 'Advanced'}
-                          </span>
-                        </div>
+      <section className={cardCls} aria-labelledby="trainings-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="trainings-heading" className={cardTitleCls}>
+            Trainings
+          </h2>
+          <div className="w-full sm:w-1/2 sm:max-w-[506px]">
+            <Input
+              placeholder="Search for courses..."
+              className={searchInputCls}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search courses"
+              startIcon={<Search aria-hidden="true" />}
+            />
+          </div>
+        </div>
+
+        <Table className="table-fixed">
+          <TableHeader>
+            <TableRow className="border-0 hover:bg-transparent">
+              <TableHead
+                className={cn(headCls, 'w-full rounded-l-[9px] px-3 md:w-[30%] md:px-[18px]')}
+              >
+                Name
+              </TableHead>
+              <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[21%]')}>
+                Progress
+              </TableHead>
+              <TableHead className={cn(headCls, 'hidden lg:table-cell lg:w-[21%]')}>
+                Deadline
+              </TableHead>
+              <TableHead className={cn(headCls, 'hidden sm:table-cell sm:w-[160px] md:w-[13%]')}>
+                Status
+              </TableHead>
+              <TableHead
+                className={cn(
+                  headCls,
+                  'w-[92px] rounded-r-[9px] px-3 text-right md:w-[15%] md:px-5',
+                )}
+              >
+                Action
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredEnrollments.map((enrollment) => {
+              const progress = enrollment.progress || 0;
+              const isAttested = enrollment.status === 'attested';
+              const isComplete =
+                enrollment.status === 'completed' || isAttested || progress === 100;
+              const hasPassed = isComplete && enrollment.score >= (enrollment.passingScore || 70);
+              const isLocked = enrollment.status === 'locked';
+              const attempt = enrollment.quizAttempts?.[0];
+              const hasResult =
+                isComplete || (enrollment.quizAttempts && enrollment.quizAttempts.length > 0);
+              // A finished course can't slip its deadline any more, so it keeps
+              // the plain date even when that date has passed.
+              const showDueChip =
+                !isComplete && !!enrollment.dueAt && isDueUrgent(enrollment.dueAt);
+
+              return (
+                <TableRow key={enrollment.id}>
+                  <TableCell className={cn(cellCls, 'px-3 md:px-[18px]')}>
+                    <div className="flex items-center gap-3 md:gap-[18px]">
+                      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
+                        <Image
+                          src="/images/icon-course-blue.svg"
+                          alt=""
+                          width={40}
+                          height={40}
+                          aria-hidden="true"
+                          className="object-cover"
+                        />
                       </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <div className="flex w-full max-w-[200px] items-center gap-3">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#edf2f7]">
-                          <div
-                            className="h-full rounded-full bg-primary"
-                            style={{ width: `${enrollment.progress || 0}%` }}
-                          ></div>
-                        </div>
-                        <span className="w-8 text-xs text-[#718096]">
-                          {enrollment.progress || 0}%
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate text-[15.5px] font-semibold tracking-[0.35px] text-[#0d0d12] md:text-[17.5px]">
+                          {enrollment.courseName}
+                        </span>
+                        <span className="truncate text-[13.5px] font-normal text-[#666d80]">
+                          {enrollment.difficulty || 'Advanced'}
                         </span>
                       </div>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      {(enrollment.status === 'completed' || enrollment.progress === 100) &&
-                      enrollment.score >= (enrollment.passingScore || 70) ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#f0fff4] text-[#2f855a]">
-                          <Check className="size-3" />
-                          Passed
-                        </span>
-                      ) : enrollment.status === 'locked' ? (
+                    </div>
+                  </TableCell>
+
+                  <TableCell className={cn(cellCls, 'hidden md:table-cell')}>
+                    <div className="flex w-full max-w-[172px] items-center gap-3">
+                      <div className="h-[7px] flex-1 overflow-hidden rounded-full bg-[#e5e7ea]">
                         <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                            alignItems: 'flex-start',
-                          }}
-                        >
-                          <span
-                            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#fff5f5] text-[#c53030]"
-                            style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
-                          >
-                            <Lock className="size-3" />
-                            Locked
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <span className="w-9 shrink-0 text-[14px] font-medium text-[#666d80]">
+                        {progress}%
+                      </span>
+                    </div>
+                  </TableCell>
+
+                  <TableCell className={cn(cellCls, 'hidden lg:table-cell')}>
+                    {!enrollment.dueAt ? (
+                      <span className="text-[#a4abb8]">&mdash;</span>
+                    ) : showDueChip ? (
+                      <span className={cn(statusPillCls, 'bg-[#fff1f1] text-[#d31616]')}>
+                        <Clock className="size-4 shrink-0" aria-hidden="true" />
+                        Due {formatDate(enrollment.dueAt)}
+                      </span>
+                    ) : (
+                      <span className="text-[#525252]">{formatDate(enrollment.dueAt)}</span>
+                    )}
+                  </TableCell>
+
+                  <TableCell className={cn(cellCls, 'hidden sm:table-cell')}>
+                    {isAttested ? (
+                      <span className={cn(statusPillCls, 'bg-[#eaf2fc] text-[#0e69f3]')}>
+                        <BadgeCheck className="size-4 shrink-0" aria-hidden="true" />
+                        Attested
+                      </span>
+                    ) : hasPassed ? (
+                      <span className={cn(statusPillCls, 'bg-[#eafdf5] text-[#308242]')}>
+                        <Check className="size-4 shrink-0" aria-hidden="true" />
+                        Passed
+                      </span>
+                    ) : isLocked ? (
+                      <div className="flex flex-col items-start gap-1">
+                        <span className={cn(statusPillCls, 'bg-[#fff1f1] text-[#e13737]')}>
+                          <Lock className="size-4 shrink-0" aria-hidden="true" />
+                          Locked
+                        </span>
+                        <span className="text-[11px] font-medium text-[#e13737]">
+                          Limit reached
+                        </span>
+                      </div>
+                    ) : isComplete ? (
+                      <span className={cn(statusPillCls, 'bg-[#fff1f1] text-[#e13737]')}>
+                        <RotateCcw className="size-4 shrink-0" aria-hidden="true" />
+                        Failed
+                      </span>
+                    ) : (
+                      <div className="flex flex-col items-start gap-1">
+                        <span className={cn(statusPillCls, 'bg-[#fffad1] text-[#d8651e]')}>
+                          <Clock className="size-4 shrink-0" aria-hidden="true" />
+                          In progress
+                        </span>
+                        {enrollment.quizAttempts && (
+                          <span className="text-[11px] font-medium text-[#a0aec0]">
+                            Attempt{' '}
+                            {Math.min(
+                              attempt
+                                ? attempt.timeTaken === null
+                                  ? attempt.attemptCount
+                                  : attempt.attemptCount + 1
+                                : 1,
+                              enrollment.allowedAttempts || 99,
+                            )}
+                            {enrollment.allowedAttempts && ` of ${enrollment.allowedAttempts}`}
                           </span>
-                          <span style={{ fontSize: '10px', color: '#E53E3E' }}>Limit reached</span>
-                        </div>
-                      ) : enrollment.status === 'completed' || enrollment.progress === 100 ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#fff5f5] text-[#c53030]">
-                          <X className="size-3" />
-                          Failed
-                        </span>
-                      ) : (
-                        <div
-                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
-                        >
-                          <span style={{ fontSize: '12px', color: '#718096' }}>In Progress</span>
-                          {enrollment.quizAttempts && (
-                            <span style={{ fontSize: '10px', color: '#A0AEC0', marginTop: '2px' }}>
-                              Attempt{' '}
-                              {Math.min(
-                                enrollment.quizAttempts[0]
-                                  ? enrollment.quizAttempts[0].timeTaken === null
-                                    ? enrollment.quizAttempts[0].attemptCount
-                                    : enrollment.quizAttempts[0].attemptCount + 1
-                                  : 1,
-                                enrollment.allowedAttempts || 99,
-                              )}
-                              {enrollment.allowedAttempts && ` of ${enrollment.allowedAttempts}`}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                        {enrollment.status === 'locked' && (
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              setRetakeEnrollment({
-                                id: enrollment.id,
-                                courseName: enrollment.courseName,
-                              })
-                            }
-                          >
-                            <RotateCcw className="size-3.5" />
-                            Retake
-                          </Button>
                         )}
-                        {(enrollment.status === 'completed' ||
-                          enrollment.progress === 100 ||
-                          (enrollment.quizAttempts && enrollment.quizAttempts.length > 0)) && (
+                      </div>
+                    )}
+                  </TableCell>
+
+                  <TableCell className={cn(cellCls, 'px-3 md:px-5')}>
+                    <div className="flex items-center justify-end gap-2 md:gap-3">
+                      {isLocked ? (
+                        <Button
+                          variant="link"
+                          className={cn(rowLinkCls, 'text-[#d92d20] hover:text-[#d92d20]')}
+                          onClick={() =>
+                            setRetakeEnrollment({
+                              id: enrollment.id,
+                              courseName: enrollment.courseName,
+                            })
+                          }
+                        >
+                          Retry
+                        </Button>
+                      ) : (
+                        hasResult && (
                           <Button
-                            variant="outline"
-                            size="sm"
+                            variant="link"
+                            className={rowLinkCls}
                             onClick={() => handleViewResult(enrollment.id)}
-                            disabled={loadingEnrollmentId === enrollment.id}
                             loading={loadingEnrollmentId === enrollment.id}
                           >
                             View
                           </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredEnrollments.length === 0 && (
-                  <EmptyTableState
-                    message="No courses found."
-                    subMessage="This staff member has no enrolled courses."
-                    colSpan={4}
-                    asTableRow
-                  />
-                )}
-              </TableBody>
-            </Table>
-          </>
-        ) : (
-          <div>
-            {loadingCerts ? (
-              <div className="py-12 text-center text-[#718096]">Loading certificates...</div>
-            ) : (
-              <CertificateCardList
-                certificates={certificates}
-                title=""
-                description=""
-                showExport={false}
+                        )
+                      )}
+                      <RowActionsMenu
+                        className="size-8 text-[#7f838f]"
+                        label={`Actions for ${enrollment.courseName}`}
+                        actions={[
+                          {
+                            label: 'View Result',
+                            icon: <ClipboardList className="size-4" />,
+                            disabled: !hasResult || loadingEnrollmentId === enrollment.id,
+                            onSelect: () => handleViewResult(enrollment.id),
+                          },
+                          {
+                            label: 'Assign Retake',
+                            icon: <RotateCcw className="size-4" />,
+                            separatorBefore: true,
+                            // Retakes only exist for locked enrollments (quiz
+                            // attempts exhausted) — assignRetake rejects any
+                            // other status, so don't offer it.
+                            disabled: !isLocked,
+                            onSelect: () =>
+                              setRetakeEnrollment({
+                                id: enrollment.id,
+                                courseName: enrollment.courseName,
+                              }),
+                          },
+                        ]}
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {filteredEnrollments.length === 0 && (
+              <EmptyTableState
+                message="No courses found."
+                subMessage="This staff member has no enrolled courses."
+                colSpan={5}
+                asTableRow
               />
             )}
-          </div>
-        )}
-      </div>
+          </TableBody>
+        </Table>
+      </section>
 
-      <EditStaffModal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        viewerRole={viewerRole}
-        viewerUserId={viewerUserId}
-        staff={{
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role as UserRole,
-          jobTitle: user.jobTitle,
-        }}
-      />
+      <section className={cardCls} aria-labelledby="certificates-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="certificates-heading" className={cardTitleCls}>
+            Certificates Earned
+          </h2>
+          <div className="w-full sm:w-1/2 sm:max-w-[506px]">
+            <Input
+              placeholder="Search for courses..."
+              className={searchInputCls}
+              value={certificateSearchQuery}
+              onChange={(e) => setCertificateSearchQuery(e.target.value)}
+              aria-label="Search certificates"
+              startIcon={<Search aria-hidden="true" />}
+            />
+          </div>
+        </div>
+
+        {loadingCerts ? (
+          <p className="py-12 text-center text-[15px] text-[#666d80]">Loading certificates...</p>
+        ) : (
+          <Table className="table-fixed">
+            <TableHeader>
+              <TableRow className="border-0 hover:bg-transparent">
+                <TableHead
+                  className={cn(headCls, 'w-full rounded-l-[9px] px-3 md:w-[48%] md:px-[18px]')}
+                >
+                  Certificates/Courses
+                </TableHead>
+                <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[27%]')}>
+                  Completion Date
+                </TableHead>
+                <TableHead className={cn(headCls, 'hidden sm:table-cell sm:w-[160px] md:w-[16%]')}>
+                  Status
+                </TableHead>
+                <TableHead
+                  className={cn(
+                    headCls,
+                    'w-[92px] rounded-r-[9px] px-3 text-right md:w-[9%] md:px-5',
+                  )}
+                >
+                  <span className="sr-only">Action</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredCertificates.map((certificate) => (
+                <TableRow key={certificate.id}>
+                  <TableCell className={cn(cellCls, 'px-3 md:px-[18px]')}>
+                    <div className="flex items-center gap-3 md:gap-[18px]">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-[#e4e7ec] bg-white text-[#e0a712]">
+                        <Award className="size-[22px]" aria-hidden="true" />
+                      </span>
+                      <span className="truncate text-[15.5px] font-semibold tracking-[0.35px] text-[#0d0d12] md:text-[17.5px]">
+                        {certificate.course.title}
+                      </span>
+                    </div>
+                  </TableCell>
+
+                  <TableCell className={cn(cellCls, 'hidden md:table-cell')}>
+                    <span className="text-[#3e4558]">{formatDate(certificate.issuedAt)}</span>
+                  </TableCell>
+
+                  <TableCell className={cn(cellCls, 'hidden sm:table-cell')}>
+                    <span className={cn(statusPillCls, 'bg-[#eaf2fc] text-[#0e69f3]')}>
+                      <BadgeCheck className="size-4 shrink-0" aria-hidden="true" />
+                      Approved
+                    </span>
+                  </TableCell>
+
+                  <TableCell className={cn(cellCls, 'px-3 md:px-5')}>
+                    <div className="flex justify-end">
+                      <Button
+                        variant="link"
+                        className={rowLinkCls}
+                        onClick={() => setViewingCertificateId(certificate.id)}
+                      >
+                        View
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {filteredCertificates.length === 0 && (
+                <EmptyTableState
+                  message="No certificates found."
+                  subMessage="This staff member has not earned any certificates yet."
+                  colSpan={4}
+                  asTableRow
+                />
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </section>
 
       <AssignUserCourseModal
         isOpen={isAssignModalOpen}
@@ -604,20 +673,29 @@ export default function StaffProfileClient({
         userName={user.name}
       />
 
+      {viewingCertificateId && (
+        <CertificateModal
+          isOpen={true}
+          onClose={() => setViewingCertificateId(null)}
+          certificateId={viewingCertificateId}
+        />
+      )}
+
       {viewingResult && (
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
           onClick={() => setViewingResult(null)}
         >
           <div
-            className="relative max-h-[90vh] w-[90%] max-w-[800px] overflow-y-auto rounded-2xl bg-white p-6"
+            className="relative max-h-[90vh] w-[90%] max-w-[800px] overflow-y-auto rounded-[17px] bg-white p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={() => setViewingResult(null)}
-              className="absolute right-3 top-3"
+              className="absolute top-3 right-3"
+              aria-label="Close quiz result"
             >
               <X className="size-4" />
             </Button>
@@ -632,14 +710,6 @@ export default function StaffProfileClient({
           </div>
         </div>
       )}
-
-      <RemoveStaffModal
-        isOpen={showRemoveModal}
-        onClose={() => setShowRemoveModal(false)}
-        staffId={user.id}
-        staffName={user.name}
-        staffEmail={user.email}
-      />
     </div>
   );
 }

@@ -140,6 +140,7 @@ export async function getStaffDetails(userId: string) {
         score: e.score ?? 0,
         enrolledAt: e.startedAt,
         completedAt: e.completedAt,
+        dueAt: e.dueAt?.toISOString() ?? null,
         allowedAttempts: e.course.lessons.find((l) => l.quiz)?.quiz?.allowedAttempts ?? undefined,
         passingScore: e.course.lessons.find((l) => l.quiz)?.quiz?.passingScore || 70,
       })),

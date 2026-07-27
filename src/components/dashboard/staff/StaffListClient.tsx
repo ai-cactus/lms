@@ -70,6 +70,9 @@ interface StaffListClientProps {
   inviterRole: Role;
 }
 
+const tableHeadClass =
+  'h-[41px] truncate text-[13px] font-medium tracking-[0.31px] whitespace-nowrap text-[#666d80] sm:text-[15.5px]';
+
 export default function StaffListClient({
   users: initialUsers,
   hasOrganization,
@@ -140,6 +143,14 @@ export default function StaffListClient({
     }
   };
 
+  // Show at most 5 page controls, collapsing the middle with an ellipsis.
+  const pageNumbers = useMemo<(number | '…')[]>(() => {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (currentPage <= 3) return [1, 2, 3, '…', totalPages];
+    if (currentPage >= totalPages - 2) return [1, '…', totalPages - 2, totalPages - 1, totalPages];
+    return [1, '…', currentPage, '…', totalPages];
+  }, [totalPages, currentPage]);
+
   // Calculate relative time (e.g. "2 days ago")
   const getRelativeTime = (date: Date) => {
     const now = new Date();
@@ -158,6 +169,16 @@ export default function StaffListClient({
 
     const diffInMonths = Math.floor(diffInDays / 30);
     return `${diffInMonths} month${diffInMonths > 1 ? 's' : ''} ago`;
+  };
+
+  const openInvite = () => {
+    if (isAtLimit) {
+      setShowWorkerLimitModal(true);
+    } else if (!hasOrganization) {
+      setShowFeatureGate(true);
+    } else {
+      setShowInviteModal(true);
+    }
   };
 
   // Handle Export PDF: generate and email activity report for a staff member
@@ -214,300 +235,8 @@ export default function StaffListClient({
     setTimeout(() => setInviteFeedback(null), 5000);
   };
 
-  return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
-      <div className="mb-6 flex items-start justify-between gap-4 max-sm:flex-col">
-        <div className="flex flex-col">
-          <h1 className="text-2xl font-bold text-foreground">Staff Details</h1>
-          <p className="text-sm text-text-secondary">Here is an overview of your staff details</p>
-          {/* Plan seat usage badge — only shown when the org has a capped plan */}
-          {planLimit !== null && (
-            <p
-              className={cn(
-                'mt-1 text-[13px]',
-                isAtLimit ? 'font-semibold text-error' : 'text-text-secondary',
-              )}
-            >
-              {isAtLimit ? (
-                <>
-                  ⚠️ Worker limit reached &mdash; {totalUsed}/{planLimit} seats used ({planName}{' '}
-                  plan).{' '}
-                  <a href="/dashboard/billing" className="text-primary underline">
-                    Upgrade
-                  </a>{' '}
-                  to add more.
-                </>
-              ) : (
-                <>
-                  {totalUsed}/{planLimit} workers used &bull; {planLimit - totalUsed} seat
-                  {planLimit - totalUsed !== 1 ? 's' : ''} remaining ({planName})
-                </>
-              )}
-            </p>
-          )}
-        </div>
-        {canInvite && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (isAtLimit) {
-                setShowWorkerLimitModal(true);
-              } else if (!hasOrganization) {
-                setShowFeatureGate(true);
-              } else {
-                setShowInviteModal(true);
-              }
-            }}
-          >
-            <UserPlus className="size-4" />
-            Add Workers
-          </Button>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-border bg-background p-6">
-        <div className="mb-6 w-full sm:w-[380px]">
-          <Input
-            className="h-11"
-            placeholder="Search for staff..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            startIcon={<Search aria-hidden="true" />}
-          />
-        </div>
-
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-0">
-              <TableHead className="pl-12">Name</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead className="hidden sm:table-cell text-right pr-12">Date Invited</TableHead>
-              <TableHead className="w-12 text-right pr-4">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {currentUsers.length > 0 ? (
-              currentUsers.map((user) => (
-                <TableRow
-                  key={user.id}
-                  onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
-                  className={user.isPending ? 'cursor-default opacity-85' : 'cursor-pointer'}
-                >
-                  <TableCell className="pl-6">
-                    <div className="flex items-center gap-3">
-                      <div className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-background-secondary text-text-secondary">
-                        {user.avatarUrl ? (
-                          <Image
-                            src={user.avatarUrl}
-                            alt={user.name}
-                            width={32}
-                            height={32}
-                            className="size-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex size-full items-center justify-center text-sm font-semibold">
-                            {(user.name.charAt(0) || user.email.charAt(0)).toUpperCase()}
-                          </div>
-                        )}
-                        {!user.isPending && (
-                          <div className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-background bg-success"></div>
-                        )}
-                      </div>
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-2 font-semibold text-foreground">
-                          {user.email}
-                          {user.isPending &&
-                            (user.isExpired ? (
-                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-warning/10 text-warning tracking-wide">
-                                Expired
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-xl bg-primary/10 text-primary tracking-wide">
-                                Pending
-                              </span>
-                            ))}
-                        </div>
-                        <div className="text-xs text-text-secondary">{user.jobTitle}</div>
-                      </div>
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <span className="inline-flex items-center rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success">
-                      {getRoleDisplayName(user.role as Role)}
-                    </span>
-                  </TableCell>
-
-                  {/* Date cell — hidden on small screens */}
-                  <TableCell className="hidden sm:table-cell text-right text-text-secondary pr-6 whitespace-nowrap">
-                    {getRelativeTime(user.dateInvited)}
-                    {exportFeedback?.id === user.id && (
-                      <div
-                        className={`mt-1 text-[11px] font-medium ${
-                          exportFeedback.ok ? 'text-success' : 'text-error'
-                        }`}
-                      >
-                        {exportFeedback.msg}
-                      </div>
-                    )}
-                    {inviteFeedback?.id === user.id && (
-                      <div
-                        className={`mt-1 text-[11px] font-medium ${
-                          inviteFeedback.ok ? 'text-success' : 'text-error'
-                        }`}
-                      >
-                        {inviteFeedback.msg}
-                      </div>
-                    )}
-                  </TableCell>
-
-                  {/* Kebab action cell — actions are permission-gated; view-only
-                      roles (finance, clinical_director) see no mutating actions. */}
-                  <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
-                    {(() => {
-                      const actions: RowAction[] = user.isPending
-                        ? [
-                            ...(canEditInvite
-                              ? [
-                                  {
-                                    label:
-                                      resendingInviteId === user.id
-                                        ? 'Resending…'
-                                        : 'Resend Invite',
-                                    icon: <Send className="size-4" />,
-                                    disabled: resendingInviteId === user.id,
-                                    onSelect: () => handleResendInvite(user.id),
-                                  },
-                                  {
-                                    label: 'Copy invite link',
-                                    icon: <Copy className="size-4" />,
-                                    disabled: !user.token,
-                                    onSelect: () => handleCopyInviteLink(user),
-                                  },
-                                ]
-                              : []),
-                            ...(canDeleteInvite
-                              ? [
-                                  {
-                                    label: 'Revoke Invite',
-                                    icon: <XCircle className="size-4" />,
-                                    variant: 'destructive' as const,
-                                    separatorBefore: canEditInvite,
-                                    onSelect: () =>
-                                      setRevokeTarget({ id: user.id, email: user.email }),
-                                  },
-                                ]
-                              : []),
-                          ]
-                        : [
-                            {
-                              label: 'View Profile',
-                              icon: <Eye className="size-4" />,
-                              onSelect: () => router.push(`/dashboard/staff/${user.id}`),
-                            },
-                            {
-                              label: exportingUserId === user.id ? 'Exporting…' : 'Export PDF',
-                              icon: <FileText className="size-4" />,
-                              disabled: exportingUserId === user.id,
-                              onSelect: () => handleExportPdf(user.id),
-                            },
-                            ...(canRemoveStaff
-                              ? [
-                                  {
-                                    label: 'Remove Staff',
-                                    icon: <UserMinus className="size-4" />,
-                                    variant: 'destructive' as const,
-                                    separatorBefore: true,
-                                    onSelect: () =>
-                                      setRemoveTarget({
-                                        id: user.id,
-                                        name: user.name,
-                                        email: user.email,
-                                      }),
-                                  },
-                                ]
-                              : []),
-                          ];
-                      return actions.length > 0 ? <RowActionsMenu actions={actions} /> : null;
-                    })()}
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <EmptyTableState
-                message="No staff members found"
-                subMessage="Get started by adding a new staff member to your organization."
-                colSpan={4}
-                asTableRow
-              />
-            )}
-          </TableBody>
-        </Table>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4">
-          <div className="text-sm text-text-secondary">
-            Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
-            {Math.min(startIndex + itemsPerPage, totalEntries)} of {totalEntries} entries
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={currentPage === 1}
-              onClick={() => handlePageChange(currentPage - 1)}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <Button
-                key={page}
-                variant={page === currentPage ? 'default' : 'outline'}
-                size="icon-sm"
-                onClick={() => handlePageChange(page)}
-              >
-                {page}
-              </Button>
-            ))}
-
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={currentPage === totalPages || totalPages === 0}
-              onClick={() => handlePageChange(currentPage + 1)}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2 text-sm text-text-secondary">
-            Show
-            <Select
-              value={itemsPerPage.toString()}
-              onValueChange={(value) => {
-                setItemsPerPage(Number(value));
-                setCurrentPage(1);
-              }}
-            >
-              <SelectTrigger size="sm" className="w-[72px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5</SelectItem>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-              </SelectContent>
-            </Select>
-            entries
-          </div>
-        </div>
-      </div>
-
+  const modals = (
+    <>
       <OrganizationActivationModal
         hasOrganization={hasOrganization}
         mode="feature_gate"
@@ -550,6 +279,400 @@ export default function StaffListClient({
         planName={planName}
         planLimit={planLimit || 0}
       />
+    </>
+  );
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
+      <header className="mb-[30px] flex flex-col gap-[5px]">
+        <div className="flex items-center gap-4">
+          <h1 className="min-w-0 flex-1 text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
+            Staff Details
+          </h1>
+          {canInvite && (
+            <Button
+              variant="outline"
+              onClick={openInvite}
+              className="h-12 shrink-0 gap-2 rounded-xl border-[#d4d4d4] px-5 text-[15.5px] font-semibold text-primary hover:text-primary"
+            >
+              <UserPlus className="size-[23px]" />
+              Add Staff
+            </Button>
+          )}
+        </div>
+        <p className="text-sm leading-tight font-medium text-[#a0aec0]">
+          Here is an overview of your staff details
+        </p>
+        {/* Plan seat usage badge — only shown when the org has a capped plan */}
+        {planLimit !== null && (
+          <p
+            className={cn(
+              'text-[13px]',
+              isAtLimit ? 'font-semibold text-error' : 'text-text-secondary',
+            )}
+          >
+            {isAtLimit ? (
+              <>
+                ⚠️ Worker limit reached &mdash; {totalUsed}/{planLimit} seats used ({planName}{' '}
+                plan).{' '}
+                <a href="/dashboard/billing" className="text-primary underline">
+                  Upgrade
+                </a>{' '}
+                to add more.
+              </>
+            ) : (
+              <>
+                {totalUsed}/{planLimit} workers used &bull; {planLimit - totalUsed} seat
+                {planLimit - totalUsed !== 1 ? 's' : ''} remaining ({planName})
+              </>
+            )}
+          </p>
+        )}
+      </header>
+
+      {initialUsers.length === 0 ? (
+        <div className="flex min-h-[520px] flex-1 flex-col items-center justify-center rounded-[17px] border border-[#dfe1e6] bg-white px-4 py-10 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] md:min-h-[700px] md:px-[21px]">
+          <div className="flex w-full max-w-[482px] flex-col items-center gap-5">
+            <Image
+              src="/images/courses-empty-state.svg"
+              alt=""
+              width={226}
+              height={226}
+              aria-hidden="true"
+              className="size-[170px] md:size-[226px]"
+            />
+            <div className="flex flex-col gap-[5px] text-center">
+              <p className="text-[20px] leading-[1.32] font-semibold text-[#11181c] md:text-[24.5px]">
+                No staff added yet
+              </p>
+              <p className="text-[15px] leading-[1.45] text-[#475367] md:text-[16px]">
+                Invite your managers and workers to get started. You&apos;ll assign courses and
+                track their training progress right from this list.
+              </p>
+            </div>
+            {canInvite && (
+              <Button
+                size="lg"
+                onClick={openInvite}
+                className="h-12 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
+              >
+                Add your first staff
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-[17px] bg-white pt-[21px] pb-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)]">
+          <div className="mb-6 w-full sm:ml-auto sm:w-[470px]">
+            <Input
+              className="h-[38px] rounded-[8px] border-[#dfe1e6] pl-9 text-[15px] placeholder:text-[#a4abb8]"
+              type="search"
+              placeholder="Search for staff..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              aria-label="Search staff"
+              startIcon={<Search aria-hidden="true" />}
+            />
+          </div>
+
+          <Table className="table-fixed">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent border-0">
+                <TableHead
+                  className={cn(tableHeadClass, 'w-full rounded-l-[9px] px-3 sm:w-auto sm:px-6')}
+                >
+                  Name
+                </TableHead>
+                {/* Role and Date collapse away on phones — the mobile design keeps
+                    only the identity column and the row menu. */}
+                <TableHead
+                  className={cn(
+                    tableHeadClass,
+                    'hidden sm:table-cell sm:w-[180px] sm:px-5 xl:w-[276px]',
+                  )}
+                >
+                  Role
+                </TableHead>
+                <TableHead
+                  className={cn(
+                    tableHeadClass,
+                    'hidden px-5 sm:table-cell sm:w-[170px] lg:w-[200px]',
+                  )}
+                >
+                  Date Invited
+                </TableHead>
+                {/* Kebab column — intentionally unlabelled, matching the design */}
+                <TableHead
+                  className={cn(tableHeadClass, 'w-[56px] rounded-r-[9px] px-0 sm:w-[70px]')}
+                >
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {currentUsers.length > 0 ? (
+                currentUsers.map((user) => (
+                  <TableRow
+                    key={user.id}
+                    onClick={() => !user.isPending && router.push(`/dashboard/staff/${user.id}`)}
+                    className={cn(
+                      'h-[71px]',
+                      user.isPending ? 'cursor-default opacity-85' : 'cursor-pointer',
+                    )}
+                  >
+                    <TableCell className="px-3 py-0 sm:px-6">
+                      <div className="flex items-center gap-3">
+                        {/* Presence dot lives on the outer wrapper — the inner circle
+                            clips its own overflow to keep the avatar image round. */}
+                        <div className="relative size-10 shrink-0">
+                          <div className="flex size-full items-center justify-center overflow-hidden rounded-full bg-[#f1f5f9] text-[#666d80]">
+                            {user.avatarUrl ? (
+                              <Image
+                                src={user.avatarUrl}
+                                alt=""
+                                width={40}
+                                height={40}
+                                className="size-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-[15px] font-semibold">
+                                {(user.name.charAt(0) || user.email.charAt(0)).toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          {!user.isPending && (
+                            <span
+                              aria-hidden="true"
+                              className="absolute right-0 bottom-0 size-2.5 rounded-full border-2 border-white bg-success"
+                            />
+                          )}
+                        </div>
+                        <div className="flex min-w-0 flex-col gap-1">
+                          <span className="flex items-center gap-2 truncate text-[14px] font-semibold tracking-[0.31px] text-[#0d0d12] sm:text-[15.5px]">
+                            <span className="truncate">{user.name || user.email}</span>
+                            {user.isPending &&
+                              (user.isExpired ? (
+                                <span className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-warning">
+                                  Expired
+                                </span>
+                              ) : (
+                                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-primary">
+                                  Pending
+                                </span>
+                              ))}
+                          </span>
+                          <span className="truncate text-[12px] font-normal tracking-[0.27px] text-[#666d80] sm:text-[13.5px]">
+                            {user.email}
+                          </span>
+                        </div>
+                      </div>
+                    </TableCell>
+
+                    <TableCell className="hidden py-0 sm:table-cell sm:px-5">
+                      <span
+                        title={getRoleDisplayName(user.role as Role)}
+                        className="inline-flex h-[29px] max-w-full items-center truncate rounded-full bg-[#dcfce7] px-2 text-[12px] font-semibold text-[#15803d] sm:px-[14px] sm:text-[13px]"
+                      >
+                        {getRoleDisplayName(user.role as Role)}
+                      </span>
+                    </TableCell>
+
+                    {/* Date cell — hidden on small screens */}
+                    <TableCell className="hidden px-5 py-0 text-[15.5px] font-medium whitespace-nowrap text-[#666d80] sm:table-cell">
+                      {getRelativeTime(user.dateInvited)}
+                      {exportFeedback?.id === user.id && (
+                        <span
+                          className={cn(
+                            'mt-1 block text-[11px] font-medium',
+                            exportFeedback.ok ? 'text-success' : 'text-error',
+                          )}
+                        >
+                          {exportFeedback.msg}
+                        </span>
+                      )}
+                      {inviteFeedback?.id === user.id && (
+                        <span
+                          className={cn(
+                            'mt-1 block text-[11px] font-medium',
+                            inviteFeedback.ok ? 'text-success' : 'text-error',
+                          )}
+                        >
+                          {inviteFeedback.msg}
+                        </span>
+                      )}
+                    </TableCell>
+
+                    {/* Kebab action cell — actions are permission-gated; view-only
+                        roles (finance, clinical_director) see no mutating actions. */}
+                    <TableCell
+                      className="px-0 py-0 text-right sm:pr-[19px]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {(() => {
+                        const actions: RowAction[] = user.isPending
+                          ? [
+                              ...(canEditInvite
+                                ? [
+                                    {
+                                      label:
+                                        resendingInviteId === user.id
+                                          ? 'Resending…'
+                                          : 'Resend Invite',
+                                      icon: <Send className="size-4" />,
+                                      disabled: resendingInviteId === user.id,
+                                      onSelect: () => handleResendInvite(user.id),
+                                    },
+                                    {
+                                      label: 'Copy invite link',
+                                      icon: <Copy className="size-4" />,
+                                      disabled: !user.token,
+                                      onSelect: () => handleCopyInviteLink(user),
+                                    },
+                                  ]
+                                : []),
+                              ...(canDeleteInvite
+                                ? [
+                                    {
+                                      label: 'Revoke Invite',
+                                      icon: <XCircle className="size-4" />,
+                                      variant: 'destructive' as const,
+                                      separatorBefore: canEditInvite,
+                                      onSelect: () =>
+                                        setRevokeTarget({ id: user.id, email: user.email }),
+                                    },
+                                  ]
+                                : []),
+                            ]
+                          : [
+                              {
+                                label: 'View Profile',
+                                icon: <Eye className="size-4" />,
+                                onSelect: () => router.push(`/dashboard/staff/${user.id}`),
+                              },
+                              {
+                                label: exportingUserId === user.id ? 'Exporting…' : 'Export PDF',
+                                icon: <FileText className="size-4" />,
+                                disabled: exportingUserId === user.id,
+                                onSelect: () => handleExportPdf(user.id),
+                              },
+                              ...(canRemoveStaff
+                                ? [
+                                    {
+                                      label: 'Remove Staff',
+                                      icon: <UserMinus className="size-4" />,
+                                      variant: 'destructive' as const,
+                                      separatorBefore: true,
+                                      onSelect: () =>
+                                        setRemoveTarget({
+                                          id: user.id,
+                                          name: user.name,
+                                          email: user.email,
+                                        }),
+                                    },
+                                  ]
+                                : []),
+                            ];
+                        return actions.length > 0 ? (
+                          <RowActionsMenu
+                            className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
+                            actions={actions}
+                          />
+                        ) : null;
+                      })()}
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <EmptyTableState
+                  message="No staff match your search."
+                  subMessage="Try a different name or email."
+                  colSpan={4}
+                  asTableRow
+                />
+              )}
+            </TableBody>
+          </Table>
+
+          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-between sm:gap-4">
+            <span className="text-xs font-medium tracking-[-0.36px] text-[#9a9a9a]">
+              Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
+              {Math.min(startIndex + itemsPerPage, totalEntries)} of {totalEntries} entries
+            </span>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="size-10 rounded-[8px] border-[#d9d9d9] bg-white"
+                disabled={currentPage === 1}
+                onClick={() => handlePageChange(currentPage - 1)}
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+
+              {pageNumbers.map((page, i) =>
+                page === '…' ? (
+                  <span
+                    key={`ellipsis-${i}`}
+                    className="flex size-10 items-center justify-center text-xs font-medium tracking-[-0.36px] text-[#1c1c1c]"
+                  >
+                    …
+                  </span>
+                ) : (
+                  <Button
+                    key={page}
+                    variant={page === currentPage ? 'default' : 'ghost'}
+                    size="icon-sm"
+                    className="size-10 rounded-[8px] text-xs font-medium tracking-[-0.36px] data-[variant=ghost]:text-[#1c1c1c]"
+                    onClick={() => handlePageChange(page)}
+                    aria-current={page === currentPage ? 'page' : undefined}
+                  >
+                    {page}
+                  </Button>
+                ),
+              )}
+
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="size-10 rounded-[8px] border-[#d9d9d9] bg-white"
+                disabled={currentPage === totalPages || totalPages === 0}
+                onClick={() => handlePageChange(currentPage + 1)}
+                aria-label="Next page"
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs font-medium tracking-[-0.36px] text-[#1c1c1c]">
+              Show
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(value) => {
+                  setItemsPerPage(Number(value));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[66px] rounded-[8px] border-[#d9d9d9] px-3 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                </SelectContent>
+              </Select>
+              entries
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modals}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 /**
- * Regression tests for the RBAC permission gate on the "Add Workers" affordance.
+ * Regression tests for the RBAC permission gate on the "Add Staff" affordance.
  *
- * `StaffListClient` now hides the "Add Workers" button (and skips mounting
+ * `StaffListClient` now hides the "Add Staff" button (and skips mounting
  * `InviteStaffModal` entirely) for any inviter role that lacks `invite.create`
  * — the server route still enforces this independently, but the UI must not
  * offer a dead-end action to roles like `finance` or any worker role.
@@ -54,34 +54,34 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('StaffListClient — Add Workers visibility (invite.create gate)', () => {
+describe('StaffListClient — Add Staff visibility (invite.create gate)', () => {
   it.each<Role>(['owner', 'supervisor', 'hr'])(
-    'shows Add Workers and mounts InviteStaffModal for %s',
+    'shows Add Staff and mounts InviteStaffModal for %s',
     (role) => {
       renderList(role);
 
-      expect(screen.getByRole('button', { name: /add workers/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /add staff/i })).toBeInTheDocument();
       expect(screen.getByTestId('invite-staff-modal')).toBeInTheDocument();
     },
   );
 
-  it('hides Add Workers for finance (no invite.create permission)', () => {
+  it('hides Add Staff for finance (no invite.create permission)', () => {
     renderList('finance');
 
-    expect(screen.queryByRole('button', { name: /add workers/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add staff/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId('invite-staff-modal')).not.toBeInTheDocument();
   });
 
-  it('hides Add Workers for a worker role (nurse)', () => {
+  it('hides Add Staff for a worker role (nurse)', () => {
     renderList('nurse');
 
-    expect(screen.queryByRole('button', { name: /add workers/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add staff/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId('invite-staff-modal')).not.toBeInTheDocument();
   });
 
-  it('hides Add Workers for clinical_director (no invite.create permission)', () => {
+  it('hides Add Staff for clinical_director (no invite.create permission)', () => {
     renderList('clinical_director');
 
-    expect(screen.queryByRole('button', { name: /add workers/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add staff/i })).not.toBeInTheDocument();
   });
 });
