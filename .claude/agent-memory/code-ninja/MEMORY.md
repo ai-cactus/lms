@@ -1,5 +1,7 @@
 # Code-Ninja Memory Index
 
+- [npm install needs --allow-remote=all](gotcha_npm_install_allow_remote.md) — lockfile has ~293 npmmirror.com URLs; npm 12 aborts with EALLOWREMOTE without the flag.
+- [npm audit high gate](project_npm_audit_gate.md) — cleared via overrides; the load-bearing `minimatch@10` pin breaks ~12 currently-disabled react/import/jsx-a11y rules.
 - [Auth instance-selector vs DB role](auth_instance_vs_role.md) — the `'admin'|'worker'` cookie/routing selector is NOT the DB role; don't conflate them.
 - [Build type-checks everything](build_typecheck_scope.md) — `next build` type-checks scripts/ and tests too; `npm run lint` only covers src/.
 - [RBAC role model](rbac_role_model.md) — 13 category-aware DB roles (5 manager + 8 worker, uniform worker perms); DEFAULT_SELF_SERVE_WORKER_ROLE + snake↔camel conversion in role-utils.ts.
