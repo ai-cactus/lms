@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { wizardControlClass, wizardInputClass, wizardTitleClass } from './wizardFormClasses';
 import { logger } from '@/lib/logger';
 
 interface Category {
@@ -83,22 +84,18 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
   };
 
   return (
-    <div className="mx-auto max-w-[800px] px-4 py-8">
-      <div className="mb-8 text-center">
-        <h2 className="font-heading text-[28px] font-bold tracking-[-0.5px] text-foreground">
-          What category best fits the course you&apos;re creating?
-        </h2>
-      </div>
+    <div className="flex w-full flex-col gap-10 md:gap-14">
+      <h2 className={wizardTitleClass}>What category best fits the course you&apos;re creating?</h2>
 
-      <div className="mx-auto mb-8 max-w-[480px]">
-        <label className="mb-1.5 block text-[13px] font-medium text-text-secondary">
-          Category <span className="text-primary">*</span>
+      <div className="flex flex-col gap-[11px] md:px-[120px]">
+        <label className="flex items-center gap-1.5 text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
+          Category <span className="text-[#4254e3]">*</span>
         </label>
         <Select
           value={isCreating ? 'custom' : selectedCategoryId}
           onValueChange={handleSelectChange}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger className={wizardControlClass}>
             <SelectValue placeholder="Select an option" />
           </SelectTrigger>
           <SelectContent>
@@ -112,28 +109,30 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
       </div>
 
       {isCreating && (
-        <div className="mt-8 rounded-xl border-[1.5px] border-border bg-bg-secondary p-6">
-          <h3 className="mb-5 text-base font-semibold text-foreground">Create Custom Category</h3>
+        <div className="rounded-[12px] border-[1.5px] border-[#e5e7ea] bg-bg-secondary p-6 md:mx-[120px]">
+          <h3 className="mb-5 text-base font-semibold text-foreground md:text-[18px]">
+            Create Custom Category
+          </h3>
           <form onSubmit={handleCreateCustom}>
-            <div className="mb-4">
-              <label className="mb-1.5 block text-[13px] font-medium text-text-secondary">
+            <div className="mb-4 flex flex-col gap-[11px]">
+              <label className="text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
                 Category Name
               </label>
               <input
                 type="text"
-                className="box-border w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_3px_rgba(76,110,245,0.1)]"
+                className={wizardInputClass}
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
                 placeholder="e.g. Specialized Tool Training"
                 required
               />
             </div>
-            <div className="mb-4">
-              <label className="mb-1.5 block text-[13px] font-medium text-text-secondary">
+            <div className="mb-4 flex flex-col gap-[11px]">
+              <label className="text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
                 Description (Optional)
               </label>
               <textarea
-                className="box-border min-h-[72px] w-full resize-y rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_3px_rgba(76,110,245,0.1)]"
+                className={`${wizardInputClass} min-h-[96px] resize-y`}
                 rows={2}
                 value={customDesc}
                 onChange={(e) => setCustomDesc(e.target.value)}
@@ -141,10 +140,10 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setIsCreating(false)}>
+              <Button type="button" variant="ghost" onClick={() => setIsCreating(false)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="default" size="sm" disabled={!customName.trim()}>
+              <Button type="submit" variant="default" disabled={!customName.trim()}>
                 Save Category
               </Button>
             </div>
