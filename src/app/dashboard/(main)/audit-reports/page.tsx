@@ -60,41 +60,42 @@ export default async function AuditorPackPage() {
     ? await Promise.all([getAuditorOverviewStats(), getAuditorCourses()])
     : [{ totalCourses: 0, totalStaffAssigned: 0, completionRate: 0 }, []];
 
+  if (!hasAccess) {
+    return (
+      <div className="flex flex-col gap-10">
+        <div className="flex flex-col gap-[5px]">
+          <h1 className="text-[28px] font-semibold leading-[1.31] tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
+            Audit Reports
+          </h1>
+          <p className="text-[14px] font-medium leading-none text-[#a0aec0]">
+            Generate a scannable evidence document for auditors.
+          </p>
+        </div>
+        <AuditorBillingGateWrapper />
+      </div>
+    );
+  }
+
   return (
     <div>
-      <div className="mb-7">
-        <h1 className="mb-1 text-[28px] font-bold text-foreground">Audit Reports</h1>
-        <p className="text-sm text-text-tertiary">
-          Generate a scannable evidence document for auditors.
-        </p>
-      </div>
-
-      {hasAccess ? (
-        <>
-          {showBanner && (
-            <div className="relative mb-8 flex min-h-[180px] flex-col justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#3a2fd8] px-6 py-8 text-white sm:px-12 sm:py-10">
-              {/* Decorative background shapes */}
-              <div className="pointer-events-none absolute -right-5 -top-5 opacity-15" aria-hidden>
-                <Circle className="size-48" strokeWidth={20} />
-              </div>
-              <p className="mb-1.5 text-sm opacity-90">
-                {getGreeting()}, {firstName}!
-              </p>
-              <h2 className="mb-2.5 max-w-[540px] text-[28px] font-bold leading-tight">
-                Welcome to Your Auditor Workspace!
-              </h2>
-              <p className="max-w-[480px] text-sm leading-relaxed opacity-85">
-                Generate scannable evidence documents for auditors based on your learning
-                management.
-              </p>
-            </div>
-          )}
-
-          <AuditorPackClient initialStats={initialStats} initialCourses={initialCourses} />
-        </>
-      ) : (
-        <AuditorBillingGateWrapper />
+      {showBanner && (
+        <div className="relative mb-8 flex min-h-[180px] flex-col justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#3a2fd8] px-6 py-8 text-white sm:px-12 sm:py-10">
+          <div className="pointer-events-none absolute -right-5 -top-5 opacity-15" aria-hidden>
+            <Circle className="size-48" strokeWidth={20} />
+          </div>
+          <p className="mb-1.5 text-sm opacity-90">
+            {getGreeting()}, {firstName}!
+          </p>
+          <h2 className="mb-2.5 max-w-[540px] text-[28px] font-bold leading-tight">
+            Welcome to Your Auditor Workspace!
+          </h2>
+          <p className="max-w-[480px] text-sm leading-relaxed opacity-85">
+            Generate scannable evidence documents for auditors based on your learning management.
+          </p>
+        </div>
       )}
+
+      <AuditorPackClient initialStats={initialStats} initialCourses={initialCourses} />
     </div>
   );
 }

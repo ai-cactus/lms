@@ -1,49 +1,38 @@
-import React from 'react';
+const bar = 'animate-pulse rounded-full bg-[#f0f0f0]';
+const block = 'animate-pulse rounded-[11px] bg-[#f0f0f0]';
 
 export default function Loading() {
   return (
-    <div className="mx-auto w-full max-w-[1000px]">
-      <div className="mb-6">
-        <div className="h-7 w-[180px] animate-pulse rounded-md bg-[#cbd5e0]" />
+    <div className="flex flex-col pb-16">
+      <div className="px-6 pt-7 lg:px-[107px] lg:pt-[51px]">
+        <div className={`h-[22px] w-[166px] ${bar}`} />
       </div>
 
-      <div className="flex flex-col gap-10 rounded-[20px] bg-white p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] sm:p-10 lg:px-[100px] lg:py-[50px]">
-        <div className="h-12 w-full max-w-[340px] animate-pulse rounded-[10px] bg-background-secondary" />
-
-        <div className="mb-2.5 flex items-center gap-6">
-          <div className="size-24 animate-pulse rounded-full bg-[#cbd5e0]" />
-          <div className="mt-[60px] -ml-5 size-8 rounded-full border-[3px] border-white bg-[#a0aec0]" />
+      <div className="mx-auto mt-7 flex w-full max-w-[960px] flex-col gap-8 px-6 lg:mt-[42px] lg:px-0">
+        <div className="flex items-center gap-[46px]">
+          <div className={`h-[31px] w-[156px] ${bar}`} />
+          <div className={`h-[31px] w-[201px] ${bar}`} />
         </div>
 
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
-          <div className="flex flex-col gap-4">
-            <div className="h-5 w-[140px] animate-pulse rounded-md bg-[#cbd5e0]" />
-            <div className="h-14 w-full animate-pulse rounded-[10px] border-2 border-border bg-background-secondary" />
-          </div>
-          <div className="flex flex-col gap-4">
-            <div className="h-5 w-[140px] animate-pulse rounded-md bg-[#cbd5e0]" />
-            <div className="h-14 w-full animate-pulse rounded-[10px] border-2 border-border bg-background-secondary" />
-          </div>
+        <div className="flex flex-col gap-[27px]">
+          {[0, 1, 2, 3].map((row) => (
+            <div key={row} className="flex flex-col gap-[16px]">
+              <div className={`h-[15px] w-[89px] ${bar}`} />
+              {row === 0 ? (
+                <div className="grid grid-cols-1 gap-[17px] sm:grid-cols-2">
+                  <div className={`h-[49px] w-full ${block}`} />
+                  <div className={`h-[49px] w-full ${block}`} />
+                </div>
+              ) : (
+                <div className={`h-[49px] w-full ${block}`} />
+              )}
+            </div>
+          ))}
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="h-5 w-[140px] animate-pulse rounded-md bg-[#cbd5e0]" />
-          <div className="h-14 w-full animate-pulse rounded-[10px] border-2 border-border bg-background-secondary" />
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <div className="h-5 w-[140px] animate-pulse rounded-md bg-[#cbd5e0]" />
-          <div className="h-14 w-full animate-pulse rounded-[10px] border-2 border-border bg-background-secondary" />
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <div className="h-5 w-[140px] animate-pulse rounded-md bg-[#cbd5e0]" />
-          <div className="h-14 w-full animate-pulse rounded-[10px] border-2 border-border bg-background-secondary" />
-        </div>
-
-        <div className="mt-5 flex justify-end gap-4">
-          <div className="h-10 w-[100px] animate-pulse rounded-[10px] bg-background-secondary" />
-          <div className="h-10 w-[140px] animate-pulse rounded-[10px] bg-background-secondary" />
+        <div className="flex justify-end gap-[17px]">
+          <div className={`h-[49px] w-[133px] ${block}`} />
+          <div className={`h-[49px] w-[193px] ${block}`} />
         </div>
       </div>
     </div>

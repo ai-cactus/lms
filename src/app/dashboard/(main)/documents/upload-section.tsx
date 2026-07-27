@@ -10,8 +10,11 @@ export default function UploadSection() {
 
   return (
     <>
-      <Button onClick={() => setIsOpen(true)}>
-        <Plus className="size-5" />
+      <Button
+        onClick={() => setIsOpen(true)}
+        className="h-12 shrink-0 gap-2 rounded-xl px-[23px] text-[15.5px] font-semibold tracking-[-0.02em]"
+      >
+        <Plus className="size-[25px]" />
         Upload New
       </Button>
       {isOpen && <UploadModal onClose={() => setIsOpen(false)} />}

@@ -34,7 +34,7 @@ interface SettingsClientProps {
 }
 
 const TAB_TRIGGER_CLASS =
-  'flex-none -mb-px rounded-none border-0 border-b-2 border-transparent bg-transparent px-1 pb-3 text-sm font-medium text-text-secondary shadow-none after:hidden hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none';
+  '-mb-px flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-0.5 pb-2.5 text-sm font-medium text-[#818898] shadow-none after:hidden hover:text-foreground data-[state=active]:border-[#5c47ff] data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-[#5c47ff] data-[state=active]:shadow-none';
 
 export default function SettingsClient({
   teamMembers,
@@ -47,16 +47,21 @@ export default function SettingsClient({
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   return (
-    <div className="mx-auto flex w-full max-w-[1200px] flex-col">
-      <div className="mb-6 flex flex-col gap-1">
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-sm text-text-secondary">
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
+      <header className="mb-8 flex flex-col gap-[5px]">
+        <h1 className="text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
+          Settings
+        </h1>
+        <p className="text-sm leading-tight font-medium text-[#a0aec0]">
           Manage your facility, team access, and account preferences
         </p>
-      </div>
+      </header>
 
       <Tabs defaultValue="users">
-        <TabsList className="mb-8 h-auto w-full justify-start gap-6 rounded-none border-b border-border bg-transparent p-0">
+        <TabsList
+          variant="line"
+          className="mb-10 h-auto w-full justify-start gap-8 rounded-none border-b border-[#f0f2f5] bg-transparent p-0"
+        >
           <TabsTrigger value="users" className={TAB_TRIGGER_CLASS}>
             Users &amp; Permissions
           </TabsTrigger>

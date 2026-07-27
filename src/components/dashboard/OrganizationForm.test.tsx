@@ -102,7 +102,7 @@ describe('OrganizationForm — Worker Onboarding join-code generator gating', ()
   it('shows Section 4 / join-code generator for admins and fetches the current code', async () => {
     render(<OrganizationForm initialData={baseOrg} isAdmin={true} />);
 
-    expect(screen.getByText('Worker Onboarding')).toBeInTheDocument();
+    expect(screen.getByText(/worker onboarding/i)).toBeInTheDocument();
     expect(screen.getByText(/organization join code/i)).toBeInTheDocument();
     await waitFor(() => expect(getOrganizationCode).toHaveBeenCalledTimes(1));
   });
@@ -110,7 +110,7 @@ describe('OrganizationForm — Worker Onboarding join-code generator gating', ()
   it('hides Section 4 / join-code generator for non-admins and never fetches a code', () => {
     render(<OrganizationForm initialData={baseOrg} isAdmin={false} />);
 
-    expect(screen.queryByText('Worker Onboarding')).not.toBeInTheDocument();
+    expect(screen.queryByText(/worker onboarding/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/organization join code/i)).not.toBeInTheDocument();
     expect(getOrganizationCode).not.toHaveBeenCalled();
   });

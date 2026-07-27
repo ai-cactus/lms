@@ -12,7 +12,7 @@ import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import { Button } from '@/components/ui/button';
 import { sanitizeHtml } from '@/lib/sanitize';
-import { TriangleAlert } from 'lucide-react';
+import { Loader2, TriangleAlert } from 'lucide-react';
 
 import {
   CourseWizardData,
@@ -523,14 +523,23 @@ export default function Step5Review({
 
   if (error && !generatedContent) {
     return (
-      <div className="flex flex-row-reverse max-md:flex-col h-screen w-full bg-background-secondary text-[#1a1a1a] overflow-hidden font-sans items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-red-500 mb-2">Generation Failed</h2>
-          <p className="text-[#6B7280] mb-4">{error}</p>
-          <Button variant="default" loading={isGenerating} onClick={handleRetry}>
-            Try Again
-          </Button>
+      <div className="flex w-full flex-1 flex-col items-center justify-center gap-6 px-5 py-24 text-center">
+        <div className="flex flex-col gap-3">
+          <h2 className="text-[26px] font-bold leading-[1.33] tracking-[-0.02em] text-[#383838] md:text-[36px]">
+            Generation Failed
+          </h2>
+          <p className="text-[15px] font-medium leading-[1.44] text-[#424242] md:text-base">
+            {error}
+          </p>
         </div>
+        <Button
+          variant="default"
+          loading={isGenerating}
+          onClick={handleRetry}
+          className="h-[52px] rounded-[12px] px-10 text-base font-semibold md:h-[56px] md:text-[18px]"
+        >
+          Try Again
+        </Button>
       </div>
     );
   }
@@ -539,28 +548,33 @@ export default function Step5Review({
   // (ref is declared near the top of the component, above all early returns)
   if (isGenerating) {
     return (
-      <div className="flex flex-row-reverse max-md:flex-col h-screen w-full bg-background-secondary text-[#1a1a1a] overflow-hidden font-sans items-center justify-center">
-        <div className="text-center max-w-[420px]">
-          <div className="w-10 h-10 border-[3px] border-[#E5E7EB] border-t-[#1a1a1a] rounded-full animate-spin mx-auto mb-6" />
-          <h2 className="text-xl font-bold text-[#1A202C] mb-2">Creating your course and quiz…</h2>
-          <p className="text-[#4A5568] text-[15px] leading-relaxed mb-2">
+      <div className="mx-auto flex w-full max-w-[1120px] flex-1 flex-col items-center gap-10 px-5 pt-24 pb-[60px] text-center md:pt-[170px]">
+        <div className="flex flex-col items-center gap-3">
+          <h2 className="text-[26px] font-bold leading-[1.33] tracking-[-0.02em] text-[#383838] md:text-[36px]">
+            Your course is being created…
+          </h2>
+          <p className="max-w-[640px] text-[15px] font-medium leading-[1.44] text-[#424242] md:text-base">
             We&apos;re reading your documents, pulling out the key points, and turning them into a
-            clear course with a quiz.
+            clear course with a quiz. You&apos;ll be able to review and edit everything before
+            publishing.
           </p>
-          <p className="text-slate-400 text-[13px]">
-            You&apos;ll be able to review and edit everything before publishing.
-          </p>
-          <p className="text-slate-400 text-xs mt-2">
+        </div>
+
+        <div className="flex w-full max-w-[460px] flex-col items-center gap-4 rounded-[12px] border-[1.5px] border-[#e5e7ea] px-8 py-10">
+          <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
+          <p className="text-base text-[#666d80]">
             You can go back to the dashboard — generation will continue and you can resume from
             there.
           </p>
-          <button
-            onClick={() => handleBackToDashboard(activeJobIdRef.current ?? '')}
-            className="inline-block mt-8 text-sm font-semibold text-[#4C6EF5] bg-none border-none cursor-pointer underline"
-          >
-            ← Back to Dashboard
-          </button>
         </div>
+
+        <Button
+          variant="default"
+          onClick={() => handleBackToDashboard(activeJobIdRef.current ?? '')}
+          className="h-[52px] w-full max-w-[300px] rounded-[12px] px-10 text-base font-semibold md:h-[56px] md:text-[18px]"
+        >
+          Goto Dashboard
+        </Button>
       </div>
     );
   }

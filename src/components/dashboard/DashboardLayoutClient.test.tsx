@@ -22,7 +22,10 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
   useRouter: () => ({ push: vi.fn() }),
 }));
-vi.mock('@/components/dashboard/Header', () => ({ default: () => null }));
+vi.mock('@/components/dashboard/NavBar', () => ({
+  DefaultDashboardNavBar: () => null,
+  ProfileDashboardNavBar: () => null,
+}));
 vi.mock('@/components/dashboard/SidebarModeSwitcher', () => ({
   default: ({ mode }: { mode: string }) => <div data-testid="mode-switcher" data-mode={mode} />,
 }));
@@ -31,7 +34,7 @@ import DashboardLayoutClient from './DashboardLayoutClient';
 
 function renderLayout(role: string | undefined) {
   return render(
-    <DashboardLayoutClient userEmail="user@acme.com" fullName="Jane Doe" role={role}>
+    <DashboardLayoutClient fullName="Jane Doe" role={role}>
       <div>content</div>
     </DashboardLayoutClient>,
   );

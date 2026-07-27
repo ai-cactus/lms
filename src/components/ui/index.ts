@@ -1,7 +1,5 @@
-// Modal-coordination context (priority-based; functional logic, not styling) — kept post-migration.
 export { useModalContext } from './legacy/ModalContext';
 
-// Custom components (no shadcn equivalent)
 export { default as Logo } from './Logo';
 export { default as FileUpload } from './FileUpload';
 export { default as TagInput } from './TagInput';

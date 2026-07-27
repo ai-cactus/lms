@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Field, Alert } from '@/components/ui';
 import { changePassword } from '@/app/actions/user';
+import { actionButtonClass, fieldClass } from './profile-tab-styles';
 
 interface ChangePasswordTabProps {
   onSuccess?: () => void;
@@ -23,7 +24,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
 
   if (authProvider && authProvider !== 'credentials') {
     return (
-      <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+      <div className="flex flex-col items-center justify-center py-16 text-center">
         <h3 className="mb-2 text-xl font-semibold text-foreground">Password Managed Externally</h3>
         <p className="max-w-[400px] text-sm leading-relaxed text-text-secondary">
           Your account is linked using a third-party provider (e.g., Microsoft). You cannot change
@@ -89,48 +90,34 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
   };
 
   return (
-    <div className="w-full max-w-[600px] px-10 pb-10">
-      {message && (
-        <Alert variant={message.type} className="mb-6">
-          {message.text}
-        </Alert>
-      )}
+    <div className="flex w-full flex-col gap-[27.639px]">
+      {message && <Alert variant={message.type}>{message.text}</Alert>}
 
-      <div className="mb-6">
-        <Field label="Current Password">
-          <PasswordInput
-            value={currentPassword}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setCurrentPassword(e.target.value)
-            }
-            placeholder="•••••••••"
-          />
-        </Field>
-      </div>
+      <Field className={fieldClass} label="Current Password">
+        <PasswordInput
+          value={currentPassword}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)}
+          placeholder="•••••••••"
+        />
+      </Field>
 
-      <div className="mb-6">
-        <Field label="New Password">
-          <PasswordInput
-            value={newPassword}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
-            placeholder="•••••••••"
-          />
-        </Field>
-      </div>
+      <Field className={fieldClass} label="New Password">
+        <PasswordInput
+          value={newPassword}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
+          placeholder="•••••••••"
+        />
+      </Field>
 
-      <div className="mb-6">
-        <Field label="Confirm New Password">
-          <PasswordInput
-            value={confirmPassword}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setConfirmPassword(e.target.value)
-            }
-            placeholder="•••••••••"
-          />
-        </Field>
-      </div>
+      <Field className={fieldClass} label="Confirm New Password">
+        <PasswordInput
+          value={confirmPassword}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmPassword(e.target.value)}
+          placeholder="•••••••••"
+        />
+      </Field>
 
-      <div className="mb-8 flex flex-col gap-2">
+      <div className="flex flex-col gap-[10px]">
         {[
           { text: 'At least 12 characters', valid: newPassword.length >= 12 },
           { text: 'At least one uppercase letter', valid: /[A-Z]/.test(newPassword) },
@@ -141,12 +128,16 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
             valid: /[^A-Za-z0-9]/.test(newPassword),
           },
         ].map((req, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <CheckCircle2
-              className={`size-4 shrink-0 ${req.valid ? 'text-success' : 'text-text-tertiary'}`}
+          <div key={i} className="flex items-center gap-[10px]">
+            <span
               aria-hidden="true"
-            />
-            <span className="text-[13px] text-text-secondary">{req.text}</span>
+              className={`flex size-[18px] shrink-0 items-center justify-center rounded-[4px] ${
+                req.valid ? 'bg-success text-white' : 'border-[1.5px] border-[#e5e7ea]'
+              }`}
+            >
+              {req.valid && <Check className="size-[13px]" strokeWidth={3} />}
+            </span>
+            <span className="text-[15.28px] leading-[20.372px] text-foreground">{req.text}</span>
           </div>
         ))}
       </div>
@@ -157,7 +148,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
           variant="ghost"
           onClick={handleDiscard}
           disabled={isLoading}
-          className="text-primary"
+          className={`${actionButtonClass} text-primary hover:bg-primary/5`}
         >
           Discard
         </Button>
@@ -166,7 +157,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
           onClick={handleSave}
           disabled={isLoading}
           loading={isLoading}
-          className="min-w-[140px]"
+          className={actionButtonClass}
         >
           Save Changes
         </Button>

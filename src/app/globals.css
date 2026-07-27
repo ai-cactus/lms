@@ -334,6 +334,13 @@
     font-variation-settings: inherit;
   }
 
+  /* Tailwind v4 preflight makes buttons cursor:default; the design expects
+     pointer on every enabled interactive control (tabs, dialog close, etc.). */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
   /* --- Body Defaults (Desktop) --- */
   body {
     color: var(--text-primary);

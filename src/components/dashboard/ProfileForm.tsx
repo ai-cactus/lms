@@ -21,6 +21,7 @@ import OrganizationForm from './OrganizationForm';
 import FacilityForm from './FacilityForm';
 import { ChangePasswordTab } from './ChangePasswordTab';
 import { TwoFactorAuthTab } from './TwoFactorAuthTab';
+import { actionButtonClass, fieldClass } from './profile-tab-styles';
 
 interface ProfileData {
   id: string;
@@ -81,7 +82,7 @@ export default function ProfileForm({
   canReadFacility = false,
 }: ProfileFormProps) {
   const tabs: { key: TabKey; label: string }[] = [
-    { key: 'profile', label: 'EDIT PROFILE' },
+    { key: 'profile', label: 'PROFILE' },
     { key: 'organization', label: 'YOUR ORGANIZATION' },
     ...(canReadFacility ? [{ key: 'facility' as const, label: 'YOUR FACILITY' }] : []),
     { key: 'password', label: 'CHANGE PASSWORD' },
@@ -201,60 +202,74 @@ export default function ProfileForm({
   const isAdmin = isAdminRole(initialData.role);
 
   return (
-    <div className="flex min-h-[calc(100vh-100px)] flex-col items-center justify-center p-6">
-      <div className="mb-6 w-full max-w-[900px]">
+    <div className="flex flex-col pb-16">
+      <div className="flex px-6 pt-7 lg:px-[107px] lg:pt-[51px]">
         <Link
           href="/dashboard"
-          className="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-primary"
+          className="inline-flex items-center gap-[11px] text-base leading-[22px] font-medium text-foreground hover:text-primary"
         >
           <ArrowLeft className="size-5" aria-hidden="true" />
           Back to dashboard
         </Link>
       </div>
 
-      <div className="flex min-h-[600px] w-full max-w-[900px] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
-        <div className="px-6 sm:px-10">
-          <div className="flex items-center gap-8 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`relative -bottom-px shrink-0 cursor-pointer border-b-2 px-1 py-3 text-[13px] font-semibold whitespace-nowrap uppercase tracking-[0.05em] transition-all ${
-                  activeTab === tab.key
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-text-secondary'
+      <div className="mx-auto mt-7 w-full max-w-[960px] px-6 lg:mt-[42px] lg:px-0">
+        <div
+          role="tablist"
+          className="flex items-center gap-[10px] overflow-x-auto border-b-[1.114px] border-[#ebedf0] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className="relative flex h-[43px] shrink-0 cursor-pointer flex-col items-center px-[10px]"
+            >
+              <span
+                className={`flex shrink-0 items-center justify-center rounded-[6.682px] px-[17.818px] py-[8.909px] text-[15.591px] leading-[22.273px] font-semibold tracking-[1.5591px] whitespace-nowrap transition-colors ${
+                  activeTab === tab.key ? 'text-[#1e293b]' : 'text-[#64748b] hover:text-[#1e293b]'
                 }`}
               >
                 {tab.label}
-              </button>
-            ))}
-          </div>
+              </span>
+              {activeTab === tab.key && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-[10px] bottom-[-1.114px] h-[3.341px] rounded-t-[4.455px] bg-[#2e70e8]"
+                />
+              )}
+            </button>
+          ))}
         </div>
 
-        {activeTab === 'profile' && (
-          <div className="flex flex-col items-center gap-8 p-6 md:flex-row md:items-start md:gap-16 md:p-10">
-            <div className="flex w-auto shrink-0 justify-center pt-2 md:w-[120px]">
-              <div className="relative flex size-[120px] items-center justify-center rounded-full bg-background-secondary text-[48px] font-semibold text-text-secondary shadow-md">
-                {avatarDisplayUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={avatarDisplayUrl}
-                    alt="Profile Avatar"
-                    className="size-full rounded-full object-cover"
-                  />
-                ) : formData.first_name || formData.last_name ? (
-                  `${formData.first_name?.[0] || ''}${formData.last_name?.[0] || ''}`.toUpperCase()
-                ) : (
-                  'U'
-                )}
+        <div className="mt-7 lg:mt-[42px] lg:px-5">
+          {activeTab === 'profile' && (
+            <div className="flex flex-col items-start gap-8 md:flex-row">
+              <div className="relative w-[125px] shrink-0">
+                <div className="flex size-[121.68px] items-center justify-center overflow-hidden rounded-full bg-background-secondary text-[48px] font-semibold text-text-secondary">
+                  {avatarDisplayUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={avatarDisplayUrl}
+                      alt="Profile Avatar"
+                      className="size-full object-cover"
+                    />
+                  ) : formData.first_name || formData.last_name ? (
+                    `${formData.first_name?.[0] || ''}${formData.last_name?.[0] || ''}`.toUpperCase()
+                  ) : (
+                    'U'
+                  )}
+                </div>
                 <Button
                   size="icon-sm"
-                  className="absolute right-0 bottom-0 size-8 rounded-full border-[3px] border-white"
+                  className="absolute top-[79.65px] left-[97.35px] size-[27.655px] rounded-full"
                   type="button"
                   onClick={handleAvatarClick}
+                  aria-label="Change profile photo"
                 >
-                  <Pencil className="size-3.5" aria-hidden="true" />
+                  <Pencil className="size-[13.27px]" aria-hidden="true" />
                 </Button>
                 <input
                   type="file"
@@ -264,36 +279,39 @@ export default function ProfileForm({
                   className="hidden"
                 />
               </div>
-            </div>
 
-            <form onSubmit={handleSubmit} className="flex max-w-[800px] flex-1 flex-col">
-              <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <Field
-                  label="First Name"
-                  error={!formData.first_name.trim() ? 'First name is required' : undefined}
-                >
-                  <Input
-                    name="first_name"
-                    value={formData.first_name}
-                    onChange={handleChange}
-                    placeholder="Jane"
-                  />
-                </Field>
-                <Field
-                  label="Last Name"
-                  error={!formData.last_name.trim() ? 'Last name is required' : undefined}
-                >
-                  <Input
-                    name="last_name"
-                    value={formData.last_name}
-                    onChange={handleChange}
-                    placeholder="Doe"
-                  />
-                </Field>
-              </div>
+              <form
+                onSubmit={handleSubmit}
+                className="flex w-full min-w-0 flex-1 flex-col gap-[27.639px]"
+              >
+                <div className="grid grid-cols-1 gap-[16.584px] sm:grid-cols-2">
+                  <Field
+                    className={fieldClass}
+                    label="First Name"
+                    error={!formData.first_name.trim() ? 'First name is required' : undefined}
+                  >
+                    <Input
+                      name="first_name"
+                      value={formData.first_name}
+                      onChange={handleChange}
+                      placeholder="Jane"
+                    />
+                  </Field>
+                  <Field
+                    className={fieldClass}
+                    label="Last Name"
+                    error={!formData.last_name.trim() ? 'Last name is required' : undefined}
+                  >
+                    <Input
+                      name="last_name"
+                      value={formData.last_name}
+                      onChange={handleChange}
+                      placeholder="Doe"
+                    />
+                  </Field>
+                </div>
 
-              <div className="mb-6">
-                <Field label="Company">
+                <Field className={fieldClass} label="Company">
                   <Input
                     name="company_name"
                     value={organizationData?.name || formData.company_name || ''}
@@ -302,16 +320,12 @@ export default function ProfileForm({
                     placeholder="Your company name"
                   />
                 </Field>
-              </div>
 
-              <div className="mb-6">
-                <Field label="Email Address">
+                <Field className={fieldClass} label="Email Address">
                   <Input name="email" value={formData.email} disabled />
                 </Field>
-              </div>
 
-              <div className="mb-6">
-                <Field label="Job Title">
+                <Field className={fieldClass} label="Job Title">
                   <Input
                     name="jobTitle"
                     value={formData.jobTitle || ''}
@@ -319,54 +333,54 @@ export default function ProfileForm({
                     placeholder="e.g. Compliance Officer"
                   />
                 </Field>
-              </div>
 
-              {/* Country & Phone (facility location, read-only here) */}
-              <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <Field label="Country">
-                  <Input value={facilityData?.country || ''} disabled placeholder="Your country" />
-                </Field>
-                <Field label="Phone">
-                  <Input
-                    value={facilityData?.phone || ''}
-                    disabled
-                    placeholder="Your phone number"
-                  />
-                </Field>
-              </div>
+                {/* Country & Phone (facility location, read-only here) */}
+                <div className="grid grid-cols-1 gap-[16.584px] sm:grid-cols-2">
+                  <Field className={fieldClass} label="Country">
+                    <Input
+                      value={facilityData?.country || ''}
+                      disabled
+                      placeholder="Your country"
+                    />
+                  </Field>
+                  <Field className={fieldClass} label="Phone">
+                    <Input
+                      value={facilityData?.phone || ''}
+                      disabled
+                      placeholder="Your phone number"
+                    />
+                  </Field>
+                </div>
 
-              <div className="mb-6">
-                <Field label="Business Address">
+                <Field className={fieldClass} label="Business Address">
                   <Input
                     value={facilityData?.address || ''}
                     disabled
                     placeholder="Your business address"
                   />
                 </Field>
-              </div>
 
-              <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
-                <Field label="City">
-                  <Input value={facilityData?.city || ''} disabled placeholder="Your city" />
-                </Field>
-                <Field label="State">
-                  <Input value={facilityData?.state || ''} disabled placeholder="Your state" />
-                </Field>
-                <Field label="Zip Code">
-                  <Input value={facilityData?.zipCode || ''} disabled placeholder="Your zip code" />
-                </Field>
-              </div>
+                <div className="grid grid-cols-1 gap-[16.584px] sm:grid-cols-3">
+                  <Field className={fieldClass} label="City">
+                    <Input value={facilityData?.city || ''} disabled placeholder="Your city" />
+                  </Field>
+                  <Field className={fieldClass} label="State">
+                    <Input value={facilityData?.state || ''} disabled placeholder="Your state" />
+                  </Field>
+                  <Field className={fieldClass} label="Zip Code">
+                    <Input
+                      value={facilityData?.zipCode || ''}
+                      disabled
+                      placeholder="Your zip code"
+                    />
+                  </Field>
+                </div>
 
-              {message && (
-                <Alert variant={message.type} className="mb-6">
-                  {message.text}
-                </Alert>
-              )}
+                {message && <Alert variant={message.type}>{message.text}</Alert>}
 
-              {isDirty && (
-                <div className="mt-8 flex justify-end gap-4">
+                <div className="mt-[4.361px] flex justify-end gap-4">
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     type="button"
                     onClick={(e) => {
                       e.preventDefault();
@@ -374,36 +388,38 @@ export default function ProfileForm({
                       setAvatarUrl(baseAvatarUrl);
                       setAvatarDisplayUrl(initialData.avatarDisplayUrl || null);
                     }}
-                    className="border-primary text-primary"
+                    className={`${actionButtonClass} text-primary hover:bg-primary/5`}
                     disabled={isLoading}
                   >
                     Discard
                   </Button>
                   <Button
                     type="submit"
-                    disabled={!isValid || isLoading}
+                    disabled={!isValid || !isDirty || isLoading}
                     loading={isLoading}
-                    className="min-w-[140px]"
+                    className={actionButtonClass}
                   >
                     Save Changes
                   </Button>
                 </div>
-              )}
-            </form>
-          </div>
-        )}
+              </form>
+            </div>
+          )}
 
-        {activeTab === 'organization' && (
-          <OrganizationForm initialData={organizationData || null} isAdmin={isAdmin} />
-        )}
+          {activeTab === 'organization' && (
+            <OrganizationForm initialData={organizationData || null} isAdmin={isAdmin} />
+          )}
 
-        {activeTab === 'facility' && canReadFacility && (
-          <FacilityForm initialData={facilityData || null} />
-        )}
+          {activeTab === 'facility' && canReadFacility && (
+            <FacilityForm initialData={facilityData || null} />
+          )}
 
-        {activeTab === 'password' && <ChangePasswordTab authProvider={initialData.authProvider} />}
+          {activeTab === 'password' && (
+            <ChangePasswordTab authProvider={initialData.authProvider} />
+          )}
 
-        {activeTab === '2fa' && <TwoFactorAuthTab userEmail={initialData.email} />}
+          {activeTab === '2fa' && <TwoFactorAuthTab userEmail={initialData.email} />}
+        </div>
       </div>
 
       <Dialog

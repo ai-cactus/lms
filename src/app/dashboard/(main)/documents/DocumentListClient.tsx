@@ -21,6 +21,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Alert } from '@/components/ui/alert';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -97,44 +105,40 @@ function getFileIcon(mimeType: string, filename: string) {
     filename.endsWith('.docx') ||
     filename.endsWith('.doc');
 
+  // Solid file glyph: `fill` paints the sheet, `text-white` the rules inside it.
   return (
     <FileText
       aria-hidden="true"
       className={cn(
-        'size-[22px]',
-        isPdf ? 'text-[#EF4444]' : isDoc ? 'text-[#3B82F6]' : 'text-[#94A3B8]',
+        'size-[29px] shrink-0 text-white',
+        isPdf ? 'fill-[#f04438]' : isDoc ? 'fill-[#444ce7]' : 'fill-[#94a3b8]',
       )}
     />
   );
 }
 
-function uploaderLabel(user: DocumentUploader | null | undefined): string {
-  if (!user) return '—';
-  const fullName = [user.profile?.firstName, user.profile?.lastName]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
-  return fullName || user.email;
-}
+const tableHeadClass =
+  'h-[41px] truncate text-[13px] font-medium tracking-[0.31px] whitespace-nowrap text-[#666d80] sm:text-[15.5px]';
 
 function StatusBadge({ status }: { status: DocumentLifecycleStatus }) {
   if (status === 'converted') {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
-        <CheckCircle2 className="size-3.5" />
+      <span className="inline-flex h-[33px] items-center gap-[5.5px] rounded-full bg-[#eafdf5] px-2 text-[12px] sm:text-[13px] font-semibold whitespace-nowrap text-[#308242]">
+        <CheckCircle2 aria-hidden="true" className="size-5 shrink-0 fill-[#13a000] text-white" />
         {DOCUMENT_STATUS_LABELS.converted}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+    <span className="inline-flex h-[33px] items-center gap-1.5 rounded-full bg-[#fffad1] px-[10px] text-[13px] sm:px-[13px] sm:text-[14px] font-semibold whitespace-nowrap text-[#d8651e]">
+      <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />
       {DOCUMENT_STATUS_LABELS.uploaded}
     </span>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Rename modal (inline lightweight implementation)
+// Rename modal
 // ---------------------------------------------------------------------------
 function RenameModal({
   docId,
@@ -171,44 +175,41 @@ function RenameModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/45 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Rename document"
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className="w-full max-w-[420px] rounded-xl bg-white p-6 shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
-        <h2 className="mb-4 text-lg font-semibold text-[#111827]">Rename Document</h2>
-        <form onSubmit={handleSubmit}>
-          <input
-            className="w-full rounded-lg border border-[#d1d5db] px-3.5 py-2.5 text-sm text-[#111827] outline-none transition-[border-color] focus:border-[#4731f7] focus:ring-[3px] focus:ring-[rgba(71,49,247,0.1)] disabled:opacity-60 box-border"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoFocus
-            disabled={isPending}
-            aria-label="New document name"
-          />
-          {error && <p className="mt-1.5 text-[0.8125rem] text-[#dc2626]">{error}</p>}
-          <div className="mt-5 flex justify-end gap-3">
-            <button
-              type="button"
-              className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2 text-sm text-[#374151] transition-colors hover:bg-[#f9fafb] disabled:opacity-60 disabled:cursor-not-allowed"
-              onClick={onClose}
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Rename Document</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          <div className="flex flex-col gap-1.5">
+            <Input
+              className="h-11"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
               disabled={isPending}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded-lg border-0 bg-[#4731f7] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#3b27d4] disabled:opacity-60 disabled:cursor-not-allowed"
-              disabled={isPending}
-            >
-              {isPending ? 'Saving…' : 'Save'}
-            </button>
+              aria-label="New document name"
+            />
+            {error && <Alert variant="error">{error}</Alert>}
           </div>
+
+          <DialogFooter>
+            <Button variant="ghost" type="button" onClick={onClose} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={isPending}>
+              {isPending ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -334,10 +335,10 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
         </p>
       )}
 
-      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
-        <div className="mb-6 w-full sm:w-[380px]">
+      <div className="rounded-xl border border-[#dfe1e6] bg-white p-[14px] sm:p-[21px]">
+        <div className="mb-6 w-full sm:w-[470px]">
           <Input
-            className="h-11"
+            className="h-[38px] rounded-[8px] border-[#dfe1e6] pl-9 text-[15px] placeholder:text-[#a4abb8]"
             type="search"
             placeholder="Search for document..."
             value={searchQuery}
@@ -350,14 +351,33 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
           />
         </div>
 
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent border-0">
-              <TableHead>Document Name</TableHead>
-              <TableHead className="hidden lg:table-cell">Uploaded By</TableHead>
-              <TableHead className="hidden sm:table-cell">Date Uploaded</TableHead>
-              <TableHead className="hidden md:table-cell">Status</TableHead>
-              <TableHead className="text-right">Action</TableHead>
+              <TableHead className={cn(tableHeadClass, 'rounded-l-[9px] px-1 sm:px-[18px]')}>
+                Document Name
+              </TableHead>
+              <TableHead
+                className={cn(
+                  tableHeadClass,
+                  'hidden px-5 sm:table-cell sm:w-[160px] lg:w-[200px]',
+                )}
+              >
+                Date Uploaded
+              </TableHead>
+              <TableHead
+                className={cn(tableHeadClass, 'w-[104px] px-1 sm:w-[170px] sm:px-5 lg:w-[190px]')}
+              >
+                Status
+              </TableHead>
+              <TableHead
+                className={cn(
+                  tableHeadClass,
+                  'w-[44px] rounded-r-[9px] px-0 text-right sm:w-[80px] sm:px-2 lg:w-[254px] lg:px-[18px]',
+                )}
+              >
+                Action
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -374,28 +394,24 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                   <TableRow
                     key={doc.id}
                     onClick={() => handleRowClick(doc.id)}
-                    className="cursor-pointer"
+                    className="h-[71px] cursor-pointer"
                   >
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#f1f5f9]">
-                          {getFileIcon(doc.mimeType, doc.filename)}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-[#1a202c]">{doc.filename}</div>
-                          <div className="text-xs text-[#718096]">
+                    <TableCell className="px-1 py-0 sm:px-[18px]">
+                      <div className="flex items-center gap-3 sm:gap-[18px]">
+                        {getFileIcon(doc.mimeType, doc.filename)}
+                        <div className="flex min-w-0 flex-col gap-1">
+                          <span className="truncate text-[14px] font-semibold tracking-[0.31px] text-[#0d0d12] sm:text-[15.5px]">
+                            {doc.filename}
+                          </span>
+                          <span className="truncate text-[12px] font-normal tracking-[0.27px] text-[#666d80] sm:text-[13.5px]">
                             {formatFileSize(doc.size)}
                             {latest?.version && ` • v${latest.version}`}
-                          </div>
+                          </span>
                         </div>
                       </div>
                     </TableCell>
 
-                    <TableCell className="text-[#6b7280] whitespace-nowrap hidden lg:table-cell">
-                      {uploaderLabel(doc.user)}
-                    </TableCell>
-
-                    <TableCell className="text-[#6b7280] whitespace-nowrap hidden sm:table-cell">
+                    <TableCell className="hidden truncate px-5 py-0 text-[15px] font-medium whitespace-nowrap text-[#0d0d12] sm:table-cell lg:text-[17px]">
                       {new Date(doc.updatedAt).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
@@ -403,23 +419,27 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                       })}
                     </TableCell>
 
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell className="px-1 py-0 sm:px-5">
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge status={status} />
                         {hasPHI && (
                           <span
-                            className="inline-flex items-center gap-1.5 rounded-full bg-error/10 px-2.5 py-1 text-xs font-medium text-error"
+                            className="inline-flex h-[33px] items-center gap-1.5 rounded-full bg-[#fbe7e7] px-[13px] text-[14px] font-semibold whitespace-nowrap text-[#e13737]"
                             title="This document was flagged as containing PHI"
                           >
-                            <ShieldAlert className="size-3.5" />
+                            <ShieldAlert aria-hidden="true" className="size-4 shrink-0" />
                             PHI Flagged
                           </span>
                         )}
                       </div>
                     </TableCell>
 
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <TableCell
+                      className="px-0 py-0 text-right sm:px-2 lg:px-[18px]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <RowActionsMenu
+                        className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
                         actions={[
                           {
                             label: 'View',
@@ -427,7 +447,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                             onSelect: () => handleRowClick(doc.id),
                           },
                           {
-                            label: 'Edit Name',
+                            label: 'Rename',
                             icon: <Pencil className="size-4" />,
                             onSelect: () => handleRenameClick(doc),
                           },
@@ -451,7 +471,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                 subMessage={
                   searchQuery ? 'Try a different search term.' : 'Upload a document to get started.'
                 }
-                colSpan={5}
+                colSpan={4}
                 asTableRow
               />
             )}
@@ -459,16 +479,17 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
         </Table>
 
         {totalEntries > 0 && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
-            <span className="text-sm text-[#718096]">
+          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-between sm:gap-4">
+            <span className="text-xs font-medium tracking-[-0.36px] text-[#9a9a9a]">
               Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, totalEntries)} of{' '}
               {totalEntries} entries
             </span>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="icon-sm"
+                className="size-10 rounded-[8px] border-[#d9d9d9] bg-white"
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
                 aria-label="Previous page"
@@ -478,14 +499,18 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
 
               {pageNumbers.map((n, i) =>
                 n === '…' ? (
-                  <span key={`ellipsis-${i}`} className="px-1 text-[#718096]">
+                  <span
+                    key={`ellipsis-${i}`}
+                    className="flex size-10 items-center justify-center text-xs font-medium tracking-[-0.36px] text-[#1c1c1c]"
+                  >
                     …
                   </span>
                 ) : (
                   <Button
                     key={n}
-                    variant={n === currentPage ? 'default' : 'outline'}
+                    variant={n === currentPage ? 'default' : 'ghost'}
                     size="icon-sm"
+                    className="size-10 rounded-[8px] text-xs font-medium tracking-[-0.36px] data-[variant=ghost]:text-[#1c1c1c]"
                     onClick={() => handlePageChange(n as number)}
                     aria-current={n === currentPage ? 'page' : undefined}
                   >
@@ -497,6 +522,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
               <Button
                 variant="outline"
                 size="icon-sm"
+                className="size-10 rounded-[8px] border-[#d9d9d9] bg-white"
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages || totalPages === 0}
                 aria-label="Next page"
@@ -505,7 +531,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
               </Button>
             </div>
 
-            <div className="flex items-center gap-2 text-sm text-[#718096]">
+            <div className="flex items-center gap-3 text-xs font-medium tracking-[-0.36px] text-[#1c1c1c]">
               Show
               <Select
                 value={itemsPerPage.toString()}
@@ -514,7 +540,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                   setCurrentPage(1);
                 }}
               >
-                <SelectTrigger size="sm" className="w-[72px]">
+                <SelectTrigger className="w-[66px] rounded-[8px] border-[#d9d9d9] px-3 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

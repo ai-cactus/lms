@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Self-host the pdf.js worker so it is served same-origin. The CSP allows
@@ -14,6 +15,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
 ).toString();
+
+const toolbarButtonClass = 'size-9 rounded-[8px] border-[#d9d9d9] bg-white';
 
 interface PdfViewerProps {
   fileUrl: string;
@@ -30,47 +33,55 @@ export default function PdfViewer({ fileUrl }: PdfViewerProps) {
   }
 
   return (
-    <div className="flex w-full flex-col items-center overflow-hidden rounded-lg border border-border bg-white">
-      <div className="flex w-full items-center justify-between border-b border-border bg-bg-secondary px-6 py-3">
-        <div className="flex items-center gap-3">
+    <div className="flex w-full flex-col items-center overflow-hidden rounded-xl border border-[#dfe1e6] bg-white">
+      <div className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-[#dfe1e6] bg-[#f8f9fb] px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            size="sm"
+            size="icon-sm"
+            className={toolbarButtonClass}
             onClick={() => setPageNumber((prev) => Math.max(prev - 1, 1))}
             disabled={pageNumber <= 1}
+            aria-label="Previous page"
           >
-            &larr; Prev
+            <ChevronLeft className="size-4" />
           </Button>
-          <span className="min-w-[100px] text-center text-sm font-medium text-text-secondary">
+          <span className="min-w-[100px] text-center text-xs font-medium tracking-[-0.36px] text-[#666d80]">
             Page {pageNumber} of {numPages || '--'}
           </span>
           <Button
             variant="outline"
-            size="sm"
+            size="icon-sm"
+            className={toolbarButtonClass}
             onClick={() => setPageNumber((prev) => Math.min(prev + 1, numPages || 1))}
             disabled={pageNumber >= (numPages || 1)}
+            aria-label="Next page"
           >
-            Next &rarr;
+            <ChevronRight className="size-4" />
           </Button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            size="sm"
+            size="icon-sm"
+            className={toolbarButtonClass}
             onClick={() => setScale((s) => Math.max(0.5, s - 0.25))}
+            aria-label="Zoom out"
           >
-            -
+            <Minus className="size-4" />
           </Button>
-          <span className="min-w-[40px] text-center text-sm font-medium">
+          <span className="min-w-[44px] text-center text-xs font-medium tracking-[-0.36px] text-[#1c1c1c]">
             {Math.round(scale * 100)}%
           </span>
           <Button
             variant="outline"
-            size="sm"
+            size="icon-sm"
+            className={toolbarButtonClass}
             onClick={() => setScale((s) => Math.min(3.0, s + 0.25))}
+            aria-label="Zoom in"
           >
-            +
+            <Plus className="size-4" />
           </Button>
         </div>
       </div>
