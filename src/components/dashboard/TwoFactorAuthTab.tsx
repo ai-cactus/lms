@@ -177,13 +177,13 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
   };
 
   if (isLoading) {
-    return <div className="p-10 text-center">Loading MFA status...</div>;
+    return <div className="py-10 text-text-secondary">Loading MFA status...</div>;
   }
 
   // --- RECOVERY CODES VIEW ---
   if (recoveryCodes) {
     return (
-      <div className="w-full max-w-[600px] px-10 pb-10">
+      <div className="flex w-full flex-col">
         <h3 className="mb-4 text-xl font-semibold">Save your recovery codes</h3>
         <p className="mb-6 text-sm leading-normal text-text-secondary">
           Recovery codes can be used to access your account if you lose access to your email or
@@ -211,7 +211,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
   // --- SETUP WIZARD VIEW ---
   if (isSetupMode) {
     return (
-      <div className="w-full max-w-[600px] px-10 pb-10">
+      <div className="flex w-full flex-col">
         <h3 className="mb-6 text-xl font-semibold">Check your email</h3>
         {message && (
           <Alert variant={message.type} className="mb-6">
@@ -256,7 +256,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
   // --- DISABLE CONFIRMATION VIEW ---
   if (isDisableMode) {
     return (
-      <div className="w-full max-w-[600px] px-10 pb-10">
+      <div className="flex w-full flex-col">
         <h3 className="mb-2 text-xl font-semibold">Disable Two-Factor Authentication</h3>
         <p className="mb-6 text-sm leading-normal text-text-secondary">
           {disableCodeSent
@@ -321,12 +321,16 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
 
   // --- ENABLED / DISABLED DEFAULT VIEW ---
   return (
-    <div className="w-full max-w-[600px] px-10 pb-10">
+    <div className="flex w-full flex-col">
       {message && (
         <Alert variant={message.type} className="mb-6">
           {message.text}
         </Alert>
       )}
+
+      <h3 className="mb-4 text-[16.584px] leading-[22.111px] font-semibold text-foreground">
+        Two-factor authentication
+      </h3>
 
       {isEnabled ? (
         <div>
@@ -339,10 +343,10 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
             >
               <div className="absolute top-0.5 left-[22px] size-5 rounded-full bg-white shadow-sm transition-all duration-200" />
             </div>
-            <span className="text-[15px] font-semibold text-foreground">On</span>
+            <span className="text-base font-semibold text-foreground">On</span>
           </div>
 
-          <div className="mb-6 flex items-center gap-2 text-sm text-text-secondary">
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-base text-foreground">
             <span>2FA is enabled on your Theraptly account.</span>
             <button
               onClick={() => {
@@ -356,30 +360,36 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
             </button>
           </div>
 
-          <p className="text-sm text-foreground">
+          <p className="text-base text-foreground">
             We&apos;ll send a verification code to your email anytime you log in on a device we
             don&apos;t recognize.
           </p>
         </div>
       ) : (
         <div>
-          <div className="mb-6 flex items-center justify-between rounded-[10px] border border-border p-6">
-            <div className="flex items-center gap-4">
-              <div className="flex size-10 items-center justify-center rounded-[10px] bg-background-secondary text-text-secondary">
-                <Mail className="size-5" aria-hidden="true" />
+          <div className="mb-4 flex h-[114px] items-center justify-between gap-4 rounded-[10px] border border-border px-[22px]">
+            <div className="flex items-center gap-5">
+              <div className="flex size-[43.44px] shrink-0 items-center justify-center rounded-[10px] bg-background-secondary text-foreground">
+                <Mail className="size-[23px]" aria-hidden="true" />
               </div>
               <div>
-                <h4 className="m-0 mb-1 text-[15px] font-semibold">Email Verification</h4>
-                <p className="m-0 text-[13px] text-text-secondary">
+                <h4 className="m-0 mb-[7px] text-base leading-5 font-semibold text-foreground">
+                  Email Verification
+                </h4>
+                <p className="m-0 text-[15px] leading-[15px] text-text-secondary">
                   One-time code sent to your email
                 </p>
               </div>
             </div>
-            <Button onClick={handleSetupInit} loading={isActionLoading}>
+            <Button
+              onClick={handleSetupInit}
+              loading={isActionLoading}
+              className="h-11 rounded-[10px] px-6 text-base font-semibold"
+            >
               Set up 2FA
             </Button>
           </div>
-          <p className="text-sm text-text-secondary">2FA is disabled on your Theraptly account.</p>
+          <p className="text-base text-foreground">2FA is disabled on your Theraptly account.</p>
         </div>
       )}
     </div>
