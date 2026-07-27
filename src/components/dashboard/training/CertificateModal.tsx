@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Download, Loader2 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Download, Loader2, X } from 'lucide-react';
+import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { getCertificateDetails } from '@/app/actions/certificate';
 import CertificateDocument, { CERT_HEIGHT, CERT_WIDTH } from './certificate/CertificateDocument';
@@ -37,8 +37,8 @@ export default function CertificateModal({
   const [exporting, setExporting] = useState(false);
 
   const docRef = useRef<HTMLDivElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0.82);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0);
 
   useEffect(() => {
     if (!isOpen || !certificateId) return;
@@ -72,9 +72,12 @@ export default function CertificateModal({
     };
   }, [isOpen, certificateId]);
 
-  // Scale the fixed-size certificate down to fit the dialog width.
+  // The certificate is authored at a fixed A4-landscape size, so it is scaled to
+  // whatever width the card gets. The card is measured rather than the certificate's
+  // own wrapper — a percentage-width wrapper would be inflated to the certificate's
+  // intrinsic 1123px by the dialog's min-content sizing.
   useLayoutEffect(() => {
-    const el = wrapRef.current;
+    const el = cardRef.current;
     if (!el) return;
     const update = () => setScale(el.clientWidth / CERT_WIDTH);
     update();
@@ -96,6 +99,16 @@ export default function CertificateModal({
     }
   };
 
+  // The dialog content spans the viewport so the close button can sit in the page's
+  // top-right corner, which means Radix no longer sees clicks beside the certificate
+  // as "outside" — dismiss them here instead.
+  const handleBackdropClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) onClose();
+    },
+    [onClose],
+  );
+
   if (!isOpen) return null;
 
   return (
@@ -105,55 +118,60 @@ export default function CertificateModal({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[92vh] gap-0 overflow-y-auto p-0 sm:max-w-[1040px]">
-        <DialogHeader className="flex flex-row items-center justify-between border-b border-border px-6 py-5">
-          <DialogTitle className="text-xl font-semibold text-foreground">
-            Certificate Details
-          </DialogTitle>
-          <div className="mr-8 flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExport}
-              disabled={!data || exporting}
-            >
-              {exporting ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Download className="size-4" aria-hidden="true" />
-              )}
-              {exporting ? 'Exporting…' : 'Export PDF'}
-            </Button>
-          </div>
-        </DialogHeader>
+      <DialogContent
+        showCloseButton={false}
+        onClick={handleBackdropClick}
+        className="top-0 left-0 flex h-full max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-y-auto rounded-none border-0 bg-transparent px-4 py-20 shadow-none sm:max-w-none"
+      >
+        <DialogTitle className="sr-only">Certificate of completion</DialogTitle>
+
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-end gap-3 p-4 sm:p-[30px]">
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={!data || exporting}
+            className="pointer-events-auto h-10 rounded-full bg-white px-5 shadow-sm"
+          >
+            {exporting ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Download className="size-4" aria-hidden="true" />
+            )}
+            {exporting ? 'Exporting…' : 'Export PDF'}
+          </Button>
+          <DialogClose className="pointer-events-auto flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white text-foreground shadow-sm transition-colors hover:bg-background-secondary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none">
+            <X className="size-5" aria-hidden="true" />
+            <span className="sr-only">Close</span>
+          </DialogClose>
+        </div>
 
         {loading ? (
-          <div className="p-12 text-center text-text-secondary">Loading certificate...</div>
+          <div className="rounded-[14px] bg-white p-12 text-center text-text-secondary shadow-lg">
+            Loading certificate...
+          </div>
         ) : error ? (
-          <div className="p-12 text-center text-error">{error}</div>
+          <div className="rounded-[14px] bg-white p-12 text-center text-error shadow-lg">
+            {error}
+          </div>
         ) : data ? (
-          <div className="bg-background-secondary p-4 sm:p-8">
+          <div
+            ref={cardRef}
+            className="w-full max-w-[1000px] overflow-hidden rounded-[14px] shadow-2xl"
+            style={{ height: CERT_HEIGHT * scale }}
+          >
             <div
-              ref={wrapRef}
-              style={{ width: '100%', height: CERT_HEIGHT * scale, overflow: 'hidden' }}
+              className="origin-top-left"
+              style={{ width: CERT_WIDTH, transform: `scale(${scale})` }}
             >
-              <div
-                style={{
-                  width: CERT_WIDTH,
-                  transformOrigin: 'top left',
-                  transform: `scale(${scale})`,
-                }}
-              >
-                <CertificateDocument
-                  ref={docRef}
-                  studentName={data.user?.profile?.fullName || data.user?.email || 'Student Name'}
-                  courseName={data.course?.title || 'Course Title'}
-                  organizationName={data.user?.organization?.name}
-                  issueDate={formatIssueDate(data.issuedAt)}
-                  certificateId={formatCertificateId(data.enrollmentId)}
-                  qrDataUrl={qrDataUrl}
-                />
-              </div>
+              <CertificateDocument
+                ref={docRef}
+                studentName={data.user?.profile?.fullName || data.user?.email || 'Student Name'}
+                courseName={data.course?.title || 'Course Title'}
+                organizationName={data.user?.organization?.name}
+                issueDate={formatIssueDate(data.issuedAt)}
+                certificateId={formatCertificateId(data.enrollmentId)}
+                qrDataUrl={qrDataUrl}
+              />
             </div>
           </div>
         ) : null}

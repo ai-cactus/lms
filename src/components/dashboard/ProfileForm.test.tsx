@@ -55,7 +55,7 @@ describe('ProfileForm — YOUR FACILITY tab gating', () => {
       />,
     );
 
-    const facilityTab = screen.getByRole('button', { name: /your facility/i });
+    const facilityTab = screen.getByRole('tab', { name: /your facility/i });
     expect(facilityTab).toBeInTheDocument();
 
     await userEvent.click(facilityTab);
@@ -72,13 +72,13 @@ describe('ProfileForm — YOUR FACILITY tab gating', () => {
       />,
     );
 
-    expect(screen.queryByRole('button', { name: /your facility/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /your facility/i })).not.toBeInTheDocument();
   });
 
   it('hides the facility tab when canReadFacility is omitted (defaults to false)', () => {
     render(<ProfileForm initialData={baseProfile} />);
 
-    expect(screen.queryByRole('button', { name: /your facility/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /your facility/i })).not.toBeInTheDocument();
   });
 
   it('renders without a canEditFacility prop and still shows the organization tab', async () => {
@@ -91,7 +91,7 @@ describe('ProfileForm — YOUR FACILITY tab gating', () => {
       />,
     );
 
-    const orgTab = screen.getByRole('button', { name: /your organization/i });
+    const orgTab = screen.getByRole('tab', { name: /your organization/i });
     await userEvent.click(orgTab);
 
     expect(screen.getByTestId('organization-form')).toBeInTheDocument();

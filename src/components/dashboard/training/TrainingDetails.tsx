@@ -23,8 +23,7 @@ import {
   Clock,
   Calendar,
   Share2,
-  Check,
-  X,
+  XCircle,
   Search,
   Download,
   Users,
@@ -42,6 +41,12 @@ import { CourseWithRelations } from '@/types/course';
 interface TrainingDetailsProps {
   course: CourseWithRelations;
 }
+
+const headCls =
+  'h-10 px-2 text-[13px] font-medium tracking-[0.31px] whitespace-nowrap text-[#666d80] md:px-[18px] md:text-[15.5px]';
+const cellCls = 'h-[71px] px-5 text-[17.5px] font-medium tracking-[0.35px] text-[#0d0d12]';
+const tagCls =
+  'inline-flex items-center gap-2 rounded-full px-3 py-1 text-[14px] font-medium whitespace-nowrap lg:text-[16.5px]';
 
 export default function TrainingDetails({ course }: TrainingDetailsProps) {
   const router = useRouter();
@@ -78,49 +83,55 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col">
-      <div className="mb-8">
-        <div className="mb-4 inline-flex items-center gap-2 text-sm text-[#718096]">
-          <Link
-            href="/dashboard/courses"
-            className="inline-flex items-center gap-1.5 rounded-md border border-[#e2e8f0] bg-white px-3 py-2 text-[#4a5568] transition-colors hover:bg-[#f7fafc] hover:text-[#2d3748]"
-          >
-            <ArrowLeft className="size-4" />
-            Go Back
-          </Link>
-          <span>Course</span>
-          <span className="text-[#cbd5e0]">/</span>
-          <span className="font-medium text-primary">Course Details</span>
-        </div>
+      <div className="mb-5 flex flex-wrap items-center gap-4">
+        <Link
+          href="/dashboard/courses"
+          className="inline-flex items-center gap-3 text-sm text-[#667185] transition-colors hover:text-[#101928]"
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-[4px] border border-[#e4e7ec] bg-white">
+            <ArrowLeft className="size-3" aria-hidden="true" />
+          </span>
+          Go Back
+        </Link>
+        <p className="flex items-center gap-1 text-sm">
+          <span className="text-[#0f1828]/50">Course</span>
+          <span className="text-[#0f1828]/50">/</span>
+          <span className="text-primary">Course Details</span>
+        </p>
+      </div>
 
-        <div className="flex items-start justify-between gap-10 max-md:flex-col">
-          <div className="flex-1">
-            <div className="mb-2 flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-[#1a202c]">{course.title}</h1>
+      <div className="mb-5 flex flex-col gap-9 rounded-[17px] bg-white px-2.5 py-[21px] shadow-[0px_1px_1px_0px_rgba(228,229,231,0.24)] sm:px-2.5">
+        <div className="flex items-center gap-[31px] max-md:flex-col max-md:items-start max-md:gap-5">
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-[5px]">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-[22px] leading-[1.2] font-semibold tracking-[-0.02em] text-[#101928] sm:text-[28px]">
+                {course.title}
+              </h1>
               <Badge variant={courseTypeBadgeVariant(course.type)}>
                 {courseTypeLabel(course.type)}
               </Badge>
             </div>
-            <p className="text-sm text-[#718096]">
-              Mandatory annual training aligned with organizational standards
-            </p>
-            {course.type !== 'video' && (
-              <div className="mt-2 mb-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f0fff4] px-3 py-1 text-[13px] text-[#38a169]">
-                  <CheckCircle2 className="size-4 text-[#38A169]" />
-                  <strong>Approved by: Admin</strong>
-                </span>
-              </div>
-            )}
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="rounded-full bg-[#c6f6d5] px-3 py-1 text-[13px] font-medium text-[#22543d]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center justify-center rounded-[15px] bg-[#eafdf5] px-[14px] py-px text-[13px] leading-[22px] font-semibold text-[#59904b]">
                 Active
               </span>
-              <span className="inline-flex items-center rounded-full border border-[#e2e8f0] bg-[#f7fafc] px-3 py-1 text-[13px] text-[#718096]">
-                <Clock className="mr-1.5 size-3.5" />
+              {course.type !== 'video' && (
+                <span className="inline-flex items-center gap-1.5 rounded-[15px] bg-[#eafdf5] px-[14px] py-px text-[13px] leading-[22px] font-semibold text-[#59904b]">
+                  <CheckCircle2 className="size-4" aria-hidden="true" />
+                  Approved by: Admin
+                </span>
+              )}
+            </div>
+            <p className="text-sm leading-5 text-[#475467]">
+              Mandatory annual training aligned with organizational standards
+            </p>
+            <div className="flex flex-wrap items-center gap-3 text-[13px] text-[#475467]">
+              <span className="inline-flex items-center gap-1.5">
+                <Clock className="size-3.5" aria-hidden="true" />
                 {course.duration || 10} min read
               </span>
-              <span className="inline-flex items-center rounded-full border border-[#e2e8f0] bg-[#f7fafc] px-3 py-1 text-[13px] text-[#718096]">
-                <Calendar className="mr-1.5 size-3.5" />
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar className="size-3.5" aria-hidden="true" />
                 Pass mark:{' '}
                 {course.lessons?.find((l) => (l as { quiz?: { passingScore?: number } }).quiz)?.quiz
                   ?.passingScore || 80}
@@ -128,65 +139,84 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
               </span>
             </div>
           </div>
-          <div className="flex gap-3">
-            <Link href={`/dashboard/training/courses/${course.id}/preview`}>
-              <Button size="lg">Preview</Button>
-            </Link>
+          <div className="flex shrink-0 flex-wrap items-center gap-2.5">
+            <Button
+              asChild
+              className="h-12 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
+            >
+              <Link href={`/dashboard/training/courses/${course.id}/preview`}>Preview</Link>
+            </Button>
             <Button
               variant="outline"
-              size="lg"
+              className="h-12 gap-2 rounded-[12px] border-[#d4d4d4] px-5 text-[16px] font-semibold text-primary has-[>svg]:px-5"
               onClick={() => router.push(`/dashboard/training/courses/${course.id}/assign`)}
             >
-              <Share2 className="size-4" />
+              <Share2 className="size-[23px]" aria-hidden="true" />
               Assign
             </Button>
           </div>
         </div>
+
+        <div className="grid grid-cols-1 gap-[22px] sm:grid-cols-2">
+          <div className="flex min-h-[120px] items-center gap-[18px] rounded-[12.5px] border-[0.9px] border-[#9ba7e3] bg-[#e9ecf9] px-[22px] py-[13px]">
+            <span className="flex size-[45px] shrink-0 items-center justify-center rounded-[12px] bg-[#162ea3] text-white">
+              <Users className="size-[22px]" aria-hidden="true" />
+            </span>
+            <div className="flex min-w-0 flex-col gap-[7px]">
+              <span className="text-[14.5px] leading-none font-medium tracking-[-0.145px] text-[#6f767e]">
+                Total Learners
+              </span>
+              <span className="text-[22px] leading-none font-bold text-[#262626]">
+                {totalLearners}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex min-h-[120px] items-center gap-[18px] rounded-[12.5px] border-[0.9px] border-[#9be3c2] bg-[#e9f9f2] px-[22px] py-[13px]">
+            <span className="flex size-[45px] shrink-0 items-center justify-center rounded-[12px] bg-[#16a34a] text-white">
+              <Activity className="size-[22px]" aria-hidden="true" />
+            </span>
+            <div className="flex min-w-0 flex-col gap-[7px]">
+              <span className="text-[14.5px] leading-none font-medium tracking-[-0.145px] text-[#6f767e]">
+                Completion Rate
+              </span>
+              <span className="text-[22px] leading-none font-bold text-[#262626]">
+                {completionRate}%
+              </span>
+            </div>
+          </div>
+
+          <div className="flex min-h-[120px] items-center gap-[18px] rounded-[12.5px] border-[0.9px] border-[#e39b9b] bg-[#f9e9e9] px-[22px] py-[13px]">
+            <span className="flex size-[45px] shrink-0 items-center justify-center rounded-[12px] bg-[#cd1515] text-white">
+              <Award className="size-[22px]" aria-hidden="true" />
+            </span>
+            <div className="flex min-w-0 flex-col gap-[7px]">
+              <span className="text-[14.5px] leading-none font-medium tracking-[-0.145px] text-[#6f767e]">
+                Average Score
+              </span>
+              <span className="text-[22px] leading-none font-bold text-[#262626]">
+                {averageScore}%
+              </span>
+            </div>
+          </div>
+
+          <div className="flex min-h-[120px] items-center gap-[18px] rounded-[12.5px] border-[0.9px] border-[#e3c99b] bg-[#fffad5] px-[22px] py-[13px]">
+            <span className="flex size-[45px] shrink-0 items-center justify-center rounded-[12px] bg-[#db8e00] text-white">
+              <Clock className="size-[22px]" aria-hidden="true" />
+            </span>
+            <div className="flex min-w-0 flex-col gap-[7px]">
+              <span className="text-[14.5px] leading-none font-medium tracking-[-0.145px] text-[#6f767e]">
+                Estimated Duration
+              </span>
+              <span className="text-[22px] leading-none font-bold text-[#262626]">
+                {course.duration || 0} mins
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#bee3f8] bg-[#ebf8ff]">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2b6cb0]">
-            <Users className="size-5" />
-          </div>
-          <div className="flex flex-col">
-            <span className="mb-1 text-[13px] text-[#4a5568]">Total Learners</span>
-            <span className="text-xl font-bold text-[#1a202c]">{totalLearners}</span>
-          </div>
-        </div>
-
-        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#c6f6d5] bg-[#f0fff4]">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#2f855a]">
-            <Activity className="size-5" />
-          </div>
-          <div className="flex flex-col">
-            <span className="mb-1 text-[13px] text-[#4a5568]">Completion Rate</span>
-            <span className="text-xl font-bold text-[#1a202c]">{completionRate}%</span>
-          </div>
-        </div>
-
-        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fed7d7] bg-[#fff5f5]">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#c53030]">
-            <Award className="size-5" />
-          </div>
-          <div className="flex flex-col">
-            <span className="mb-1 text-[13px] text-[#4a5568]">Average Score</span>
-            <span className="text-xl font-bold text-[#1a202c]">{averageScore}%</span>
-          </div>
-        </div>
-
-        <div className="flex min-h-20 items-center gap-4 rounded-xl border p-5 border-[#fefcbf] bg-[#fffff0]">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white bg-[#d69e2e]">
-            <Clock className="size-5" />
-          </div>
-          <div className="flex flex-col">
-            <span className="mb-1 text-[13px] text-[#4a5568]">Estimated Duration</span>
-            <span className="text-xl font-bold text-[#1a202c]">{course.duration || 0} mins</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
+      <div className="rounded-[17px] border border-[#dfe1e6] bg-white p-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] md:px-[21px] md:pt-[21px] md:pb-4">
         <div className="mb-6 flex gap-6 border-b border-[#E2E8F0]">
           <button
             className={cn(
@@ -214,106 +244,110 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
         {activeTab === 'staff' ? (
           <>
-            <div className="mb-4 flex items-center gap-3">
-              <Input
-                className="h-11 w-full sm:w-[280px]"
-                placeholder="Search for staff..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                startIcon={<Search aria-hidden="true" />}
-              />
-              <Button variant="outline">
+            <div className="mb-6 flex flex-wrap items-center gap-3">
+              <div className="w-full sm:w-[470px]">
+                <Input
+                  className="h-[38px] rounded-[8.5px] border-[#dfe1e6] pl-9 text-[15px] shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] placeholder:text-[#a4abb8]"
+                  placeholder="Search for staff..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  aria-label="Search enrolled staff"
+                  startIcon={<Search aria-hidden="true" />}
+                />
+              </div>
+              <Button variant="outline" className="h-[38px] rounded-[8.5px] border-[#dfe1e6]">
                 <Download className="size-4" />
                 Export
               </Button>
             </div>
 
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
-                <TableRow className="hover:bg-transparent border-0">
-                  <TableHead style={{ width: '40%' }}>Staff Name</TableHead>
-                  <TableHead style={{ width: '20%' }} className="hidden sm:table-cell">
+                <TableRow className="border-0 hover:bg-transparent">
+                  <TableHead className={cn(headCls, 'rounded-l-[9px] sm:w-[41%]')}>
+                    Staff Name
+                  </TableHead>
+                  <TableHead className={cn(headCls, 'hidden sm:table-cell sm:w-[20%]')}>
                     Score
                   </TableHead>
-                  <TableHead style={{ width: '20%' }} className="hidden md:table-cell">
+                  <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[19%]')}>
                     Status
                   </TableHead>
-                  <TableHead style={{ width: '20%' }} className="text-right">
-                    Actions
+                  <TableHead className={cn(headCls, 'w-[56px] rounded-r-[9px] sm:w-[20%]')}>
+                    Action
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredEnrollments.map((enrollment) => (
                   <TableRow key={enrollment.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
+                    <TableCell className={cn(cellCls, 'px-2 md:px-[18px]')}>
+                      <div className="flex items-center gap-3 sm:gap-[18px]">
+                        <div className="flex size-[38px] shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
                           {(
                             enrollment.user?.profile?.fullName?.[0] ||
                             enrollment.user?.email?.[0] ||
                             '?'
                           ).toUpperCase()}
                         </div>
-                        <div>
-                          <span className="block font-semibold text-[#1a202c]">
+                        <div className="flex min-w-0 flex-col gap-[4.5px]">
+                          <span className="truncate text-[15.5px] font-semibold tracking-[0.31px] text-[#0d0d12]">
                             {enrollment.user?.profile?.fullName || enrollment.user?.email}
                           </span>
-                          <span className="text-xs text-[#718096]">
+                          <span className="truncate text-[13.5px] tracking-[0.27px] text-[#666d80]">
                             {enrollment.user?.role || 'Staff'}
                           </span>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <span className="font-bold text-[#2d3748]">
-                        {enrollment.score !== null ? `${enrollment.score}%` : '-'}
-                      </span>
+                    <TableCell className={cn(cellCls, 'hidden sm:table-cell')}>
+                      {enrollment.score !== null ? `${enrollment.score}%` : '-'}
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell className={cn(cellCls, 'hidden px-2 md:table-cell')}>
                       {(enrollment.status === 'completed' || enrollment.status === 'attested') &&
                       (enrollment.score ?? 0) >= 70 ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#f0fff4] text-[#2f855a]">
-                          <Check className="size-3" />
+                        <span className={cn(tagCls, 'bg-[#e4fdf2] text-[#59904b]')}>
+                          <CheckCircle2 className="size-[22px] shrink-0" aria-hidden="true" />
                           Passed
                         </span>
                       ) : enrollment.status === 'completed' || enrollment.status === 'attested' ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-[#fff5f5] text-[#c53030]">
-                          <X className="size-3" />
+                        <span className={cn(tagCls, 'bg-[#fbe7e7] text-[#d53c3c]')}>
+                          <XCircle className="size-[22px] shrink-0" aria-hidden="true" />
                           Failed
                         </span>
                       ) : enrollment.status === 'lessons_complete' ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-warning/10 text-warning">
-                          <Clock className="size-3" />
+                        <span className={cn(tagCls, 'bg-[#fff8bd] text-[#c18e09]')}>
+                          <Clock className="size-[19px] shrink-0" aria-hidden="true" />
                           Awaiting Quiz
                         </span>
                       ) : enrollment.status === 'in_progress' || enrollment.progress > 0 ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-warning/10 text-warning">
-                          <Clock className="size-3" />
+                        <span className={cn(tagCls, 'bg-[#fff8bd] text-[#c18e09]')}>
+                          <Clock className="size-[19px] shrink-0" aria-hidden="true" />
                           In Progress
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-muted text-muted-foreground">
+                        <span className={cn(tagCls, 'bg-muted text-muted-foreground')}>
                           Not Started
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end items-center gap-2">
+                    <TableCell className={cn(cellCls, 'px-1 md:px-[18px]')}>
+                      <div className="flex items-center gap-1 md:gap-3">
                         {enrollment.score !== null ? (
                           <Link
                             href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
-                            className="text-sm font-semibold text-[#3182ce] hover:underline"
+                            className="hidden px-4 py-2.5 text-sm font-semibold text-primary hover:underline sm:inline-flex"
                           >
                             View Result
                           </Link>
                         ) : (
-                          <span className="cursor-not-allowed text-sm text-[#cbd5e0]">
+                          <span className="hidden cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-text-tertiary sm:inline-flex">
                             View Result
                           </span>
                         )}
 
                         <RowActionsMenu
+                          className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
                           actions={[
                             {
                               label: 'View Result',
@@ -355,14 +389,16 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
             {enrollments.filter((e) => e.certificate).length === 0 ? (
               <EmptyTableState message="No certificates have been issued for this course yet." />
             ) : (
-              <Table>
+              <Table className="table-fixed">
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent border-0">
-                    <TableHead style={{ width: '40%' }}>Staff Name</TableHead>
-                    <TableHead style={{ width: '30%' }} className="hidden sm:table-cell">
+                  <TableRow className="border-0 hover:bg-transparent">
+                    <TableHead className={cn(headCls, 'rounded-l-[9px] sm:w-[45%]')}>
+                      Staff Name
+                    </TableHead>
+                    <TableHead className={cn(headCls, 'hidden sm:table-cell sm:w-[27%]')}>
                       Issue Date
                     </TableHead>
-                    <TableHead style={{ width: '30%' }} className="text-right">
+                    <TableHead className={cn(headCls, 'rounded-r-[9px] sm:w-[28%]')}>
                       Certificate
                     </TableHead>
                   </TableRow>
@@ -372,32 +408,32 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                     .filter((e) => e.certificate)
                     .map((enrollment) => (
                       <TableRow key={enrollment.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
+                        <TableCell className={cn(cellCls, 'px-2 md:px-[18px]')}>
+                          <div className="flex items-center gap-3 sm:gap-[18px]">
+                            <div className="flex size-[38px] shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
                               {(
                                 enrollment.user?.profile?.fullName?.[0] ||
                                 enrollment.user?.email?.[0] ||
                                 '?'
                               ).toUpperCase()}
                             </div>
-                            <div>
-                              <span className="block font-semibold text-[#1a202c]">
+                            <div className="flex min-w-0 flex-col gap-[4.5px]">
+                              <span className="truncate text-[15.5px] font-semibold tracking-[0.31px] text-[#0d0d12]">
                                 {enrollment.user?.profile?.fullName || enrollment.user?.email}
                               </span>
-                              <span className="text-xs text-[#718096]">
+                              <span className="truncate text-[13.5px] tracking-[0.27px] text-[#666d80]">
                                 {enrollment.user?.role || 'Staff'}
                               </span>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="hidden sm:table-cell">
+                        <TableCell className={cn(cellCls, 'hidden sm:table-cell')}>
                           {new Date(enrollment.certificate!.issuedAt).toLocaleDateString()}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className={cn(cellCls, 'px-1 md:px-[18px]')}>
                           <Button
-                            size="sm"
                             variant="outline"
+                            className="h-10 rounded-[10px] border-[#dfe1e6] text-sm font-semibold"
                             onClick={() => setSelectedCertId(enrollment.certificate!.id)}
                           >
                             View Certificate

@@ -5,10 +5,20 @@
  * and prisma/seed.ts loaded (admin@test.com + worker@test.com in the seeded
  * org). Auth rate limiting is bypassed via E2E_TEST_BYPASS_RATE_LIMIT.
  *
- * REM-001/REM-002 drive the real admin surfaces (course "Assign" page and the
- * staff-member manager picker). REM-003/REM-004 remain skipped: they need a
- * system-admin session cookie and a pre-aged overdue enrollment respectively,
- * neither of which the standard seed provides.
+ * REM-001 drives the real admin surface (course "Assign" page). REM-003/
+ * REM-004 remain skipped: they need a system-admin session cookie and a
+ * pre-aged overdue enrollment respectively, neither of which the standard
+ * seed provides.
+ *
+ * REM-002 ("admin sets a worker manager via the staff page") was dropped:
+ * the staff-profile "Assign manager" Select no longer exists in the UI — the
+ * profile page (`StaffProfileClient.tsx`) was reworked to the Figma design
+ * and now carries a single mutating action, "Assign Course" (same restyle
+ * that removed `EditStaffModal`'s role picker, see rbac-role-change.spec.ts
+ * and rbac-staff-view-only.spec.ts). `setStaffManager` (src/app/actions/
+ * staff.ts) has no remaining caller anywhere in the UI, but the server
+ * action itself is still gated and unit-tested in
+ * src/app/actions/staff.test.ts ("setStaffManager() — permission matrix").
  */
 
 import { test, expect } from '@playwright/test';
@@ -105,25 +115,10 @@ test.describe('Reminders & Escalations', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Flow 2: Admin sets a worker's manager on the staff-member detail page.
+  // Flow 2 ("admin sets a worker manager via the staff page") was dropped —
+  // see the header docblock: the "Assign manager" Select no longer exists on
+  // the staff-member detail page.
   // ---------------------------------------------------------------------------
-  test('REM-002: admin sets a worker manager via the staff page', async ({ page }) => {
-    await loginAsAdmin(page);
-
-    // Open the seeded worker's detail page.
-    await page.goto('/dashboard/staff');
-    await page.getByRole('row', { name: new RegExp(WORKER_EMAIL, 'i') }).click();
-    await page.waitForURL('**/dashboard/staff/**');
-
-    // The manager picker is a Select labelled "Assign manager". Pick the only
-    // assignable manager (the seeded admin) and confirm it sticks.
-    await page.getByLabel('Assign manager').click();
-    const managerOption = page.getByRole('option').filter({ hasNotText: 'No manager' }).first();
-    const managerName = ((await managerOption.textContent()) ?? '').trim();
-    await managerOption.click();
-
-    await expect(page.getByLabel('Assign manager')).toContainText(managerName);
-  });
 
   // ---------------------------------------------------------------------------
   // Flow 3: Manual reminder sweep via the system API (dryRun=true) returns
@@ -207,26 +202,42 @@ test.describe('Reminders & Escalations', () => {
     await loginAsAdmin(page);
 
     const section = page.locator('section', {
-      has: page.getByRole('heading', { name: 'Status Tracker', level: 2 }),
+      has: page.getByRole('heading', { name: 'Status Tracker', level: 3 }),
     });
     await expect(section).toBeVisible();
 
     const viewAllLink = section.getByRole('link', { name: /view all/i });
     await expect(viewAllLink).toHaveAttribute('href', '/dashboard/status-tracker');
 
-    // Summary counts are non-empty since the seeded overdue worker exists.
-    await expect(section.getByText('Overdue training')).toBeVisible();
-    await expect(section.getByText(/Hard escalations/)).toBeVisible();
+    // Summary count is non-empty since the seeded overdue worker exists.
+    // (The separate "Overdue training" / "Hard escalations" stat pills from
+    // the pre-restyle widget were dropped in favor of a single "N at risk"
+    // badge — StatusTrackerOverview.tsx.)
+    await expect(section.getByText(/\d+ at risk/)).toBeVisible();
 
-    // Seeded overdue worker appears in the compact top-5 list.
-    await expect(section.getByText(OVERDUE_WORKER_NAME)).toBeVisible();
-    await expect(section.getByText(SEEDED_COURSE_TITLE)).toBeVisible();
+    // Seeded overdue worker appears in the compact top-5 list. Scope to the
+    // row rather than a bare getByText: each row's "View" action link also
+    // carries the worker's name in a visually-hidden (sr-only) span for
+    // screen readers, so an unscoped text match resolves to two elements
+    // (strict-mode violation) — same pattern as the full status-tracker page.
+    const overdueRow = section.getByRole('row', { name: new RegExp(OVERDUE_WORKER_NAME) });
+    await expect(overdueRow).toBeVisible();
+    // Scoped to the row's desktop-only course cell: the row also carries a
+    // combined mobile-only span with the same title (toggled by CSS
+    // breakpoint, both present in the DOM regardless of viewport) — an
+    // unscoped or bare-text match is ambiguous / can hit the hidden one at
+    // the default desktop viewport.
+    await expect(overdueRow.getByRole('cell', { name: SEEDED_COURSE_TITLE })).toBeVisible();
 
     // Following "View all" lands on the full status-tracker page with the
     // same worker present.
     await viewAllLink.click();
     await page.waitForURL('**/dashboard/status-tracker');
-    await expect(page.getByText(OVERDUE_WORKER_NAME)).toBeVisible();
+    // Scope to the row rather than a bare getByText: each row's "View" action link
+    // also carries the worker's name in a visually-hidden (sr-only) span for screen
+    // readers, so an unscoped text match resolves to two elements (strict-mode
+    // violation).
+    await expect(page.getByRole('row', { name: new RegExp(OVERDUE_WORKER_NAME) })).toBeVisible();
   });
 
   // ---------------------------------------------------------------------------
@@ -367,17 +378,17 @@ test.describe('Reminders & Escalations', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Flow 10 (Phase 2 Issues #9/#10, TC-025): the status-tracker "At Risk — Next
-  // 7 Days" section lists an enrollment due soon (not yet overdue) — seeded
-  // separately from the always-overdue "Olivia Overdue" fixture.
+  // Flow 10 (Phase 2 Issues #9/#10, TC-025): the status-tracker table lists an
+  // enrollment due soon (not yet overdue) — seeded separately from the
+  // always-overdue "Olivia Overdue" fixture. The page was redesigned to a
+  // single merged table (stat cards and the separate "At Risk — Next 7 Days"
+  // section/heading were dropped), so this now just checks the near-deadline
+  // worker's row is present.
   // ---------------------------------------------------------------------------
-  test('TC-025: status tracker shows the At Risk — Next 7 Days section with a near-deadline worker', async ({
-    page,
-  }) => {
+  test('TC-025: status tracker shows a near-deadline worker in the table', async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto('/dashboard/status-tracker');
 
-    await expect(page.getByRole('heading', { name: 'At Risk — Next 7 Days' })).toBeVisible();
-    await expect(page.getByText('Nadia Nearing')).toBeVisible();
+    await expect(page.getByRole('row', { name: /nadia nearing/i })).toBeVisible();
   });
 });

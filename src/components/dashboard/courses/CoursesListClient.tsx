@@ -11,6 +11,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Alert } from '@/components/ui/alert';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Table,
@@ -27,8 +45,20 @@ import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
-import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Pencil,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  X,
+} from 'lucide-react';
 import CourseTypeIcon from '@/components/dashboard/courses/CourseTypeIcon';
+import { cn } from '@/lib/utils';
 
 const PENDING_KEY = 'lms_pending_generation';
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -42,10 +72,14 @@ interface PendingGeneration {
 type BannerState = 'generating' | 'done' | 'failed' | 'hidden';
 
 const bannerClasses: Record<Exclude<BannerState, 'hidden'>, string> = {
-  generating: 'border-[#4C6EF5] bg-[#EBF4FF] text-[#1e3a8a]',
-  done: 'border-[#38A169] bg-[#F0FFF4] text-[#1a4731]',
-  failed: 'border-[#E53E3E] bg-[#FFF5F5] text-[#742a2a]',
+  generating: 'border-primary/30 bg-primary/5 text-foreground',
+  done: 'border-success/30 bg-success/10 text-foreground',
+  failed: 'border-error/30 bg-error/10 text-foreground',
 };
+
+const headCls =
+  'h-10 px-2 text-[13px] font-medium tracking-[0.31px] whitespace-nowrap text-[#666d80] md:px-[18px] md:text-[15.5px]';
+const cellCls = 'h-[71px] px-5 text-[17.5px] font-medium tracking-[0.35px] text-[#0d0d12]';
 
 function PendingGenerationBanner() {
   const [banner, setBanner] = useState<BannerState>('hidden');
@@ -106,38 +140,48 @@ function PendingGenerationBanner() {
 
   return (
     <div
-      className={`flex items-center gap-3 rounded-[10px] border px-4 py-3 mb-4 text-sm ${bannerClasses[banner]}`}
+      className={cn(
+        'mb-4 flex items-center gap-3 rounded-[10px] border px-4 py-3 text-sm',
+        bannerClasses[banner],
+      )}
     >
       {banner === 'generating' && (
-        <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+        <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+      )}
+      {banner === 'done' && (
+        <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+      )}
+      {banner === 'failed' && (
+        <AlertTriangle className="size-4 shrink-0 text-error" aria-hidden="true" />
       )}
       <span className="flex-1">
         {banner === 'generating' && 'Your course is still being generated in the background…'}
         {banner === 'done' &&
-          '✅ Course generation complete! Resume the wizard to review and publish.'}
-        {banner === 'failed' && '⚠️ Course generation failed. Please start a new course.'}
+          'Course generation complete! Resume the wizard to review and publish.'}
+        {banner === 'failed' && 'Course generation failed. Please start a new course.'}
       </span>
       {banner === 'done' && (
         <Link
           href="/dashboard/courses/create"
-          className="font-semibold text-[#38A169] no-underline whitespace-nowrap"
+          className="font-semibold whitespace-nowrap text-success no-underline"
         >
           Resume Setup →
         </Link>
       )}
       <button
+        type="button"
         onClick={dismiss}
-        className="bg-none border-none cursor-pointer opacity-60 p-1"
-        title="Dismiss"
+        className="cursor-pointer border-none bg-none p-1 opacity-60 transition-opacity hover:opacity-100"
+        aria-label="Dismiss"
       >
-        ✕
+        <X className="size-4" aria-hidden="true" />
       </button>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Lightweight inline rename modal for courses
+// Rename modal for courses
 // ---------------------------------------------------------------------------
 function CourseRenameModal({
   courseId,
@@ -174,35 +218,41 @@ function CourseRenameModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/45 flex items-center justify-center z-[1000] p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Rename course"
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className="bg-white rounded-xl p-6 w-full max-w-[420px] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
-        <h2 className="text-lg font-semibold text-[#111827] mb-4">Rename Course</h2>
-        <form onSubmit={handleSubmit}>
-          <Input
-            className="h-11"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            autoFocus
-            disabled={isPending}
-            aria-label="New course title"
-          />
-          {error && <p className="text-red-600 text-[0.8125rem] mt-1.5">{error}</p>}
-          <div className="flex justify-end gap-3 mt-5">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Rename Course</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          <div className="flex flex-col gap-1.5">
+            <Input
+              className="h-11"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+              disabled={isPending}
+              aria-label="New course title"
+            />
+            {error && <Alert variant="error">{error}</Alert>}
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" type="button" onClick={onClose} disabled={isPending}>
               Cancel
             </Button>
             <Button type="submit" loading={isPending}>
               {isPending ? 'Saving…' : 'Save'}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -242,6 +292,7 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
   const [showBillingGate, setShowBillingGate] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CourseWithStats | null>(null);
   const [courseToRename, setCourseToRename] = useState<{ id: string; title: string } | null>(null);
   const [, startTransition] = useTransition();
 
@@ -252,13 +303,6 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
 
   const handleDelete = useCallback(
     (course: CourseWithStats) => {
-      if (
-        !confirm(
-          `Delete "${course.title}"?\n\nThis will permanently remove the course and cannot be undone.`,
-        )
-      ) {
-        return;
-      }
       setDeletingId(course.id);
       setDeleteError(null);
       startTransition(async () => {
@@ -278,6 +322,14 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
     setCourseList((prev) => prev.map((c) => (c.id === courseId ? { ...c, title: newTitle } : c)));
   }, []);
 
+  const startCreateCourse = useCallback(() => {
+    if (!hasBilling) {
+      setShowBillingGate(true);
+      return;
+    }
+    router.push('/dashboard/courses/create');
+  }, [hasBilling, router]);
+
   const filteredCourses = useMemo(() => {
     return courseList.filter((course) =>
       course.title.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -288,6 +340,10 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentCourses = filteredCourses.slice(startIndex, startIndex + itemsPerPage);
   const totalEntries = filteredCourses.length;
+
+  // The zero-courses state replaces the whole widget with the "No courses yet"
+  // panel; an empty *search* result still renders the table chrome.
+  const hasCourses = courseList.length > 0;
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -309,25 +365,56 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
         />
       )}
 
-      <div className="mb-8 flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
-        <div>
-          <div className="mb-2 text-sm text-[#718096]">Trainings / Courses</div>
-          <h1 className="text-2xl font-bold text-[#1a202c]">Courses</h1>
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete course?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove &ldquo;{deleteTarget?.title}&rdquo; and cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTarget) handleDelete(deleteTarget);
+                setDeleteTarget(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <header className="mb-[30px] flex flex-col gap-[5px]">
+        <p className="text-sm leading-tight font-medium">
+          <span className="text-[#a0aec0]">Trainings / </span>
+          <span className="text-[#2d3748]">Courses</span>
+        </p>
+        <div className="flex items-center gap-4">
+          <h1 className="min-w-0 flex-1 text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
+            Courses
+          </h1>
+          {hasCourses && (
+            <Button
+              id="create-course-btn"
+              size="lg"
+              onClick={startCreateCourse}
+              className="h-10 gap-1.5 rounded-[10px] px-4 text-[13px] font-semibold tracking-[-0.31px] has-[>svg]:px-4 md:h-12 md:gap-2 md:rounded-[12px] md:px-6 md:text-[15.5px] md:has-[>svg]:px-6"
+            >
+              <Plus className="size-5 md:size-[25px]" aria-hidden="true" />
+              Create Course
+            </Button>
+          )}
         </div>
-        <Button
-          id="create-course-btn"
-          onClick={() => {
-            if (!hasBilling) {
-              setShowBillingGate(true);
-              return;
-            }
-            router.push('/dashboard/courses/create');
-          }}
-        >
-          <Plus className="size-5" />
-          Create Course
-        </Button>
-      </div>
+      </header>
 
       {showBillingGate && (
         <BillingGateModal
@@ -338,192 +425,243 @@ export default function CoursesListClient({ courses, hasBilling }: CoursesListCl
       )}
 
       {deleteError && (
-        <p role="alert" className="text-red-600 text-sm mb-3 px-3 py-2 bg-red-50 rounded-md">
-          ⚠️ {deleteError}
-        </p>
+        <Alert variant="error" className="mb-4">
+          {deleteError}
+        </Alert>
       )}
 
       <PendingGenerationBanner />
 
-      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
-        <div className="mb-6 w-full sm:w-[380px]">
-          <Input
-            className="h-11"
-            placeholder="Search for courses..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            startIcon={<Search aria-hidden="true" />}
-          />
-        </div>
+      {hasCourses ? (
+        <div className="flex min-w-0 flex-col gap-6 rounded-[17px] border border-[#dfe1e6] bg-white p-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] md:px-[21px] md:pt-[21px] md:pb-4">
+          <div className="flex justify-end">
+            <div className="w-full sm:w-[470px]">
+              <Input
+                className="h-[38px] rounded-[8.5px] border-[#dfe1e6] pl-9 text-[15px] shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] placeholder:text-[#a4abb8]"
+                placeholder="Search for courses..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                aria-label="Search courses"
+                startIcon={<Search aria-hidden="true" />}
+              />
+            </div>
+          </div>
 
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-0">
-              <TableHead style={{ width: '32%' }}>Course Name</TableHead>
-              <TableHead className="hidden md:table-cell" style={{ width: '10%' }}>
-                Type
-              </TableHead>
-              <TableHead className="hidden md:table-cell" style={{ width: '13%' }}>
-                Assigned Staff
-              </TableHead>
-              <TableHead className="hidden md:table-cell" style={{ width: '15%' }}>
-                Role
-              </TableHead>
-              <TableHead className="hidden lg:table-cell" style={{ width: '18%' }}>
-                Date Created
-              </TableHead>
-              <TableHead className="text-right" style={{ width: '12%' }}>
-                Action
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {currentCourses.length > 0 ? (
-              currentCourses.map((course) => (
-                <TableRow
-                  key={course.id}
-                  onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                  className="cursor-pointer"
-                >
-                  <TableCell>
-                    <div className="flex items-center gap-4">
-                      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
-                        <Image
-                          src={course.thumbnail || '/images/icon-course-blue.svg'}
-                          alt={course.title}
-                          width={40}
-                          height={40}
-                          className="object-cover"
+          <Table className="table-fixed">
+            <TableHeader>
+              <TableRow className="border-0 hover:bg-transparent">
+                <TableHead className={cn(headCls, 'rounded-l-[9px] md:w-[32%]')}>
+                  Course Name
+                </TableHead>
+                <TableHead className={cn(headCls, 'hidden lg:table-cell lg:w-[7%]')}>
+                  Type
+                </TableHead>
+                <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[15%]')}>
+                  Assigned Staff
+                </TableHead>
+                <TableHead className={cn(headCls, 'hidden lg:table-cell lg:w-[16%]')}>
+                  Role
+                </TableHead>
+                <TableHead className={cn(headCls, 'hidden xl:table-cell xl:w-[16%]')}>
+                  Date Created
+                </TableHead>
+                <TableHead className={cn(headCls, 'w-[56px] rounded-r-[9px] md:w-[14%]')}>
+                  Action
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {currentCourses.length > 0 ? (
+                currentCourses.map((course) => (
+                  <TableRow
+                    key={course.id}
+                    onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                    className="cursor-pointer"
+                  >
+                    <TableCell className={cn(cellCls, 'px-2 md:px-[18px]')}>
+                      <div className="flex items-center gap-3 sm:gap-[18px]">
+                        <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
+                          <Image
+                            src={course.thumbnail || '/images/icon-course-blue.svg'}
+                            alt={course.title}
+                            width={40}
+                            height={40}
+                            className="object-cover"
+                          />
+                        </div>
+                        <span className="truncate text-[15px] font-semibold tracking-[0.35px] text-[#0d0d12] sm:text-[17.5px]">
+                          {course.title}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className={cn(cellCls, 'hidden px-[18px] lg:table-cell')}>
+                      <CourseTypeIcon type={course.type} className="size-[21px]" />
+                    </TableCell>
+                    <TableCell className={cn(cellCls, 'hidden md:table-cell')}>
+                      {course.enrollmentsCount}
+                    </TableCell>
+                    <TableCell className={cn(cellCls, 'hidden lg:table-cell')}>General</TableCell>
+                    <TableCell className={cn(cellCls, 'hidden whitespace-nowrap xl:table-cell')}>
+                      {new Date(course.createdAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: '2-digit',
+                        year: 'numeric',
+                      })}
+                    </TableCell>
+                    <TableCell
+                      className={cn(cellCls, 'px-1 md:px-[18px]')}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center gap-1 md:gap-3">
+                        <Link
+                          href={`/dashboard/training/courses/${course.id}`}
+                          className="hidden px-4 py-2.5 text-[16px] font-semibold text-primary hover:underline sm:inline-flex"
+                        >
+                          View
+                        </Link>
+                        <RowActionsMenu
+                          className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
+                          actions={[
+                            {
+                              label: 'Rename',
+                              icon: <Pencil className="size-4" />,
+                              onSelect: () =>
+                                setCourseToRename({ id: course.id, title: course.title }),
+                            },
+                            {
+                              label: deletingId === course.id ? 'Deleting…' : 'Delete',
+                              icon: <Trash2 className="size-4" />,
+                              variant: 'destructive',
+                              separatorBefore: true,
+                              disabled: deletingId === course.id,
+                              onSelect: () => setDeleteTarget(course),
+                            },
+                          ]}
                         />
                       </div>
-                      <span className="font-semibold text-[#1a202c]">{course.title}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <CourseTypeIcon type={course.type} />
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">{course.enrollmentsCount}</TableCell>
-                  <TableCell className="hidden md:table-cell">General</TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    {new Date(course.createdAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: '2-digit',
-                      year: 'numeric',
-                    })}
-                  </TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-3">
-                      <Link
-                        href={`/dashboard/training/courses/${course.id}`}
-                        className="hidden text-sm font-semibold text-primary hover:underline sm:inline-flex"
-                      >
-                        View
-                      </Link>
-                      <RowActionsMenu
-                        actions={[
-                          {
-                            label: 'Rename',
-                            icon: <Pencil className="size-4" />,
-                            onSelect: () =>
-                              setCourseToRename({ id: course.id, title: course.title }),
-                          },
-                          {
-                            label: deletingId === course.id ? 'Deleting…' : 'Delete',
-                            icon: <Trash2 className="size-4" />,
-                            variant: 'destructive',
-                            separatorBefore: true,
-                            disabled: deletingId === course.id,
-                            onSelect: () => handleDelete(course),
-                          },
-                        ]}
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <EmptyTableState
-                message="No courses found."
-                subMessage="Try adjusting your search or create a new course."
-                colSpan={6}
-                asTableRow
-              />
-            )}
-          </TableBody>
-        </Table>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
-          <div className="text-sm text-[#718096]">
-            Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
-            {Math.min(startIndex + itemsPerPage, totalEntries)} of {totalEntries} entries
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={currentPage === 1}
-              onClick={() => handlePageChange(currentPage - 1)}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-
-            {buildPaginationRange(currentPage, totalPages).map((page, i) =>
-              page === 'ellipsis' ? (
-                <span
-                  key={`ellipsis-${i}`}
-                  className="px-1.5 text-sm text-[#718096]"
-                  aria-hidden="true"
-                >
-                  …
-                </span>
+                    </TableCell>
+                  </TableRow>
+                ))
               ) : (
-                <Button
-                  key={page}
-                  variant={page === currentPage ? 'default' : 'outline'}
-                  size="icon-sm"
-                  onClick={() => handlePageChange(page)}
-                >
-                  {page}
-                </Button>
-              ),
-            )}
+                <EmptyTableState
+                  message="No courses found."
+                  subMessage="Try adjusting your search or create a new course."
+                  colSpan={6}
+                  asTableRow
+                />
+              )}
+            </TableBody>
+          </Table>
 
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={currentPage === totalPages || totalPages === 0}
-              onClick={() => handlePageChange(currentPage + 1)}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-between sm:gap-4">
+            <span className="text-xs font-medium tracking-[-0.36px] text-[#9a9a9a]">
+              Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
+              {Math.min(startIndex + itemsPerPage, totalEntries)} of {totalEntries} entries
+            </span>
 
-          <div className="flex items-center gap-2 text-sm text-[#718096]">
-            <span>Show</span>
-            <Select
-              value={itemsPerPage.toString()}
-              onValueChange={(v) => {
-                setItemsPerPage(Number(v));
-                setCurrentPage(1);
-              }}
-            >
-              <SelectTrigger size="sm" className="w-[72px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5</SelectItem>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-              </SelectContent>
-            </Select>
-            <span>entries</span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="size-10 rounded-[8px] border-[#d9d9d9] bg-white"
+                disabled={currentPage === 1}
+                onClick={() => handlePageChange(currentPage - 1)}
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+
+              {buildPaginationRange(currentPage, totalPages).map((page, i) =>
+                page === 'ellipsis' ? (
+                  <span
+                    key={`ellipsis-${i}`}
+                    className="flex size-10 items-center justify-center text-xs font-medium tracking-[-0.36px] text-[#1c1c1c]"
+                    aria-hidden="true"
+                  >
+                    …
+                  </span>
+                ) : (
+                  <Button
+                    key={page}
+                    variant={page === currentPage ? 'default' : 'ghost'}
+                    size="icon-sm"
+                    className="size-10 rounded-[8px] text-xs font-medium tracking-[-0.36px] data-[variant=ghost]:text-[#1c1c1c]"
+                    onClick={() => handlePageChange(page)}
+                    aria-current={page === currentPage ? 'page' : undefined}
+                  >
+                    {page}
+                  </Button>
+                ),
+              )}
+
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="size-10 rounded-[8px] border-[#d9d9d9] bg-white"
+                disabled={currentPage === totalPages || totalPages === 0}
+                onClick={() => handlePageChange(currentPage + 1)}
+                aria-label="Next page"
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs font-medium tracking-[-0.36px] text-[#1c1c1c]">
+              Show
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(v) => {
+                  setItemsPerPage(Number(v));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[66px] rounded-[8px] border-[#d9d9d9] px-3 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                </SelectContent>
+              </Select>
+              entries
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex min-h-[520px] flex-1 flex-col items-center justify-center rounded-[17px] border border-[#dfe1e6] bg-white px-4 py-10 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] md:min-h-[700px] md:px-[21px]">
+          <div className="flex w-full max-w-[482px] flex-col items-center gap-5">
+            <Image
+              src="/images/courses-empty-state.svg"
+              alt=""
+              width={226}
+              height={226}
+              aria-hidden="true"
+              className="size-[170px] md:size-[226px]"
+            />
+            <div className="flex flex-col gap-[5px] text-center">
+              <p className="text-[20px] leading-[1.32] font-semibold text-[#11181c] md:text-[24.5px]">
+                No courses yet
+              </p>
+              <p className="text-[15px] leading-[1.45] text-[#475367] md:text-[16px]">
+                Create your first course by uploading a policy or compliance document. Theraptly
+                turns it into structured training automatically.
+              </p>
+            </div>
+            <Button
+              id="create-course-btn"
+              size="lg"
+              onClick={startCreateCourse}
+              className="h-12 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
+            >
+              Create your first course
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -33,6 +33,9 @@ interface MyCoursesTableProps {
   maxItems?: number;
 }
 
+const headCls = 'h-10 px-[18px] text-[15.5px] font-medium tracking-[0.31px] text-[#666d80]';
+const cellCls = 'h-[71px] px-5 text-[17.5px] font-medium tracking-[0.35px] text-[#0d0d12]';
+
 export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTableProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,13 +49,15 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
   const displayCourses = filteredCourses.slice(0, maxItems);
 
   return (
-    <div className="flex min-w-0 max-w-full flex-1 flex-col rounded-xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h3 className="text-lg font-bold text-[#1a202c]">My Courses</h3>
-        <div className="w-full sm:w-80">
+    <div className="flex min-w-0 max-w-full flex-1 flex-col gap-6 rounded-[17px] border border-[#dfe1e6] bg-white px-4 pb-4 pt-4 md:px-[21px] md:pt-[21px] shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-base font-semibold leading-[1.5] tracking-[0.4px] text-[#0d0d12] md:text-xl">
+          My Courses
+        </h3>
+        <div className="w-full sm:w-1/2 sm:max-w-[506px]">
           <Input
             placeholder="Search for courses..."
-            className="h-11"
+            className="h-9 rounded-[8.5px] border-[#dfe1e6] pl-9 text-[15px] shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] placeholder:text-[#a4abb8]"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             startIcon={<Search aria-hidden="true" />}
@@ -64,12 +69,16 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
       <Table>
         <TableHeader>
           <TableRow className="border-0 hover:bg-transparent">
-            <TableHead className="w-full md:w-[34%]">Course Name</TableHead>
-            <TableHead className="hidden md:table-cell">Type</TableHead>
-            <TableHead className="hidden md:table-cell">Assigned Staff</TableHead>
-            <TableHead className="hidden md:table-cell">Completion Rate</TableHead>
-            <TableHead className="hidden md:table-cell">Date Created</TableHead>
-            <TableHead className="hidden text-right md:table-cell">Action</TableHead>
+            <TableHead className={`${headCls} w-full rounded-l-[9px] md:w-[34%]`}>
+              Course Name
+            </TableHead>
+            <TableHead className={`${headCls} hidden md:table-cell`}>Type</TableHead>
+            <TableHead className={`${headCls} hidden md:table-cell`}>Assigned Staff</TableHead>
+            <TableHead className={`${headCls} hidden md:table-cell`}>Completion Rate</TableHead>
+            <TableHead className={`${headCls} hidden md:table-cell`}>Date Created</TableHead>
+            <TableHead className={`${headCls} hidden rounded-r-[9px] text-right md:table-cell`}>
+              Action
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -80,8 +89,8 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                 onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
                 className="cursor-pointer"
               >
-                <TableCell>
-                  <div className="flex items-center gap-4">
+                <TableCell className={`${cellCls} px-[18px]`}>
+                  <div className="flex items-center gap-[18px]">
                     <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
                       <Image
                         src={course.thumbnail || '/images/icon-course-blue.svg'}
@@ -92,7 +101,9 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                       />
                     </div>
                     <div className="flex min-w-0 flex-col">
-                      <span className="truncate font-semibold text-[#0f172a]">{course.title}</span>
+                      <span className="truncate text-[17.5px] font-semibold tracking-[0.35px] text-[#0d0d12]">
+                        {course.title}
+                      </span>
                       {course.level && (
                         <span className="text-xs font-normal text-text-secondary md:hidden">
                           {course.level}
@@ -101,14 +112,16 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="hidden md:table-cell">
+                <TableCell className={`${cellCls} hidden md:table-cell`}>
                   <CourseTypeIcon type={course.type} />
                 </TableCell>
-                <TableCell className="hidden md:table-cell">{course.enrollmentsCount}</TableCell>
-                <TableCell className="hidden md:table-cell">
-                  <span className="font-semibold text-[#0f172a]">{course.completionRate}%</span>
+                <TableCell className={`${cellCls} hidden md:table-cell`}>
+                  {course.enrollmentsCount}
                 </TableCell>
-                <TableCell className="hidden whitespace-nowrap text-[#718096] md:table-cell">
+                <TableCell className={`${cellCls} hidden md:table-cell`}>
+                  {course.completionRate}%
+                </TableCell>
+                <TableCell className={`${cellCls} hidden whitespace-nowrap md:table-cell`}>
                   {new Date(course.createdAt).toLocaleDateString('en-US', {
                     month: 'short',
                     day: '2-digit',
@@ -116,12 +129,12 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                   })}
                 </TableCell>
                 <TableCell
-                  className="hidden text-right md:table-cell"
+                  className={`${cellCls} hidden text-right md:table-cell`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Link
                     href={`/dashboard/training/courses/${course.id}`}
-                    className="text-sm font-semibold text-primary hover:underline"
+                    className="text-[16.5px] font-semibold text-primary hover:underline"
                   >
                     View Course
                   </Link>
@@ -139,7 +152,7 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
         </TableBody>
       </Table>
 
-      <div className="mt-4 flex justify-end">
+      <div className="flex justify-end">
         <Link
           href="/dashboard/courses"
           className="flex items-center gap-1 text-sm font-semibold text-primary hover:underline"

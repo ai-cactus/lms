@@ -59,7 +59,7 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
 
   return (
     <div className="mx-auto max-w-[1200px] p-4 sm:p-8">
-      <header className="mb-8 border-b border-border pb-6">
+      <header className="mb-8 border-b border-[#dfe1e6] pb-6">
         <Link
           href="/dashboard/documents"
           className="mb-4 inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary"
@@ -67,8 +67,10 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
           <ArrowLeft className="size-4" aria-hidden="true" /> Back to Documents
         </Link>
         <div className="mb-2 flex items-center gap-4">
-          <h1 className="text-2xl font-semibold text-foreground">{doc.filename}</h1>
-          <span className="rounded bg-background-secondary px-2.5 py-1 text-xs font-semibold text-text-secondary">
+          <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em] text-[#272b30]">
+            {doc.filename}
+          </h1>
+          <span className="rounded-[8px] bg-[#f8f9fb] px-2.5 py-1 text-xs font-semibold text-[#666d80]">
             v{latest.version}
           </span>
         </div>
@@ -76,7 +78,9 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
           <span>Uploaded: {doc.updatedAt.toLocaleDateString()}</span>
           <span>Size: {(doc.size / 1024).toFixed(1)} KB</span>
           {latest.phiReport?.hasPHI && (
-            <span className="rounded bg-error/10 px-2 py-0.5 text-xs text-error">PHI Detected</span>
+            <span className="inline-flex items-center rounded-full bg-[#fbe7e7] px-[13px] py-1 text-[13px] font-semibold text-[#e13737]">
+              PHI Detected
+            </span>
           )}
           {downloadUrl && (
             <a
@@ -93,7 +97,7 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
       </header>
 
       <div className="grid grid-cols-1 gap-8 md:grid-cols-[250px_1fr]">
-        <aside className="h-fit rounded-lg bg-bg-secondary p-6">
+        <aside className="h-fit rounded-xl bg-[#f8f9fb] p-6">
           <h3 className="mb-4 text-sm font-semibold uppercase text-text-tertiary">Metadata</h3>
           <div className="mb-4">
             <span className="mb-1 block text-xs text-text-secondary">Status</span>
@@ -111,7 +115,7 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
           )}
         </aside>
 
-        <div className="min-h-[500px] rounded-lg border border-border bg-white p-8">
+        <div className="min-h-[500px] rounded-xl border border-[#dfe1e6] bg-white p-4 sm:p-8">
           {doc.mimeType === 'application/pdf' ? (
             previewUrl ? (
               <PdfViewer fileUrl={previewUrl} />

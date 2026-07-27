@@ -7,9 +7,24 @@
 - [Offline migrations](project_offline_migrations.md) — dev DB (localhost:5433) often unreachable; scaffold Prisma migrations offline via `migrate diff --from-schema/--to-schema`.
 - [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — `prisma migrate dev` autogen drops the raw-SQL pgvector `embedding` col + facility defaults; hand-author migrations instead.
 - [migrate dev HNSW drift](project_migrate_dev_hnsw_drift.md) — every new migration spuriously drops `manual_chunks_embedding_hnsw_idx` (raw-SQL pgvector index); strip the DROP INDEX line.
+- [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md) — compose publishes MinIO on 9005 but .env expects 9000; run it standalone for storage/video flows to work locally.
 - [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db (most-specific first) or value-imports of generated Prisma fail in tests.
 - [Email delivery tracking](project_email_delivery_tracking.md) — EmailMessage has two disjoint recording paths (dispatch vs sendMailTracked); reminder senders bypass sendMailTracked to avoid double-record.
 - [E2E seed infra](project_e2e_seed_infra.md) — prisma/seed.ts (tsx, self-contained client), E2E rate-limit bypass, role-based login landings, quiz shape; assignRetake locked-only bug.
 - [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — cookies().delete omits Secure so __Secure- deletions fail in prod (next dev masks it); onboarding-worker image deadlock; CI e2e = next start.
 - [Repro v4.6 AI pipeline locally](repro_v46_ai_pipeline_locally.md) — ADC unavailable in sandbox; drive gemini-flash-lite-latest via AI-Studio Express key in .env; model/token facts.
 - [Phase 2 batch-quiz truncation](phase2_batch_quiz_truncation.md) — Stage C 0-questions root cause = 16384 output cap truncation; hybrid single-call/chunk fix; keep meta.requestedQuestionCount = original.
+- [Local UI verification](project_local_ui_verification.md) — docker start + prisma db seed + redis login-lockout reset before Playwright-driving localhost:3005.
+- [Figma LMS v2 source](reference_figma_lms_v2.md) — file/section ids; highest "LMS - n" frame is often an unbuilt concept — identify frames by content, not name.
+- [Figma COURSES section map](reference_figma_courses_section.md) — frame→page map for COURSES + the shared LMS-v2 card/table/pagination token set and Figma's own inconsistencies.
+- [Figma→CSS scale](project_figma_to_css_scale.md) — LMS v2 frames are ~1.12x oversized vertically/typographically; horizontal geometry is 1:1. Reuse existing class constants.
+- [Figma STATUS TRACKER section map](reference_figma_status_tracker_section.md) — LMS-203 == LMS-201 (identical); merged single-table design; pill colours; no mobile frame.
+- [Figma AUDIT REPORTS section map](reference_figma_audit_reports.md) — 4 sections, frame→tab/state map, and the SECOND card/table kit (12px/#e2e8f0/uppercase heads) these pages use.
+- [Dashboard responsive traps](gotcha_dashboard_responsive_breakpoints.md) — the 280px sidebar makes `lg` narrower than `md`, so gate wide tables at `xl`; `SelectTrigger`'s `size` prop is inert.
+- [Figma SETTINGS section map](reference_figma_settings_section.md) — 3 frames → 3 tabs; scale is exactly 1.125x on type AND padding; kit-1 card hexes; designed-but-omitted bits.
+- [shadcn Table/Select specificity traps](gotcha_shadcn_table_row_border.md) — header divider needs `border-none` (not `border-0`); `SelectTrigger` height needs `data-[size=default]:h-12`.
+- [Figma ERROR SCREENS section](reference_figma_error_screens.md) — "Link Expired" frames are really the 404 page; no /timeout route; error boundary is undesigned.
+- [Figma Course Wizard frames](reference_figma_course_wizard.md) — there is no COURSE CREATION section; frame→step map + the wizard's 1:1 chrome geometry.
+- [Figma WORKER CERTIFICATES + cert modal](reference_figma_worker_certificates.md) — they live in a second "WORKERS" section (14044:73449), not WORKER USERTYPE; grep the page metadata dump by text.
+- [Full-bleed dialog + fixed-px artwork](gotcha_fullbleed_dialog_scaling.md) — grid min-content breaks %-width scale measurement; viewport-corner close needs viewport-spanning content.
+- [Figma STAFF section map](reference_figma_staff_section.md) — list/profile/mobile frames; the profile design omits the real Passed/Locked states and its Retry row is unbuildable literally.

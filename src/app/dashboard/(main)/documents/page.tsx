@@ -48,14 +48,16 @@ export default async function DocumentsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col">
-      <header className="mb-8 flex items-start justify-between gap-4 max-sm:flex-col">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1a202c]">Documents</h1>
-          <p className="mt-1 text-sm text-[#718096]">
-            Documents and attachments that have been uploaded are displayed here
-          </p>
+      <header className="mb-[30px] flex flex-col gap-[5px]">
+        <div className="flex items-center gap-4">
+          <h1 className="min-w-0 flex-1 text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
+            Documents
+          </h1>
+          <UploadSection />
         </div>
-        <UploadSection />
+        <p className="text-sm leading-tight font-medium text-[#a0aec0]">
+          Documents and attachments that have been uploaded are displayed here
+        </p>
       </header>
 
       <DocumentListClient initialDocs={docs} />

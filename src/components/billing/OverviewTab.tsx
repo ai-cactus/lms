@@ -75,17 +75,17 @@ interface OverviewData {
 function getStatusBadgeClass(status: string): string {
   switch (status.toLowerCase()) {
     case 'paid':
-      return 'bg-success/15 text-success';
+      return 'bg-[#d1fae5] text-[#047857]';
     case 'open':
     case 'pending':
-      return 'bg-warning/15 text-warning';
+      return 'bg-[#fef3c7] text-[#b45309]';
     case 'failed':
     case 'uncollectible':
-      return 'bg-error/15 text-error';
+      return 'bg-[#fee2e2] text-[#b91c1c]';
     case 'void':
-      return 'bg-muted text-text-secondary';
+      return 'bg-[#f1f5f9] text-[#475569]';
     case 'canceled':
-      return 'bg-muted text-text-secondary';
+      return 'bg-[#f1f5f9] text-[#475569]';
     default:
       return '';
   }
@@ -139,10 +139,14 @@ interface Props {
   refreshKey?: number;
 }
 
-const cardClass = 'rounded-xl border border-border bg-background p-6';
-const cardTitleClass = 'text-[11px] font-bold uppercase tracking-[0.6px] text-primary';
+const cardClass =
+  'flex flex-col rounded-[12px] border border-[#e2e8f0] bg-white p-[25px] shadow-[0px_1px_1px_0px_rgba(0,0,0,0.05)]';
+const cardTitleClass =
+  'text-[12px] leading-[16px] font-bold uppercase tracking-[0.6px] text-primary';
 const planLinkClass =
-  'inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-primary hover:underline';
+  'inline-flex cursor-pointer items-center gap-1 text-[14px] leading-[20px] font-bold text-primary hover:underline';
+const listItemClass = 'flex items-center gap-2 text-[14px] leading-[20px] text-[#475569]';
+const listIconClass = 'size-[14px] shrink-0 text-[#475569]';
 
 export default function OverviewTab({ onChangeTab, refreshKey }: Props) {
   const router = useRouter();
@@ -221,263 +225,294 @@ export default function OverviewTab({ onChangeTab, refreshKey }: Props) {
   const isPaused = pauseState !== 'none';
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-      <div className={cardClass}>
-        <div className="mb-4 flex items-center justify-between">
-          <p className={cardTitleClass}>Current Plan</p>
-          <button className={planLinkClass} onClick={() => onChangeTab('subscription')}>
-            Change plan
-          </button>
-        </div>
-        {subscription ? (
-          <>
-            <div className="mb-1.5 flex flex-wrap items-center gap-2">
-              <p className="text-xl font-bold text-foreground">
-                {getPlanDisplayName(subscription.plan)}
-              </p>
+    <div className="flex flex-col gap-10">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className={cardClass}>
+          <div className="flex items-start justify-between pb-1">
+            <p className={cardTitleClass}>Current Plan</p>
+            <button className={planLinkClass} onClick={() => onChangeTab('subscription')}>
+              Change plan
+            </button>
+          </div>
+          {subscription ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2 pb-4">
+                <p className="text-[20px] leading-[28px] font-bold text-[#0f172a]">
+                  {getPlanDisplayName(subscription.plan)}
+                </p>
+                {isPaused && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+                      pauseState === 'expired'
+                        ? 'bg-[#fee2e2] text-[#b91c1c]'
+                        : 'bg-[#fef3c7] text-[#b45309]',
+                    )}
+                  >
+                    <PauseCircle size={13} aria-hidden="true" />
+                    {pauseState === 'expired' ? 'Pause ended' : 'Paused'}
+                  </span>
+                )}
+              </div>
+              <ul className="flex flex-col gap-2">
+                <li className={listItemClass}>
+                  <Users className={listIconClass} aria-hidden="true" />
+                  {staffMax ? `1-${staffMax}` : 'Unlimited'} staff members
+                </li>
+                <li className={listItemClass}>
+                  <RefreshCw className={listIconClass} aria-hidden="true" />
+                  {subscription.billingCycle.charAt(0).toUpperCase() +
+                    subscription.billingCycle.slice(1)}{' '}
+                  billing cycle
+                </li>
+                {getActiveDiscountLabel(subscription) && (
+                  <li className={listItemClass}>
+                    <BadgePercent
+                      className={cn(listIconClass, 'text-[#059669]')}
+                      aria-hidden="true"
+                    />
+                    <span>
+                      <span className="font-bold text-[#0f172a]">
+                        {subscription.discountPromoCode ??
+                          subscription.discountCouponName ??
+                          'Discount'}
+                      </span>{' '}
+                      — {getActiveDiscountLabel(subscription)}
+                    </span>
+                  </li>
+                )}
+                {!subscription.cancelAtPeriodEnd && !isPaused && (
+                  <li className={cn(listItemClass, 'border-t border-[#f1f5f9] pt-[9px]')}>
+                    <Calendar className={listIconClass} aria-hidden="true" />
+                    Next invoice on {formatDate(subscription.currentPeriodEnd)}
+                  </li>
+                )}
+              </ul>
+              {subscription.cancelAtPeriodEnd && (
+                <div className="mt-3 flex items-center gap-2 rounded-[8px] border border-[#fde68a] bg-[#fffbeb] p-[13px] text-[12px] leading-[16px] font-medium text-[#92400e]">
+                  <AlertTriangle className="size-[18px] shrink-0" aria-hidden="true" />
+                  Cancels on {formatDate(subscription.currentPeriodEnd)}
+                </div>
+              )}
+
               {isPaused && (
-                <span
+                <div
                   className={cn(
-                    'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+                    'mt-4 rounded-[8px] border p-4',
                     pauseState === 'expired'
-                      ? 'bg-error/15 text-error'
-                      : 'bg-warning/15 text-warning',
+                      ? 'border-[#fecaca] bg-[#fef2f2]'
+                      : 'border-[#e2e8f0] bg-[#f8fafc]',
                   )}
                 >
-                  <PauseCircle size={13} aria-hidden="true" />
-                  {pauseState === 'expired' ? 'Pause ended' : 'Paused'}
-                </span>
-              )}
-            </div>
-            <ul className="mt-4 flex flex-col gap-3">
-              <li className="flex items-center gap-3 text-sm text-text-secondary">
-                <Users size={18} className="shrink-0 text-text-secondary" />
-                {staffMax ? `1-${staffMax}` : 'Unlimited'} staff members
-              </li>
-              <li className="flex items-center gap-3 text-sm text-text-secondary">
-                <RefreshCw size={18} className="shrink-0 text-text-secondary" />
-                {subscription.billingCycle.charAt(0).toUpperCase() +
-                  subscription.billingCycle.slice(1)}{' '}
-                billing cycle
-              </li>
-              {getActiveDiscountLabel(subscription) && (
-                <li className="flex items-center gap-3 text-sm text-text-secondary">
-                  <BadgePercent size={18} className="shrink-0 text-success" />
-                  <span>
-                    <span className="font-medium text-foreground">
-                      {subscription.discountPromoCode ??
-                        subscription.discountCouponName ??
-                        'Discount'}
-                    </span>{' '}
-                    — {getActiveDiscountLabel(subscription)}
-                  </span>
-                </li>
-              )}
-              {!subscription.cancelAtPeriodEnd && !isPaused && (
-                <li className="flex items-center gap-3 text-sm text-text-secondary">
-                  <Calendar size={18} className="shrink-0 text-text-secondary" />
-                  Next invoice on {formatDate(subscription.currentPeriodEnd)}
-                </li>
-              )}
-            </ul>
-            {subscription.cancelAtPeriodEnd && (
-              <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-[13px] text-warning">
-                <AlertTriangle size={18} />
-                Cancels on {formatDate(subscription.currentPeriodEnd)}
-              </div>
-            )}
+                  <p className="text-[14px] leading-[20px] font-bold text-[#0f172a]">
+                    {pauseState === 'expired'
+                      ? 'Your pause has ended'
+                      : 'Your subscription is paused'}
+                  </p>
+                  <p className="mt-1 text-[14px] leading-[20px] text-[#475569]">
+                    {pauseState === 'expired'
+                      ? 'Continue your plan to restore access, or cancel your subscription.'
+                      : subscription.pauseEndsAt
+                        ? `All your data is safely stored. Paused until ${formatDate(subscription.pauseEndsAt)}.`
+                        : 'All your data is safely stored until you continue your plan.'}
+                  </p>
 
-            {isPaused && (
+                  {resumeError && (
+                    <p className="mt-2 text-[13px] text-error" role="alert">
+                      {resumeError}
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap gap-2.5">
+                    <button
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-[8px] bg-primary px-4 py-2 text-[14px] leading-[20px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                      disabled={resuming}
+                      onClick={() => void handleResume()}
+                    >
+                      {resuming ? (
+                        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Play className="size-4" aria-hidden="true" />
+                      )}
+                      Continue Plan
+                    </button>
+                    <button
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-[8px] border border-[#e2e8f0] px-4 py-2 text-[14px] leading-[20px] font-semibold text-[#0f172a] transition-colors hover:bg-[#f8fafc] disabled:opacity-60"
+                      disabled={resuming}
+                      onClick={() => router.push('/dashboard/billing/cancel')}
+                    >
+                      Cancel Plan
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="rounded-[8px] border border-dashed border-[#e2e8f0] p-10 text-center">
+              <h3 className="mb-2 text-[20px] leading-[28px] font-bold text-[#0f172a]">
+                No active plan
+              </h3>
+              <p className="text-[14px] leading-[20px] text-[#475569]">
+                Choose a plan to get started.
+              </p>
+              <button
+                className={cn(planLinkClass, 'mt-3')}
+                onClick={() => onChangeTab('subscription')}
+              >
+                View plans
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className={cardClass}>
+          <div className="flex items-start justify-between pb-4">
+            <div className="flex flex-col gap-1">
+              <p className={cn(cardTitleClass, 'text-[#64748b]')}>Staff Usage</p>
+              <p className="text-[14px] leading-[20px] text-[#64748b]">
+                <strong className="text-[24px] leading-[32px] font-black text-[#0f172a]">
+                  {activeStaffCount}
+                </strong>
+                {staffMax !== null ? ` / ${staffMax}` : ''} active
+              </p>
+            </div>
+            <button className={planLinkClass} onClick={() => onChangeTab('subscription')}>
+              Upgrade plan
+            </button>
+          </div>
+          {staffMax !== null && (
+            <div className="mb-4 h-[10px] overflow-hidden rounded-full bg-[#f1f5f9]">
               <div
                 className={cn(
-                  'mt-4 rounded-lg border p-4',
-                  pauseState === 'expired'
-                    ? 'border-error/40 bg-error/5'
-                    : 'border-border bg-background-secondary',
+                  'h-full rounded-full transition-[width] duration-500',
+                  isNearLimit ? 'bg-error' : 'bg-primary',
                 )}
-              >
-                <p className="text-sm font-semibold text-foreground">
-                  {pauseState === 'expired'
-                    ? 'Your pause has ended'
-                    : 'Your subscription is paused'}
-                </p>
-                <p className="mt-1 text-[13px] text-text-secondary">
-                  {pauseState === 'expired'
-                    ? 'Continue your plan to restore access, or cancel your subscription.'
-                    : subscription.pauseEndsAt
-                      ? `All your data is safely stored. Paused until ${formatDate(subscription.pauseEndsAt)}.`
-                      : 'All your data is safely stored until you continue your plan.'}
-                </p>
+                style={{ width: `${usagePct}%` }}
+              />
+            </div>
+          )}
+          {isNearLimit && (
+            <div className="flex items-center gap-2 rounded-[8px] border border-[#fde68a] bg-[#fffbeb] p-[13px] text-[12px] leading-[16px] font-medium text-[#92400e]">
+              <AlertTriangle className="size-[18px] shrink-0" aria-hidden="true" />
+              Staff limit almost reached. Consider upgrading soon.
+            </div>
+          )}
+        </div>
+      </div>
 
-                {resumeError && (
-                  <p className="mt-2 text-[13px] text-error" role="alert">
-                    {resumeError}
-                  </p>
-                )}
-
-                <div className="mt-3 flex flex-wrap gap-2.5">
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
-                    disabled={resuming}
-                    onClick={() => void handleResume()}
-                  >
-                    {resuming ? (
-                      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                    ) : (
-                      <Play className="size-4" aria-hidden="true" />
-                    )}
-                    Continue Plan
-                  </button>
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-background-secondary disabled:opacity-60"
-                    disabled={resuming}
-                    onClick={() => router.push('/dashboard/billing/cancel')}
-                  >
-                    Cancel Plan
-                  </button>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,4fr)_minmax(0,6fr)]">
+        <div className={cardClass}>
+          <div className="flex items-start justify-between gap-4 pb-6">
+            <div className="flex items-center gap-4">
+              {defaultPaymentMethod && (
+                <div className="flex h-[32px] w-[48px] shrink-0 items-center justify-center rounded-[4px] border border-[#e2e8f0] bg-[#f8fafc] text-[10px] font-bold tracking-[0.5px] uppercase text-[#475569]">
+                  {defaultPaymentMethod.brand.slice(0, 4)}
                 </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="rounded-xl border border-dashed border-border p-10 text-center text-text-secondary">
-            <h3 className="mb-2 text-lg font-semibold text-foreground">No active plan</h3>
-            <p className="text-sm">Choose a plan to get started.</p>
-            <button
-              className={cn(planLinkClass, 'mt-3')}
-              onClick={() => onChangeTab('subscription')}
-            >
-              View plans
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className={cardClass}>
-        <div className="mb-4 flex items-center justify-between">
-          <p className={cardTitleClass}>Staff Usage</p>
-          <button className={planLinkClass} onClick={() => onChangeTab('subscription')}>
-            Upgrade plan
-          </button>
-        </div>
-        <p className="mb-2.5 text-[13px] text-text-secondary">
-          <strong className="text-xl font-bold text-foreground">{activeStaffCount}</strong>
-          {staffMax !== null ? ` / ${staffMax}` : ''} active
-        </p>
-        {staffMax !== null && (
-          <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-border">
-            <div
-              className={cn(
-                'h-full rounded-full transition-[width] duration-500',
-                isNearLimit ? 'bg-error' : 'bg-primary',
               )}
-              style={{ width: `${usagePct}%` }}
-            />
-          </div>
-        )}
-        {isNearLimit && (
-          <div className="mb-3 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-[13px] text-warning">
-            <AlertTriangle size={18} />
-            Staff limit almost reached. Consider upgrading soon.
-          </div>
-        )}
-      </div>
-
-      <div className={cardClass}>
-        <div className="mb-4 flex items-center justify-between">
-          <p className={cn(cardTitleClass, 'text-text-tertiary')}>Payment Method</p>
-          <button className={planLinkClass} onClick={() => onChangeTab('payment-method')}>
-            Update payment
-          </button>
-        </div>
-        {defaultPaymentMethod ? (
-          <>
-            <div className="flex items-center gap-3">
-              <div className="flex h-7 w-11 shrink-0 items-center justify-center rounded-md bg-primary/10 text-[11px] font-bold uppercase tracking-[0.5px] text-primary">
-                {defaultPaymentMethod.brand}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-foreground">
-                  {defaultPaymentMethod.brand.charAt(0).toUpperCase() +
-                    defaultPaymentMethod.brand.slice(1)}{' '}
-                  •••• {defaultPaymentMethod.last4}
-                </p>
-                <span className="text-xs text-text-secondary">
-                  Expires {String(defaultPaymentMethod.expMonth).padStart(2, '0')}/
-                  {defaultPaymentMethod.expYear}
-                </span>
+              <div>
+                {defaultPaymentMethod ? (
+                  <>
+                    <p className="text-[14px] leading-[20px] font-bold text-[#0f172a]">
+                      {defaultPaymentMethod.brand.charAt(0).toUpperCase() +
+                        defaultPaymentMethod.brand.slice(1)}{' '}
+                      •••• {defaultPaymentMethod.last4}
+                    </p>
+                    <span className="text-[12px] leading-[16px] text-[#64748b]">
+                      Expires {String(defaultPaymentMethod.expMonth).padStart(2, '0')}/
+                      {defaultPaymentMethod.expYear}
+                    </span>
+                  </>
+                ) : (
+                  <p className={cn(cardTitleClass, 'text-[#64748b]')}>Payment Method</p>
+                )}
               </div>
             </div>
-            {defaultPaymentMethod.billingAddress.name && (
-              <p className="mt-3 text-xs text-text-secondary">
-                {defaultPaymentMethod.billingAddress.name}
-                {defaultPaymentMethod.billingAddress.line1 && (
-                  <>
-                    <br />
-                    {defaultPaymentMethod.billingAddress.line1}
-                  </>
-                )}
-                {defaultPaymentMethod.billingAddress.city && (
-                  <>
-                    <br />
-                    {defaultPaymentMethod.billingAddress.city},{' '}
-                    {defaultPaymentMethod.billingAddress.state}{' '}
-                    {defaultPaymentMethod.billingAddress.country}
-                  </>
-                )}
-              </p>
-            )}
-          </>
-        ) : (
-          <>
-            <EmptyTableState message="No payment method on file." />
             <button className={planLinkClass} onClick={() => onChangeTab('payment-method')}>
-              Add payment method
-              <ChevronRight className="size-3.5" aria-hidden="true" />
+              Update payment
             </button>
-          </>
-        )}
-      </div>
-
-      <div className={cardClass}>
-        <div className="mb-4 flex items-center justify-between">
-          <p className={cn(cardTitleClass, 'text-text-tertiary')}>Recent Invoices</p>
-          <button className={planLinkClass} onClick={() => onChangeTab('billing-history')}>
-            View all invoices
-          </button>
-        </div>
-        {recentInvoices.length === 0 ? (
-          <EmptyTableState message="No invoices yet." />
-        ) : (
-          <>
-            {recentInvoices.map((inv) => (
-              <div
-                key={inv.id}
-                className="flex items-center justify-between border-b border-border py-2.5 text-[13px] last-of-type:border-b-0"
-              >
-                <span className="font-medium text-primary">
-                  <FileText
-                    size={16}
-                    className="mr-2 inline-block align-middle text-text-tertiary"
-                  />
-                  {inv.invoiceNumber}
-                </span>
-                <span className="text-text-secondary">{formatDate(inv.createdAt)}</span>
-                <span className="font-medium text-foreground">
-                  {formatAmount(inv.amountPaid, inv.currency)}
-                </span>
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.4px]',
-                    getStatusBadgeClass(inv.status),
+          </div>
+          {defaultPaymentMethod ? (
+            defaultPaymentMethod.billingAddress.name && (
+              <div className="flex flex-col gap-1">
+                <p className={cn(cardTitleClass, 'text-[#64748b]')}>Billing address</p>
+                <p className="text-[14px] leading-[20px] text-[#334155]">
+                  {defaultPaymentMethod.billingAddress.name}
+                  {defaultPaymentMethod.billingAddress.line1 && (
+                    <>
+                      <br />
+                      {defaultPaymentMethod.billingAddress.line1}
+                    </>
                   )}
-                >
-                  {inv.status}
-                </span>
+                  {defaultPaymentMethod.billingAddress.city && (
+                    <>
+                      <br />
+                      {defaultPaymentMethod.billingAddress.city},{' '}
+                      {defaultPaymentMethod.billingAddress.state}{' '}
+                      {defaultPaymentMethod.billingAddress.country}
+                    </>
+                  )}
+                </p>
               </div>
-            ))}
-          </>
-        )}
+            )
+          ) : (
+            <>
+              <EmptyTableState message="No payment method on file." />
+              <button className={planLinkClass} onClick={() => onChangeTab('payment-method')}>
+                Add payment method
+                <ChevronRight className="size-3.5" aria-hidden="true" />
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className={cardClass}>
+          <div className="flex items-center justify-between pb-4">
+            <p className={cn(cardTitleClass, 'text-[#64748b]')}>Recent Invoices</p>
+            <button
+              className={cn(planLinkClass, 'text-[12px] leading-[16px]')}
+              onClick={() => onChangeTab('billing-history')}
+            >
+              View all invoices
+            </button>
+          </div>
+          {recentInvoices.length === 0 ? (
+            <EmptyTableState message="No invoices yet." />
+          ) : (
+            <div className="flex flex-col gap-3">
+              {recentInvoices.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="flex items-center justify-between gap-3 rounded-[8px] border border-[#f1f5f9] p-[13px]"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <FileText className="size-4 shrink-0 text-[#64748b]" aria-hidden="true" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[14px] leading-[20px] font-medium text-[#0f172a]">
+                        {inv.invoiceNumber}
+                      </span>
+                      <span className="block text-[12px] leading-[16px] text-[#64748b]">
+                        {formatDate(inv.createdAt)}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-4">
+                    <span className="text-[14px] leading-[20px] font-bold text-[#0f172a]">
+                      {formatAmount(inv.amountPaid, inv.currency)}
+                    </span>
+                    <span
+                      className={cn(
+                        'inline-flex items-center rounded-[4px] px-2 py-1 text-[10px] leading-[15px] font-bold uppercase',
+                        getStatusBadgeClass(inv.status),
+                      )}
+                    >
+                      {inv.status}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -18,6 +18,20 @@ import { getAuditorCourses } from '@/app/actions/auditor';
 import type { AuditorCourseRow } from '@/app/actions/auditor';
 import { useExportJobs } from './ExportJobsProvider';
 import { useAuditFilter, toRangeInput } from './AuditFilterProvider';
+import {
+  auditCard,
+  auditCardHeader,
+  auditCardTitle,
+  auditCell,
+  auditHead,
+  auditHeaderGroup,
+  auditOutlineButton,
+  auditRow,
+  auditRowAction,
+  auditSearch,
+  auditSearchWrap,
+} from './audit-ui';
+import { cn } from '@/lib/utils';
 
 export default function AuditorCoursesTab() {
   const [courses, setCourses] = useState<AuditorCourseRow[]>([]);
@@ -41,20 +55,27 @@ export default function AuditorCoursesTab() {
   };
 
   return (
-    <div className="rounded-xl border border-border bg-background p-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-bold text-foreground">All Courses</h2>
-        <div className="flex items-center gap-2.5">
-          <Input
-            type="search"
-            className="h-11 w-full sm:w-[220px]"
-            placeholder="Search courses..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search courses"
-            startIcon={<Search aria-hidden="true" />}
-          />
-          <Button variant="outline" size="sm" onClick={handleExportAll} title="Export all (PDF)">
+    <div className={auditCard}>
+      <div className={auditCardHeader}>
+        <h2 className={auditCardTitle}>All Courses</h2>
+        <div className="flex items-center gap-3">
+          <div className={auditSearchWrap}>
+            <Input
+              type="search"
+              className={auditSearch}
+              placeholder="Search courses…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search courses"
+              startIcon={<Search aria-hidden="true" />}
+            />
+          </div>
+          <Button
+            variant="outline"
+            className={auditOutlineButton}
+            onClick={handleExportAll}
+            title="Export all (PDF)"
+          >
             <Download className="size-3.5" />
             Export all
           </Button>
@@ -62,85 +83,95 @@ export default function AuditorCoursesTab() {
       </div>
 
       {isPending && courses.length === 0 ? (
-        <div className="px-5 py-16 text-center">
-          <p className="text-sm text-text-tertiary">Loading courses&hellip;</p>
+        <div className="px-6 py-16 text-center">
+          <p className="text-[14px] text-[#64748b]">Loading courses&hellip;</p>
         </div>
       ) : courses.length === 0 ? (
         <EmptyTableState
-          message="No courses found."
+          message={search ? 'No Results' : 'No courses found.'}
           subMessage={
             search
-              ? 'No courses match your search.'
+              ? `No results matching ‘${search}’`
               : 'No published courses in your organization yet.'
           }
         />
       ) : (
-        <div className="overflow-x-auto">
-          <Table className="min-w-[600px]">
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-0">
-                <TableHead>Course Name</TableHead>
-                <TableHead>Assigned Staff</TableHead>
-                <TableHead>Completion Rate</TableHead>
-                <TableHead>Assigned Date</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {courses.map((course) => (
-                <TableRow key={course.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#1e293b]">
-                        {course.thumbnail ? (
-                          <Image
-                            src={course.thumbnail}
-                            alt={course.title}
-                            width={36}
-                            height={36}
-                            className="size-full object-cover"
-                          />
-                        ) : (
-                          <GraduationCap className="size-[18px] text-text-tertiary" />
-                        )}
-                      </div>
-                      <span className="text-sm font-semibold text-foreground">{course.title}</span>
+        <Table>
+          <TableHeader className={auditHeaderGroup}>
+            <TableRow className="border-0 hover:bg-transparent">
+              <TableHead className={cn(auditHead, 'w-full sm:w-[360px]')}>Course Name</TableHead>
+              <TableHead className={cn(auditHead, 'hidden sm:table-cell sm:w-[240px]')}>
+                Assigned Staff
+              </TableHead>
+              <TableHead className={cn(auditHead, 'hidden md:table-cell md:w-[170px]')}>
+                Completion Rate
+              </TableHead>
+              <TableHead className={cn(auditHead, 'hidden lg:table-cell lg:w-[163px]')}>
+                Assigned Date
+              </TableHead>
+              <TableHead className={auditHead}>Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {courses.map((course) => (
+              <TableRow key={course.id} className={auditRow}>
+                <TableCell className={auditCell}>
+                  <div className="flex items-center gap-[18px]">
+                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#1e293b]">
+                      {course.thumbnail ? (
+                        <Image
+                          src={course.thumbnail}
+                          alt={course.title}
+                          width={40}
+                          height={40}
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        <GraduationCap className="size-5 text-white/70" />
+                      )}
                     </div>
-                  </TableCell>
-                  <TableCell>{course.assignedStaff}</TableCell>
-                  <TableCell className="font-bold text-foreground">
-                    {course.completionRate}%
-                  </TableCell>
-                  <TableCell className="text-[13px] text-text-secondary">
-                    {course.assignedDate.toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        startExport({
-                          scope: 'course',
-                          scopeId: course.id,
-                          label: `Course: ${course.title}`,
-                          ...toRangeInput(range),
-                        })
-                      }
-                      className="text-sm font-semibold text-primary hover:underline"
-                    >
-                      Export
-                    </button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                    <span className="truncate text-[15.5px] font-medium tracking-[0.31px] text-[#1e1e1e]">
+                      {course.title}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell className={cn(auditCell, 'hidden sm:table-cell')}>
+                  {course.assignedStaff}
+                </TableCell>
+                <TableCell className={cn(auditCell, 'hidden font-semibold md:table-cell')}>
+                  {course.completionRate}%
+                </TableCell>
+                <TableCell
+                  className={cn(auditCell, 'hidden whitespace-nowrap text-[#64748b] lg:table-cell')}
+                >
+                  {course.assignedDate.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </TableCell>
+                <TableCell className={auditCell}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      startExport({
+                        scope: 'course',
+                        scopeId: course.id,
+                        label: `Course: ${course.title}`,
+                        ...toRangeInput(range),
+                      })
+                    }
+                    className={auditRowAction}
+                  >
+                    Export
+                  </button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </div>
   );

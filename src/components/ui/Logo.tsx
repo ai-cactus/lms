@@ -4,16 +4,20 @@ import { FC } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
+// `brand` is the only variant that colours the mark and the wordmark
+// differently — the app chrome (sidebar / mobile navbar) pairs the purple mark
+// with a near-black wordmark.
 const VARIANT_CLASS = {
-  light: 'text-[#2d3748]',
-  dark: 'text-white',
-  blue: 'text-primary',
+  light: { icon: 'text-[#2d3748]', text: 'text-[#2d3748]' },
+  dark: { icon: 'text-white', text: 'text-white' },
+  blue: { icon: 'text-primary', text: 'text-primary' },
+  brand: { icon: 'text-primary', text: 'text-[#0c111d]' },
 } as const;
 
 interface Props {
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'nav';
   showText?: boolean;
-  variant?: 'light' | 'dark' | 'blue';
+  variant?: 'light' | 'dark' | 'blue' | 'brand';
   className?: string;
   causeRedirect?: boolean;
 }
@@ -31,6 +35,7 @@ const Logo: FC<Props> = ({
     sm: { icon: 24, fontSize: 20 },
     md: { icon: 32, fontSize: 28 },
     lg: { icon: 44, fontSize: 34 },
+    nav: { icon: 32, fontSize: 22 },
   };
 
   const { icon, fontSize } = sizes[size];
@@ -39,7 +44,7 @@ const Logo: FC<Props> = ({
     <div
       className={cn(
         'inline-flex select-none items-center gap-2 cursor-pointer w-max',
-        VARIANT_CLASS[variant],
+        VARIANT_CLASS[variant].icon,
         className,
       )}
       onClick={() => {
@@ -63,7 +68,10 @@ const Logo: FC<Props> = ({
         />
       </svg>
       {showText && (
-        <span className="font-sans font-bold leading-none" style={{ fontSize }}>
+        <span
+          className={cn('font-sans font-bold leading-none', VARIANT_CLASS[variant].text)}
+          style={{ fontSize }}
+        >
           Theraptly
         </span>
       )}

@@ -146,8 +146,11 @@ test.describe('Billing — Stripe-sourced plan prices (no static hardcoded prici
     await loginAs(page, 'admin@test.com', 'Admin123!');
     await page.goto('/dashboard/billing?tab=subscription');
 
+    // Scope to `div[aria-disabled]` (only the plan cards carry this attribute) rather
+    // than the too-broad `div.relative`, which also matches the dashboard layout's
+    // outer wrapper div and caused a strict-mode violation (two elements resolved).
     const starterCard = page
-      .locator('div.relative')
+      .locator('div[aria-disabled]')
       .filter({ has: page.locator('#plan-btn-starter') });
     const toggle = page.getByRole('group', { name: /billing cycle/i });
 
