@@ -18,6 +18,11 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate"
   },
+  "overrides": {
+    "sharp": "^0.35.0",
+    "find-my-way": "^9.7.0",
+    "postcss": "^8.5.12"
+  },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
       "eslint --fix",
@@ -53,7 +58,7 @@
     "lucide-react": "^1.17.0",
     "mammoth": "^1.11.0",
     "minio": "^8.0.7",
-    "next": "16.2.6",
+    "next": "16.2.11",
     "nodemailer": "^9.0.1",
     "otpauth": "^9.5.0",
     "pdf-parse": "^1.1.1",

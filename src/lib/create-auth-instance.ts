@@ -19,6 +19,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
+import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
 
 interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
@@ -404,6 +405,10 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             // must pick up that role's active role-target assignments. Never throws.
             if (dbUser.organizationId) {
               await enrollUserForRoleTargets(dbUser.id, dbUser.organizationId);
+              // Materialise any courses parked on the accepted invite. Never throws.
+              if (pendingInvite) {
+                await enrollInviteCourses(dbUser.id, pendingInvite.id);
+              }
             }
           } else {
             if (pendingInvite && !dbUser.organizationId) {
@@ -448,6 +453,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               // Live auto-enroll into the accepted role's role-target assignments.
               if (dbUser.organizationId) {
                 await enrollUserForRoleTargets(dbUser.id, dbUser.organizationId);
+                // Materialise any courses parked on the accepted invite. Never throws.
+                await enrollInviteCourses(dbUser.id, pendingInvite.id);
               }
             } else if (
               cookiePrefix === 'admin' &&

@@ -28,7 +28,10 @@ const {
   mockProfileUpsert,
   mockInviteFindUnique,
   mockInviteUpdate,
+  mockInviteUpdateMany,
   mockInviteDelete,
+  mockEnrollmentDeleteMany,
+  mockTransaction,
   mockRevalidatePath,
   mockSendInviteEmail,
   mockSendStaffRemovedEmail,
@@ -42,17 +45,26 @@ const {
   const mockProfileUpsert = vi.fn();
   const mockInviteFindUnique = vi.fn();
   const mockInviteUpdate = vi.fn();
+  const mockInviteUpdateMany = vi.fn();
   const mockInviteDelete = vi.fn();
   const mockEnrollmentFindUnique = vi.fn();
+  const mockEnrollmentDeleteMany = vi.fn();
+  // removeStaff() runs its writes as an array-form $transaction([...]) — the
+  // individual delegate calls below are already-invoked mock promises by the
+  // time $transaction receives them, so resolving via Promise.all is faithful
+  // to Prisma's real array-transaction semantics for this test double.
+  const mockTransaction = vi.fn((ops: Promise<unknown>[]) => Promise.all(ops));
   const prismaMock = {
     user: { findUnique: mockUserFindUnique, update: mockUserUpdate },
     profile: { upsert: mockProfileUpsert },
     invite: {
       findUnique: mockInviteFindUnique,
       update: mockInviteUpdate,
+      updateMany: mockInviteUpdateMany,
       delete: mockInviteDelete,
     },
-    enrollment: { findUnique: mockEnrollmentFindUnique },
+    enrollment: { findUnique: mockEnrollmentFindUnique, deleteMany: mockEnrollmentDeleteMany },
+    $transaction: mockTransaction,
   };
   return {
     mockAuth: vi.fn(),
@@ -61,8 +73,11 @@ const {
     mockProfileUpsert,
     mockInviteFindUnique,
     mockInviteUpdate,
+    mockInviteUpdateMany,
     mockInviteDelete,
     mockEnrollmentFindUnique,
+    mockEnrollmentDeleteMany,
+    mockTransaction,
     mockRevalidatePath: vi.fn(),
     mockSendInviteEmail: vi.fn(),
     mockSendStaffRemovedEmail: vi.fn(),
@@ -137,7 +152,9 @@ beforeEach(() => {
   mockProfileUpsert.mockResolvedValue({});
   mockInviteFindUnique.mockResolvedValue(PENDING_INVITE);
   mockInviteUpdate.mockResolvedValue({});
+  mockInviteUpdateMany.mockResolvedValue({ count: 0 });
   mockInviteDelete.mockResolvedValue({});
+  mockEnrollmentDeleteMany.mockResolvedValue({ count: 0 });
   mockSendInviteEmail.mockResolvedValue(undefined);
   mockSendStaffRemovedEmail.mockResolvedValue(undefined);
   mockSendStaffRemovalConfirmationEmail.mockResolvedValue(undefined);
@@ -985,6 +1002,94 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
     expect(result).toEqual({ success: true });
     // The DB mutation (the security-relevant part) already happened.
     expect(mockUserUpdate).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * fix/worker-invite: removeStaff() now drops the removed user's IN-FLIGHT
+ * enrollments (so a subsequent re-invite yields a clean slate) while
+ * retaining terminal/completed ones for compliance history, and expires any
+ * pending Invite for that email in the org (so a live `/join` token can't
+ * immediately re-add the person). All three writes — the enrollment cleanup,
+ * the org-unlink, and the invite expiry — run inside a single $transaction.
+ */
+describe('removeStaff() — drops in-flight enrollments and expires pending invites (fix/worker-invite)', () => {
+  const ADMIN_SESSION = makeAdminSession('owner');
+  const TARGET_USER = {
+    organizationId: 'org-1',
+    email: 'removed@acme.com',
+    profile: { fullName: 'Removed Staffer' },
+  };
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(ADMIN_SESSION);
+    mockUserFindUnique
+      .mockResolvedValueOnce({ ...ADMIN, organization: { name: 'Acme Co' } })
+      .mockResolvedValueOnce(TARGET_USER);
+    mockUserUpdate.mockResolvedValue({});
+  });
+
+  it('deletes only the active-status enrollments for the removed user', async () => {
+    mockEnrollmentDeleteMany.mockResolvedValue({ count: 2 });
+
+    await removeStaff('target-1');
+
+    expect(mockEnrollmentDeleteMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'target-1',
+        status: { in: ['enrolled', 'assigned', 'in_progress', 'lessons_complete'] },
+      },
+    });
+    // Terminal statuses (completed, attested, locked, failed, retry_requested)
+    // are never named in the deleteMany filter — they are retained by omission.
+    const call = mockEnrollmentDeleteMany.mock.calls[0][0];
+    expect(call.where.status.in).not.toContain('completed');
+    expect(call.where.status.in).not.toContain('attested');
+  });
+
+  it("expires (not deletes) any pending invite for the removed user's email in the org", async () => {
+    await removeStaff('target-1');
+
+    expect(mockInviteUpdateMany).toHaveBeenCalledWith({
+      where: { email: 'removed@acme.com', organizationId: 'org-1', status: 'pending' },
+      data: { status: 'expired' },
+    });
+  });
+
+  it('runs the enrollment cleanup, org-unlink, and invite expiry inside a single $transaction', async () => {
+    await removeStaff('target-1');
+
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    const opsCountAtCallTime = mockTransaction.mock.calls[0][0].length;
+    expect(opsCountAtCallTime).toBe(3);
+    // All three delegate calls fired (the array-form transaction evaluates
+    // its operations eagerly, before $transaction itself is invoked).
+    expect(mockEnrollmentDeleteMany).toHaveBeenCalledOnce();
+    expect(mockUserUpdate).toHaveBeenCalledOnce();
+    expect(mockInviteUpdateMany).toHaveBeenCalledOnce();
+  });
+
+  it('records the dropped-enrollment count on the staff.remove audit entry', async () => {
+    mockEnrollmentDeleteMany.mockResolvedValue({ count: 3 });
+
+    await removeStaff('target-1');
+
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'staff.remove',
+        metadata: { droppedEnrollmentCount: 3 },
+      }),
+    );
+  });
+
+  it('records a zero dropped-enrollment count when the removed user had no in-flight training', async () => {
+    mockEnrollmentDeleteMany.mockResolvedValue({ count: 0 });
+
+    await removeStaff('target-1');
+
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: { droppedEnrollmentCount: 0 } }),
+    );
   });
 });
 

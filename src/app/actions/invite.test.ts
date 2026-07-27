@@ -25,6 +25,7 @@ const {
   mockUserFindMany,
   mockInviteFindMany,
   mockInviteCreateMany,
+  mockInviteUpdate,
   mockSendInviteEmail,
   mockRevalidatePath,
   mockLoggerWarn,
@@ -39,6 +40,7 @@ const {
     mockUserFindMany: vi.fn(),
     mockInviteFindMany: vi.fn(),
     mockInviteCreateMany: vi.fn(),
+    mockInviteUpdate: vi.fn(),
     mockSendInviteEmail: vi.fn(),
     mockRevalidatePath: vi.fn(),
     mockLoggerWarn: vi.fn(),
@@ -57,6 +59,7 @@ vi.mock('@/lib/prisma', () => ({
       count: mockInviteCount,
       findMany: mockInviteFindMany,
       createMany: mockInviteCreateMany,
+      update: mockInviteUpdate,
     },
   },
 }));
@@ -117,6 +120,7 @@ beforeEach(() => {
   mockUserFindMany.mockResolvedValue([]);
   mockInviteFindMany.mockResolvedValue([]);
   mockInviteCreateMany.mockResolvedValue({ count: 1 });
+  mockInviteUpdate.mockResolvedValue({});
   mockSendInviteEmail.mockResolvedValue(undefined);
 });
 
@@ -514,6 +518,26 @@ describe('createInvites() — existing member and pending-invite rows', () => {
       'Acme Corp',
       expect.any(String),
     );
+  });
+
+  // Sanity fix (fix/worker-invite): a resend previously kept the ORIGINAL
+  // expiry, so a nearly-expired invite could be "resent" yet still expire
+  // moments later. Resending must always refresh the 7-day window.
+  it('refreshes the expiry of an existing pending invite on resend', async () => {
+    mockInviteFindMany.mockResolvedValue([
+      { id: 'existing-invite-1', email: 'pending@acme.com', token: 'existing-token-123' },
+    ]);
+
+    await createInvites([item('pending@acme.com', 'nurse')]);
+
+    expect(mockInviteUpdate).toHaveBeenCalledWith({
+      where: { id: 'existing-invite-1' },
+      data: { expiresAt: expect.any(Date) },
+    });
+    // The refresh must precede (or at least accompany) the resend email — not
+    // matter which happens first here, but the row must actually be touched.
+    const refreshedExpiry = mockInviteUpdate.mock.calls[0][0].data.expiresAt as Date;
+    expect(refreshedExpiry.getTime()).toBeGreaterThan(Date.now());
   });
 });
 
