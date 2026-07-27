@@ -181,7 +181,7 @@ test.describe('Removed-user re-invite lifecycle', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add workers?/i }).first().click();
+      await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
       await expect(page.getByText('Invite New Staffs')).toBeVisible();
       await page.getByPlaceholder(/enter emails separated by/i).fill(seeded.staffEmail);
