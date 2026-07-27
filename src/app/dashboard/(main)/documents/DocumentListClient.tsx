@@ -38,7 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { RowActionsMenu } from '@/components/ui';
+import { RowActionsMenu, type RowAction } from '@/components/ui';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Search,
@@ -92,6 +92,9 @@ interface DocumentRow {
 
 interface DocumentListClientProps {
   initialDocs: DocumentRow[];
+  canUpload: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +219,12 @@ function RenameModal({
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-export default function DocumentListClient({ initialDocs }: DocumentListClientProps) {
+export default function DocumentListClient({
+  initialDocs,
+  canUpload,
+  canEdit,
+  canDelete,
+}: DocumentListClientProps) {
   const router = useRouter();
   const [docs, setDocs] = useState(initialDocs);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -390,6 +398,31 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                 const hasPHI = latest?.phiReport?.hasPHI ?? false;
                 const isDeleting = deletingId === doc.id;
 
+                const rowActions: RowAction[] = [
+                  {
+                    label: 'View',
+                    icon: <Eye className="size-4" />,
+                    onSelect: () => handleRowClick(doc.id),
+                  },
+                ];
+                if (canEdit) {
+                  rowActions.push({
+                    label: 'Rename',
+                    icon: <Pencil className="size-4" />,
+                    onSelect: () => handleRenameClick(doc),
+                  });
+                }
+                if (canDelete) {
+                  rowActions.push({
+                    label: isDeleting ? 'Deleting…' : 'Delete',
+                    icon: <Trash2 className="size-4" />,
+                    variant: 'destructive',
+                    separatorBefore: true,
+                    disabled: hasCourse || isDeleting,
+                    onSelect: () => setDeleteTarget({ id: doc.id, name: doc.filename }),
+                  });
+                }
+
                 return (
                   <TableRow
                     key={doc.id}
@@ -440,26 +473,7 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
                     >
                       <RowActionsMenu
                         className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
-                        actions={[
-                          {
-                            label: 'View',
-                            icon: <Eye className="size-4" />,
-                            onSelect: () => handleRowClick(doc.id),
-                          },
-                          {
-                            label: 'Rename',
-                            icon: <Pencil className="size-4" />,
-                            onSelect: () => handleRenameClick(doc),
-                          },
-                          {
-                            label: isDeleting ? 'Deleting…' : 'Delete',
-                            icon: <Trash2 className="size-4" />,
-                            variant: 'destructive',
-                            separatorBefore: true,
-                            disabled: hasCourse || isDeleting,
-                            onSelect: () => setDeleteTarget({ id: doc.id, name: doc.filename }),
-                          },
-                        ]}
+                        actions={rowActions}
                       />
                     </TableCell>
                   </TableRow>
@@ -469,7 +483,11 @@ export default function DocumentListClient({ initialDocs }: DocumentListClientPr
               <EmptyTableState
                 message={searchQuery ? 'No documents match your search.' : 'No documents found.'}
                 subMessage={
-                  searchQuery ? 'Try a different search term.' : 'Upload a document to get started.'
+                  searchQuery
+                    ? 'Try a different search term.'
+                    : canUpload
+                      ? 'Upload a document to get started.'
+                      : 'No documents have been uploaded yet.'
                 }
                 colSpan={4}
                 asTableRow
