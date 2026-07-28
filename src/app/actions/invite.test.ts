@@ -69,7 +69,11 @@ vi.mock('@/lib/email', () => ({ sendInviteEmail: mockSendInviteEmail }));
 vi.mock('@/lib/billing-plans', () => ({
   BILLING_PLANS: [
     { key: 'starter', name: 'Starter', staffMax: 10 },
-    { key: 'pro', name: 'Pro', staffMax: null },
+    { key: 'pro', name: 'Pro', staffMax: 150 },
+    // Unlimited-seat fixture entry — named 'enterprise' (not 'pro') to avoid
+    // colliding with the real 4-tier 'pro' key, which has a finite staffMax
+    // of 150, not null. See src/lib/billing-plans.ts.
+    { key: 'enterprise', name: 'Enterprise', staffMax: null },
   ],
 }));
 
@@ -393,6 +397,47 @@ describe('createInvites() — seat counting excludes owner (D2)', () => {
     mockUserFindMany.mockResolvedValue([]);
     mockInviteFindMany.mockResolvedValue([]);
     // Also stub the post-check lookups
+    mockInviteCreateMany.mockResolvedValue({ count: 1 });
+    mockSendInviteEmail.mockResolvedValue(undefined);
+
+    const result = await createInvites([item('new@acme.com', 'nurse')]);
+
+    expect(result.success).toBe(true);
+  });
+});
+
+// ── Seat counting — pro tier's 150-seat cap (the new 4th tier) ──────────────
+
+describe("createInvites() — seat counting enforces the pro plan's 150-seat cap", () => {
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(makeSession('owner'));
+    mockOrgFindUnique.mockResolvedValue({
+      name: 'Acme Corp',
+      subscription: { plan: 'pro', status: 'active' },
+    });
+  });
+
+  it("rejects when adding a new invite would exceed the pro plan's 150-seat limit", async () => {
+    // 150/150 seats used
+    mockUserCount.mockResolvedValue(150);
+    mockInviteCount.mockResolvedValue(0);
+    mockUserFindMany.mockResolvedValue([]);
+    mockInviteFindMany.mockResolvedValue([]);
+
+    const result = await createInvites([item('new@acme.com', 'nurse')]);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/limit|Pro|seat/i);
+    expect(result.limitError).toBeDefined();
+    expect(result.limitError?.limit).toBe(150);
+  });
+
+  it("allows the invite when one seat remains under the pro plan's 150-seat cap", async () => {
+    // 149/150 seats — room for 1 more
+    mockUserCount.mockResolvedValue(149);
+    mockInviteCount.mockResolvedValue(0);
+    mockUserFindMany.mockResolvedValue([]);
+    mockInviteFindMany.mockResolvedValue([]);
     mockInviteCreateMany.mockResolvedValue({ count: 1 });
     mockSendInviteEmail.mockResolvedValue(undefined);
 

@@ -79,10 +79,22 @@ vi.mock('@/lib/billing-plans', () => ({
       },
     },
     {
-      key: 'professional',
-      name: 'Professional',
+      key: 'growth',
+      name: 'Growth',
       staffMin: 11,
       staffMax: 50,
+      isEnterprise: false,
+      priceId: {
+        monthly: 'price_growth_monthly',
+        quarterly: 'price_growth_q',
+        yearly: 'price_growth_y',
+      },
+    },
+    {
+      key: 'pro',
+      name: 'Pro',
+      staffMin: 51,
+      staffMax: 150,
       isEnterprise: false,
       priceId: { monthly: 'price_pro_monthly', quarterly: 'price_pro_q', yearly: 'price_pro_y' },
     },
@@ -119,7 +131,7 @@ function existingSubscription(overrides: Record<string, unknown> = {}) {
     id: 'sub-row-1',
     status: 'active',
     stripeSubscriptionId: 'sub_existing',
-    plan: 'professional',
+    plan: 'growth',
     billingCycle: 'monthly',
     currentPeriodEnd: PERIOD_END_FAR_OUT,
     stripeScheduleId: null,
@@ -133,7 +145,7 @@ function existingSubscription(overrides: Record<string, unknown> = {}) {
 
 function liveStripeSub(overrides: Record<string, unknown> = {}) {
   return {
-    items: { data: [{ id: 'si_1', price: { id: 'price_pro_monthly' } }] },
+    items: { data: [{ id: 'si_1', price: { id: 'price_growth_monthly' } }] },
     schedule: null,
     ...overrides,
   };
@@ -233,16 +245,75 @@ describe('POST /api/billing/subscription/checkout — create path (no existing s
     expect(body.error).toMatch(/too many staff/i);
     expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
   });
+
+  it('rejects the pro plan for an org with 151+ staff — over the 51–150 pro band ceiling', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      ...ORG,
+      facilities: [{ staffCount: '151' }],
+    });
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const res = await POST(makeReq({ planKey: 'pro', billingCycle: 'monthly' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(422);
+    expect(body.error).toMatch(/too many staff/i);
+    expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['51', '100', '150'])(
+    'accepts the pro plan for an org with %s staff — inside the 51–150 pro band',
+    async (staffCount) => {
+      prismaMock.organization.findUnique.mockResolvedValue({
+        ...ORG,
+        facilities: [{ staffCount }],
+      });
+      prismaMock.subscription.findUnique.mockResolvedValue(null);
+      stripeMock.checkout.sessions.create.mockResolvedValue({
+        url: 'https://checkout.stripe.com/session_pro',
+      });
+
+      const res = await POST(makeReq({ planKey: 'pro', billingCycle: 'monthly' }));
+
+      expect(res.status).toBe(200);
+      expect(stripeMock.checkout.sessions.create).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('accepts the growth plan key (renamed from the legacy "professional" key)', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+    stripeMock.checkout.sessions.create.mockResolvedValue({
+      url: 'https://checkout.stripe.com/session_growth',
+    });
+
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.checkout.sessions.create).toHaveBeenCalledOnce();
+    expect(body).toEqual({ url: 'https://checkout.stripe.com/session_growth' });
+  });
+
+  it('rejects the legacy "professional" plan key as an unknown plan — the tier was renamed to "growth"', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toEqual({ error: 'Invalid plan' });
+    expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/billing/subscription/checkout — no_op branch', () => {
   it('is idempotent — no Stripe write at all when already on the requested plan/cycle', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(
-      existingSubscription({ plan: 'professional', billingCycle: 'monthly' }),
+      existingSubscription({ plan: 'growth', billingCycle: 'monthly' }),
     );
     stripeMock.subscriptions.retrieve.mockResolvedValue(liveStripeSub());
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
@@ -256,7 +327,7 @@ describe('POST /api/billing/subscription/checkout — no_op branch', () => {
     const effectiveAt = new Date('2026-08-01T00:00:00Z');
     prismaMock.subscription.findUnique.mockResolvedValue(
       existingSubscription({
-        plan: 'professional',
+        plan: 'growth',
         billingCycle: 'monthly',
         stripeScheduleId: 'sub_sched_1',
         scheduledPlan: 'starter',
@@ -282,7 +353,7 @@ describe('POST /api/billing/subscription/checkout — no_op branch', () => {
   it('releases the pending schedule and clears ONLY the scheduled* columns when reverting to the live plan', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(
       existingSubscription({
-        plan: 'professional',
+        plan: 'growth',
         billingCycle: 'monthly',
         stripeScheduleId: 'sub_sched_1',
         scheduledPlan: 'starter',
@@ -293,7 +364,7 @@ describe('POST /api/billing/subscription/checkout — no_op branch', () => {
     stripeMock.subscriptions.retrieve.mockResolvedValue(liveStripeSub());
     stripeMock.subscriptionSchedules.release.mockResolvedValue({});
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(stripeMock.subscriptionSchedules.release).toHaveBeenCalledWith('sub_sched_1');
@@ -323,14 +394,14 @@ describe('POST /api/billing/subscription/checkout — no_op branch', () => {
 describe('POST /api/billing/subscription/checkout — scheduled branch', () => {
   it('writes ONLY the scheduled* columns for a same-tier cycle change (never plan/billingCycle/stripePriceId)', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(
-      existingSubscription({ plan: 'professional', billingCycle: 'monthly' }),
+      existingSubscription({ plan: 'growth', billingCycle: 'monthly' }),
     );
     stripeMock.subscriptions.retrieve.mockResolvedValue(liveStripeSub());
     stripeMock.subscriptionSchedules.create.mockResolvedValue({
       id: 'sub_sched_new',
       phases: [
         {
-          items: [{ price: 'price_pro_monthly' }],
+          items: [{ price: 'price_growth_monthly' }],
           start_date: 1_700_000_000,
           end_date: 1_702_592_000,
         },
@@ -338,7 +409,7 @@ describe('POST /api/billing/subscription/checkout — scheduled branch', () => {
     });
     stripeMock.subscriptionSchedules.update.mockResolvedValue({ id: 'sub_sched_new' });
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'yearly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'yearly' }));
     const body = await res.json();
 
     expect(stripeMock.subscriptionSchedules.create).toHaveBeenCalledWith({
@@ -349,9 +420,9 @@ describe('POST /api/billing/subscription/checkout — scheduled branch', () => {
       expect.objectContaining({
         end_behavior: 'release',
         phases: [
-          expect.objectContaining({ items: [{ price: 'price_pro_monthly' }] }),
+          expect.objectContaining({ items: [{ price: 'price_growth_monthly' }] }),
           expect.objectContaining({
-            items: [{ price: 'price_pro_y' }],
+            items: [{ price: 'price_growth_y' }],
             duration: { interval: 'year', interval_count: 1 },
             proration_behavior: 'none',
           }),
@@ -361,9 +432,9 @@ describe('POST /api/billing/subscription/checkout — scheduled branch', () => {
     expect(prismaMock.subscription.update).toHaveBeenCalledWith({
       where: { organizationId: 'org-1' },
       data: {
-        scheduledPlan: 'professional',
+        scheduledPlan: 'growth',
         scheduledBillingCycle: 'yearly',
-        scheduledPriceId: 'price_pro_y',
+        scheduledPriceId: 'price_growth_y',
         scheduledEffectiveAt: PERIOD_END_FAR_OUT,
         stripeScheduleId: 'sub_sched_new',
       },
@@ -383,14 +454,14 @@ describe('POST /api/billing/subscription/checkout — scheduled branch', () => {
 
   it('writes ONLY the scheduled* columns for a downgrade (any time remaining)', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(
-      existingSubscription({ plan: 'professional', billingCycle: 'monthly' }),
+      existingSubscription({ plan: 'growth', billingCycle: 'monthly' }),
     );
     stripeMock.subscriptions.retrieve.mockResolvedValue(liveStripeSub());
     stripeMock.subscriptionSchedules.create.mockResolvedValue({
       id: 'sub_sched_down',
       phases: [
         {
-          items: [{ price: 'price_pro_monthly' }],
+          items: [{ price: 'price_growth_monthly' }],
           start_date: 1_700_000_000,
           end_date: 1_702_592_000,
         },
@@ -411,7 +482,7 @@ describe('POST /api/billing/subscription/checkout — scheduled branch', () => {
   it('updates an existing schedule in place (retrieve, not create) when one is already active', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(
       existingSubscription({
-        plan: 'professional',
+        plan: 'growth',
         billingCycle: 'monthly',
         stripeScheduleId: 'sub_sched_existing',
       }),
@@ -421,7 +492,7 @@ describe('POST /api/billing/subscription/checkout — scheduled branch', () => {
       id: 'sub_sched_existing',
       phases: [
         {
-          items: [{ price: 'price_pro_monthly' }],
+          items: [{ price: 'price_growth_monthly' }],
           start_date: 1_700_000_000,
           end_date: 1_702_592_000,
         },
@@ -429,7 +500,7 @@ describe('POST /api/billing/subscription/checkout — scheduled branch', () => {
     });
     stripeMock.subscriptionSchedules.update.mockResolvedValue({ id: 'sub_sched_existing' });
 
-    await POST(makeReq({ planKey: 'professional', billingCycle: 'quarterly' }));
+    await POST(makeReq({ planKey: 'growth', billingCycle: 'quarterly' }));
 
     expect(stripeMock.subscriptionSchedules.retrieve).toHaveBeenCalledWith('sub_sched_existing');
     expect(stripeMock.subscriptionSchedules.create).not.toHaveBeenCalled();
@@ -457,13 +528,13 @@ describe('POST /api/billing/subscription/checkout — immediate_prorate branch',
     );
     stripeMock.subscriptions.update.mockResolvedValue({});
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(stripeMock.subscriptions.update).toHaveBeenCalledWith(
       'sub_existing',
       expect.objectContaining({
-        items: [{ id: 'si_1', price: 'price_pro_monthly' }],
+        items: [{ id: 'si_1', price: 'price_growth_monthly' }],
         proration_behavior: 'always_invoice',
         payment_behavior: 'error_if_incomplete',
         cancel_at_period_end: false,
@@ -473,14 +544,14 @@ describe('POST /api/billing/subscription/checkout — immediate_prorate branch',
     // Idempotency key must be stable per (org, plan, cycle, subscription
     // updatedAt) so a client retry of the same request doesn't double-charge.
     const idempotencyKey = stripeMock.subscriptions.update.mock.calls[0]![2].idempotencyKey;
-    expect(idempotencyKey).toBe('org-1:professional:monthly:1782864000000');
+    expect(idempotencyKey).toBe('org-1:growth:monthly:1782864000000');
 
     expect(prismaMock.subscription.update).toHaveBeenCalledWith({
       where: { organizationId: 'org-1' },
       data: {
-        plan: 'professional',
+        plan: 'growth',
         billingCycle: 'monthly',
-        stripePriceId: 'price_pro_monthly',
+        stripePriceId: 'price_growth_monthly',
         cancelAtPeriodEnd: false,
         scheduledPlan: null,
         scheduledBillingCycle: null,
@@ -513,7 +584,7 @@ describe('POST /api/billing/subscription/checkout — immediate_prorate branch',
     stripeMock.subscriptionSchedules.release.mockResolvedValue({});
     stripeMock.subscriptions.update.mockResolvedValue({});
 
-    await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
 
     expect(stripeMock.subscriptionSchedules.release).toHaveBeenCalledWith('sub_sched_stale');
     // The release call happens before the charge.
@@ -532,7 +603,7 @@ describe('POST /api/billing/subscription/checkout — immediate_prorate branch',
     const declinedCharge = Object.create(Stripe.errors.StripeCardError.prototype);
     stripeMock.subscriptions.update.mockRejectedValue(declinedCharge);
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(res.status).toBe(402);
@@ -553,7 +624,7 @@ describe('POST /api/billing/subscription/checkout — immediate_prorate branch',
     );
     stripeMock.subscriptions.update.mockRejectedValue(requiresAction);
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
 
     expect(res.status).toBe(402);
     expect(prismaMock.subscription.update).not.toHaveBeenCalled();
@@ -568,7 +639,7 @@ describe('POST /api/billing/subscription/checkout — immediate_prorate branch',
     );
     stripeMock.subscriptions.update.mockRejectedValue(new Error('Stripe API error'));
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(res.status).toBe(500);

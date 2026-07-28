@@ -61,7 +61,7 @@ function priceInfo(overrides: Partial<StripePriceInfo> = {}): StripePriceInfo {
 
 /** planPrices with every plan/cycle absent — the "Stripe unavailable" state. */
 function emptyPlanPrices(): PlanPriceMap {
-  return { starter: {}, professional: {}, enterprise: {} };
+  return { starter: {}, growth: {}, pro: {}, enterprise: {} };
 }
 
 /**
@@ -86,7 +86,7 @@ function fullPlanPrices(): PlanPriceMap {
         effectiveMonthlyCents: 7417,
       }),
     },
-    professional: {
+    growth: {
       monthly: priceInfo({ unitAmountCents: 14900, effectiveMonthlyCents: 14900 }),
       quarterly: priceInfo({
         unitAmountCents: 40200,
@@ -99,6 +99,21 @@ function fullPlanPrices(): PlanPriceMap {
         interval: 'year',
         intervalCount: 1,
         effectiveMonthlyCents: 11167,
+      }),
+    },
+    pro: {
+      monthly: priceInfo({ unitAmountCents: 24900, effectiveMonthlyCents: 24900 }),
+      quarterly: priceInfo({
+        unitAmountCents: 68000,
+        interval: 'month',
+        intervalCount: 3,
+        effectiveMonthlyCents: 22667,
+      }),
+      yearly: priceInfo({
+        unitAmountCents: 224000,
+        interval: 'year',
+        intervalCount: 1,
+        effectiveMonthlyCents: 18667,
       }),
     },
     enterprise: {},
@@ -178,20 +193,20 @@ beforeEach(() => {
 
 describe('SubscriptionTab — billing-cycle seeding', () => {
   it('seeds the cycle toggle from the billingCycle prop when currentPlan is set', () => {
-    renderTab({ currentPlan: 'professional', billingCycle: 'quarterly' });
+    renderTab({ currentPlan: 'growth', billingCycle: 'quarterly' });
 
     expect(isActiveCycleButton(/quarterly/i)).toBe(true);
     expect(isActiveCycleButton(/^yearly/i)).toBe(false);
   });
 
   it('defaults to yearly when currentPlan is set but billingCycle is an unrecognized value', () => {
-    renderTab({ currentPlan: 'professional', billingCycle: 'weekly' });
+    renderTab({ currentPlan: 'growth', billingCycle: 'weekly' });
 
     expect(isActiveCycleButton(/^yearly/i)).toBe(true);
   });
 
   it('defaults to yearly when currentPlan is set but billingCycle is null', () => {
-    renderTab({ currentPlan: 'professional', billingCycle: null });
+    renderTab({ currentPlan: 'growth', billingCycle: null });
 
     expect(isActiveCycleButton(/^yearly/i)).toBe(true);
   });
@@ -217,7 +232,7 @@ describe('SubscriptionTab — plan-switch confirmation dialog (hasLiveSubscripti
     global.fetch = fn;
 
     renderTab({
-      currentPlan: 'professional',
+      currentPlan: 'growth',
       hasLiveSubscription: true,
       billingCycle: 'yearly',
       planPrices: fullPlanPrices(),
@@ -251,7 +266,7 @@ describe('SubscriptionTab — plan-switch confirmation dialog (hasLiveSubscripti
       planPrices: fullPlanPrices(),
     });
 
-    await userEvent.click(subscribeButton('professional'));
+    await userEvent.click(subscribeButton('growth'));
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/charged the prorated difference/i);
@@ -274,7 +289,7 @@ describe('SubscriptionTab — plan-switch confirmation dialog (hasLiveSubscripti
       planPrices: fullPlanPrices(),
     });
 
-    await userEvent.click(subscribeButton('professional'));
+    await userEvent.click(subscribeButton('growth'));
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/charged the prorated difference now/i);
@@ -286,7 +301,7 @@ describe('SubscriptionTab — plan-switch confirmation dialog (hasLiveSubscripti
     global.fetch = fn;
 
     renderTab({
-      currentPlan: 'professional',
+      currentPlan: 'growth',
       hasLiveSubscription: true,
       billingCycle: 'yearly',
       planPrices: fullPlanPrices(),
@@ -305,7 +320,7 @@ describe('SubscriptionTab — plan-switch confirmation dialog (hasLiveSubscripti
     global.fetch = fn;
 
     const { props } = renderTab({
-      currentPlan: 'professional',
+      currentPlan: 'growth',
       hasLiveSubscription: true,
       billingCycle: 'yearly',
       planPrices: fullPlanPrices(),
@@ -329,7 +344,7 @@ describe('SubscriptionTab — plan-switch confirmation dialog (hasLiveSubscripti
     global.fetch = fn;
 
     renderTab({
-      currentPlan: 'professional',
+      currentPlan: 'growth',
       hasLiveSubscription: true,
       billingCycle: 'yearly',
       planPrices: fullPlanPrices(),
@@ -352,7 +367,7 @@ describe('SubscriptionTab — plan-switch confirmation dialog (hasLiveSubscripti
     ) as unknown as typeof fetch;
 
     renderTab({
-      currentPlan: 'professional',
+      currentPlan: 'growth',
       hasLiveSubscription: true,
       billingCycle: 'yearly',
       planPrices: fullPlanPrices(),
@@ -376,7 +391,7 @@ describe('SubscriptionTab — plan-switch confirmation dialog (hasLiveSubscripti
     });
 
     renderTab({
-      currentPlan: 'professional',
+      currentPlan: 'growth',
       hasLiveSubscription: true,
       billingCycle: 'yearly',
       planPrices: fullPlanPrices(),
@@ -414,7 +429,7 @@ describe('SubscriptionTab — new subscriber goes straight to checkout (hasLiveS
   it('never renders the plan-change dialog even after checkout resolves', async () => {
     renderTab({ currentPlan: null, hasLiveSubscription: false });
 
-    await userEvent.click(subscribeButton('professional'));
+    await userEvent.click(subscribeButton('growth'));
 
     // Let the resolved fetch promise flush before asserting the negative.
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
@@ -451,9 +466,21 @@ describe('SubscriptionTab — plan cards with full planPrices', () => {
     renderTab({ currentPlan: null, planPrices: fullPlanPrices(), billingCycle: null });
 
     // Default cycle for a brand-new subscriber is 'yearly'.
-    // Professional yearly: round(134000 / 12) = 11167 effectiveMonthlyCents -> round(11167/100) = $112.
+    // Growth yearly: round(134000 / 12) = 11167 effectiveMonthlyCents -> round(11167/100) = $112.
+    // Pro yearly: round(224000 / 12) = 18667 effectiveMonthlyCents -> round(18667/100) = $187.
     expect(planCard('starter')).toHaveTextContent('$74');
-    expect(planCard('professional')).toHaveTextContent('$112');
+    expect(planCard('growth')).toHaveTextContent('$112');
+    expect(planCard('pro')).toHaveTextContent('$187');
+  });
+
+  it('renders the pro card price from the Stripe-derived planPrices map for the monthly cycle', async () => {
+    renderTab({ currentPlan: null, planPrices: fullPlanPrices() });
+
+    await userEvent.click(screen.getByRole('button', { name: /^monthly$/i }));
+
+    // Pro monthly: effectiveMonthlyCents 24900 -> $249, straight from the map (no hardcoded price).
+    expect(planCard('pro')).toHaveTextContent('$249');
+    expect(planCard('pro')).not.toHaveTextContent('Price unavailable');
   });
 
   it('updates the displayed price when the cycle toggle changes', async () => {
@@ -487,12 +514,64 @@ describe('SubscriptionTab — plan cards with full planPrices', () => {
   });
 });
 
+// ── 4-tier grid: starter, growth, pro, enterprise ───────────────────────────
+
+describe('SubscriptionTab — 4-tier plan grid', () => {
+  it('renders exactly 4 plan cards: starter, growth, pro, enterprise', () => {
+    renderTab({ currentPlan: null, planPrices: fullPlanPrices() });
+
+    expect(subscribeButton('starter')).toBeInTheDocument();
+    expect(subscribeButton('growth')).toBeInTheDocument();
+    expect(subscribeButton('pro')).toBeInTheDocument();
+    expect(subscribeButton('enterprise')).toBeInTheDocument();
+    // No 5th card and no leftover 'professional' key from the pre-rename lineup.
+    expect(document.getElementById('plan-btn-professional')).not.toBeInTheDocument();
+  });
+
+  it('features growth with a "Popular" badge when the org has no current plan', () => {
+    renderTab({ currentPlan: null, planPrices: fullPlanPrices() });
+
+    const growthCard = planCard('growth');
+    expect(growthCard).toHaveTextContent('Popular');
+    expect(growthCard.className).toContain('bg-primary');
+
+    // Every other card is neutral, not featured.
+    expect(planCard('starter')).not.toHaveTextContent('Popular');
+    expect(planCard('pro')).not.toHaveTextContent('Popular');
+    expect(planCard('starter').className).not.toContain('bg-primary');
+  });
+
+  it('does not feature growth (no "bg-primary" emphasis) once the org already has a current plan', () => {
+    renderTab({ currentPlan: 'starter', hasLiveSubscription: true, planPrices: fullPlanPrices() });
+
+    // Still shows the "Popular" badge (badge is tied to plan.popular, not to
+    // featured emphasis), but no longer gets the solid-brand featured card
+    // styling — the subscribed plan takes the emphasis instead.
+    expect(planCard('growth')).toHaveTextContent('Popular');
+    expect(planCard('growth').className).not.toContain('bg-primary');
+  });
+
+  it('uses the growth plan key (not the legacy "professional" key) in the checkout payload', async () => {
+    renderTab({ currentPlan: null, hasLiveSubscription: false });
+
+    await userEvent.click(subscribeButton('growth'));
+
+    expect(global.fetch).toHaveBeenCalledExactlyOnceWith(
+      '/api/billing/subscription/checkout',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ planKey: 'growth', billingCycle: 'yearly' }),
+      }),
+    );
+  });
+});
+
 // ── Scheduled-change banner (pending plan change) ───────────────────────────
 
 describe('SubscriptionTab — scheduled-change banner', () => {
   it('renders the pending-change banner with the target plan and formatted effective date', () => {
     renderTab({
-      currentPlan: 'professional',
+      currentPlan: 'growth',
       hasLiveSubscription: true,
       scheduledPlanName: 'Starter',
       scheduledEffectiveAt: '2026-08-17T00:00:00.000Z',
@@ -504,7 +583,7 @@ describe('SubscriptionTab — scheduled-change banner', () => {
   });
 
   it('does not render the banner when there is no pending scheduled change', () => {
-    renderTab({ currentPlan: 'professional', hasLiveSubscription: true });
+    renderTab({ currentPlan: 'growth', hasLiveSubscription: true });
 
     expect(screen.queryByText('Plan change scheduled')).not.toBeInTheDocument();
     expect(
@@ -517,7 +596,7 @@ describe('SubscriptionTab — scheduled-change banner', () => {
     global.fetch = fn;
 
     const { props } = renderTab({
-      currentPlan: 'professional',
+      currentPlan: 'growth',
       hasLiveSubscription: true,
       scheduledPlanName: 'Starter',
       scheduledEffectiveAt: '2026-08-17T00:00:00.000Z',
@@ -537,7 +616,7 @@ describe('SubscriptionTab — scheduled-change banner', () => {
     });
 
     const { props } = renderTab({
-      currentPlan: 'professional',
+      currentPlan: 'growth',
       hasLiveSubscription: true,
       scheduledPlanName: 'Starter',
       scheduledEffectiveAt: '2026-08-17T00:00:00.000Z',
