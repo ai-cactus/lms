@@ -87,7 +87,7 @@ async function seedAdmin(opts: {
     status: 'active' | 'past_due' | 'canceled' | 'trialing';
     pausedAt?: Date | null;
     pauseEndsAt?: Date | null;
-    scheduledPlan?: 'starter' | 'professional' | 'enterprise' | null;
+    scheduledPlan?: 'starter' | 'growth' | 'pro' | 'enterprise' | null;
     scheduledBillingCycle?: 'monthly' | 'quarterly' | 'yearly' | null;
     scheduledEffectiveAt?: Date | null;
     stripeScheduleId?: string | null;
@@ -135,7 +135,7 @@ async function seedAdmin(opts: {
            cancel_at_period_end, paused_at, pause_ends_at,
            scheduled_plan, scheduled_billing_cycle, scheduled_price_id,
            scheduled_effective_at, stripe_schedule_id, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, 'professional'::"SubscriptionPlan", 'yearly'::"SubscriptionBillingCycle",
+         ) VALUES ($1, $2, $3, $4, 'growth'::"SubscriptionPlan", 'yearly'::"SubscriptionBillingCycle",
            $5::"SubscriptionStatus", $6, $7, false, $8, $9,
            $10::"SubscriptionPlan", $11::"SubscriptionBillingCycle", $12, $13, $14, NOW(), NOW())`,
         [
@@ -188,13 +188,33 @@ async function loginAs(page: Page, email: string, password: string): Promise<voi
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+test.describe('Billing — 4-tier plan grid (starter/growth/pro/enterprise)', () => {
+  test('renders exactly 4 plan cards and defaults the billing-cycle toggle to Yearly', async ({
+    page,
+  }) => {
+    await loginAs(page, 'admin@test.com', 'Admin123!');
+    await page.goto('/dashboard/billing?tab=subscription');
+
+    await expect(page.locator('#plan-btn-starter')).toBeVisible();
+    await expect(page.locator('#plan-btn-growth')).toBeVisible();
+    await expect(page.locator('#plan-btn-pro')).toBeVisible();
+    await expect(page.locator('#plan-btn-enterprise')).toBeVisible();
+    // No leftover 5th card or legacy 'professional' key from the pre-rename lineup.
+    await expect(page.locator('#plan-btn-professional')).toHaveCount(0);
+
+    await expect(
+      page.getByRole('group', { name: /billing cycle/i }).getByRole('button', { name: /^yearly$/i }),
+    ).toHaveClass(/bg-background/);
+  });
+});
+
 test.describe('Billing — plan-switch confirmation (Defect A / Issue 3 classification)', () => {
   test('previews before opening the dialog; scheduled-classification copy; Cancel fires no checkout, Confirm calls checkout', async ({
     page,
   }) => {
     test.setTimeout(90_000);
 
-    // The stock seeded admin@test.com has an active `professional` subscription
+    // The stock seeded admin@test.com has an active `growth` subscription
     // with a real stripeSubscriptionId (see prisma/seed.ts) — hasLiveSubscription
     // is true for it, which is exactly the precondition this scenario needs.
     await loginAs(page, 'admin@test.com', 'Admin123!');
@@ -207,7 +227,7 @@ test.describe('Billing — plan-switch confirmation (Defect A / Issue 3 classifi
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        // A professional -> starter downgrade always classifies as `scheduled`
+        // A growth -> starter downgrade always classifies as `scheduled`
         // (see billing-plan-change.test.ts) — no charge today.
         body: JSON.stringify({
           classification: 'scheduled',
@@ -228,7 +248,7 @@ test.describe('Billing — plan-switch confirmation (Defect A / Issue 3 classifi
     await page.goto('/dashboard/billing?tab=subscription');
     await expect(page.locator('#plan-btn-starter')).toBeVisible();
 
-    // Current plan is Professional (seeded) — clicking Subscribe on Starter
+    // Current plan is Growth (seeded) — clicking Subscribe on Starter
     // triggers a preview call, THEN the confirmation dialog.
     await page.locator('#plan-btn-starter').click();
 
@@ -278,7 +298,7 @@ test.describe('Billing — plan-switch confirmation (Defect A / Issue 3 classifi
     await page.goto('/dashboard/billing?tab=subscription');
     await expect(page.locator('#plan-btn-starter')).toBeVisible();
 
-    // Current plan is Professional (seeded); clicking Starter is a real
+    // Current plan is Growth (seeded); clicking Starter is a real
     // downgrade, which the server would normally classify as `scheduled` —
     // but the preview call is fully mocked above, so the client renders
     // whatever classification the server returns. This exercises the
@@ -471,7 +491,7 @@ test.describe('Billing — resume refreshes Overview without a manual reload (De
           body: JSON.stringify({
             organization: { name: 'Billing E2E Org', staffCount: null },
             subscription: {
-              plan: 'professional',
+              plan: 'growth',
               billingCycle: 'yearly',
               status: 'active',
               currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),

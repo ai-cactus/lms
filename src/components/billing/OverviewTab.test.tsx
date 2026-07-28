@@ -72,7 +72,7 @@ describe('OverviewTab — refetch on refreshKey bump (Defect C)', () => {
       json: async () =>
         overviewResponse({
           subscription: {
-            plan: 'professional',
+            plan: 'growth',
             billingCycle: 'yearly',
             status: 'active',
             currentPeriodEnd: '2026-12-01T00:00:00.000Z',
@@ -102,7 +102,7 @@ describe('OverviewTab — refetch on refreshKey bump (Defect C)', () => {
       json: async () =>
         overviewResponse({
           subscription: {
-            plan: 'professional',
+            plan: 'growth',
             billingCycle: 'yearly',
             status: 'active',
             currentPeriodEnd: '2026-12-01T00:00:00.000Z',

@@ -1,6 +1,6 @@
 // Single source of truth for billing plans — used by both UI and API
 export type BillingCycle = 'monthly' | 'quarterly' | 'yearly';
-export type PlanKey = 'starter' | 'professional' | 'enterprise';
+export type PlanKey = 'starter' | 'growth' | 'pro' | 'enterprise';
 
 export interface BillingPlan {
   key: PlanKey;
@@ -12,14 +12,18 @@ export interface BillingPlan {
   featuresLabel: string;
   priceId: Record<BillingCycle, string | null>; // null for enterprise (custom)
   isEnterprise: boolean;
+  popular?: boolean;
 }
 
 const STARTER_MONTHLY_PRICE_ID = process.env.STRIPE_STARTER_PRICE_ID ?? '';
-const PROFESSIONAL_MONTHLY_PRICE_ID = process.env.STRIPE_PROFESSIONAL_PRICE_ID ?? '';
 const STARTER_QUARTERLY_PRICE_ID = process.env.STRIPE_STARTER_QUARTERLY_PRICE_ID ?? '';
-const PROFESSIONAL_QUARTERLY_PRICE_ID = process.env.STRIPE_PROFESSIONAL_QUARTERLY_PRICE_ID ?? '';
 const STARTER_YEARLY_PRICE_ID = process.env.STRIPE_STARTER_YEARLY_PRICE_ID ?? '';
-const PROFESSIONAL_YEARLY_PRICE_ID = process.env.STRIPE_PROFESSIONAL_YEARLY_PRICE_ID ?? '';
+const GROWTH_MONTHLY_PRICE_ID = process.env.STRIPE_GROWTH_PRICE_ID ?? '';
+const GROWTH_QUARTERLY_PRICE_ID = process.env.STRIPE_GROWTH_QUARTERLY_PRICE_ID ?? '';
+const GROWTH_YEARLY_PRICE_ID = process.env.STRIPE_GROWTH_YEARLY_PRICE_ID ?? '';
+const PRO_MONTHLY_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID ?? '';
+const PRO_QUARTERLY_PRICE_ID = process.env.STRIPE_PRO_QUARTERLY_PRICE_ID ?? '';
+const PRO_YEARLY_PRICE_ID = process.env.STRIPE_PRO_YEARLY_PRICE_ID ?? '';
 
 export const BILLING_PLANS: BillingPlan[] = [
   {
@@ -27,7 +31,7 @@ export const BILLING_PLANS: BillingPlan[] = [
     name: 'Starter',
     staffMin: 1,
     staffMax: 10,
-    description: '1-10 staff',
+    description: 'Up to 10 staff — solo practices & small local clinics',
     featuresLabel: 'INCLUDES',
     features: ['Staff training records', 'Policy-linked training', 'Auditor pack export'],
     priceId: {
@@ -38,33 +42,44 @@ export const BILLING_PLANS: BillingPlan[] = [
     isEnterprise: false,
   },
   {
-    key: 'professional',
-    name: 'Professional',
+    key: 'growth',
+    name: 'Growth',
     staffMin: 11,
     staffMax: 50,
-    description: '11-50 staff',
+    description: '11–50 staff — single-location post-acute & home health',
     featuresLabel: 'EVERYTHING IN STARTER PLUS',
     features: ['Advanced analytics', 'Priority processing'],
     priceId: {
-      monthly: PROFESSIONAL_MONTHLY_PRICE_ID,
-      quarterly: PROFESSIONAL_QUARTERLY_PRICE_ID,
-      yearly: PROFESSIONAL_YEARLY_PRICE_ID,
+      monthly: GROWTH_MONTHLY_PRICE_ID,
+      quarterly: GROWTH_QUARTERLY_PRICE_ID,
+      yearly: GROWTH_YEARLY_PRICE_ID,
+    },
+    isEnterprise: false,
+    popular: true,
+  },
+  {
+    key: 'pro',
+    name: 'Pro',
+    staffMin: 51,
+    staffMax: 150,
+    description: '51–150 staff — multi-location facilities & regional agencies',
+    featuresLabel: 'EVERYTHING IN GROWTH PLUS',
+    features: ['Multi-location organizations', 'Priority support'],
+    priceId: {
+      monthly: PRO_MONTHLY_PRICE_ID,
+      quarterly: PRO_QUARTERLY_PRICE_ID,
+      yearly: PRO_YEARLY_PRICE_ID,
     },
     isEnterprise: false,
   },
   {
     key: 'enterprise',
     name: 'Enterprise',
-    staffMin: 51,
+    staffMin: 151,
     staffMax: null,
-    description: '51+ staff',
-    featuresLabel: 'INCLUDES',
-    features: [
-      'Multi-location organizations',
-      'Enterprise onboarding',
-      'Priority support',
-      'Contract pricing',
-    ],
+    description: '151+ staff — hospitals & large healthcare networks',
+    featuresLabel: 'EVERYTHING IN PRO PLUS',
+    features: ['Enterprise onboarding', 'Contract pricing'],
     priceId: {
       monthly: null,
       quarterly: null,

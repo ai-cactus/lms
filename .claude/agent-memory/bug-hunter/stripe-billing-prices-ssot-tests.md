@@ -38,8 +38,12 @@ the *type* from `billing-prices.ts`, like `SubscriptionTab.tsx` /
 needed for those.
 
 **This sandbox has no real Stripe test-mode credentials.** `.env` ships all
-`STRIPE_STARTER_*_PRICE_ID` / `STRIPE_PROFESSIONAL_*_PRICE_ID` vars as empty
-strings; `.env.local` has a `STRIPE_SECRET_KEY` that is a short placeholder
+`STRIPE_STARTER_*_PRICE_ID` / `STRIPE_GROWTH_*_PRICE_ID` / `STRIPE_PRO_*_PRICE_ID`
+vars as empty strings (as of the 2026-07-28 4-tier rename, `STRIPE_PROFESSIONAL_*`
+no longer exists — `professional` was renamed to `growth` and a new `pro` tier
+was inserted between `growth` and `enterprise`; see
+[[billing-4tier-rename-test-updates]]); `.env.local` has a `STRIPE_SECRET_KEY`
+that is a short placeholder
 (`sk_test_` + ~14 chars, not a real ~100+ char key). Consequence: the real
 (unmocked) `fetchPlanPricesUncached()` running against the live dev server
 always returns an all-empty `PlanPriceMap` — every plan card renders "Price

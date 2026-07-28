@@ -16,6 +16,18 @@ import type {
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 /**
+ * Normalize a plan key read back from Stripe metadata to the current enum.
+ * Subscriptions and subscription schedules created before the tier rename
+ * (`professional` → `growth`, same 11–50 band) carry the old key in their
+ * metadata forever — including schedule phase metadata that Stripe copies onto
+ * the subscription when a scheduled phase transitions. Without this mapping the
+ * next webhook event for such a sub would fail the `SubscriptionPlan` enum write.
+ */
+function normalizePlanKey(planKey: string): SubscriptionPlan {
+  return (planKey === 'professional' ? 'growth' : planKey) as SubscriptionPlan;
+}
+
+/**
  * True for a Prisma unique-constraint violation (code `P2002`). Used to treat a
  * concurrent duplicate webhook delivery — one that races to record the same
  * event id — as already-processed rather than a failure. Duck-typed so it does
@@ -210,7 +222,7 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
     return;
   }
 
-  const planKey = ((sub.metadata?.planKey as string) ?? 'starter') as SubscriptionPlan;
+  const planKey = normalizePlanKey((sub.metadata?.planKey as string) ?? 'starter');
   const billingCycle = ((sub.metadata?.billingCycle as string) ??
     'monthly') as SubscriptionBillingCycle;
   const priceItem = sub.items.data[0];
