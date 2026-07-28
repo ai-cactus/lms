@@ -24,3 +24,5 @@ metadata:
 **"Total Courses" in the Overview/export summary reads 0 even when a video-catalog course is actively assigned/enrolled** — likely counts only published/custom org-authored courses (of which there were genuinely zero, since [[courses-billing-gate]]'s custom-course generation never completed), not video-catalog assignments. Don't read "Total Courses: 0" as "no training activity" — check the Activity/Transcript table below it, which correctly showed the one real enrollment.
 
 See [[courses-billing-gate]], [[staff-management-patterns]], and [[billing-subscription-patterns]] for related production findings from the same test org.
+
+**UPDATE 2026-07-27 (staging) — see [[billing-subscription-patterns]]'s 2026-07-27 update for confirmation that the Export tab's dedicated "Organization report" button (previously the one holdout that ignored the date-range filter) is now fixed and threads `from`/`to` correctly.**
